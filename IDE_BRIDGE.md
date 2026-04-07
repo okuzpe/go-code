@@ -1,0 +1,92 @@
+# Integración IDE (local) y Bridge (remoto) — referencia y eco Go
+
+Profundidad ligada a [ARCHITECTURE.md §2.15](ARCHITECTURE.md). Referencia (terceros, análisis de Claude Code): [Bridge & IDE — claude-code-explain](https://claude-code-explain.helmcode.com/bridge-ide).
+
+Son **dos sistemas distintos**. Mezclarlos en diseño lleva a confusiones de seguridad (localhost de confianza vs túnel a Internet y OAuth).
+
+**Relación con [MCP.md](MCP.md):** el IDE integra al CLI como **cliente MCP hacia el editor** (localhost). Los **servidores MCP de integración** (GitHub, Slack, …) son otro eje: el CLI como **cliente** hacia procesos/URLs configurados en `mcpServers` — ver §2.8 y **D6** en [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
+## 1. Dos sistemas (no uno)
+
+| Sistema | Actores | Transporte | Objetivo |
+|---------|---------|------------|----------|
+| **Integración IDE** | Editor (VS Code, JetBrains, …) y **CLI en la misma máquina** | **MCP sobre localhost** (SSE o WebSocket) | Sincronizar ediciones, diffs, contexto (selección, archivos abiertos, cursor) |
+| **Bridge** | Navegador (p. ej. claude.ai), backend del proveedor, **CLI como worker** | HTTPS / WSS / SSE según versión de protocolo | Control remoto del CLI desde la web, sesiones compartidas, permisos `can_use_tool` en el navegador |
+
+**Prioridad para nuestro asistente en Go**
+
+- **Integración IDE:** tratada como **paso fuerte** tras el núcleo REPL (**D21**): muchos usuarios viven en VS Code / Cursor / Windsurf; sin este puente el CLI queda aislado del flujo de edición.
+- **Bridge análogo al de Anthropic:** **no** es paridad 1:1 con el producto de referencia; implica identidad OAuth, infraestructura ajena y semántica de sesión web. Documentar como **referencia**; un “bridge propio” (UI web + worker) sería **fase posterior** y diseño aparte.
+
+---
+
+## 2. Integración IDE (local)
+
+### 2.1 Idea de arquitectura (referencia)
+
+- Las **extensiones de IDE** levantan un **servidor MCP** en `localhost` con transporte interno tipo **`sse-ide`** (EventSource / SSE) o **`ws-ide`** (WebSocket); a veces con **token de autenticación** en cabecera o query.
+- El **CLI descubre** instancias del editor leyendo **lockfiles** en un directorio (en referencia: `~/.claude/ide/<ide-name>-<pid>.lock`) que el IDE crea al arrancar la extensión y borra al cerrar. Cada lockfile lleva **puerto**, **tipo de transporte** y metadatos.
+- El CLI actúa como **cliente MCP** hacia ese endpoint local para:
+  - **Notificar ediciones** (el usuario acepta/rechaza en un diff del editor).
+  - **Compartir contexto** hacia el agente (selección, pestañas abiertas, posición del cursor).
+  - **Abrir/cerrar pestañas de diff** (`openDiffInIde`, `closeDiffTabsInIde` en referencia).
+- Puede existir un **canal bidireccional** adicional (p. ej. notificaciones propias entre CLI y extensión) para feature flags, telemetría opcional o acciones rápidas — conviene **acotar** qué es MCP estándar vs extensión privada (**D21**).
+
+### 2.2 Editores (referencia)
+
+- **VS Code / Cursor / Windsurf:** extensión que puede instalarse automáticamente (`code --install-extension …` en el flujo de referencia).
+- **JetBrains (varias IDEs):** plugin **manual**; misma idea de localhost + descubrimiento vía lockfiles si el ecosistema lo estandariza.
+
+### 2.3 Superficie de amenaza (local)
+
+- **Localhost no es “gratis”:** otros procesos en la misma máquina pueden intentar conectar al puerto del IDE; por eso **token en `ws-ide`** y binds acotados importan.
+- Los **diffs y aceptación de cambios** deben enlazarse con la capa de **permisos** del CLI ([ARCHITECTURE.md §2.3](ARCHITECTURE.md)): una edición “desde el agente” puede seguir pasando por **Ask** / políticas según modo.
+
+---
+
+## 3. Bridge (remoto) — referencia
+
+### 3.1 Qué aporta frente al CLI solo
+
+- El CLI pasa a ser **controlado desde el navegador**; el worker puede vivir en **otra máquina** (servidor, CI interactiva, etc.).
+- **Permisos remotos:** el flujo `can_use_tool` envía una petición de control al backend; la UI muestra Allow/Deny y puede **devolver argumentos mutados** o **reglas nuevas** de sesión — patrón útil para copiar en una UI propia, **no** dependiente de Anthropic.
+- **Modos de arranque** (referencia): proceso dedicado multi-sesión, bridge dentro del REPL, u modo “sin env” con conexión directa a sesión; **worktree** para aislar sesiones paralelas en Git.
+
+### 3.2 Versiones de protocolo (resumen)
+
+| Versión | Lectura (entrante al CLI) | Escritura (saliente) | Notas |
+|---------|---------------------------|----------------------|--------|
+| **v1** | WebSocket | HTTP POST con batching (~100 ms) | Polling/trabajo vía “Environments API” en referencia; más complejo |
+| **v2** | SSE | HTTP POST (cliente unificado) | Creación de sesión más directa; a veces tras **feature gate** en referencia |
+
+Constantes típicas (orden de magnitud en referencia): backoff de reconexión SSE 1 s → 30 s, *give up* ~10 min; *liveness* ~45 s sin datos; refresh JWT ~5 min antes de expirar; hasta **3 fallos** de init consecutivos deshabilitan el bridge.
+
+### 3.3 Autenticación (referencia)
+
+Orden de resolución orientativa: variable de entorno (solo dev) → cadena de credenciales del SO → OAuth interactivo. Cabeceras comunes hacia API: `Authorization: Bearer`, versionado API, *betas* corporativos, y en algunos niveles token de dispositivo de confianza.
+
+**Eco Go:** si algún día se implementa “bridge propio”, **no** acoplar el núcleo del orquestador a OAuth de un tercero; aislar en `internal/remoteui` o similar.
+
+---
+
+## 4. Eco Go (resumen)
+
+| Pieza | Ubicación sugerida | Notas |
+|-------|-------------------|--------|
+| Descubrimiento de IDE | `internal/ide/discovery.go` | Escanear directorio de lockfiles (ruta bajo **D21**, p. ej. `~/.config/assistant/ide/`); invalidar al borrar PID |
+| Cliente MCP → IDE | `internal/ide/mcpclient.go` (o subpaquete) | SSE/WS + auth; timeouts; **solo localhost** por defecto |
+| Contrato con orquestador | Interfaz inyectada desde `main` | p. ej. `IDENotifier`, `IDEContextProvider`; **evitar** `ide` → `orchestrator` |
+| Herramientas Write/Edit | Tras éxito lógico | Llamar notificación para diff en editor cuando **D21** y sesión IDE activa |
+| Bridge remoto | Fuera del MVP / v1 IDE | Si se hace: paquete separado; mismo orquestador; distinto “channel” de entrada |
+
+**Roadmap sugerido:** **MVP** — solo REPL y permisos; **v1** — `glob`/`grep`/memoria etc. según [ARCHITECTURE.md §4.4](ARCHITECTURE.md); **v1+ (prioridad producto)** — `internal/ide` con descubrimiento + cliente MCP mínimo + una extensión o adaptador documentado (**D21**). Bridge estilo claude.ai **sin compromiso**.
+
+---
+
+## 5. Changelog
+
+| Fecha | Cambio |
+|-------|--------|
+| 2026-04-07 | Creación: IDE local vs Bridge remoto, descubrimiento, transports, amenaza localhost, eco Go, **D21** |
