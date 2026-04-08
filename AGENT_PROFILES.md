@@ -1,80 +1,163 @@
-# Perfiles de agente (tipo Claude Code) — referencia y eco Go
+# Agent Profiles
 
-Documento de profundidad alineado con [ARCHITECTURE.md §2.7](ARCHITECTURE.md). Fuente conceptual (terceros): [Claude Code internals — Agents](https://claude-code-explain.helmcode.com/agents). **Extensiones en Markdown** (mismo contenido conceptual en frontmatter + cuerpo = system prompt): [CUSTOM_AGENTS.md](CUSTOM_AGENTS.md) y §2.13 en ARCHITECTURE.
+A **profile** controls how the orchestrator behaves for a given task. Each profile configures:
 
----
+- **Model** — inherits the global config by default; `ModelOverride` pins a specific model.
+- **Tool allowlist** — the subset of registered tools offered to the LLM (`nil` = all tools; empty slice = no tools).
+- **Read-only flag** — when `true`, `bash` is removed from the tool list even if the allowlist includes it.
+- **System prompt** — prepended to every request to shape the model's behavior.
 
-## 1. Idea central
+Select a profile with `-profile <name>` or set `agent_profile` in `settings.json`. Implementation: [`goclaw/internal/agents/profile.go`](goclaw/internal/agents/profile.go).
 
-Un **agente** no es solo “el modelo”: es un **perfil** reproducible con:
+**Shared prefix (all profiles):** [`internal/orchestrator/orchestrator.go`](goclaw/internal/orchestrator/orchestrator.go) `baseSystemPrompt` instructs the model to prefer dedicated tools (**D12** / [ARCHITECTURE.md](ARCHITECTURE.md) §2.1) — `read_file`, `glob`, `grep`, `write_file`, `edit_file`, `web_fetch`, `web_search`, `todo_write` — and use `bash` only when no dedicated tool fits.
 
-- **Modelo** (fijo, heredado del padre, o barato tipo “Haiku” para tareas acotadas).
-- **Conjunto de herramientas** (allowlist / bloqueos explícitos).
-- **Modo de permisos** (p. ej. interactivo vs `dontAsk`).
-- **Política de contexto** (qué se carga en el system prompt: reglas del proyecto, `git status`, etc.).
+### Plan → execute workflow (v1)
 
-Los sub-agentes se **delegan** con ese perfil; el orquestador no mezcla herramientas peligrosas en un explorador solo lectura.
+1. Use **`plan`** (or author manually) to produce a numbered Markdown plan; save it at **`.goclaw/plan.md`** in the workspace (template: `/plan init` or `/plan template` in the REPL).
+2. Run **`/apply-plan`** (optional path argument) to switch to **`general-purpose`** and send one user turn that embeds the plan and instructs the model to execute step by step.
+3. Alternatively, use **`/profile general-purpose`** after planning and paste the plan, or resume execution in a new session with the saved file.
 
----
-
-## 2. Los 6 tipos integrados (referencia de producto)
-
-| ID | Tipo | Modelo (ref.) | Herramientas (resumen) | Modo permisos / notas |
-|----|------|---------------|------------------------|------------------------|
-| 01 | **General-Purpose** | Hereda del padre | Todas (`*`) | Estándar; comodín cuando no aplica otro perfil |
-| 02 | **Explore** | Haiku (ext.) / hereda (int.) | Todas **excepto** Agent, Edit, Write, ExitPlanMode, NotebookEdit | Solo lectura en disco; **no** sub-agentes |
-| 03 | **Plan** | Hereda del padre | Solo lectura (sin Edit, Write, Agent, ExitPlanMode) | Salida esperada: **3–5 archivos críticos** para implementar |
-| 04 | **Verification** | Hereda del padre | Solo herramientas de verificación (lectura / tests) | **Background**; debe terminar con `VERDICT: PASS|FAIL|PARTIAL` |
-| 05 | **Claude Code Guide** | Haiku | Glob, Grep, Read, WebFetch, WebSearch | **`dontAsk`** (niega prompts automáticamente); solo consultas de documentación |
-| 06 | **Status Line Setup** | Sonnet | **Solo** Read + Edit | Sin shell ni web; propósito único (config de status line) |
+Future **D16** coordinator mode is sketched in [goclaw/docs/D16_COORDINATOR_SKETCH.md](goclaw/docs/D16_COORDINATOR_SKETCH.md) (not implemented yet).
 
 ---
 
-## 3. Lección de tokens: omitir reglas pesadas en sub-agentes
+## Built-in Profiles
 
-En el producto de referencia, **Explore** y **Plan** **no** cargan `CLAUDE.md` ni `git status` en contexto, para ahorrar tokens a escala (millones de spawns/semana).
-
-**Eco nuestro:**
-
-- Definir en cada perfil `ContextAttachments`: p. ej. `ProjectRules`, `GitStatus`, `SkillsIndex`, … con flags `true/false`.
-- Para perfiles “baratos” de sólo lectura o planificación, desactivar adjuntos grandes y **inyectar solo** lo imprescindible en el prompt de la tarea (o citar rutas puntuales).
-- Si necesitáis convenciones del repo en Explore/Plan, **pegarlas en el mensaje de delegación** en lugar de re-abrir todo el fichero de reglas en cada spawn.
-
----
-
-## 4. Encaje en Go (propuesta)
-
-| Concepto | Dónde vive |
-|----------|------------|
-| Definición de perfil (nombre, model override, tool filter, permission mode, context policy) | `internal/agentprofile` o `internal/orchestrator/profile.go` |
-| Construcción del `ToolRegistry` **vista** por este turno | `tools.Registry.View(Profile)` o lista filtrada antes de llamar al LLM |
-| Bucle de sub-agente | Misma pieza que `internal/orchestrator`, con `Run(ctx, Profile, SessionFork)` |
-| Verificación en background | Goroutine + canal de resultado; UI (más adelante) distingue “job rojo” |
-
-**MVP:** un único perfil equivalente a **General-Purpose**.  
-**v1/v2:** añadir **Explore** y **Plan** (ahorro de contexto + menos permisos).  
-**v3:** **Verification** en CI; perfiles tipo **Guide** / **Status Line** solo si hay producto equivalente.
+| Profile | `-profile` value | Tool allowlist | Read-only | Default? |
+|---------|-----------------|----------------|-----------|----------|
+| General-Purpose | `general-purpose` | All tools | No | Yes |
+| Explore | `explore` | read_file, glob, grep, web_fetch, web_search, todo_write | Yes | — |
+| Plan | `plan` | read_file, glob, grep, web_search, todo_write | Yes | — |
+| Verification | `verification` | read_file, bash, todo_write | No | — |
+| Guide | `guide` | (none) | Yes | — |
+| StatusLine | `statusline` | (none) | Yes | — |
 
 ---
 
-## 5. Relación con otras decisiones
+## Profile Details
 
-- **D12 (herramientas dedicadas):** todos los perfiles deben seguir §2.1; un Explore con Bash para `cat` sería incoherente.
-- **D1–D11 (LLM local):** perfiles “Haiku barato” se mapean a **otro id de modelo** en Ollama o a “mismo modelo, max_tokens menor”; no hay magia: hay que fijar política explícita. Tabla orientativa **perfil → modelo / VRAM** y notas sobre **LM Studio** vs **Ollama:** [LOCAL_MODELS.md §2.5–§2.7](LOCAL_MODELS.md).
-- **Memoria persistente ([MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)):** un agente **extractor** de memoria debería usar perfil **Explore**-like (solo lectura en repo) y escritura **acotada** al directorio de memoria.
-- **D16 / multi-agente ([COORDINATOR_MODE.md](COORDINATOR_MODE.md)):** el rol **Coordinator** (hub-and-spoke) no es un séptimo “tipo” integrado de la tabla §2: es un **perfil de herramientas** del centro — allowlist de orquestación y **cero** Read/Write/Bash. Los **workers** sí usan perfiles tipo General-Purpose o especializados con escritura. Cada delegación a worker debe repetir todo el contexto útil (§3 y regla “no ven al coordinador” en [COORDINATOR_MODE.md §2.7](COORDINATOR_MODE.md)).
-- **D17 / auto-modo ([YOLO_CLASSIFIER.md](YOLO_CLASSIFIER.md)):** un perfil con **`dontAsk`** o batch sin prompts solo es razonable si el **gate previo** (fast paths + clasificador lateral + política de proyecto **no** inyectada desde repo sin validación) está activo; de lo contrario el modelo puede encadenar herramientas peligrosas sin freno.
-- **D19 / agentes `.md` ([CUSTOM_AGENTS.md](CUSTOM_AGENTS.md)):** los seis tipos de §2 siguen siendo la base **built-in**; los ficheros custom **override por nombre** en referencia — conviene documentar en equipo qué `name` usáis para no chocar con Explore/Plan.
+### general-purpose
+
+```
+Go var:        agents.GeneralPurpose
+Tool allowlist: nil (all registered tools)
+ReadOnly:      false
+SystemPrompt:  (none — uses base system prompt only)
+```
+
+Full tool access. Default when no `-profile` flag is given. Use for unrestricted coding assistance. The global base prompt still steers toward dedicated tools over raw shell (**D12**).
 
 ---
 
-## 6. Changelog
+### explore
 
-| Fecha | Cambio |
-|-------|--------|
-| 2026-04-07 | Creación: tabla 6 tipos, contexto omitido, eco Go, fases. |
-| 2026-04-07 | §5: enlace a agente extractor de memoria. |
-| 2026-04-07 | §5: D16, Coordinator vs perfiles §2, enlace [COORDINATOR_MODE.md](COORDINATOR_MODE.md). |
-| 2026-04-07 | §5: D17, `dontAsk` vs [YOLO_CLASSIFIER.md](YOLO_CLASSIFIER.md). |
-| 2026-04-07 | Intro: enlace a agentes personalizados [CUSTOM_AGENTS.md](CUSTOM_AGENTS.md). |
-| 2026-04-07 | §5: D19, override por nombre vs §2. |
+```
+Go var:        agents.Explore
+Tool allowlist: read_file, glob, grep, web_fetch, web_search, todo_write
+ReadOnly:      true
+SystemPrompt:  "You are a fast, read-only explorer. Never modify files."
+```
+
+Bash is excluded. Safe for reading unfamiliar or untrusted repositories. Use when exploring a codebase without any modification risk.
+
+---
+
+### plan
+
+```
+Go var:        agents.Plan
+Tool allowlist: read_file, glob, grep, web_search, todo_write
+ReadOnly:      true
+SystemPrompt:  "You are a software architect. Produce a clear, step-by-step implementation plan
+               the user can follow. If the task is self-contained or greenfield (e.g. build a
+               small app from scratch), answer directly from general knowledge without calling
+               web_search. Use read_file, glob, and grep when the plan must reflect this
+               repository's layout or existing code. Use web_search only for external docs, API
+               versions, or facts you are unsure about — not for generic how-to or brainstorming."
+```
+
+No bash, no web_fetch. Use when you want an architecture or implementation plan grounded in the actual codebase.
+
+---
+
+### verification
+
+```
+Go var:        agents.Verification
+Tool allowlist: read_file, bash, todo_write
+ReadOnly:      false
+SystemPrompt:  "You are a verifier. Return only PASS or FAIL with a brief reason."
+```
+
+Can execute shell commands to run tests or check build output. Produces a verdict, not a discussion. Use at the end of a development phase to confirm correctness. Bash remains subject to allowlist + single-command syntax rules ([TOOL_CONTRACT.md](TOOL_CONTRACT.md), [`bash.go`](goclaw/internal/tools/bash.go)).
+
+---
+
+### guide
+
+```
+Go var:        agents.Guide
+Tool allowlist: [] (no tools)
+ReadOnly:      true
+SystemPrompt:  "You answer questions about this codebase. Never run commands."
+```
+
+Chat-only. No tools registered — the model answers from context and conversation history. Use for documentation Q&A or explaining code without any execution.
+
+---
+
+### statusline
+
+```
+Go var:        agents.StatusLine
+Tool allowlist: [] (no tools)
+ReadOnly:      true
+SystemPrompt:  "Output a single short status line, no markdown."
+```
+
+Produces a single line of plain text. Use for status bar integration or terse progress indicators.
+
+---
+
+## Tool Filtering
+
+The orchestrator applies profiles in `buildRequest()` inside [`goclaw/internal/orchestrator/orchestrator.go`](goclaw/internal/orchestrator/orchestrator.go):
+
+1. If `ToolAllowlist` is non-nil, only tools whose names appear in the list are included in the tool specs sent to the LLM.
+2. If `ReadOnly` is `true`, `bash` is removed from the effective tool list regardless of the allowlist.
+3. If `ToolAllowlist` is an empty slice (`[]string{}`), no tools are offered (guide, statusline).
+4. If `ToolAllowlist` is `nil`, all registered tools are offered (general-purpose).
+
+This filtering is compile-time behavior applied at request build time — there is no runtime override per call.
+
+---
+
+## Permission Modes and Profiles
+
+Permission modes (`ask`/`allow`/`deny`, configured in `tool_permissions`) are **orthogonal** to the profile's tool allowlist:
+
+- A tool **not in the allowlist** is never offered to the LLM and cannot be called.
+- A tool **in the allowlist** with mode `deny` is offered in the schema but always blocked when the LLM calls it — the orchestrator returns a `tool_result` with `is_error: true`.
+- A tool **in the allowlist** with mode `ask` prompts the user on stderr before each call.
+
+---
+
+## Post-MVP
+
+> **Post-MVP (v2+):**
+> - **D19:** Custom agents defined as Markdown files in `.goclaw/agents/*.md` with YAML frontmatter — name, model override, tool allowlist, system prompt. Override built-in profile names by matching the `name` field.
+> - **D16:** Sub-agent spawning and hub-and-spoke coordinator mode. A coordinator profile would have an orchestration tool allowlist and no read/write/bash access; worker profiles use general-purpose or specialized allowlists.
+> - **Context attachment policy per profile:** omit loading `CLAUDE.md` or `git status` in Explore/Plan profiles to reduce token overhead at scale (currently all profiles get the same system prefix).
+
+---
+
+## Changelog
+
+| Date | Change |
+|------|--------|
+| 2026-04-07 | Created: 6-type table, token lesson, Go mapping, phase alignment. |
+| 2026-04-07 | Cross-links: memory extractor, COORDINATOR_MODE, YOLO_CLASSIFIER, CUSTOM_AGENTS. |
+| 2026-04-08 | Updated goclaw section: six profiles, real file paths; "MVP one profile" note marked historical. |
+| 2026-04-08 | Translated to English; restructured around `profile.go` facts; reference-product analysis removed; exact system prompts included. |
+| 2026-04-08 | Shared `baseSystemPrompt` (**D12**), verification/bash policy pointer to TOOL_CONTRACT and `bash.go`. |
+| 2026-04-08 | `todo_write` on explore/plan/verification; plan → execute workflow (`.goclaw/plan.md`, `/apply-plan`); D16 sketch: [goclaw/docs/D16_COORDINATOR_SKETCH.md](goclaw/docs/D16_COORDINATOR_SKETCH.md). |

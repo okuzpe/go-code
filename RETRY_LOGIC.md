@@ -1,81 +1,66 @@
-# Reintentos y backoff (API LLM) — referencia y eco Go
+# Retry Logic
 
-Profundidad ligada a [ARCHITECTURE.md §2.17](ARCHITECTURE.md) y al cliente `internal/llm`. Referencia (terceros): [Retry Logic — claude-code-explain](https://claude-code-explain.helmcode.com/retry-logic).
-
-Objetivo: **absorber fallos transitorios** de red y de sobrecarga del proveedor sin tumbar la sesión; **no** enmascarar errores permanentes (auth, cuota real agotada tras `Retry-After`, payload inválido).
+goclaw retries LLM HTTP requests on transient failures using exponential backoff. The retry budget is **per call** — each HTTP request to the model gets its own independent counter. A slow or rate-limited stream does not consume the budget for subsequent calls.
 
 ---
 
-## 1. Flujo conceptual (referencia)
+## Parameters
 
-1. Fallo en la llamada a la API.
-2. Clasificar **código HTTP** / error del SDK (transitorio vs terminal).
-3. Calcular espera: **backoff exponencial** con techo.
-4. Esperar (respetando `context.Context` para cancelación usuario).
-5. Reintentar hasta **presupuesto** agotado → propagar error al orquestador / usuario.
-
-**Por llamada, no global:** en referencia el contador de reintentos se **reinicia en cada invocación** HTTP al modelo. Diez `tool_use` en una sesión implican **diez presupuestos independientes** de reintentos para las Completion correspondientes; un stream lento no “gasta” el cupo de otra llamada.
-
-**Eco Go:** implementar el bucle de reintento **dentro** de `llm.Complete` / `llm.Stream` (o un transporte interno), no como estado global en `orchestrator`.
+| Parameter | Value |
+|-----------|-------|
+| Maximum attempts per call | **10** |
+| Base delay | **500 ms** (doubles each attempt) |
+| Maximum delay per wait | **5 minutes** |
 
 ---
 
-## 2. Parámetros de referencia (Claude Code analizado)
+## Retry Conditions
 
-| Parámetro | Valor orientativo | Notas |
-|-----------|-------------------|--------|
-| Reintentos máx. (defecto) | **10** | Por llamada |
-| Backoff base | **500 ms** | Duplica cada intento hasta el techo |
-| Backoff máximo | **5 min** | Tope por espera entre intentos |
-| **429** Rate limit | Hasta 10 | Preferir cabecera **`Retry-After`** si existe |
-| **529** Overloaded | **3** | En referencia: solo **foreground**; **background** no reintenta 529 |
-| Otros **5xx** | Hasta 10 | Backoff exponencial estándar |
-| **401** / **403** / 4xx de cliente | **No** retry típico | Corregir credenciales o permisos |
+**Retried with backoff:**
+- HTTP `429` Too Many Requests
+- HTTP `503` Service Unavailable
+- HTTP `504` Gateway Timeout
+- Transient network errors (connection refused, timeout, EOF before headers)
 
-Los números exactos son del producto analizado; **D22** fija los vuestros por proveedor (**D1**, **D10**).
-
----
-
-## 3. Modo “unattended” (referencia, interno)
-
-Para tareas largas automatizadas (no sesión interactiva estándar), la referencia describe:
-
-- Reintentos **sin límite** fijo de intentos (con cuidado).
-- **Heartbeat** ~30 s para mantener el proceso vivo.
-- **Tope duro ~6 h** para evitar procesos colgados.
-- No expuesto como modo general del usuario.
-
-**Eco Go:** si algún día hay `assistant daemon` o CI, considerar un **modo explícito** con flag + el mismo tope de tiempo; nunca por defecto en REPL.
+**Not retried (treated as permanent):**
+- HTTP `401` Unauthorized, `403` Forbidden
+- HTTP `400` Bad Request and other `4xx` client errors
+- Payload or serialization errors (fix the request, not the retry count)
 
 ---
 
-## 4. Interacción con otras capas
+## Retry-After Header
 
-| Capa | Relación |
-|------|----------|
-| [YOLO_CLASSIFIER.md](YOLO_CLASSIFIER.md) | El clasificador lateral también llama al LLM: aplicar política de reintentos **acotada**; en fallo repetido, *fail closed* (**D17**), no bucle infinito. |
-| [CONTEXT_COMPACTION.md](CONTEXT_COMPACTION.md) | El agente de compactación es otra llamada al modelo: mismo cliente; timeouts separados del turno principal. |
-| [LOCAL_MODELS.md](LOCAL_MODELS.md) | Ollama/local suele fallar con otros patrones (conexión rechazada, OOM); conviene tabla de errores **local vs cloud**. |
-| `web_fetch` / tools | Reintentos de **tool** son decisión distinta (p. ej. 1 retry en 5xx); no mezclar con la política del **LLM**. |
+When the provider returns a `Retry-After` header (integer seconds), goclaw uses that value instead of the computed backoff. The value is clamped to the 5-minute ceiling.
 
 ---
 
-## 5. Eco Go (implementación sugerida)
+## Per-Call Budget
 
-| Pieza | Ubicación |
-|-------|-----------|
-| Estrategia por código de error | `internal/llm/retry.go` o paquete auxiliar |
-| Backoff con jitter | Opcional: reduce thundering herd si varios clientes |
-| `Retry-After` | Parsear según RFC; clamp al máximo configurado |
-| Observabilidad | `slog` con intento N/M, duración de espera, código HTTP (sin body de secretos) |
-| Config | Flags o env: `ASSISTANT_LLM_MAX_RETRIES`, `ASSISTANT_LLM_RETRY_BASE_MS`, … (**D22**) |
-
-**MVP:** al menos **1–2 reintentos** en timeouts de red o 502/503; **v1+** alinear con tabla §2 y proveedor real.
+The retry counter resets for each `doHTTPWithRetry` invocation. A session with ten tool calls — each triggering an LLM completion — has ten independent 10-attempt budgets. A rate-limited call does not penalize subsequent calls in the same session.
 
 ---
 
-## 6. Changelog
+## Implementation Reference
 
-| Fecha | Cambio |
-|-------|--------|
-| 2026-04-07 | Creación: flujo, códigos, unattended, capas Go, **D22** |
+- **File:** [`goclaw/internal/llm/retry.go`](goclaw/internal/llm/retry.go)
+- **Function:** `doHTTPWithRetry(ctx context.Context, client *http.Client, build func() (*http.Request, error)) (*http.Response, error)`
+- The `build` function is called fresh on each attempt so the HTTP request body can be re-read (bodies are one-shot streams).
+- Both `AnthropicClient` (`anthropic.go`) and `OllamaClient` (`ollama.go`) use this function for their streaming POST calls.
+- Decision rationale: see D22 in [`goclaw/CLAUDE.md`](goclaw/CLAUDE.md).
+
+---
+
+## Post-MVP
+
+> **Post-MVP (v2+):** Jitter on the backoff (to reduce thundering herds in multi-instance setups). Configurable attempt limits and delay ceiling via environment variables (D22). Separate retry policy per provider — Ollama and Anthropic have different transient failure patterns. Time-bounded retry for daemon/CI mode instead of count-bounded.
+
+---
+
+## Changelog
+
+| Date | Change |
+|------|--------|
+| 2026-04-07 | Created: conceptual flow, HTTP codes, unattended mode, Go implementation notes, D22. |
+| 2026-04-08 | Added goclaw implementation details (`retry.go`, §2.1). |
+| 2026-04-08 | Translated to English; restructured around `retry.go` facts; reference-product analysis removed. |

@@ -1,0 +1,81 @@
+---
+name: new-phase
+description: Use when starting a new development phase, asking what comes next, or transitioning between MVP phases in goclaw.
+---
+
+## Starting a new phase in goclaw
+
+### Pre-flight checklist (before any phase)
+
+```bash
+go build ./...
+go test ./...
+grep -rE "TODO (Phase|Fase)" ./internal/  # should be empty (legacy Spanish tag + English)
+```
+
+Fix failures before continuing.
+
+---
+
+### Phase 1 — Core loop
+**Goal**: REPL that talks to Ollama without tools.
+
+Touch:
+- `internal/session/session.go` — UUID + JSONL persistence
+- `cmd/goclaw/main.go` — `log/slog`, signal handling (Ctrl+C)
+- `testutil/mockserver/server.go` — Anthropic mock for tests
+
+Deliverable: `go run ./cmd/goclaw` returns text via local Ollama.  
+Tests: mock scenarios (text-only, streaming, HTTP 500).
+
+---
+
+### Phase 2 — MVP tools
+**Goal**: Four tools with basic safety.
+
+Add:
+- `internal/tools/read_file.go`, `glob.go`, `grep.go`, `bash.go`, `web_fetch.go`, `web_search.go`
+
+Register in `cmd/goclaw/main.go`.
+
+Deliverable: agent can read files, run allowlisted shell, fetch URLs.  
+Tests: read roundtrip, bash stdout, SSRF blocked, etc.
+
+**Security before marking done**: symlink escape (`security-review`), bash allowlist + timeout, web_fetch SSRF.
+
+---
+
+### Phase 3 — Permissions + agents + config
+**Goal**: Ask mode, profiles, JSON settings.
+
+Touch:
+- `internal/permissions/permissions.go`
+- `internal/agents/profile.go`
+- `internal/config/config.go`, `internal/config/loader.go` — defaults → user + project `settings.json` / `settings.local.json` → CLI flags
+
+Deliverable: Ask prompts on stderr; read-only profiles block bash.
+
+---
+
+### Phase 4 — Memory + hooks + compaction
+**Goal**: Durable facts, hook API, context compaction.
+
+Implement:
+- `internal/memory/memory.go` — Save / Load / List / Delete
+- `internal/memory/index.go` — regenerate `MEMORY.md`
+- Session rotation lives in `internal/session/store.go` (not a separate `jsonl.go`)
+- Orchestrator compaction using `cfg.AutoCompactThreshold`; optional `WithMemoryStore` for system-prompt snippet
+
+Deliverable: data under `~/.goclaw/memory/`; long sessions compact; hooks fire around tool use.
+
+---
+
+### Post-MVP (do not start until the above is solid)
+
+| Track | Adds | Why wait |
+|-------|------|----------|
+| v2: MCP | External servers | Needs stable session + memory |
+| v2: YOLO Classifier | Safer auto mode | Needs mature permissions |
+| v2: Multi-agent | Hub coordinator | Needs battle-tested orchestrator |
+| v3: Plugins | Extension marketplace | Needs stable core |
+| v3: IDE Bridge | VS Code / Cursor | Often depends on MCP |

@@ -1,0 +1,155 @@
+---
+description: MVP tool contract for goclaw — names, inputs, limits. Apply when implementing or changing tools.
+alwaysApply: false
+globs: ["internal/tools/**/*.go", "internal/orchestrator/**/*.go", "internal/llm/**/*.go"]
+---
+
+# GoClaw — MVP tool contract
+
+## Required interface
+
+```go
+type Tool interface {
+    Name() string        // snake_case; name exposed to the model
+    Description() string // shown to the model
+    InputSchema() any    // JSON Schema for arguments
+    Execute(ctx context.Context, input string) (Result, error)
+}
+
+type Result struct {
+    Content string
+    IsError bool  // true = user-visible failure (not a Go error)
+}
+```
+
+**User-facing failures** → `Result{IsError: true, Content: msg}`, return `nil` error  
+**System failures** → return non-nil `error` (bugs, unexpected I/O)
+
+## Nine built-in tools (registered in `chat_run.go`)
+
+### read_file
+```
+Name:   "read_file"
+Input:  { "path": string, "offset_lines"?: int, "limit_lines"?: int }
+Output: file contents
+Cap:    512 KiB or 200 lines (whichever is smaller)
+Risk:   read-only; workspace boundary + symlink resolution
+```
+
+### glob
+```
+Name:   "glob"
+Input:  { "pattern": string }
+Output: relative paths (slash-separated), max 500 matches
+Risk:   read-only walk under workspace; basename-only patterns match any depth; path patterns use / for Match
+```
+
+### grep
+```
+Name:   "grep"
+Input:  { "pattern": string (regexp), "path"?: string (file or dir under workspace) }
+Output: path:line:content, max 200 matches; skips binary (NUL in prefix); 512 KiB read cap per file
+Risk:   read-only under workspace
+```
+
+### bash
+```
+Name:   "bash"
+Input:  { "command": string, "cwd"?: string }
+Output: combined stdout + stderr
+Cap:    256 KiB truncated; timeout default 30s (settings: bash_timeout_sec, max 3600)
+Risk:   shell — expanded binary allowlist; single simple command (no pipes, ;, &&, redirects, $(...));
+        quote-aware scan; quote URLs with &; Ask mode prompts before run
+```
+
+### web_fetch
+```
+Name:   "web_fetch"
+Input:  { "url": string, "max_bytes"?: int }
+Output: text / HTML body
+Cap:    1 MiB default
+Risk:   network — SSRF checks required, 30s timeout, max 5 redirects
+```
+
+### web_search
+```
+Name:   "web_search"
+Input:  { "query": string }
+Output: DuckDuckGo JSON — Answer, Definition, Abstract, Results (HTML stripped), RelatedTopics; empty → message with duckduckgo.com search URL
+Cap:    up to 8 topical lines, 2 KiB per snippet (see limits.go)
+Risk:   network
+```
+
+## LLM HTTP clients (`internal/llm`)
+
+- Anthropic and Ollama streaming POSTs use **`doHTTPWithRetry`**: retry 429 / 503 / 504 (and transient network errors) with backoff; respect `Retry-After` when present.
+- Do not add ad-hoc `http.Client.Do` loops in clients; extend `retry.go` if policy changes.
+
+## Orchestrator loop budgets (do not change without consensus)
+- Max LLM iterations per user message: **32**
+- Max tool calls per user message: **64**
+
+### write_file
+```
+Name:   "write_file"
+Input:  { "path": string, "content": string }
+Output: "wrote N bytes to path"
+Cap:    1 MiB content (MaxWriteFileBytes)
+Risk:   write — workspace boundary on parent dir (EvalSymlinks on parent, not file);
+        atomic temp+rename; preserves existing file mode; stripped from ReadOnly profiles
+```
+
+### edit_file
+```
+Name:   "edit_file"
+Input:  { "path": string, "old_string": string, "new_string": string, "replace_all"?: bool }
+Output: "replaced N occurrence(s) in path"
+Cap:    1 MiB result (MaxWriteFileBytes)
+Risk:   write — exact str_replace; errors if old_string matches 0 or >1 times (unless replace_all:true);
+        preserves file mode; atomic write; stripped from ReadOnly profiles
+```
+
+### todo_write
+```
+Name:   "todo_write"
+Input:  { "merge": bool, "todos": [ { "content": string, "status": "pending|in_progress|completed", "activeForm": string } ] }
+Output: snapshot of the current task list
+Cap:    50 items max; 500 runes per content field
+Risk:   session_meta — in-memory only; cleared on /new; snapshot injected into system prompt via WithTodoStore
+```
+
+## LLM HTTP clients (`internal/llm`)
+
+- Anthropic and Ollama streaming POSTs use **`doHTTPWithRetry`**: retry 429 / 503 / 504 (and transient network errors) with exponential backoff (base 500ms, ceiling 5min, max 10 attempts); respect `Retry-After` when present.
+- Do not add ad-hoc `http.Client.Do` loops in clients; extend `retry.go` if policy changes.
+
+## Orchestrator loop budgets (do not change without consensus)
+- Max LLM iterations per user message: **32**
+- Max tool calls per user message: **64**
+
+## Registration in `chat_run.go` (actual current location)
+
+```go
+reg := tools.New()
+reg.Register(tools.NewReadFile(workdir))
+reg.Register(tools.NewGlob(workdir))
+reg.Register(tools.NewGrep(workdir))
+reg.Register(tools.NewBashWithTimeout(cfg.BashTimeoutSeconds()))
+reg.Register(tools.NewWriteFile(workdir))
+reg.Register(tools.NewEditFile(workdir))
+reg.Register(tools.NewWebFetch())
+reg.Register(tools.NewWebSearch())
+reg.Register(tools.NewTodoWrite(todoStore))
+// MCP tools registered after: mcp.RegisterSessionTools(ctx, reg, mcpSess, srv.ID)
+```
+
+> Note: registration is in `cmd/goclaw/chat_run.go`, not `main.go`.
+
+## MCP tools (`mcp__<server_id>__<tool_name>`)
+- Registered at startup for each server in `cfg.MCPServers` (stdio JSON-RPC subprocess).
+- Stripped from `ReadOnly` profiles by `stripMCPNames` in the orchestrator.
+- Each tool call routed through `mcp.ToolAdapter.Execute` → JSON-RPC `tools/call`.
+
+## Not yet implemented
+- `agent` / `spawn_worker` / `stop_task` — v2 multi-agent coordinator (D16)
+- `send_message` — v3 Team/Swarm

@@ -1,0 +1,94 @@
+---
+description: Security rules for goclaw tools. Apply when working on read_file, glob, grep, bash, web_fetch, web_search, write_file, edit_file, or mcp.
+alwaysApply: false
+globs: ["internal/tools/**/*.go", "internal/mcp/**/*.go"]
+---
+
+# GoClaw — Tool Security
+
+## read_file / glob / grep — path safety
+```go
+// Pattern: canonicalize → workspace check → EvalSymlinks → workspace check again
+clean := filepath.Clean(filepath.Join(workspaceRoot, inputPath))
+if !strings.HasPrefix(clean, workspaceRoot+string(filepath.Separator)) {
+    return Result{IsError: true, Content: "path outside workspace"}, nil
+}
+resolved, err := filepath.EvalSymlinks(clean)
+if err != nil { ... }
+if !strings.HasPrefix(resolved, workspaceRoot+string(filepath.Separator)) {
+    return Result{IsError: true, Content: "symlink escapes workspace"}, nil
+}
+```
+Limits: 512 KiB or 200 lines (read_file); 500 matches (glob); 200 matches / 512 KiB per file (grep).
+
+## write_file / edit_file — write path safety
+```go
+// File need not exist yet — resolve symlinks on the PARENT directory, not the file itself
+parent := filepath.Dir(targetPath)
+resolvedParent, err := filepath.EvalSymlinks(parent)
+// boundary check on resolvedParent, not targetPath
+```
+- Parent directory must exist (do not auto-create nested dirs).
+- Write atomically: temp file in same directory → `os.Chmod` (preserve mode) → `os.Rename`.
+- Content cap: 1 MiB (see `MaxWriteFileBytes` in `limits.go`).
+- Both tools are stripped from `ReadOnly` profiles (two layers: spec list + `executeTool` guard).
+
+## bash — allowlist + shell metacharacter rejection
+The implementation uses **two layers**, both required:
+
+**Layer 1 — binary allowlist** (`allowedBinaries` map + `allowedGitSub` map):
+- Only whitelisted binaries/git subcommands pass `validateAllowlistedCommand`.
+- Allowlist is a `map[string]struct{}` keyed on `filepath.Base(fields[0])`.
+
+**Layer 2 — `rejectShellMetacharacters`** (quote-aware scanner):
+- Blocks outside quoted strings: `|`, `;`, `\n`, `` ` ``, `$(`, `>`, `<`, `&&`, unquoted `&`, `(`.
+- Single-quoted and double-quoted substrings are exempt (allows `git commit -m "fix: a;b"` and `curl "url?a=1&b=2"`).
+
+**Known argument-injection risk** — these binaries accept sub-commands as arguments and are on the allowlist:
+- `find -exec`, `find -execdir` — can run arbitrary binaries
+- `xargs` — executes its arguments as a command
+- `go test -exec` — executes a binary
+When using or extending the bash tool, do **not** add flags like `-exec`, `-execdir`, or `--exec` to these commands without further validation. Track this in ROADMAP.md Tier 2.
+
+**`curl` / `wget` bypass SSRF**: these are on the bash allowlist but do NOT go through the `web_fetch` SSRF guards. A model or prompt-injected command could reach `http://169.254.169.254`. Document this trade-off; consider removing them from the allowlist in a future hardening pass.
+
+Timeout: default 30s, configurable via `bash_timeout_sec` (max 3600). Output cap: 256 KiB.
+
+## web_fetch — SSRF
+```go
+// Block private ranges — resolve IPs BEFORE the HTTP request, re-validate after each redirect (max 5)
+// Blocked: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.169.254, ::1, IPv6 link-local
+addrs, err := net.LookupHost(parsedURL.Hostname())
+for _, addr := range addrs {
+    if isPrivateIP(net.ParseIP(addr)) {
+        return Result{IsError: true, Content: "SSRF: private IP blocked"}, nil
+    }
+}
+```
+Accept only `Content-Type: text/*` and `application/json`. Timeout: 30s. Output cap: 1 MiB. Max 5 redirects.
+
+## MCP — subprocess security
+- Validate `arguments` JSON with `json.Valid()` before writing to the subprocess stdin pipe.
+- Route all MCP server stderr to `slog` at debug level; never echo it to the user unfiltered.
+- Each `CallTool` should use `context.WithTimeout` — do not rely solely on the session context (which may be long-lived), or a hung MCP server will block the orchestrator goroutine indefinitely.
+- MCP tools are stripped from `ReadOnly` profiles (`stripMCPNames` in orchestrator + `executeTool` guard).
+
+## Permissions — never do this
+```go
+// FORBIDDEN
+policy.Set("bash", permissions.ModeAllow)  // never auto-approve bash globally
+// bypassPermissions — not implemented; do not add
+
+// CORRECT — fail-closed
+policy := permissions.NewPolicy()  // global default = ModeAsk
+```
+
+## Red flags — stop and reassess
+- `exec.Command` without allowlist validation (`validateAllowlistedCommand`)
+- `http.Get(url)` or `http.Client.Do` without SSRF pre-check
+- `os.ReadFile(path)` with a raw model-supplied path (no workspace boundary check)
+- `filepath.EvalSymlinks` called only once (must be called again after resolving)
+- Global default `ModeAllow`
+- Writing files outside the workspace boundary
+- MCP `CallTool` without a per-call timeout
+- `find`/`xargs`/`go test` with `-exec` / `-execdir` / `--exec` flags passed through unvalidated

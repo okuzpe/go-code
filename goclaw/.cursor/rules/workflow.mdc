@@ -1,0 +1,79 @@
+---
+description: Development workflow for goclaw — how to test, what to avoid, and phase order.
+alwaysApply: true
+---
+
+# GoClaw — Development workflow
+
+## Before any change
+```bash
+go build ./...   # must pass clean
+go test ./...    # must pass clean
+```
+Fix failures before adding new code.
+
+## Testing without spending API tokens
+
+```go
+// Use the mock server in testutil/mockserver/
+srv := mockserver.New([]mockserver.Scenario{
+    {Match: "ping", Response: "pong"},
+})
+defer srv.Close()
+
+client := llm.NewAnthropic("test-key", srv.URL)
+```
+
+For Ollama, point `OLLAMA_HOST` at a local Ollama instance or an HTTP mock.
+
+## Do NOT
+
+| Forbidden | Reason |
+|-----------|--------|
+| `bypassPermissions` | Unsafe without YOLO Classifier (v2+) |
+| Bash denylist | Narrow binary allowlist + `rejectShellMetacharacters` is safer |
+| Merging packages | Each `internal/X` owns one concern |
+| Hardcoding raw context token APIs | Use `AutoCompactThreshold` + orchestrator token *estimate* (char÷N heuristic per provider) |
+| `fmt.Println` for logs | Use `slog` |
+| Committing `.goclaw/settings.local.json` | Machine-local only |
+| Goroutines inside BubbleTea `Update()` | Use `tea.Cmd` for all async; raw goroutines break the Elm loop |
+| Raw `http.Client.Do` in LLM clients | Extend `internal/llm/retry.go` instead |
+| Mixing session (RAM/history) with memory (disk facts) | Separate systems |
+| Remote MCP (SSE/HTTP) or OAuth | Needs its own security+transport design pass first |
+
+## Current implementation status (2026-04)
+All phases are **done**. The project has: 9 tools, BubbleTea TUI, readline fallback, Cobra CLI, MCP stdio client (multi-server), external hooks + project hooks file, IDE notifier, planfile + `/apply-plan`, all slash commands, permissions, memory, compaction, retry. See `ROADMAP.md` for the next steps.
+
+**Next work areas (in priority order):**
+1. Tier 0: verify `go build ./... && go test ./...` passes cleanly
+2. Tier 1: TUI smoke, error messages, session edge cases
+3. Tier 2: tool edge cases, security hardening (argument injection, curl/wget SSRF)
+4. Tier 3: config + hooks integration tests
+
+## Adding a new tool
+1. Read `internal/tools/registry.go` — `Tool` interface
+2. Add `internal/tools/<name>.go`
+3. Enforce output limits from the tool contract (`limits.go`)
+4. Apply security (path boundary + symlinks / SSRF / allowlist) — see `security.mdc`
+5. Register in **`cmd/goclaw/chat_run.go`** (not `main.go`) inside the `if !disableTools` block
+6. Add `internal/tools/<name>_test.go`
+7. `go build ./... && go test ./...`
+
+## Adding an agent profile
+1. Read `internal/agents/profile.go`
+2. Add `var MyProfile = Profile{...}` after the built-ins
+3. Append to the `All()` slice
+4. `go build ./...`
+
+## Ollama-dependent tests
+Tests that call `OllamaClient` directly require a live Ollama instance. Guard them:
+```go
+if os.Getenv("OLLAMA_HOST") == "" {
+    t.Skip("requires OLLAMA_HOST to be set")
+}
+```
+CI (`goclaw-ci.yml`) does not start Ollama — these tests must not run in `go test ./...` by default.
+
+## Config paths (fixed — do not change)
+- User: `~/.goclaw/settings.json` and `~/.goclaw/settings.local.json`
+- Project: `.goclaw/settings.json` and `.goclaw/settings.local.json`

@@ -1,0 +1,35 @@
+# Monorepo root: module lives in goclaw/
+name: goclaw CI
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "goclaw/**"
+      - ".github/workflows/goclaw-ci.yml"
+  pull_request:
+    branches: [master, main]
+    paths:
+      - "goclaw/**"
+      - ".github/workflows/goclaw-ci.yml"
+
+defaults:
+  run:
+    working-directory: goclaw
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: goclaw/go.mod
+          cache-dependency-path: goclaw/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test with race detector
+        run: go test -race ./...

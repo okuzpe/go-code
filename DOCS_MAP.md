@@ -1,71 +1,90 @@
-# Mapa de documentación ↔ [Claude Code Internals](https://claude-code-explain.helmcode.com/)
+# Documentation Map
 
-**Propósito:** una sola entrada para humanos e IA — qué tema del explainer cubre cada archivo nuestro y si aplica al **MVP** del binario Go. **Inventario por tiers** (Tier 1 en raíz incl. [TOOL_CONTRACT.md](TOOL_CONTRACT.md)): [ARCHITECTURE.md §8.0](ARCHITECTURE.md).
+Single entry point for humans and AI agents: which file covers which topic, and whether it describes implemented goclaw behavior or a future design.
 
-**Hub conceptual:** [ARCHITECTURE.md](ARCHITECTURE.md) (decisiones D0–D22, §3–§6).
-
----
-
-## Orden de lectura sugerido (implementar MVP)
-
-1. [ARCHITECTURE.md §1](ARCHITECTURE.md) — alcance
-2. [ARCHITECTURE.md §3.1](ARCHITECTURE.md) — bucle orquestador
-3. [ARCHITECTURE.md §4.4](ARCHITECTURE.md) — fila **MVP**
-4. [ARCHITECTURE.md §5](ARCHITECTURE.md) — **D1–D5**, **D22** (mínimo)
-5. [TOOL_CONTRACT.md](TOOL_CONTRACT.md) — contrato MVP + red + presupuesto bucle; §5.1 de [ARCHITECTURE.md](ARCHITECTURE.md)
-6. Profundidad según implementación: [RETRY_LOGIC.md](RETRY_LOGIC.md), [LOCAL_MODELS.md](LOCAL_MODELS.md) si D1=local
+**Source of truth for the goclaw binary:** [`goclaw/CLAUDE.md`](goclaw/CLAUDE.md) — architecture decisions D0–D22, coding conventions, roadmap.
 
 ---
 
-## Tabla de cobertura (índice helmcode → repo)
+## goclaw Implementation Status
 
-| ID | Tema (helmcode) | Documento principal | Ancla / sección | MVP |
-|----|-------------------|---------------------|-----------------|-----|
-| 00 | Overview | [References.MD](References.MD) + [ARCHITECTURE.md](ARCHITECTURE.md) | §1, §2 | sí (contexto) |
-| 01 | System Prompt | [ARCHITECTURE.md](ARCHITECTURE.md) | §2.6 | sí (capas mínimas en `internal/prompt`) |
-| 02 | Tools | [ARCHITECTURE.md](ARCHITECTURE.md), [TOOL_CONTRACT.md](TOOL_CONTRACT.md) | §2.1; contrato MVP | sí |
-| 03 | Agents | [AGENT_PROFILES.md](AGENT_PROFILES.md), [CUSTOM_AGENTS.md](CUSTOM_AGENTS.md) | — | MVP: un perfil; v1+ Explore/Plan |
-| 04 | Memory | [MEMORY_SYSTEM.md](MEMORY_SYSTEM.md) | — | deferred (v1+ manual / índice) |
-| 05 | Permissions | [ARCHITECTURE.md](ARCHITECTURE.md), [YOLO_CLASSIFIER.md](YOLO_CLASSIFIER.md) | §2.3, §2.4 | sí (D5) |
-| 06 | Context & compaction | [CONTEXT_COMPACTION.md](CONTEXT_COMPACTION.md) | — | deferred (v1 compactación seria) |
-| 07 | Costs | [PRACTICAL_TIPS.md](PRACTICAL_TIPS.md) §4; [COSTS.md](COSTS.md) stub | — | no (cloud); N/A local |
-| 08 | Retry logic | [RETRY_LOGIC.md](RETRY_LOGIC.md) | — | sí (mínimo, **D22**) |
-| 09 | Proactive / KAIROS | [ARCHITECTURE.md](ARCHITECTURE.md) | §2.18 | no |
-| 10 | Hidden features | [ARCHITECTURE.md](ARCHITECTURE.md) | §2.18 | no |
-| 11 | Practical tips | [PRACTICAL_TIPS.md](PRACTICAL_TIPS.md) | — | contexto |
-| 12 | Skills | [SKILLS.md](SKILLS.md), [ARCHITECTURE.md](ARCHITECTURE.md) §2.9 | — | deferred (v3) |
-| 13 | Slash commands | [ARCHITECTURE.md](ARCHITECTURE.md), [PLUGINS.md](PLUGINS.md) | §2.14, §2.18 | deferred (plugins/v3) |
-| 14 | MCP | [MCP.md](MCP.md) | — | deferred (v2+, **D6**) |
-| 15 | Bridge & IDE | [IDE_BRIDGE.md](IDE_BRIDGE.md) | — | v1+ (**D21**); no Bridge vendor |
-| 16 | Coordinator Mode | [COORDINATOR_MODE.md](COORDINATOR_MODE.md) | — | deferred (v2+ **D16**) |
-| 17 | YOLO Classifier | [YOLO_CLASSIFIER.md](YOLO_CLASSIFIER.md) | — | deferred (v1 fast paths; v2+ **D17**) |
-| 18 | Hooks | [HOOKS.md](HOOKS.md) | — | deferred (v2+ **D18**) |
-| 19 | Plugins | [PLUGINS.md](PLUGINS.md) | — | deferred (v3+ **D20**) |
-| 20 | Custom agents | [CUSTOM_AGENTS.md](CUSTOM_AGENTS.md) | — | deferred (v3+ **D19**) |
-| 21 | Bash security | [BASH_SECURITY.md](BASH_SECURITY.md), [ARCHITECTURE.md](ARCHITECTURE.md) §2.4 | — | sí (política + D4) |
-
-**Leyenda MVP:** `sí` = entrar en el primer binario según §4.4; `deferred` = fase posterior explícita; `no` = fuera de alcance inicial; `contexto` = lectura útil, no bloque de código obligatorio.
+| Area | Status |
+|------|--------|
+| Entry point | `goclaw/cmd/goclaw` — Cobra root + chat REPL; flags `--profile`/`--session`/`--list-sessions`/`--no-tools`; slash commands (`/help`, `/plan`, `/apply-plan`, `/profile`, `/memory`, `/compact`, …) |
+| Packages | `internal/llm`, `orchestrator`, `session`, `tools`, `permissions`, `config`, `hooks`, `agents`, `memory`, `planfile`, `todos`, `mcp`, `ide` |
+| Tools | `read_file`, `glob`, `grep`, `bash`, `web_fetch`, `web_search`, `todo_write` (session task list); MCP tools as `mcp__<id>__<name>` |
+| Plan workflow | Workspace `.goclaw/plan.md` ([`internal/planfile`](goclaw/internal/planfile/planfile.go)); `/apply-plan` switches to `general-purpose` and runs one execution turn |
+| Memory | `~/.goclaw/memory/` + `MEMORY.md` index; REPL `/memory list|add|delete` |
+| Compaction | Token-estimate heuristic (char/4), 0.85 threshold, 24-turn tail preserved |
+| Hooks | 5 in-process event types (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `SessionStart`, `SessionEnd`); Go-function handlers only |
+| Retries | `internal/llm/retry.go` — 10 attempts, 500 ms→5 min exp backoff, 429/503/504 (D22) |
+| Profiles | 6 built-in in `internal/agents/profile.go` |
+| Not in goclaw | MCP, plugins, IDE bridge, multi-agent coordinator, YOLO classifier, Markdown-defined custom agents |
 
 ---
 
-## Enlaces directos al explainer (terceros)
+## Reading Order (for implementation work)
 
-Lista completa en [References.MD](References.MD).
+1. [`goclaw/CLAUDE.md`](goclaw/CLAUDE.md) — real module state, decisions D1–D22, conventions
+2. [`ARCHITECTURE.md`](ARCHITECTURE.md) §1 — product scope
+3. [`ARCHITECTURE.md`](ARCHITECTURE.md) §3.1 — orchestrator loop
+4. [`ARCHITECTURE.md`](ARCHITECTURE.md) §4.4 — documentation phases and goclaw note
+5. [`ARCHITECTURE.md`](ARCHITECTURE.md) §5 — D1–D5, D22
+6. [`TOOL_CONTRACT.md`](TOOL_CONTRACT.md) — tool limits, network policy, loop budget
+7. Deep dives: [`RETRY_LOGIC.md`](RETRY_LOGIC.md), [`HOOKS.md`](HOOKS.md), [`AGENT_PROFILES.md`](AGENT_PROFILES.md)
 
 ---
 
-## OpenClaw (notas upstream; código en GitHub)
+## File Index
 
-Sin carpeta `openclaw/` en este workspace: [OPENCLAW_REFERENCE.md](OPENCLAW_REFERENCE.md), [OPENCLAW_GATEWAY_CHANNELS.md](OPENCLAW_GATEWAY_CHANNELS.md), [OPENCLAW_AGENTS_AND_TOOLS.md](OPENCLAW_AGENTS_AND_TOOLS.md) + [openclaw/openclaw](https://github.com/openclaw/openclaw). Código local aparte: [claw-code/](claw-code/) (no es OpenClaw).
+| File | Topic | goclaw |
+|------|-------|--------|
+| [`goclaw/README.md`](goclaw/README.md) | Quick start, features, config, CLI flags, slash commands, plan file workflow | Implemented |
+| [`goclaw/docs/D16_COORDINATOR_SKETCH.md`](goclaw/docs/D16_COORDINATOR_SKETCH.md) | D16 hub-and-spoke coordinator — WorkerNotification sketch (pre-code) | Design |
+| [`goclaw/CLAUDE.md`](goclaw/CLAUDE.md) | Rules, D1–D22 condensed, package layout, conventions, roadmap | Source of truth |
+| [`AGENT_PROFILES.md`](AGENT_PROFILES.md) | 6 built-in profiles — tool filtering, system prompts, v2+ roadmap | Implemented |
+| [`HOOKS.md`](HOOKS.md) | Hook event system — 5 events, Go-function handlers, v2+ plans | Partial (5 events; no subprocess/HTTP) |
+| [`RETRY_LOGIC.md`](RETRY_LOGIC.md) | HTTP retry behavior — parameters, conditions, per-call budget | Implemented |
+| [`TOOL_CONTRACT.md`](TOOL_CONTRACT.md) | Tool output limits, SSRF network policy, loop budgets | Implemented |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Full design specification — D0–D22, all layers | Reference (large; not fully polished) |
+
+---
+
+## Post-MVP Documents
+
+The following files exist in this directory as design specifications for future versions. They are **not** accurate descriptions of current goclaw behavior — do not reference them as implemented features.
+
+| File | Feature | Decision | Phase |
+|------|---------|----------|-------|
+| `CUSTOM_AGENTS.md` | Markdown-defined custom agents | D19 | v2+ |
+| `COORDINATOR_MODE.md` | Multi-agent hub-and-spoke coordinator | D16 | v2+ |
+| `YOLO_CLASSIFIER.md` | Auto-mode safety classifier (bypass-permissions gate) | D17 | v2+ |
+| `MCP.md` | Model Context Protocol server integration | D6 | v2+ |
+| `PLUGINS.md` | Plugin system | D20 | v3+ |
+| `IDE_BRIDGE.md` | IDE integration (VS Code, JetBrains) | D21 | v2+ |
+| `LOCAL_MODELS.md` | Local model selection guide (Ollama, LM Studio) | — | Reference |
+| `MEMORY_SYSTEM.md` | Detailed memory subsystem spec | — | Reference |
+| `CONTEXT_COMPACTION.md` | Compaction algorithm detail | — | Reference |
+| `SKILLS.md` | Skill/prompt-template system | — | Reference |
+
+---
+
+## External References
+
+Full link list: [`References.MD`](References.MD).
+
+Conceptual source used during design: [claude-code-explain (helmcode)](https://claude-code-explain.helmcode.com/) — a third-party analysis of Claude Code internals. The documents in this directory were informed by that analysis; goclaw implements a Go-native subset.
 
 ---
 
 ## Changelog
 
-| Fecha | Cambio |
-|-------|--------|
-| 2026-04-07 | Creación: tabla helmcode 00–21, orden MVP, enlaces; **SKILLS**/ **COSTS**/ **BASH_SECURITY** stubs enlazados |
-| 2026-04-07 | Cross-links: [PRACTICAL_TIPS.md](PRACTICAL_TIPS.md) §4, [OPENCLAW_AGENTS_AND_TOOLS.md](OPENCLAW_AGENTS_AND_TOOLS.md); §2.6 ARCHITECTURE → explainer system-prompt |
-| 2026-04-07 | Cabecera: puntero a inventario global §8.0 en [ARCHITECTURE.md](ARCHITECTURE.md) |
-| 2026-04-07 | Orden MVP paso 5 → [TOOL_CONTRACT.md](TOOL_CONTRACT.md); fila **02** Tools enlaza contrato |
-| 2026-04-07 | Sección OpenClaw: sin clon local; GitHub + [claw-code/](claw-code/) |
+| Date | Change |
+|------|--------|
+| 2026-04-07 | Created: helmcode coverage table 00–21, MVP reading order, links. |
+| 2026-04-07 | Cross-links: PRACTICAL_TIPS, OPENCLAW_AGENTS_AND_TOOLS; §2.6 ARCHITECTURE system-prompt anchor. |
+| 2026-04-07 | Header: pointer to global inventory §8.0 in ARCHITECTURE. |
+| 2026-04-07 | MVP reading step 5 → TOOL_CONTRACT; Tools row links contract. |
+| 2026-04-07 | OpenClaw section: no local clone; GitHub + claw-code/ note. |
+| 2026-04-08 | Aligned to goclaw: source of truth → goclaw/CLAUDE.md; status summary; goclaw column; reading order updated; Memory/Compaction/Hooks/Retry/Tools/Slash/Agents corrected. |
+| 2026-04-08 | Translated to English; replaced 21-row helmcode table with focused File Index; added Post-MVP Documents section; OpenClaw section removed. |

@@ -10,6 +10,16 @@ En el producto analizado hay **varias capas**: validadores de comando, pipeline 
 
 **Nuestro MVP** no exige paridad con docenas de validadores: sí **defensa en profundidad mínima** alineada con **D4** (Windows), **D5** (modos) y [YOLO_CLASSIFIER.md](YOLO_CLASSIFIER.md) cuando exista auto-modo.
 
+### 1.1 Implementación **goclaw** (hoy)
+
+El tool `bash` en [`goclaw/internal/tools/bash.go`](goclaw/internal/tools/bash.go) combina:
+
+- **Allowlist** de binarios y subcomandos `git` (ver código).
+- **Escaneo de sintaxis shell** (`rejectShellMetacharacters`): bloquea tuberías (`|`), separadores (`;`, `&&`), redirecciones (`>`, `<`), subshells `(...)`, sustitución `$(...)`, backticks y `&` fuera de comillas (las URLs con `&` deben ir entre comillas). Así se evita que un primer token allowlist (p. ej. `curl`) ejecute binarios no listados vía `| sh`.
+- **Permisos** [README — Permissions](goclaw/README.md): modo `ask` pide confirmación en stderr antes de ejecutar.
+
+Detalle de contrato: [TOOL_CONTRACT.md](TOOL_CONTRACT.md) fila `bash`.
+
 ---
 
 ## 2. Eco Go (orientativo)
@@ -30,3 +40,4 @@ En el producto analizado hay **varias capas**: validadores de comando, pipeline 
 | Fecha | Cambio |
 |-------|--------|
 | 2026-04-07 | Creación stub: capas, D4/D5, enlace helmcode; DOCS_MAP |
+| 2026-04-08 | §1.1 goclaw: allowlist + metacaracteres, enlace a `bash.go` y TOOL_CONTRACT |

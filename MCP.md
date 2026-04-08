@@ -100,8 +100,20 @@ Expansión de variables en config: `${VAR}` y `${VAR:-default}`.
 
 ---
 
+## 8.1 Go implementation (goclaw module, English)
+
+**Code:** [`goclaw/internal/mcp`](goclaw/internal/mcp) — JSON-RPC 2.0 over **stdio** (`initialize`, `notifications/initialized`, `tools/list`, `tools/call`), one subprocess per entry in **`mcp_servers`** inside merged settings ([`internal/config`](goclaw/internal/config/loader.go)).
+
+- Tool names exposed to the model: `mcp__<server_id>__<remote_tool>` via `NormalizeMCPToolName`.
+- **Client:** hand-rolled `encoding/json` (no official MCP Go SDK required for this layer).
+- **Failure isolation:** if a server fails to start or register tools, goclaw logs and skips that server only.
+- **Not implemented here:** SSE/HTTP MCP transports, OAuth, resources/prompts.
+
+---
+
 ## 9. Changelog
 
 | Fecha | Cambio |
 |-------|--------|
 | 2026-04-07 | Creación: naming, scopes, transportes, auth, ciclo de vida, permisos, roadmap v2/v3, **D6** |
+| 2026-04-07 | §8.1: puntero a `internal/mcp`, `mcp_servers`, stdio-only scope. |

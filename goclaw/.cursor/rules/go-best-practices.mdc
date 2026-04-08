@@ -1,0 +1,176 @@
+---
+description: Curated Go best practices from Uber Style Guide and Effective Go. Applies to all Go files.
+alwaysApply: true
+globs: ["**/*.go"]
+---
+
+# GoClaw — Go Best Practices
+
+Sources: Uber Go Style Guide, Effective Go, JetBrains "10x Commandments of Go"
+
+## Error handling
+
+```go
+// 1. Sentinel errors for known failure modes
+var (
+    ErrPermissionDenied = errors.New("permission denied")
+    ErrToolNotFound     = errors.New("tool not found")
+)
+
+// 2. Always wrap with context
+return fmt.Errorf("registry.Get %q: %w", name, ErrToolNotFound)
+
+// 3. Match with errors.Is / errors.As
+if errors.Is(err, ErrPermissionDenied) { ... }
+
+// 4. Error strings: lowercase, no punctuation
+// CORRECT:  "connection refused"
+// WRONG:    "Connection refused."
+```
+
+## Interfaces
+
+```go
+// Keep interfaces small — 1 to 3 methods
+type Tool interface {
+    Name() string
+    Execute(ctx context.Context, input string) (Result, error)
+}
+
+// Verify implementation at compile time
+var _ Tool = (*ReadFileTool)(nil)
+var _ llm.Client = (*OllamaClient)(nil)
+
+// Accept interfaces, return concrete types
+func NewRegistry() *Registry { ... }          // concrete return is fine
+func Process(t Tool) error   { ... }          // accept interface
+```
+
+## Goroutines & channels
+
+```go
+// Always provide an exit path — no goroutine leaks
+go func() {
+    defer close(out)
+    for {
+        select {
+        case out <- compute():
+        case <-ctx.Done():
+            return   // exit path
+        }
+    }
+}()
+
+// Explicit channel direction
+func stream(ctx context.Context, out chan<- Event) { ... }
+func consume(in <-chan Event) string { ... }
+
+// Use sync.Mutex for shared state — not global vars
+type Registry struct {
+    mu    sync.Mutex
+    items map[string]Tool
+}
+func (r *Registry) Get(name string) (Tool, bool) {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+    t, ok := r.items[name]
+    return t, ok
+}
+```
+
+## Testing patterns
+
+```go
+// Table-driven tests — always preferred
+func TestPolicyEvaluate(t *testing.T) {
+    cases := []struct {
+        name string; mode Mode; want Decision
+    }{
+        {"allow", ModeAllow, DecisionAllow},
+        {"deny",  ModeDeny,  DecisionDeny},
+        {"ask",   ModeAsk,   DecisionAsk},
+    }
+    for _, tc := range cases {
+        t.Run(tc.name, func(t *testing.T) {
+            p := NewPolicy()
+            p.Set("bash", tc.mode)
+            if got := p.Evaluate("bash"); got != tc.want {
+                t.Errorf("got %v, want %v", got, tc.want)
+            }
+        })
+    }
+}
+
+// Use t.TempDir() — never os.TempDir() in tests
+dir := t.TempDir()
+
+// Mark helpers with t.Helper()
+func requireNoError(t *testing.T, err error) {
+    t.Helper()
+    if err != nil { t.Fatalf("unexpected error: %v", err) }
+}
+
+// Run with race detector
+// go test -race ./...
+```
+
+## Dependency injection
+
+```go
+// CORRECT — all dependencies explicit
+func NewOrchestrator(cfg Config, client llm.Client, sess *session.Session) *Orchestrator {
+    return &Orchestrator{cfg: cfg, llm: client, session: sess}
+}
+
+// WRONG — global mutable state
+var defaultClient llm.Client
+func init() { defaultClient = llm.NewOllama("") }
+```
+
+## Struct initialization
+
+```go
+// CORRECT — named fields always
+p := permissions.Policy{
+    global: ModeAsk,
+}
+
+// WRONG — positional
+p := permissions.Policy{ModeAsk}
+```
+
+## Defer
+
+```go
+// Acquire → defer release immediately, before any error check on the resource
+mu.Lock()
+defer mu.Unlock()
+
+resp, err := http.Get(url)
+if err != nil { return err }
+defer resp.Body.Close()
+```
+
+## Package design
+
+```go
+// Name the package after what it provides, not what it contains
+package session   // not "sessionmanager"
+package tools     // not "toolregistry"
+
+// Avoid package-level init() — use explicit constructors
+// WRONG:
+func init() { globalRegistry.Register(&ReadFileTool{}) }
+
+// CORRECT:
+reg := tools.New()
+reg.Register(&ReadFileTool{})
+```
+
+## Linting (run before every commit)
+
+```bash
+go vet ./...
+staticcheck ./...       # go install honnef.co/go/tools/cmd/staticcheck@latest
+go test -race ./...
+```

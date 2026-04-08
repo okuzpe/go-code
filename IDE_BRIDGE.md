@@ -85,8 +85,19 @@ Orden de resolución orientativa: variable de entorno (solo dev) → cadena de c
 
 ---
 
+## 6. goclaw implementation (minimal, English)
+
+**Current code:** [`goclaw/internal/ide/notify.go`](goclaw/internal/ide/notify.go).
+
+- Environment variable **`GOCLAW_IDE_NOTIFY_URL`**: if set to `http` or `https` and the host is **`127.0.0.1`**, **`localhost`**, or **`::1`**, the orchestrator’s **after-tool** callback issues a **best-effort POST** with JSON `{"tool", "result_bytes", "is_error"}` after each tool completes.
+- **No** lockfile discovery or full MCP-to-editor client yet — that remains the **D21** roadmap path described in §2–§4 above.
+- Remote URLs are rejected (returns a no-op notifier).
+
+---
+
 ## 5. Changelog
 
 | Fecha | Cambio |
 |-------|--------|
 | 2026-04-07 | Creación: IDE local vs Bridge remoto, descubrimiento, transports, amenaza localhost, eco Go, **D21** |
+| 2026-04-07 | §6: `GOCLAW_IDE_NOTIFY_URL`, `internal/ide/notify.go`, scope vs full D21. |

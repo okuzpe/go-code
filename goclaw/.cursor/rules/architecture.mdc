@@ -1,0 +1,67 @@
+---
+description: goclaw package layout and architecture. Always applies when working on any Go file in this project.
+alwaysApply: true
+---
+
+# GoClaw — Architecture
+
+## Identity
+Go CLI agent, Claude Code–style. Module: `github.com/okuzpe/goclaw`. Go 1.26. Default provider: local Ollama (`qwen2.5-coder:14b`).
+
+## Workspace scope
+Sibling folders such as `claw-code/` in the parent directory are **reference only**; they are not part of this module or goclaw’s roadmap. Implement and commit only under `goclaw/`.
+
+## Entry point layout (`cmd/goclaw/`)
+
+| File | Responsibility |
+|------|---------------|
+| `main.go` | ~10 lines: set slog default, call `newRootCmd().Execute()` |
+| `root.go` | Cobra root command + flags + `sessions list` subcommand |
+| `chat_run.go` | REPL loop, orchestrator wiring, MCP lifecycle, hooks, tool registration |
+| `style.go` | Lip Gloss banner + terminal tool-approval styling (TTY) |
+| `slash.go` | All `/` REPL slash command handlers |
+
+> **Rule:** `main.go` must stay ≤ 20 lines. All logic belongs in `internal/` or one of the files above.
+
+## Package map
+
+| Package | Single responsibility |
+|---------|----------------------|
+| `cmd/goclaw/` | Cobra entry point, REPL, subsystem wiring |
+| `internal/llm/` | `Client` interface + Anthropic (SSE) + Ollama (NDJSON) + HTTP retry |
+| `internal/session/` | In-memory history, JSONL serialization, store |
+| `internal/orchestrator/` | Main loop: user → LLM → tools → repeat (32 iter / 64 tool calls) |
+| `internal/tools/` | `Tool` interface + `Registry` + nine built-in tools + limits |
+| `internal/permissions/` | `Policy.Evaluate(toolName)` → Deny / Ask / Allow |
+| `internal/config/` | `Config`, `Default()`, hierarchical load (user → project → local) |
+| `internal/hooks/` | Go handler registry + external subprocess/HTTP hooks + project hooks file |
+| `internal/agents/` | Six built-in profiles + `All()` lookup |
+| `internal/memory/` | Filesystem store under `~/.goclaw/memory/`, MEMORY.md index |
+| `internal/mcp/` | Stdio JSON-RPC MCP client: process lifecycle, tool discovery, `mcp__id__name` naming |
+| `internal/planfile/` | Workspace `.goclaw/plan.md` path, template, size limits, handoff message |
+| `internal/todos/` | Session-scoped task list store (`todo_write` tool backend) |
+| `internal/ide/` | Optional localhost POST notifier (`GOCLAW_IDE_NOTIFY_URL`) after each tool |
+| `internal/ui/chat/` | BubbleTea TUI model (viewport + text input + streaming + approval modal) |
+| `testutil/mockserver/` | HTTP mock for Anthropic tests without API tokens |
+
+## Structure rules
+- One package = one responsibility. Do not merge packages.
+- No circular imports between `internal/*` packages.
+- `cmd/` imports `internal/` only, never the reverse.
+- Define interfaces in the package that consumes them, not the implementor.
+- `internal/ui/chat/` uses BubbleTea Elm pattern: **all state mutations in `Update()`**; async work via `tea.Cmd`, never raw goroutines inside the model.
+
+## Glossary
+- **tool** — Go type implementing `internal/tools.Tool`
+- **agent** / **profile** — `Profile` with model override, tool allowlist, read-only flag, system prompt
+- **skill** — reusable Markdown prompt template (`.claude/skills/`)
+- **command** — REPL **slash command** (`/help`, `/compact`, `/memory`); not a Cobra subcommand
+- **CLI subcommand** — Cobra entry (e.g. `goclaw sessions list`)
+- **hook** — handler for a `hooks.EventType` (Go `On(...)` or external subprocess/HTTP)
+- **session** — conversation history (RAM + JSONL on disk at `~/.goclaw/sessions/`)
+- **memory** — durable facts under `~/.goclaw/memory/`
+
+## Implemented status (2026-04)
+- **Done:** core loop, Ollama + Anthropic clients + retry, session JSONL store, BubbleTea TUI, readline fallback, Cobra CLI, all 9 tools (read_file/glob/grep/bash/write_file/edit_file/web_fetch/web_search/todo_write), permissions, memory, compaction, hooks (Go + external + project file), MCP stdio client (multi-server), IDE notifier, planfile + `/apply-plan`, all slash commands.
+- **Post-MVP v2+:** YOLO Classifier (D17), multi-agent coordinator (D16), custom agents from `.goclaw/agents/*.md` (D19).
+- **Post-MVP v3+:** Plugins, full IDE bridge, remote MCP transports, OAuth.
