@@ -115,7 +115,7 @@ grep -n "return err$" --include="*.go" -r .
   ```go
   var _ Tool = (*MyTool)(nil)
   ```
-- [ ] All new `Tool` implementations registered in **`cmd/goclaw/chat_run.go`** (not `main.go`)
+- [ ] All new `Tool` implementations registered in **`internal/app/run.go`** (not `main.go`)
 - [ ] All new `Profile` entries added to `agents.All()`
 
 ---

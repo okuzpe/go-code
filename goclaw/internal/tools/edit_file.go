@@ -81,7 +81,7 @@ func (t *EditFileTool) Execute(_ context.Context, input string) (Result, error) 
 		return Result{Content: "old_string is required", IsError: true}, nil
 	}
 
-	resolved, err := resolvePathUnderRoot(t.root, in.Path)
+	resolved, err := resolveExistingPathUnderRoot(t.root, in.Path)
 	if err != nil {
 		return Result{Content: err.Error(), IsError: true}, nil
 	}

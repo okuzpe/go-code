@@ -82,4 +82,34 @@ func TestWebSearchEmptyFallbackIncludesSearchURL(t *testing.T) {
 	if !strings.Contains(res.Content, "obscure") {
 		t.Fatalf("expected query echoed in URL: %q", res.Content)
 	}
+	if !strings.Contains(res.Content, "no instant answer") {
+		t.Fatalf("expected thin-response hint: %q", res.Content)
+	}
+}
+
+func TestWebSearchEmptyResultsArrayFallback(t *testing.T) {
+	// Results present but empty array (not null) — same user-visible fallback.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Abstract":"","Answer":"","Definition":"","Results":[],"RelatedTopics":[]}`))
+	}))
+	defer srv.Close()
+
+	tool := &WebSearchTool{
+		client:  srv.Client(),
+		apiBase: srv.URL,
+	}
+	res, err := tool.Execute(context.Background(), `{"query":"zzz empty hits"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatal(res.Content)
+	}
+	if !strings.Contains(res.Content, "duckduckgo.com") {
+		t.Fatalf("expected fallback search link: %q", res.Content)
+	}
+	if !strings.Contains(res.Content, "zzz+empty+hits") && !strings.Contains(res.Content, "zzz") {
+		t.Fatalf("expected query in fallback URL: %q", res.Content)
+	}
 }

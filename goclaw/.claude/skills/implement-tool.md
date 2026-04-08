@@ -58,14 +58,14 @@ Use constructor pattern if the tool needs dependencies (e.g. `NewReadFile(root s
 - **Output caps**: read_file 512 KiB / 200 lines; glob 500 paths; grep 200 matches / 512 KiB per file; bash 256 KiB; web_fetch 1 MiB; web_search per `limits.go`
 - **Security**: workspace paths for read_file, glob, grep; bash allowlist; web_fetch SSRF checks
 
-### 4. Register in `cmd/goclaw/chat_run.go`
+### 4. Register in `internal/app/run.go`
 
 Inside the `if !disableTools { ... }` block:
 ```go
 reg.Register(tools.NewFoo(...))
 ```
 
-> Registration lives in `chat_run.go`, not `main.go`.
+> Registration lives in `internal/app/run.go`, not `main.go`.
 
 ### 5. Test `internal/tools/<name>_test.go`
 

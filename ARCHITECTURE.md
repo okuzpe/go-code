@@ -337,7 +337,7 @@ Regla práctica: si una discusión de diseño se alarga, **mover el detalle** al
 
 ## 2 ter. Modelos locales: encaje arquitectónico (sin cambiar el stack Go)
 
-Resumen de una estrategia **realista** alineada con lo que suele usarse en 2025–2026 en equipos con **GPU media y 32 GB RAM** (p. ej. RTX 4050). El análisis completo, checklist y mapeo “Jarvis → paquetes” están en [LOCAL_MODELS.md](LOCAL_MODELS.md).
+Resumen de una estrategia **realista** alineada con lo que suele usarse en 2025–2026 en equipos con **GPU media y 32 GB RAM** (p. ej. RTX 4050). El análisis completo, checklist y mapeo “goclaw → paquetes” están en [LOCAL_MODELS.md](LOCAL_MODELS.md).
 
 **Qué encaja tal cual**
 

@@ -4,13 +4,23 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+
+	"github.com/okuzpe/goclaw/internal/app"
+	"github.com/okuzpe/goclaw/internal/cli"
+	"github.com/spf13/cobra"
 )
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: logLevel(),
 	})))
-	if err := newRootCmd().Execute(); err != nil {
+	root := cli.NewRootCmd(Version,
+		func(cmd *cobra.Command, args []string) error {
+			return app.RunChat(cmd, Version, args)
+		},
+		app.RunListSessions,
+	)
+	if err := root.Execute(); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}

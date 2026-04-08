@@ -15,24 +15,26 @@ Sibling folders such as `claw-code/` in the parent directory are **reference onl
 
 | File | Responsibility |
 |------|---------------|
-| `main.go` | ~10 lines: set slog default, call `newRootCmd().Execute()` |
-| `root.go` | Cobra root command + flags + `sessions list` subcommand |
-| `chat_run.go` | REPL loop, orchestrator wiring, MCP lifecycle, hooks, tool registration |
-| `style.go` | Lip Gloss banner + terminal tool-approval styling (TTY) |
-| `slash.go` | All `/` REPL slash command handlers |
+| `main.go` | slog default, `cli.NewRootCmd(Version, app.RunChat, app.RunListSessions).Execute()` |
+| `version.go` | `Version` var for `-ldflags -X` |
 
-> **Rule:** `main.go` must stay ≤ 20 lines. All logic belongs in `internal/` or one of the files above.
+> **Rule:** No `*_test.go` under `cmd/goclaw` — tests that need the full REPL graph live in `internal/cli`, `internal/slashcmd`, `internal/app`-free packages. Keeps `go test ./cmd/goclaw` instant on Windows (readline/Bubble Tea `init`).
+
+All REPL wiring, banner, and slash handlers live under `internal/app`, `internal/cli`, `internal/slashcmd`.
 
 ## Package map
 
 | Package | Single responsibility |
 |---------|----------------------|
-| `cmd/goclaw/` | Cobra entry point, REPL, subsystem wiring |
+| `cmd/goclaw/` | Thin `main` + `Version` only |
+| `internal/cli/` | Cobra tree (`NewRootCmd`); inject `RunChat` / `RunListSessions` for testability without linking TUI |
+| `internal/app/` | `RunChat`, `RunListSessions`, banner, default readline REPL; Bubble Tea TUI when `--tui` / `GOCLAW_USE_TUI` |
+| `internal/slashcmd/` | REPL `/` slash command handlers + `$EDITOR` prompt |
 | `internal/llm/` | `Client` interface + Anthropic (SSE) + Ollama (NDJSON) + HTTP retry |
 | `internal/session/` | In-memory history, JSONL serialization, store |
 | `internal/orchestrator/` | Main loop: user → LLM → tools → repeat (32 iter / 64 tool calls) |
 | `internal/tools/` | `Tool` interface + `Registry` + nine built-in tools + limits |
-| `internal/permissions/` | `Policy.Evaluate(toolName)` → Deny / Ask / Allow |
+| `internal/permissions/` | `Policy.Evaluate(toolName)` + `ApplyConfigModes` for `tool_permissions` |
 | `internal/config/` | `Config`, `Default()`, hierarchical load (user → project → local) |
 | `internal/hooks/` | Go handler registry + external subprocess/HTTP hooks + project hooks file |
 | `internal/agents/` | Six built-in profiles + `All()` lookup |
@@ -62,6 +64,6 @@ Sibling folders such as `claw-code/` in the parent directory are **reference onl
 - **memory** — durable facts under `~/.goclaw/memory/`
 
 ## Implemented status (2026-04)
-- **Done:** core loop, Ollama + Anthropic clients + retry, session JSONL store, BubbleTea TUI, readline fallback, Cobra CLI, all 9 tools (read_file/glob/grep/bash/write_file/edit_file/web_fetch/web_search/todo_write), permissions, memory, compaction, hooks (Go + external + project file), MCP stdio client (multi-server), IDE notifier, planfile + `/apply-plan`, all slash commands.
+- **Done:** core loop, Ollama + Anthropic clients + retry, session JSONL store, default readline REPL, opt-in BubbleTea TUI (`--tui`), Cobra CLI, all 9 tools (read_file/glob/grep/bash/write_file/edit_file/web_fetch/web_search/todo_write), permissions, memory, compaction, hooks (Go + external + project file), MCP stdio client (multi-server), IDE notifier, planfile + `/apply-plan`, all slash commands.
 - **Post-MVP v2+:** YOLO Classifier (D17), multi-agent coordinator (D16), custom agents from `.goclaw/agents/*.md` (D19).
 - **Post-MVP v3+:** Plugins, full IDE bridge, remote MCP transports, OAuth.

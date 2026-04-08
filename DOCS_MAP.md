@@ -10,16 +10,18 @@ Single entry point for humans and AI agents: which file covers which topic, and 
 
 | Area | Status |
 |------|--------|
-| Entry point | `goclaw/cmd/goclaw` — Cobra root + chat REPL; flags `--profile`/`--session`/`--list-sessions`/`--no-tools`; slash commands (`/help`, `/plan`, `/apply-plan`, `/profile`, `/memory`, `/compact`, …) |
-| Packages | `internal/llm`, `orchestrator`, `session`, `tools`, `permissions`, `config`, `hooks`, `agents`, `memory`, `planfile`, `todos`, `mcp`, `ide` |
-| Tools | `read_file`, `glob`, `grep`, `bash`, `web_fetch`, `web_search`, `todo_write` (session task list); MCP tools as `mcp__<id>__<name>` |
+| Entry point | Thin `goclaw/cmd/goclaw` (`main.go` + `version.go`): slog + [`internal/cli`](goclaw/internal/cli/root.go) Cobra tree + [`internal/app/run.go`](goclaw/internal/app/run.go); **default interactive UI** = readline `>` REPL (claw-style); **`--tui`** / `GOCLAW_USE_TUI=1` for Bubble Tea; flags `--profile`/`--session`/`--list-sessions`/`--no-tools`; slash commands in [`internal/slashcmd`](goclaw/internal/slashcmd/slash.go) |
+| Packages | `internal/llm`, `orchestrator`, `session`, `tools`, `permissions`, `config`, `hooks`, `agents`, `memory`, `planfile`, `todos`, `mcp`, `ide`, `ui/chat` (BubbleTea TUI) |
+| Tools | Nine builtins: `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `bash`, `web_fetch`, `web_search`, `todo_write`; MCP tools as `mcp__<id>__<name>` |
 | Plan workflow | Workspace `.goclaw/plan.md` ([`internal/planfile`](goclaw/internal/planfile/planfile.go)); `/apply-plan` switches to `general-purpose` and runs one execution turn |
 | Memory | `~/.goclaw/memory/` + `MEMORY.md` index; REPL `/memory list|add|delete` |
 | Compaction | Token-estimate heuristic (char/4), 0.85 threshold, 24-turn tail preserved |
-| Hooks | 5 in-process event types (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `SessionStart`, `SessionEnd`); Go-function handlers only |
+| Hooks | Same five events; Go `hooks.Registry`, **`external_hooks`** (subprocess stdin JSON or HTTP POST in settings), and project **`.goclaw/hooks.json`** when `trusted_workspace` is true ([`internal/hooks`](goclaw/internal/hooks)) |
+| MCP | **stdio client** only — `mcp_servers` in merged settings, JSON-RPC in [`internal/mcp`](goclaw/internal/mcp); multi-server with per-server failure isolation |
+| IDE | **Partial** — best-effort POST to `GOCLAW_IDE_NOTIFY_URL` (localhost-only URL validation); not a full editor MCP client ([`internal/ide`](goclaw/internal/ide/notify.go)) |
 | Retries | `internal/llm/retry.go` — 10 attempts, 500 ms→5 min exp backoff, 429/503/504 (D22) |
 | Profiles | 6 built-in in `internal/agents/profile.go` |
-| Not in goclaw | MCP, plugins, IDE bridge, multi-agent coordinator, YOLO classifier, Markdown-defined custom agents |
+| Not in goclaw (yet) | Plugins, **remote** MCP (SSE/HTTP/WebSocket) + OAuth, full IDE bridge (lockfile MCP), multi-agent coordinator (D16), YOLO classifier (D17), Markdown-defined custom agents (D19) |
 
 ---
 
@@ -31,7 +33,7 @@ Single entry point for humans and AI agents: which file covers which topic, and 
 4. [`ARCHITECTURE.md`](ARCHITECTURE.md) §4.4 — documentation phases and goclaw note
 5. [`ARCHITECTURE.md`](ARCHITECTURE.md) §5 — D1–D5, D22
 6. [`TOOL_CONTRACT.md`](TOOL_CONTRACT.md) — tool limits, network policy, loop budget
-7. Deep dives: [`RETRY_LOGIC.md`](RETRY_LOGIC.md), [`HOOKS.md`](HOOKS.md), [`AGENT_PROFILES.md`](AGENT_PROFILES.md)
+7. Deep dives: [`RETRY_LOGIC.md`](RETRY_LOGIC.md), [`HOOKS.md`](HOOKS.md), [`MCP.md`](MCP.md) (opening section = goclaw stdio), [`AGENT_PROFILES.md`](AGENT_PROFILES.md)
 
 ---
 
@@ -43,7 +45,9 @@ Single entry point for humans and AI agents: which file covers which topic, and 
 | [`goclaw/docs/D16_COORDINATOR_SKETCH.md`](goclaw/docs/D16_COORDINATOR_SKETCH.md) | D16 hub-and-spoke coordinator — WorkerNotification sketch (pre-code) | Design |
 | [`goclaw/CLAUDE.md`](goclaw/CLAUDE.md) | Rules, D1–D22 condensed, package layout, conventions, roadmap | Source of truth |
 | [`AGENT_PROFILES.md`](AGENT_PROFILES.md) | 6 built-in profiles — tool filtering, system prompts, v2+ roadmap | Implemented |
-| [`HOOKS.md`](HOOKS.md) | Hook event system — 5 events, Go-function handlers, v2+ plans | Partial (5 events; no subprocess/HTTP) |
+| [`HOOKS.md`](HOOKS.md) | Hook event system — 5 events, Go handlers + `external_hooks` + `.goclaw/hooks.json` | Implemented |
+| [`MCP.md`](MCP.md) | MCP naming, transports, auth (reference); **Implemented in goclaw** = stdio client + `mcp_servers` | Partial (stdio implemented; SSE/HTTP/OAuth future) |
+| [`IDE_BRIDGE.md`](IDE_BRIDGE.md) | Full IDE integration design | Design (notifier only in goclaw) |
 | [`RETRY_LOGIC.md`](RETRY_LOGIC.md) | HTTP retry behavior — parameters, conditions, per-call budget | Implemented |
 | [`TOOL_CONTRACT.md`](TOOL_CONTRACT.md) | Tool output limits, SSRF network policy, loop budgets | Implemented |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Full design specification — D0–D22, all layers | Reference (large; not fully polished) |
@@ -59,7 +63,7 @@ The following files exist in this directory as design specifications for future 
 | `CUSTOM_AGENTS.md` | Markdown-defined custom agents | D19 | v2+ |
 | `COORDINATOR_MODE.md` | Multi-agent hub-and-spoke coordinator | D16 | v2+ |
 | `YOLO_CLASSIFIER.md` | Auto-mode safety classifier (bypass-permissions gate) | D17 | v2+ |
-| `MCP.md` | Model Context Protocol server integration | D6 | v2+ |
+| `MCP.md` | Remote MCP transports, OAuth, enterprise policy (reference); goclaw implements **stdio only** — see “Implemented in goclaw” | D6 | v3+ (extras) |
 | `PLUGINS.md` | Plugin system | D20 | v3+ |
 | `IDE_BRIDGE.md` | IDE integration (VS Code, JetBrains) | D21 | v2+ |
 | `LOCAL_MODELS.md` | Local model selection guide (Ollama, LM Studio) | — | Reference |
@@ -88,3 +92,4 @@ Conceptual source used during design: [claude-code-explain (helmcode)](https://c
 | 2026-04-07 | OpenClaw section: no local clone; GitHub + claw-code/ note. |
 | 2026-04-08 | Aligned to goclaw: source of truth → goclaw/CLAUDE.md; status summary; goclaw column; reading order updated; Memory/Compaction/Hooks/Retry/Tools/Slash/Agents corrected. |
 | 2026-04-08 | Translated to English; replaced 21-row helmcode table with focused File Index; added Post-MVP Documents section; OpenClaw section removed. |
+| 2026-04-08 | Status table: hooks external/MCP stdio/IDE partial; nine tools; `ui/chat`; File Index HOOKS/MCP/IDE; Post-MVP MCP row clarified. |

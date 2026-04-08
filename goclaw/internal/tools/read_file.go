@@ -71,7 +71,7 @@ func (t *ReadFileTool) Execute(ctx context.Context, input string) (Result, error
 		return Result{Content: "path is required", IsError: true}, nil
 	}
 
-	resolved, err := t.resolveUnderRoot(in.Path)
+	resolved, err := resolveExistingPathUnderRoot(t.root, in.Path)
 	if err != nil {
 		return Result{Content: err.Error(), IsError: true}, nil
 	}
@@ -135,34 +135,4 @@ func (t *ReadFileTool) Execute(ctx context.Context, input string) (Result, error
 		out += fmt.Sprintf("\n\n[output truncated: max %d lines or %d bytes]", limitLines, MaxReadFileBytes)
 	}
 	return Result{Content: out, IsError: false}, nil
-}
-
-func (t *ReadFileTool) resolveUnderRoot(userPath string) (string, error) {
-	candidate := userPath
-	if !filepath.IsAbs(candidate) {
-		candidate = filepath.Join(t.root, userPath)
-	}
-	candidate = filepath.Clean(candidate)
-
-	eval, err := filepath.EvalSymlinks(candidate)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("path does not exist")
-		}
-		return "", fmt.Errorf("resolve symlinks: %w", err)
-	}
-
-	rootEval, err := filepath.EvalSymlinks(t.root)
-	if err != nil {
-		rootEval = t.root
-	}
-
-	rel, err := filepath.Rel(rootEval, eval)
-	if err != nil {
-		return "", fmt.Errorf("path escapes workspace")
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("path escapes workspace")
-	}
-	return eval, nil
 }

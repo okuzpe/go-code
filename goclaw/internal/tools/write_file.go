@@ -86,7 +86,7 @@ func (t *WriteFileTool) Execute(_ context.Context, input string) (Result, error)
 }
 
 // resolveWriteTarget validates and resolves the target path for writing.
-// Unlike resolvePathUnderRoot, it evaluates symlinks on the parent directory
+// Unlike resolveExistingPathUnderRoot, it evaluates symlinks on the parent directory
 // because the target file may not exist yet.
 func (t *WriteFileTool) resolveWriteTarget(userPath string) (string, error) {
 	candidate := userPath

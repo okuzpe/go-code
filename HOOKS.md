@@ -9,7 +9,7 @@ Hooks are event callbacks that fire at fixed points in the agent loop. They allo
 | Mechanism | Where | Notes |
 |-----------|--------|--------|
 | **Go handlers** | `hooks.Registry.On(...)` | Registered from code (same process). |
-| **Settings: `external_hooks`** | `settings.json` / merge chain | Each entry: `event`, plus `command` (+ optional `args`) **or** `url` for HTTP POST. Wired in `cmd/goclaw/chat_run.go`. |
+| **Settings: `external_hooks`** | `settings.json` / merge chain | Each entry: `event`, plus `command` (+ optional `args`) **or** `url` for HTTP POST. Wired in [`goclaw/internal/app/run.go`](goclaw/internal/app/run.go) (`RunChat`). |
 | **Project file** | `.goclaw/hooks.json` | Loaded only when **`trusted_workspace`** is `true` in merged config (`internal/hooks/load.go`). |
 
 Subprocess hooks receive a JSON payload on **stdin** (see `internal/hooks/wire.go`). **Exit code 2** on `PreToolUse` blocks the tool and surfaces an error to the model. Other non-zero exits are logged; for `PreToolUse`, exit codes other than 2 still fail the hook and block.
@@ -80,7 +80,7 @@ JSON array of objects with the same shape as `external_hooks` entries. **Disable
 
 ### REPL integration
 
-`SessionStart` / `SessionEnd` fire around the chat REPL in `cmd/goclaw/chat_run.go`. Built-in Go handlers are optional; settings and project file hooks are loaded there.
+`SessionStart` / `SessionEnd` fire around the chat REPL in [`goclaw/internal/app/run.go`](goclaw/internal/app/run.go). Built-in Go handlers are optional; settings and project file hooks are loaded there.
 
 ---
 
@@ -110,4 +110,4 @@ Subprocess hooks run with the **user’s OS permissions** — there is no sandbo
 | 2026-04-07 | Cross-links to CUSTOM_AGENTS.md hooks frontmatter. |
 | 2026-04-08 | Added goclaw implementation status (`internal/hooks`); MVP roadmap row aligned. |
 | 2026-04-08 | Translated to English; restructured around implemented vs. roadmap; reference-product analysis condensed. |
-| 2026-04-07 | §0 / §9: `external_hooks`, `.goclaw/hooks.json` + `trusted_workspace`, subprocess exit 2, HTTP SSRF, REPL wiring in `chat_run.go`. |
+| 2026-04-07 | §0 / §9: `external_hooks`, `.goclaw/hooks.json` + `trusted_workspace`, subprocess exit 2, HTTP SSRF, REPL wiring in `internal/app/run.go`. |

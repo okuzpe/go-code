@@ -3,6 +3,7 @@ package tools_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,7 +122,7 @@ func TestWriteFileExceedsSizeCap(t *testing.T) {
 	dir := t.TempDir()
 	tool := tools.NewWriteFile(dir)
 
-	big := strings.Repeat("a", 1*1024*1024+1) // MaxWriteFileBytes + 1
+	big := strings.Repeat("a", tools.MaxWriteFileBytes+1)
 	input := mustJSON(t, map[string]any{"path": "big.txt", "content": big})
 	res, err := tool.Execute(context.Background(), input)
 	if err != nil {
@@ -133,17 +134,32 @@ func TestWriteFileExceedsSizeCap(t *testing.T) {
 	if !strings.Contains(res.Content, "too large") {
 		t.Errorf("error message should mention size, got: %q", res.Content)
 	}
+	wantN := fmt.Sprintf("%d", tools.MaxWriteFileBytes+1)
+	if !strings.Contains(res.Content, wantN) {
+		t.Errorf("error should mention actual byte count %s, got: %q", wantN, res.Content)
+	}
 }
 
 func TestWriteFileAtExactSizeCap(t *testing.T) {
 	dir := t.TempDir()
 	tool := tools.NewWriteFile(dir)
 
-	exact := strings.Repeat("a", 1*1024*1024) // exactly MaxWriteFileBytes
+	exact := strings.Repeat("a", tools.MaxWriteFileBytes)
 	input := mustJSON(t, map[string]any{"path": "exact.txt", "content": exact})
 	res, err := tool.Execute(context.Background(), input)
 	if err != nil || res.IsError {
 		t.Fatalf("expected success at exact cap: err=%v isError=%v content=%s", err, res.IsError, res.Content)
+	}
+	wantWrote := fmt.Sprintf("%d", tools.MaxWriteFileBytes)
+	if !strings.Contains(res.Content, wantWrote) {
+		t.Errorf("success message should report byte count %s: %q", wantWrote, res.Content)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "exact.txt"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if len(got) != tools.MaxWriteFileBytes {
+		t.Fatalf("file size: got %d want %d", len(got), tools.MaxWriteFileBytes)
 	}
 }
 
@@ -159,8 +175,8 @@ func TestWriteFileParentDirectoryMissing(t *testing.T) {
 	if !res.IsError {
 		t.Fatalf("expected IsError for missing parent directory")
 	}
-	if !strings.Contains(res.Content, "parent directory") {
-		t.Errorf("error message should mention parent directory, got: %q", res.Content)
+	if !strings.Contains(res.Content, "parent directory") || !strings.Contains(res.Content, "does not exist") {
+		t.Errorf("error message should mention missing parent directory, got: %q", res.Content)
 	}
 }
 

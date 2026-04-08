@@ -75,13 +75,12 @@ See the `audit` skill for the full checklist.
 ```
 goclaw/
 ├── cmd/goclaw/
-│   ├── main.go                  ← Execute Cobra root, slog default
-│   ├── root.go                  ← `newRootCmd()` Cobra root + `sessions list` subcommand
-│   ├── chat_run.go              ← REPL loop, orchestrator wiring, MCP, hooks
-│   ├── style.go                 ← Lip Gloss banner + tool approval styling (TTY)
-│   ├── slash.go                 ← REPL slash commands
-│   └── slash_test.go, root_test.go
+│   ├── main.go                  ← slog + `cli.NewRootCmd(Version, app.RunChat, app.RunListSessions)`
+│   └── version.go               ← `Version` (ldflags)
 ├── internal/
+│   ├── cli/                     ← Cobra tree only (`NewRootCmd` with injected run funcs; tests avoid TUI link)
+│   ├── app/                     ← `RunChat`, `RunListSessions`, banner, default readline REPL; Bubble Tea when `--tui`, tool registration
+│   ├── slashcmd/                ← `/` slash handlers + editor helper
 │   ├── llm/                     ← Client interface + AnthropicClient + OllamaClient
 │   │   ├── client.go            ← Client interface, Request, ToolSpec, Event types
 │   │   ├── message.go           ← Message (text + ToolCalls / ToolResults)
@@ -128,6 +127,8 @@ goclaw/
 | `GOCLAW_MODEL` | `claude-sonnet-4-6` | Anthropic model when `provider=anthropic` |
 | `GOCLAW_DISABLE_TOOLS` | (empty) | Set to `1` to run without tools (same idea as `--no-tools`) |
 | `GOCLAW_LOG` | `info` | `debug` / `warn` / `error` for slog level |
+| `GOCLAW_USE_TUI` | (empty) | Set to `1` to use fullscreen Bubble Tea TUI (same as `--tui`; default is readline REPL on a TTY) |
+| `GOCLAW_USE_READLINE` | (empty) | Set to `1` to force readline and disable TUI |
 | `GOCLAW_IDE_NOTIFY_URL` | (empty) | Optional `http`/`https` URL with host `127.0.0.1`, `localhost`, or `::1` — best-effort POST after each tool ([`internal/ide`](internal/ide/notify.go)) |
 
 **Config paths:**
@@ -137,10 +138,12 @@ goclaw/
 
 **Merge order:** `config.Default()` (includes env vars) → user `settings.json` → project `settings.json` → user `settings.local.json` → project `settings.local.json` (each step overrides overlapping keys). Then CLI: **`goclaw --profile <name>`** overrides `agent_profile` only.
 
-**CLI (session / tools):**
+**CLI (session / tools / UI):**
 - **`--session <id>`** — load history from `~/.goclaw/sessions/<id>.jsonl` (clear error if missing).
 - **`--list-sessions`** — print saved session ids and exit (same as **`goclaw sessions list`**).
 - **`--no-tools`** — do not register tools (chat-only; useful with models that hallucinate tool JSON).
+- **`--tui`** — fullscreen Bubble Tea TUI; default interactive mode is **readline** with a `>` prompt (claw-style). Also **`GOCLAW_USE_TUI=1`**.
+- **`--readline`** — force readline; disables TUI even if `GOCLAW_USE_TUI` is set.
 
 **REPL slash commands** (do not go to the LLM): `/help` or `help` or `?`; `/session`; `/sessions` (list saved ids); `/quit` or `/exit` (save and exit); `/new` (save current JSONL, start empty session); `/save` (persist without exit); `/compact` (force compaction); `/profile <name>` (switch profile without restart); `/plan path|init|template`; `/apply-plan [path]` (load plan file, switch to `general-purpose`, run one orchestrator turn); `/memory list|add|delete`. Hooks `SessionStart` / `SessionEnd` fire when the REPL starts and exits.
 
@@ -425,7 +428,7 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 7. ~~README + hooks logging~~ — [`README.md`](README.md); post-tool hook handler errors logged with `slog.WarnContext` in [`internal/hooks/hooks.go`](internal/hooks/hooks.go).
 8. ~~`glob` / `grep` tools~~ — workspace-scoped ([`internal/tools/glob.go`](internal/tools/glob.go), [`grep.go`](internal/tools/grep.go)); explore/plan allowlists updated.
 9. ~~`write_file` / `edit_file` tools~~ — atomic writes, str_replace, ReadOnly stripping; [`internal/tools/write_file.go`](internal/tools/write_file.go), [`edit_file.go`](internal/tools/edit_file.go).
-10. ~~REPL readline + expanded bash allowlist~~ — [`github.com/chzyer/readline`](https://github.com/chzyer/readline) in [`cmd/goclaw/chat_run.go`](cmd/goclaw/chat_run.go); allowlist in [`internal/tools/bash.go`](internal/tools/bash.go).
+10. ~~REPL readline + expanded bash allowlist~~ — [`github.com/chzyer/readline`](https://github.com/chzyer/readline) in [`internal/app/run.go`](internal/app/run.go); allowlist in [`internal/tools/bash.go`](internal/tools/bash.go).
 11. ~~Bash single-command shell policy~~ — [`rejectShellMetacharacters`](internal/tools/bash.go) blocks pipes, `;`, `&&`, redirects, subshells, `$(...)`, and unquoted `&` (URLs with query strings must be quoted).
 12. ~~`bash_timeout_sec` in settings~~ — [`internal/config/loader.go`](internal/config/loader.go); [`NewBashWithTimeout`](internal/tools/bash.go).
 13. ~~Clearer Ollama dial errors~~ — [`wrapOllamaDialErr`](internal/llm/ollama.go) on connection refused.
@@ -443,7 +446,7 @@ When adding sections to this file, keep them in English (Language Rule — STRIC
 | Phase | Scope | Status |
 |-------|--------|--------|
 | **MCP-1** | stdio client, process lifecycle, JSON-RPC framing | **Done** — `internal/mcp`, tests with piped mock |
-| **MCP-2** | Tool discovery → `mcp__server__tool` on `Registry` | **Done** — `mcp.ToolAdapter`, `chat_run.go`, permissions |
+| **MCP-2** | Tool discovery → `mcp__server__tool` on `Registry` | **Done** — `mcp.ToolAdapter`, `internal/app/run.go`, permissions |
 | **MCP-3** | Multiple servers, config merge by `id` | **Done** — `mcp_servers` in loader; failed server isolated |
 | **IDE** | Full localhost MCP toward editor | **Partial** — `GOCLAW_IDE_NOTIFY_URL` only; see [IDE_BRIDGE.md](../IDE_BRIDGE.md) (**D21**) |
 | **Hooks** | Subprocess / HTTP + project file | **Done** — `external_hooks`, `.goclaw/hooks.json` + `trusted_workspace` |

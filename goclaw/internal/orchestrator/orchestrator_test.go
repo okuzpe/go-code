@@ -16,6 +16,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/session"
+	"github.com/okuzpe/goclaw/internal/todos"
 	"github.com/okuzpe/goclaw/internal/tools"
 	"github.com/okuzpe/goclaw/testutil/mockserver"
 )
@@ -412,5 +413,34 @@ func TestForceCompactSummaryIncludesCounts(t *testing.T) {
 	}
 	if !strings.Contains(first, "tail of 24 kept") {
 		t.Fatalf("expected tail count: %q", first)
+	}
+}
+
+func TestReplaceSessionClearsTodoStore(t *testing.T) {
+	store := todos.NewStore()
+	if err := store.Apply(`{"merge":false,"todos":[{"id":"a","content":"task","status":"pending"}]}`); err != nil {
+		t.Fatal(err)
+	}
+	if store.FormatForPrompt() == "" {
+		t.Fatal("precondition: todo store should be non-empty")
+	}
+	srv := mockserver.New([]mockserver.Scenario{{Match: "", Response: "ok"}})
+	defer srv.Close()
+	cfg := config.Default()
+	cfg.Provider = "anthropic"
+	cfg.APIKey = "test-key"
+	orch := orchestrator.New(
+		cfg,
+		llm.NewAnthropic("test-key", srv.URL),
+		session.New(),
+		tools.New(),
+		testToolPolicy(),
+		hooks.New(),
+		agents.GeneralPurpose,
+		orchestrator.WithTodoStore(store),
+	)
+	orch.ReplaceSession(session.New())
+	if store.FormatForPrompt() != "" {
+		t.Fatalf("ReplaceSession should clear todo store, still got: %q", store.FormatForPrompt())
 	}
 }

@@ -30,8 +30,8 @@ Each tier must be stable before starting the next.
 
 ### 1c. Error messages — user-facing clarity
 - [ ] Ollama dial error shows "Is Ollama running?" hint (check `wrapOllamaDialErr` in `ollama.go`)
-- [ ] Missing `ANTHROPIC_API_KEY` shows a clear message (done in `chat_run.go` line 108 — verify output)
-- [ ] Unknown `--profile` shows the valid list (done in `chat_run.go` line 100 — verify message format)
+- [ ] Missing `ANTHROPIC_API_KEY` shows a clear message (see `internal/app/run.go` — verify output)
+- [ ] Unknown `--profile` shows the valid list (see `internal/app/run.go` — verify message format)
 
 ### 1d. Session persistence
 - [ ] `/new` — verify old session is saved to disk before the new one starts
@@ -78,7 +78,7 @@ Each tier must be stable before starting the next.
 - [ ] Test: project `settings.json` overrides user `settings.json` for the same key
 - [ ] Test: `settings.local.json` takes precedence over `settings.json` (both user and project)
 - [ ] Test: invalid JSON in any settings file → clear error with which file failed
-- [ ] Test: `tool_permissions` with unknown mode string → `ParseMode` returns error (check `chat_run.go` wiring)
+- [ ] Test: `tool_permissions` with unknown mode string → `ParseMode` returns error (check `internal/app/run.go` / `WireToolPermissions` wiring)
 - [ ] Verify `bash_timeout_sec: 0` falls back to default 30s (not zero timeout)
 - [ ] Verify `bash_timeout_sec: 3601` is clamped to 3600 (check `normalizeBashTimeoutSec`)
 

@@ -25,7 +25,7 @@ type Result struct {
 **User-facing failures** → `Result{IsError: true, Content: msg}`, return `nil` error  
 **System failures** → return non-nil `error` (bugs, unexpected I/O)
 
-## Nine built-in tools (registered in `chat_run.go`)
+## Nine built-in tools (registered in `internal/app/run.go`)
 
 ### read_file
 ```
@@ -127,7 +127,7 @@ Risk:   session_meta — in-memory only; cleared on /new; snapshot injected into
 - Max LLM iterations per user message: **32**
 - Max tool calls per user message: **64**
 
-## Registration in `chat_run.go` (actual current location)
+## Registration in `internal/app/run.go` (actual current location)
 
 ```go
 reg := tools.New()
@@ -143,7 +143,7 @@ reg.Register(tools.NewTodoWrite(todoStore))
 // MCP tools registered after: mcp.RegisterSessionTools(ctx, reg, mcpSess, srv.ID)
 ```
 
-> Note: registration is in `cmd/goclaw/chat_run.go`, not `main.go`.
+> Note: registration is in `internal/app/run.go`, not `main.go`.
 
 ## MCP tools (`mcp__<server_id>__<tool_name>`)
 - Registered at startup for each server in `cfg.MCPServers` (stdio JSON-RPC subprocess).

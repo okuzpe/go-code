@@ -29,6 +29,10 @@ type Session struct {
 
 	writeMu sync.Mutex
 	idGen   atomic.Int64
+
+	// pendingReply counts in-flight JSON-RPC error replies to server-initiated requests.
+	// Close waits so tests and shutdown do not drop those lines on the floor.
+	pendingReply sync.WaitGroup
 }
 
 // StartStdioSession launches command with args, wires stdin/stdout for MCP messages,
@@ -100,6 +104,7 @@ func (s *Session) Close() error {
 	if s == nil {
 		return nil
 	}
+	s.pendingReply.Wait()
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -202,11 +207,32 @@ func (s *Session) readUntilResponse(ctx context.Context, wantID int64) (json.Raw
 		if err := json.Unmarshal(line, &env); err != nil {
 			continue
 		}
-		// Server-initiated JSON-RPC request (ignore for MVP).
+		// Server-initiated JSON-RPC notification (no id) — ignore safely.
 		if env.Method != "" && len(env.ID) == 0 {
 			continue
 		}
+		// Server-initiated JSON-RPC request (method + id): the MCP spec
+		// requires us to respond, otherwise the server may consider the
+		// connection broken. Reply with "method not found" (-32601).
 		if env.Method != "" && len(env.ID) > 0 {
+			slog.Debug("mcp: rejecting server-initiated request", "method", env.Method)
+			errResp := map[string]any{
+				"jsonrpc": "2.0",
+				"id":      env.ID,
+				"error": map[string]any{
+					"code":    -32601,
+					"message": fmt.Sprintf("method not supported: %s", env.Method),
+				},
+			}
+			// Async write: if we block here, the mock server can deadlock while still
+			// encoding the next stdout line before it returns to Scan on stdin.
+			s.pendingReply.Add(1)
+			go func() {
+				defer s.pendingReply.Done()
+				if err := s.writeLine(errResp); err != nil {
+					slog.Debug("mcp: write reject response", "err", err)
+				}
+			}()
 			continue
 		}
 		if len(env.ID) == 0 {

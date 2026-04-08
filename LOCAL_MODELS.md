@@ -164,11 +164,11 @@ Documentad la política en **Permissions** + mensajes al usuario (“generación
 
 ## 4. Memoria entre sesiones
 
-- El diagrama tipo “Jarvis” incluye **memoria**. En nuestra tabla §4.1 aún no hay paquete dedicado: puede ser **fase v2/v3** (ficheros `MEMORY.md`, SQLite, o MCP). Para **solo local**, empezar por **archivos en disco** bajo `.assistant/` evita servicios extra.
+- El diagrama tipo “goclaw” incluye **memoria**. En nuestra tabla §4.1 aún no hay paquete dedicado: puede ser **fase v2/v3** (ficheros `MEMORY.md`, SQLite, o MCP). Para **solo local**, empezar por **archivos en disco** bajo `.assistant/` evita servicios extra.
 
 ---
 
-## 5. Mapa “Jarvis simplificado” → paquetes Go
+## 5. Mapa “goclaw simplificado” → paquetes Go
 
 ```
 [Usuario] → internal/channel (REPL/TUI)

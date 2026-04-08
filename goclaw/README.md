@@ -23,6 +23,8 @@ go build -o goclaw ./cmd/goclaw
 ./goclaw
 ```
 
+On a TTY, the default is a **readline REPL** with a `>` prompt (banner, popular slash hints, then free text to the model — same flow as claw `run_repl`). Use **`--tui`** or **`GOCLAW_USE_TUI=1`** for the fullscreen UI. **`--readline`** forces readline if you need to override TUI.
+
 With Anthropic API:
 
 ```bash
@@ -41,6 +43,8 @@ go run ./cmd/goclaw
 | `glob` | List files matching a pattern | Workspace-scoped; no `..` traversal; max 500 matches |
 | `grep` | Regex search across files or a directory | Workspace-scoped; skips binary files; max 200 matches, 512 KiB per file |
 | `bash` | Run shell commands | Expanded binary allowlist (D4); **one simple command** — no pipes, `;`, `&&`, redirects, or `$(...)`; quote URLs containing `&`; user confirmation in Ask mode; **30 s** timeout (override `bash_timeout_sec` in settings, 1–3600); 256 KiB output cap |
+| `write_file` | Write or overwrite a file | Workspace-scoped; atomic write (temp + rename); parent dir must exist; 1 MiB content cap; stripped from read-only profiles |
+| `edit_file` | Targeted string replacement in a file | `old_string` must match exactly once (unless `replace_all: true`); preserves file mode; stripped from read-only profiles |
 | `web_fetch` | Fetch a URL as text | SSRF-protected: RFC1918, loopback, and metadata endpoints blocked; max 5 redirects re-validated; 1 MiB cap, 30 s timeout |
 | `web_search` | Search via DuckDuckGo | No API key required; returns up to 8 results with 2 KiB snippets; 15 s timeout |
 | `todo_write` | Update a session-scoped task list | In-memory until exit; merged into context for planning-style turns |
@@ -128,6 +132,8 @@ Set via `tool_permissions` in `settings.json` (see Configuration below).
 | `GOCLAW_MODEL` | `claude-sonnet-4-6` | Anthropic model name |
 | `GOCLAW_DISABLE_TOOLS` | — | Set to `1` for chat-only mode (no tools registered) |
 | `GOCLAW_LOG` | `info` | Log level: `debug` / `warn` / `error` |
+| `GOCLAW_USE_TUI` | — | Set to `1` to use fullscreen TUI (same as `--tui`) |
+| `GOCLAW_USE_READLINE` | — | Set to `1` to force readline and disable TUI |
 | `GOCLAW_IDE_NOTIFY_URL` | — | Optional `http://127.0.0.1` / `localhost` / `::1` URL for post-tool JSON POST (see IDE notifications above) |
 
 ### Settings Files
@@ -188,6 +194,8 @@ Running `goclaw` with no subcommand starts the interactive REPL. Persistent flag
 | `--session <id>` | Resume a previously saved session by ID |
 | `--list-sessions` | Print saved session IDs and exit |
 | `--no-tools` | Chat-only mode — no tools registered |
+| `--tui` | Fullscreen Bubble Tea TUI (overrides readline; same as `GOCLAW_USE_TUI=1`) |
+| `--readline` | Force readline REPL; disables TUI even if `GOCLAW_USE_TUI=1` |
 
 | Subcommand | Description |
 |------------|-------------|

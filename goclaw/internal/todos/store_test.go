@@ -1,6 +1,9 @@
 package todos
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -33,5 +36,41 @@ func TestStoreValidation(t *testing.T) {
 	}
 	if err := s.Apply(`{"merge":false,"todos":[{"id":"x","content":"y","status":"bogus"}]}`); err == nil {
 		t.Fatal("expected error for bad status")
+	}
+}
+
+func TestStoreApplyRejectsMoreThanMaxItems(t *testing.T) {
+	s := NewStore()
+	todos := make([]map[string]string, 0, MaxItems+1)
+	for i := range MaxItems + 1 {
+		todos = append(todos, map[string]string{
+			"id":      fmt.Sprintf("t%d", i),
+			"content": "x",
+			"status":  "pending",
+		})
+	}
+	raw, jerr := json.Marshal(map[string]any{"merge": false, "todos": todos})
+	if jerr != nil {
+		t.Fatal(jerr)
+	}
+	err := s.Apply(string(raw))
+	if err == nil {
+		t.Fatal("expected error when todos count exceeds MaxItems")
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("%d", MaxItems)) {
+		t.Fatalf("error should mention limit: %v", err)
+	}
+}
+
+func TestStoreApplyRejectsContentOverMaxRunes(t *testing.T) {
+	s := NewStore()
+	long := strings.Repeat("a", MaxContentRunes+1)
+	raw := fmt.Sprintf(`{"merge":false,"todos":[{"id":"one","content":%q,"status":"pending"}]}`, long)
+	err := s.Apply(raw)
+	if err == nil {
+		t.Fatal("expected error when content exceeds MaxContentRunes")
+	}
+	if !strings.Contains(err.Error(), "exceeds") || !strings.Contains(err.Error(), "runes") {
+		t.Fatalf("error should mention rune limit: %v", err)
 	}
 }

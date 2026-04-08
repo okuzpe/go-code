@@ -1,119 +1,122 @@
-# MCP (Model Context Protocol) — referencia y eco Go
+# MCP (Model Context Protocol)
 
-Profundidad ligada a [ARCHITECTURE.md §2.8](ARCHITECTURE.md). Especificación oficial: [Model Context Protocol](https://modelcontextprotocol.io/specification/2025-11-25); implementación de referencia analizada en terceros: [MCP — claude-code-explain](https://claude-code-explain.helmcode.com/mcp).
+Depth ties to [ARCHITECTURE.md §2.8](ARCHITECTURE.md). Official spec: [Model Context Protocol](https://modelcontextprotocol.io/specification/2025-11-25). Third-party reference write-up: [MCP — claude-code-explain](https://claude-code-explain.helmcode.com/mcp).
 
-En **2025–2026**, un asistente “agente” que solo expone herramientas integradas **sin** MCP suele quedar por debajo de la expectativa de usuarios y de integradores (GitHub, Slack, navegador, bases de datos, etc.). MCP es el **adaptador estándar** para conectar el modelo a procesos y servicios externos con un contrato común.
-
----
-
-## 1. Qué resuelve MCP
-
-- **Servidores** (subprocess **stdio**, o remotos **SSE** / **HTTP** streamable / **WebSocket**) publican **herramientas**, **recursos** y a veces **prompts**.
-- El **cliente** (nuestro CLI) mantiene sesiones, traduce llamadas del modelo a `callTool`, aplica **permisos** igual que al resto de tools, y gestiona **auth**, timeouts y límites de salida.
-
-No sustituye las herramientas **builtin** (`Read`, `Grep`, …): las **complementa** para lo que no queréis mantener en el binario.
+For a coding agent in 2025–2026, built-in tools alone often fall short of user and integrator expectations (GitHub, Slack, browser, databases, etc.). MCP is the **standard adapter** for connecting the model to external processes and services under a shared contract.
 
 ---
 
-## 2. Convención de nombres expuesta al modelo
+## Implemented in goclaw (English)
 
-Cada tool MCP se expone al LLM con un nombre normalizado (referencia Claude Code):
+**Code:** [`goclaw/internal/mcp`](goclaw/internal/mcp) — JSON-RPC 2.0 over **stdio** (`initialize`, `notifications/initialized`, `tools/list`, `tools/call`), one subprocess per entry in **`mcp_servers`** in merged settings ([`goclaw/internal/config/loader.go`](goclaw/internal/config/loader.go)).
+
+- Tool names exposed to the model: `mcp__<server_id>__<remote_tool>` via `NormalizeMCPToolName`.
+- **Client:** hand-rolled `encoding/json` (no official MCP Go SDK required for this layer).
+- **Failure isolation:** if a server fails to start or register tools, goclaw logs and skips that server only.
+- **Not implemented:** SSE/HTTP/WebSocket MCP transports, OAuth, resources/prompts as first-class features.
+
+Authoritative module details: [`goclaw/CLAUDE.md`](goclaw/CLAUDE.md) (decision **D6**, post-MVP stdio slice).
+
+---
+
+## 1. What MCP solves
+
+- **Servers** (subprocess **stdio**, or remote **SSE** / streamable **HTTP** / **WebSocket**) publish **tools**, **resources**, and sometimes **prompts**.
+- The **client** (our CLI) keeps sessions, maps model tool calls to `callTool`, applies **permissions** like any other tool, and manages **auth**, timeouts, and output limits.
+
+It does not replace **builtin** tools (`read_file`, `grep`, …); it **complements** them for capabilities you do not want to ship in the binary.
+
+---
+
+## 2. Naming convention exposed to the model
+
+Each MCP tool is exposed to the LLM with a normalized name (Claude Code style):
 
 ```text
 mcp__<server>__<tool>
 ```
 
-- Caracteres fuera de `[a-zA-Z0-9_-]` → `_`, longitud acotada (p. ej. **64** caracteres en referencia).
-- Las reglas `allow` / `deny` de permisos usan estos nombres (incl. wildcards tipo `mcp__slack__*`).
+- Characters outside `[a-zA-Z0-9_-]` → `_`; length capped (e.g. **64** characters in reference).
+- Permission rules use these names (including wildcards such as `mcp__slack__*`).
 
-**Eco Go:** función pura `NormalizeMCPToolName(server, tool string) string` compartida entre `internal/mcp` y `internal/permissions`.
-
----
-
-## 3. Alcance de configuración (prioridad, referencia)
-
-Orden típico de fusión (de menor a mayor prioridad; el último gana en conflicto de **nombre** de servidor):
-
-| # | Scope | Origen (referencia) | Notas |
-|---|--------|----------------------|--------|
-| 1 | org / cloud | Conectores desde API | Producto cerrado |
-| 2 | plugin | Plugins instalados | Ver [PLUGINS.md](PLUGINS.md) |
-| 3 | user | `~/.claude/settings.json` | Global usuario |
-| 4 | project | `.mcp.json` (subiendo hasta home) | Requiere **aprobación explícita** antes de conectar en referencia |
-| 5 | local | `settings.local.json` | No committed |
-| 6 | enterprise | `managed-mcp.json` | **Exclusivo:** si existe, ignora otros scopes |
-
-**Eco Go:** equivalente en `~/.config/assistant/…` + `.assistant/.mcp.json` (nombres **D7**); flag **workspace trust** antes de cargar MCP de proyecto; política enterprise opcional muy tardía.
+**In goclaw:** pure function `NormalizeMCPToolName(server, tool string) string` shared between `internal/mcp` and `internal/permissions`.
 
 ---
 
-## 4. Transportes
+## 3. Configuration scope (reference product)
 
-| Transporte | Uso típico | Notas (referencia) |
-|------------|------------|---------------------|
-| **stdio** | `command` + `args`; subprocess | Más común; stderr acotado para debug; timeout de conexión orden 30 s |
-| **sse** | URL remota, EventSource | Sin timeout en el stream; requests HTTP ~60 s |
-| **http** | Streamable HTTP (spec 2025-03-26) | Sesión, OAuth |
+Typical merge order (lowest to highest priority; last writer wins on **server** name conflicts):
+
+| # | Scope | Source (reference) | Notes |
+|---|--------|---------------------|-------|
+| 1 | org / cloud | Connectors from API | Closed product |
+| 2 | plugin | Installed plugins | See [PLUGINS.md](PLUGINS.md) |
+| 3 | user | `~/.claude/settings.json` | Global user |
+| 4 | project | `.mcp.json` (walk up to home) | **Explicit approval** before connect in reference |
+| 5 | local | `settings.local.json` | Not committed |
+| 6 | enterprise | `managed-mcp.json` | **Exclusive:** if present, ignores other scopes |
+
+**goclaw today:** `mcp_servers` in `~/.goclaw/settings.json`, project `.goclaw/settings.json`, and `settings.local.json` merge chain — see CLAUDE.md. Remote transports and enterprise policy are **not** implemented.
+
+---
+
+## 4. Transports
+
+| Transport | Typical use | Notes (reference) |
+|-----------|-------------|-------------------|
+| **stdio** | `command` + `args`; subprocess | Most common; bounded stderr for debug; ~30 s connect timeout |
+| **sse** | Remote URL, EventSource | Long-lived stream; HTTP requests ~60 s |
+| **http** | Streamable HTTP (spec 2025-03-26) | Session, OAuth |
 | **ws** | WebSocket | TLS, proxy |
 
-Expansión de variables en config: `${VAR}` y `${VAR:-default}`.
+Config expansion: `${VAR}` and `${VAR:-default}`.
 
-**Eco Go:** MVP interno razonable = **stdio + un remote mínimo** cuando **D6** lo apruebe; alinear timeouts con [Context](https://pkg.go.dev/context) y política de red (SSRF ya tratada para `web_fetch`).
-
----
-
-## 5. Autenticación (referencia)
-
-- **OAuth** (SSE/HTTP): flujo navegador, tokens en almacén seguro, refresh en 401, revocación RFC 7009.
-- **XAA (Cross-App Access):** intercambio de tokens (RFC 8693, RFC 7523); un popup puede autenticar varios servidores; suele ir tras feature flag / entorno enterprise.
-- **McpAuthTool (pseudo-tool):** si el servidor no conecta por auth, se expone `mcp__<server>__authenticate`; el modelo la invoca y se lanza el flujo; en referencia suele **auto-aprobarse**; fallos cacheados ~**15 min**.
+**Future in goclaw:** SSE/HTTP/WebSocket require a dedicated security and transport design pass (SSRF posture already exists for `web_fetch`).
 
 ---
 
-## 6. Ciclo de vida (resumen)
+## 5. Authentication (reference)
 
-**Arranque:** cargar scopes → deduplicar por firma (URL vs comando) → filtrar políticas enterprise → aprobar servidores de proyecto → conectar en paralelo (concurrencia mayor para remotos que para stdio en referencia) → obtener tools / resources / prompts.
-
-**Llamada:** `tool_use` con nombre `mcp__…` → asegurar cliente conectado → **permissions** → `callTool` con timeout → si la salida supera umbral (~**100k** caracteres en referencia), escribir a temporal y devolver instrucción para leer con **Read**.
-
-**Parada:** stdio: señales escalonadas SIGINT → SIGTERM → SIGKILL en ventanas cortas; remotos: cerrar transport y rechazar pendientes.
+- **OAuth** (SSE/HTTP): browser flow, tokens in secure storage, refresh on 401, revocation RFC 7009.
+- **XAA (Cross-App Access):** token exchange (RFC 8693, RFC 7523); one popup may authenticate several servers; often behind feature flags / enterprise.
+- **McpAuthTool (pseudo-tool):** if the server fails on auth, expose `mcp__<server>__authenticate`; the model invokes it and the flow runs; in reference it often **auto-approves**; failures cached ~**15 min**.
 
 ---
 
-## 7. Permisos y políticas
+## 6. Lifecycle (summary)
 
-- En referencia, MCP **passthrough** al sistema de permisos global: interactivo pregunta, bypass auto-aprueba, auto-modo puede pasar por clasificador (**D17**).
-- Reglas usuario: `allow` / `deny` con prefijos `mcp__…`.
-- Enterprise: listas `allowedMcpServers` / `deniedMcpServers` (nombre, URL pattern, comando); **deny gana**.
+**Startup:** load scopes → dedupe by signature (URL vs command) → filter enterprise policy → approve project servers → connect in parallel → fetch tools / resources / prompts.
 
----
+**Call:** `tool_use` with name `mcp__…` → ensure connected client → **permissions** → `callTool` with timeout → if output exceeds threshold (~**100k** chars in reference), write to temp and return instruction to read with **read_file**.
 
-## 8. Roadmap propuesto (Go)
-
-| Fase | Alcance MCP |
-|------|-------------|
-| **MVP** | Ninguno obligatorio: consolidar bucle + tools builtin. |
-| **v2 (recomendado si producto “agente completo”)** | `internal/mcp`: cliente **stdio**, registro dinámico de tools `mcp__*`, límites de salida, integración **permissions**, config usuario/proyecto mínima; pseudo-tool de auth opcional o segunda iteración. |
-| **v3+** | Transportes **SSE/HTTP/WS**, OAuth estable, resources/list/read, prompts como comandos, merge con **plugins** (**D20**), headers dinámicos — según **D6**. |
-
-**D6** debe fijar: transportes en v2, compatibilidad con `.mcp.json`, y si exigís paridad con políticas enterprise desde el día uno.
+**Shutdown:** stdio: staggered SIGINT → SIGTERM → SIGKILL in short windows; remotes: close transport and reject pending.
 
 ---
 
-## 8.1 Go implementation (goclaw module, English)
+## 7. Permissions and policy
 
-**Code:** [`goclaw/internal/mcp`](goclaw/internal/mcp) — JSON-RPC 2.0 over **stdio** (`initialize`, `notifications/initialized`, `tools/list`, `tools/call`), one subprocess per entry in **`mcp_servers`** inside merged settings ([`internal/config`](goclaw/internal/config/loader.go)).
+- In reference products, MCP is a **passthrough** to the global permission system: interactive asks, bypass auto-approve, auto-mode may use a classifier (**D17**).
+- User rules: `allow` / `deny` with `mcp__…` prefixes.
+- Enterprise: `allowedMcpServers` / `deniedMcpServers` (name, URL pattern, command); **deny wins**.
 
-- Tool names exposed to the model: `mcp__<server_id>__<remote_tool>` via `NormalizeMCPToolName`.
-- **Client:** hand-rolled `encoding/json` (no official MCP Go SDK required for this layer).
-- **Failure isolation:** if a server fails to start or register tools, goclaw logs and skips that server only.
-- **Not implemented here:** SSE/HTTP MCP transports, OAuth, resources/prompts.
+---
+
+## 8. Roadmap (reference vs goclaw)
+
+| Phase | MCP scope |
+|-------|-----------|
+| **Early MVP (generic)** | Optional: stabilize loop + builtin tools only. |
+| **goclaw (shipped)** | `internal/mcp`: **stdio** client, dynamic `mcp__*` tools, output limits, **permissions**, `mcp_servers` config. |
+| **Future (goclaw v3+)** | SSE/HTTP/WS, OAuth, resources/list/read, prompts as commands, merge with **plugins** (**D20**), dynamic headers — per **D6** when scoped.
+
+**D6** should still fix: which transports ship when, `.mcp.json` compatibility, and enterprise policy parity if required from day one.
 
 ---
 
 ## 9. Changelog
 
-| Fecha | Cambio |
-|-------|--------|
-| 2026-04-07 | Creación: naming, scopes, transportes, auth, ciclo de vida, permisos, roadmap v2/v3, **D6** |
-| 2026-04-07 | §8.1: puntero a `internal/mcp`, `mcp_servers`, stdio-only scope. |
+| Date | Change |
+|------|--------|
+| 2026-04-07 | Initial doc: naming, scopes, transports, auth, lifecycle, permissions, v2/v3 roadmap, **D6**. |
+| 2026-04-07 | Added pointer to `internal/mcp`, `mcp_servers`, stdio-only scope. |
+| 2026-04-08 | Full English rewrite; **Implemented in goclaw** section first; reference sections retained for future work. |

@@ -59,6 +59,18 @@ func (p *Policy) Evaluate(toolName string) Decision {
 	}
 }
 
+// ApplyConfigModes sets policy entries from a merged settings.json tool_permissions map.
+func (p *Policy) ApplyConfigModes(modes map[string]string) error {
+	for tool, modeStr := range modes {
+		m, err := ParseMode(modeStr)
+		if err != nil {
+			return fmt.Errorf("settings tool_permissions %q: %w", tool, err)
+		}
+		p.Set(tool, m)
+	}
+	return nil
+}
+
 // ParseMode converts settings strings ("ask", "allow", "deny") into a Mode.
 func ParseMode(s string) (Mode, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {

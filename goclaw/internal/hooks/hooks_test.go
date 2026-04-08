@@ -1,10 +1,13 @@
 package hooks
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -54,5 +57,36 @@ func TestLoadHooksFile_registersCommand(t *testing.T) {
 	ctx := t.Context()
 	if err := reg.Fire(ctx, Event{Type: SessionStart}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPreToolUseGoHandlerBlocks(t *testing.T) {
+	reg := New()
+	boom := errors.New("policy hook")
+	reg.On(PreToolUse, func(ctx context.Context, e Event) error {
+		return boom
+	})
+	ctx := t.Context()
+	err := reg.Fire(ctx, Event{Type: PreToolUse, ToolName: "bash", Input: "{}"})
+	if !errors.Is(err, boom) {
+		t.Fatalf("Fire: got %v want %v", err, boom)
+	}
+}
+
+func TestPreToolUseExternalCommandExit2Blocks(t *testing.T) {
+	reg := New()
+	if runtime.GOOS == "windows" {
+		reg.OnCommand(PreToolUse, "cmd.exe", "/c", "exit /b 2")
+	} else {
+		reg.OnCommand(PreToolUse, "/bin/sh", "-c", "exit 2")
+	}
+	ctx := t.Context()
+	err := reg.Fire(ctx, Event{Type: PreToolUse, ToolName: "bash", Input: "{}"})
+	if err == nil {
+		t.Fatal("expected PreToolUse external hook exit 2 to block")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "blocked") && !strings.Contains(msg, "exit 2") {
+		t.Fatalf("expected block message, got: %v", err)
 	}
 }
