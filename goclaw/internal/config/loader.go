@@ -25,6 +25,8 @@ type settingsFile struct {
 	AllowScript          *bool               `json:"allow_script"`
 	YoloThreshold        *int                `json:"yolo_threshold"`
 	LLMCompaction        *bool               `json:"llm_compaction"`
+	MCPServersAllowRemote *bool              `json:"mcp_allow_remote_urls,omitempty"`
+	IDEBridgeMCP         *bool               `json:"ide_bridge_mcp,omitempty"`
 }
 
 // Load merges JSON settings into base in this order (later wins for overlapping keys):
@@ -113,6 +115,12 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.LLMCompaction != nil && *sf.LLMCompaction {
 		cfg.LLMCompaction = true
+	}
+	if sf.MCPServersAllowRemote != nil && *sf.MCPServersAllowRemote {
+		cfg.MCPServersAllowRemote = true
+	}
+	if sf.IDEBridgeMCP != nil && *sf.IDEBridgeMCP {
+		cfg.IDEBridgeMCP = true
 	}
 	if len(sf.ExternalHooks) > 0 {
 		cfg.ExternalHooks = append(cfg.ExternalHooks, sf.ExternalHooks...)

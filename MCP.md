@@ -8,14 +8,15 @@ For a coding agent in 2025–2026, built-in tools alone often fall short of user
 
 ## Implemented in goclaw (English)
 
-**Code:** [`goclaw/internal/mcp`](goclaw/internal/mcp) — JSON-RPC 2.0 over **stdio** (`initialize`, `notifications/initialized`, `tools/list`, `tools/call`), one subprocess per entry in **`mcp_servers`** in merged settings ([`goclaw/internal/config/loader.go`](goclaw/internal/config/loader.go)).
+**Code:** [`goclaw/internal/mcp`](goclaw/internal/mcp) — JSON-RPC 2.0 over **stdio** (subprocess) or **Streamable HTTP** ([`goclaw/internal/mcp/http.go`](goclaw/internal/mcp/http.go)): `initialize`, `notifications/initialized`, `tools/list`, `tools/call`. **`mcp_servers`** in merged settings ([`goclaw/internal/config/loader.go`](goclaw/internal/config/loader.go)) uses `command` for stdio, or `url` plus optional `headers` for HTTP. **Loopback-only** URLs unless **`mcp_allow_remote_urls`: true**.
 
 - Tool names exposed to the model: `mcp__<server_id>__<remote_tool>` via `NormalizeMCPToolName`.
 - **Client:** hand-rolled `encoding/json` (no official MCP Go SDK required for this layer).
 - **Failure isolation:** if a server fails to start or register tools, goclaw logs and skips that server only.
-- **Not implemented:** SSE/HTTP/WebSocket MCP transports, OAuth, resources/prompts as first-class features.
+- **Runtime reconnect:** `mcp.ResilientConn` (wired from `PrepareChatRuntime`) re-dials and re-handshakes once when `tools/call` fails with a recoverable transport error (EOF, broken pipe, HTTP 5xx, etc.); then retries the same call.
+- **Not implemented:** legacy HTTP+SSE (pre–streamable-HTTP), WebSocket transports, OAuth, resources/prompts as first-class features.
 
-Authoritative module details: [`goclaw/CLAUDE.md`](goclaw/CLAUDE.md) (decision **D6**, post-MVP stdio slice).
+Authoritative module details: [`goclaw/CLAUDE.md`](goclaw/CLAUDE.md) (decision **D6**).
 
 ---
 
@@ -71,7 +72,7 @@ Typical merge order (lowest to highest priority; last writer wins on **server** 
 
 Config expansion: `${VAR}` and `${VAR:-default}`.
 
-**Future in goclaw:** SSE/HTTP/WebSocket require a dedicated security and transport design pass (SSRF posture already exists for `web_fetch`).
+**Future in goclaw:** WebSocket MCP, OAuth, legacy HTTP+SSE-only servers, and non-MCP IDE transports — security review before expanding beyond Streamable HTTP + loopback defaults.
 
 ---
 
@@ -107,7 +108,7 @@ Config expansion: `${VAR}` and `${VAR:-default}`.
 |-------|-----------|
 | **Early MVP (generic)** | Optional: stabilize loop + builtin tools only. |
 | **goclaw (shipped)** | `internal/mcp`: **stdio** client, dynamic `mcp__*` tools, output limits, **permissions**, `mcp_servers` config. |
-| **Future (goclaw v3+)** | SSE/HTTP/WS, OAuth, resources/list/read, prompts as commands, merge with **plugins** (**D20**), dynamic headers — per **D6** when scoped.
+| **Future (goclaw v3+)** | WebSocket, OAuth, resources/list/read, prompts as commands, merge with **plugins** (**D20**) — per **D6** when scoped.
 
 **D6** should still fix: which transports ship when, `.mcp.json` compatibility, and enterprise policy parity if required from day one.
 

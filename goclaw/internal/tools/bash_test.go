@@ -130,6 +130,35 @@ func TestBashAllowQuotedAmpersandInURL(t *testing.T) {
 	}
 }
 
+func TestBashAllowSingleQuotedAndAnd(t *testing.T) {
+	ctx := context.Background()
+	tool := NewBash()
+	// && inside single quotes is literal text, not a command separator.
+	res, err := tool.Execute(ctx, `{"command":"echo 'a&&b'"}`)
+	require.NoError(t, err)
+	if res.IsError && strings.Contains(res.Content, "&&") {
+		require.Failf(t, "single-quoted && should be allowed", "%s", res.Content)
+	}
+	require.False(t, res.IsError, "want success, got %s", res.Content)
+	require.Contains(t, res.Content, "a&&b")
+}
+
+func TestBashAllowGitExeFormOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("git.exe first token is primarily a Windows install layout")
+	}
+	ctx := context.Background()
+	tool := NewBash()
+	res, err := tool.Execute(ctx, `{"command":"git.exe commit -h"}`)
+	require.NoError(t, err)
+	if res.IsError && res.Content == "command not on allowlist: git.exe" {
+		require.Failf(t, "git.exe should normalize to git for the allowlist", "%s", res.Content)
+	}
+	if res.IsError && strings.Contains(res.Content, "git subcommand not allowed") {
+		require.Failf(t, "git.exe commit should be allowed", "%s", res.Content)
+	}
+}
+
 func TestBashRejectUnquotedAmpersand(t *testing.T) {
 	ctx := context.Background()
 	tool := NewBash()

@@ -14,7 +14,7 @@ const MCPToolCallTimeout = 60 * time.Second
 
 // ToolAdapter implements tools.Tool for one remote MCP tool.
 type ToolAdapter struct {
-	sess     *Session
+	sess     Conn
 	serverID string
 	remote   string
 	desc     string
@@ -24,7 +24,7 @@ type ToolAdapter struct {
 var _ tools.Tool = (*ToolAdapter)(nil)
 
 // NewToolAdapter wraps a listed tool from the MCP server.
-func NewToolAdapter(sess *Session, serverID string, info ToolInfo) *ToolAdapter {
+func NewToolAdapter(sess Conn, serverID string, info ToolInfo) *ToolAdapter {
 	return &ToolAdapter{
 		sess:     sess,
 		serverID: serverID,
@@ -61,7 +61,7 @@ func (t *ToolAdapter) Execute(ctx context.Context, input string) (tools.Result, 
 }
 
 // RegisterSessionTools registers every tool from ListTools under normalized names.
-func RegisterSessionTools(ctx context.Context, reg *tools.Registry, sess *Session, serverID string) error {
+func RegisterSessionTools(ctx context.Context, reg *tools.Registry, sess Conn, serverID string) error {
 	if serverID == "" {
 		return fmt.Errorf("mcp: empty server id")
 	}

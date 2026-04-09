@@ -373,15 +373,15 @@ var _ llm.Client = (*AnthropicClient)(nil)
 | D1: Providers | Ollama = default. Anthropic = opt-in with API key. Do not couple provider logic. |
 | D4: Bash security | Allowlist (expanded binaries + git subcommands), not denylist. Single simple command: `rejectShellMetacharacters` blocks shell chaining that would bypass the allowlist. User confirmation always required in Ask mode. |
 | D5: Permissions | Default = ModeAsk (fail-closed). `bypassPermissions` NOT implemented in MVP. |
-| D6: MCP | **stdio client implemented** (`internal/mcp`): subprocess per server, `mcp_servers` in settings, tools as `mcp__server__tool`. Remote SSE/HTTP MCP transports and OAuth remain future work. |
+| D6: MCP | **stdio + Streamable HTTP** (`internal/mcp`, `http.go`): subprocess **or** `mcp_servers[].url` (optional `headers`); tools as `mcp__server__tool`. HTTP URLs must be **loopback** unless `mcp_allow_remote_urls` is set in settings. **Not done:** OAuth, WebSocket, legacy HTTP+SSE-only servers. |
 | D7: Config paths | `~/.goclaw/` (user), `.goclaw/` (project). Decided, do not change. |
 | D12: Dedicated tools | Prefer `read_file`/`glob`/`grep` over bash equivalents. Bash = last resort. |
 | D13: Memory | Filesystem at `~/.goclaw/memory/`. 4 types: user/feedback/project/reference. |
 | D15: Compaction | Threshold as configurable fraction (default 0.85). Session size for compaction uses a **token estimate** (chars/4 heuristic, capped) mapped against a budget derived from `defaultContextBudgetChars`; no live provider token APIs in MVP. |
 | D16: Multi-agent | **Done** — `internal/coordinator`: `spawn_agent` tool, `Coordinator` profile (allowlist: spawn_agent + todo_write), isolated worker sessions via `session.New()`, `WorkerNotification` JSON result, nesting prevention. Team/Swarm remains Phase 3+. |
-| D17: YOLO Classifier | v2+ only. In MVP = does not exist. Do not design dependencies on it. |
+| D17: YOLO Classifier | **Implemented** in `internal/permissions/risk.go` — rule-based risk scorer (0–100); `yolo_threshold: -1` default (off); auto-approves reads at threshold 0. |
 | D18: Hooks | PreToolUse can block. PostToolUse is best-effort (non-fatal). |
-| D19: Custom agents | **Post-MVP:** Markdown + YAML frontmatter in `.goclaw/agents/*.md` (format TBD). MVP uses six built-in profiles in Go only ([`internal/agents/profile.go`](internal/agents/profile.go)). |
+| D19: Custom agents | **Implemented** — Markdown + YAML frontmatter in `~/.goclaw/agents/*.md` and `.goclaw/agents/*.md`; fields: `name`, `model`, `tool_allowlist`, `read_only`, `system_prompt`; body appended to system prompt; hot-reload on `/profile`; project overrides user overrides built-in. See [`internal/agents/profile.go`](internal/agents/profile.go). |
 | D22: Retry | **Implemented** in [`internal/llm/retry.go`](internal/llm/retry.go): `doHTTPWithRetry` wraps Anthropic and Ollama POSTs — retries on **429**, **503**, **504** with `Retry-After` when present, else exponential backoff (base 500ms, ceiling 5min), up to **10** attempts; transient **network errors** retry with the same backoff. |
 
 ---
@@ -395,7 +395,7 @@ var _ llm.Client = (*AnthropicClient)(nil)
 - **Do not use `fmt.Println`** for logging
 - **Do not commit `.goclaw/settings.local.json`** — it is machine-local
 - **Do not assume Ollama is running** — handle connection refused with a clear error
-- **Do not add remote MCP (SSE/HTTP) or OAuth** without a dedicated security + transport design pass
+- **Do not point MCP HTTP at non-loopback URLs** unless the user explicitly sets `mcp_allow_remote_urls` (SSRF posture); **do not add OAuth** for MCP without a dedicated security pass
 - **Do not mix session (RAM) with memory (disk)** — they are separate systems
 - **Do not write Spanish** in code, comments, or commit messages — English only
 
@@ -447,8 +447,8 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
        `-session` / `-list-sessions`, `-no-tools` / `GOCLAW_DISABLE_TOOLS`, Ollama `tool_name` wire fix
 [DONE] write_file + edit_file: workspace-scoped atomic writes, str_replace edit, ReadOnly profile stripping
 [DONE] Post-MVP slice: MCP stdio client + multi-server config, MCP tools on Registry, external hooks + workspace trust, IDE localhost notifier (`GOCLAW_IDE_NOTIFY_URL`)
-[POST-MVP] v2+: YOLO Classifier, multi-agent coordinator (hub-and-spoke) — **separate plan when scope is fixed**; see [COORDINATOR_MODE.md](../COORDINATOR_MODE.md), [YOLO_CLASSIFIER.md](../YOLO_CLASSIFIER.md)
-[POST-MVP] v3+: Plugins, full IDE Bridge (lockfile MCP client), Team/Swarm — see [PLUGINS.md](../PLUGINS.md), [IDE_BRIDGE.md](../IDE_BRIDGE.md), [CUSTOM_AGENTS.md](../CUSTOM_AGENTS.md)
+[DONE] v2: YOLO Classifier (`internal/permissions/risk.go`), multi-agent coordinator (`internal/coordinator`), custom agents (`internal/agents/profile.go`), parallel tool execution, LLM-driven compaction, script tool
+[POST-MVP] v3+: Plugins, deeper IDE/editor parity (extension-side), Team/Swarm — see [IDE_BRIDGE.md](../IDE_BRIDGE.md)
 ```
 
 ### To continue (polish / post-MVP):
@@ -474,16 +474,17 @@ When adding sections to this file, keep them in English (Language Rule — STRIC
 
 ## Post-MVP phased delivery (MCP, IDE, hooks)
 
-**Status (2026-04):** MCP-1–3, external hooks + workspace trust, and a **minimal** IDE hook (`internal/ide`, env-based localhost POST) are implemented. **Not done:** remote MCP transports, OAuth, lockfile-based IDE MCP client, async hook transports.
+**Status (2026-04):** MCP-1–3 plus **Streamable HTTP** (`internal/mcp/http.go`), external hooks + workspace trust, IDE **lockfile discovery** (`ide_bridge_mcp`, `internal/ide/discovery.go`), and **minimal** IDE notify (`GOCLAW_IDE_NOTIFY_URL`). **Not done:** MCP OAuth, WebSocket transport, async hook transports.
 
 | Phase | Scope | Status |
 |-------|--------|--------|
 | **MCP-1** | stdio client, process lifecycle, JSON-RPC framing | **Done** — `internal/mcp`, tests with piped mock |
+| **MCP-1b** | Streamable HTTP client (POST JSON + optional SSE) | **Done** — `internal/mcp/http.go`; loopback default, `mcp_allow_remote_urls` opt-in |
 | **MCP-2** | Tool discovery → `mcp__server__tool` on `Registry` | **Done** — `mcp.ToolAdapter`, [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go) (`RegisterSessionTools`), permissions |
 | **MCP-3** | Multiple servers, config merge by `id` | **Done** — `mcp_servers` in loader; failed server isolated |
-| **IDE** | Full localhost MCP toward editor | **Partial** — `GOCLAW_IDE_NOTIFY_URL` only; see [IDE_BRIDGE.md](../IDE_BRIDGE.md) (**D21**) |
+| **IDE** | Localhost MCP toward editor | **Partial** — lockfile → `mcp_servers` when `ide_bridge_mcp`; `GOCLAW_IDE_NOTIFY_URL`; see [IDE_BRIDGE.md](../IDE_BRIDGE.md) (**D21**) |
 | **Hooks** | Subprocess / HTTP + project file | **Done** — `external_hooks`, `.goclaw/hooks.json` + `trusted_workspace` |
 
-**Future epics (no code until scoped):** YOLO classifier (**D17**), custom agents `.md` (**D19**), plugins (**PLUGINS.md**) — track as a **separate planning pass**. D16 coordinator is **done** (`internal/coordinator`).
+**Future epics (no code until scoped):** plugins (**PLUGINS.md**) — track as a **separate planning pass**. D16 coordinator (**done** — `internal/coordinator`), D17 YOLO classifier (**done** — `internal/permissions/risk.go`), D19 custom agents (**done** — `internal/agents/profile.go`) are all implemented.
 
-Further IDE work should build on the existing MCP stdio client patterns and integration tests.
+Further IDE work: extension publishers adopt `~/.goclaw/ide/*.json` (or document alternate paths) and exercise the same MCP HTTP path as other remote servers.

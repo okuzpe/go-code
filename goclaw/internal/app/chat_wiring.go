@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,7 +43,7 @@ type ChatRuntime struct {
 	ProjectAgentsDir string
 	DisableTools     bool
 	Mock         bool
-	McpSessions  []*mcp.Session
+	McpSessions  []mcp.Conn
 	// McpConnectedIDs lists MCP server ids that started and registered tools successfully (same order as McpSessions).
 	McpConnectedIDs []string
 	OrchOpts        []orchestrator.Option
@@ -165,7 +166,32 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 
 	reg := tools.New()
 	disableTools := noToolsFlag || strings.TrimSpace(os.Getenv("GOCLAW_DISABLE_TOOLS")) == "1"
-	var mcpSessions []*mcp.Session
+	if cfg.IDEBridgeMCP && !disableTools {
+		ideDir := filepath.Join(cfg.UserConfigDir, "ide")
+		if u, hdrs, err := ide.DiscoverMCPEndpoint(ideDir); err == nil {
+			u = strings.TrimSpace(u)
+			if u != "" {
+				dupURL := false
+				hasIDEID := false
+				for _, s := range cfg.MCPServers {
+					if strings.TrimSpace(s.URL) == u {
+						dupURL = true
+					}
+					if strings.TrimSpace(s.ID) == "ide" {
+						hasIDEID = true
+					}
+				}
+				if !dupURL && !hasIDEID {
+					cfg.MCPServers = append(cfg.MCPServers, config.MCPServerConfig{
+						ID:      "ide",
+						URL:     u,
+						Headers: hdrs,
+					})
+				}
+			}
+		}
+	}
+	var mcpSessions []mcp.Conn
 	var mcpConnectedIDs []string
 	var todoStore *todos.Store
 	if !disableTools {
@@ -176,21 +202,49 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 		workerReg := tools.New()
 		registerBuiltInTools(workerReg, workdir, cfg, todos.NewStore())
 		reg.Register(coordinator.New(cfg, client, workerReg, policy, hookReg).WithProfiles(profs))
+		reg.Register(coordinator.NewStopTask())
 
 		for _, srv := range cfg.MCPServers {
-			if srv.Disabled || srv.ID == "" || srv.Command == "" {
+			if srv.Disabled || srv.ID == "" {
+				continue
+			}
+			hasURL := strings.TrimSpace(srv.URL) != ""
+			hasCmd := strings.TrimSpace(srv.Command) != ""
+			if !hasURL && !hasCmd {
 				continue
 			}
 			sctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			mcpSess, err := mcp.StartStdioSession(sctx, srv.Command, srv.Args, srv.EnvSlice(), srv.CWD)
-			if err != nil {
-				slog.Warn("mcp server start failed", "id", srv.ID, "err", err)
-				cancel()
-				continue
+			var dial func(context.Context) (mcp.Conn, error)
+			switch {
+			case hasURL:
+				parsed, perr := url.Parse(strings.TrimSpace(srv.URL))
+				if perr != nil {
+					slog.Warn("mcp url parse failed", "id", srv.ID, "err", perr)
+					cancel()
+					continue
+				}
+				if verr := mcp.ValidateHTTPURL(parsed, cfg.MCPServersAllowRemote); verr != nil {
+					slog.Warn("mcp url not allowed", "id", srv.ID, "err", verr)
+					cancel()
+					continue
+				}
+				urlStr := parsed.String()
+				hdrs := srv.Headers
+				dial = func(_ context.Context) (mcp.Conn, error) {
+					return mcp.NewHTTPSession(urlStr, hdrs)
+				}
+			default:
+				cmd := srv.Command
+				args := append([]string(nil), srv.Args...)
+				env := srv.EnvSlice()
+				cwd := srv.CWD
+				dial = func(dctx context.Context) (mcp.Conn, error) {
+					return mcp.StartStdioSession(dctx, cmd, args, env, cwd)
+				}
 			}
-			if err := mcpSess.Initialize(sctx); err != nil {
-				slog.Warn("mcp initialize failed", "id", srv.ID, "err", err)
-				_ = mcpSess.Close()
+			mcpSess, startErr := mcp.NewResilientConn(sctx, dial)
+			if startErr != nil {
+				slog.Warn("mcp connect failed", "id", srv.ID, "err", startErr)
 				cancel()
 				continue
 			}

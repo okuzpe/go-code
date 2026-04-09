@@ -35,6 +35,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Smoke (--version)
+        run: go run ./cmd/goclaw --version
+
       - name: Test (race on Linux only)
         shell: bash
         run: |

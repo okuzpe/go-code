@@ -10,6 +10,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/hooks"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/session"
+	"github.com/okuzpe/goclaw/internal/todos"
 	"github.com/okuzpe/goclaw/internal/tools"
 )
 
@@ -70,6 +71,32 @@ func TestBuildRequestAllowlistWildcardMCP(t *testing.T) {
 	}
 	if !saw {
 		t.Fatalf("tools: %#v", req.Tools)
+	}
+}
+
+func TestBuildRequestInjectsTodoBlock(t *testing.T) {
+	store := todos.NewStore()
+	if err := store.Apply(`{"merge":false,"todos":[{"id":"t1","content":"do thing","status":"pending"}]}`); err != nil {
+		t.Fatal(err)
+	}
+
+	reg := tools.New()
+	reg.Register(fakeTool{name: "read_file"})
+	o := &Orchestrator{
+		cfg:       config.Default(),
+		session:   session.New(),
+		tools:     reg,
+		perms:     permissions.NewPolicy(),
+		hooks:     hooks.New(),
+		profile:   agents.Explore,
+		todoStore: store,
+	}
+	req := o.buildRequest()
+	if !strings.Contains(req.System, "## Session task list (todo_write)") {
+		t.Fatalf("system prompt missing todo header: %q", req.System)
+	}
+	if !strings.Contains(req.System, "do thing") {
+		t.Fatalf("system prompt missing todo content: %q", req.System)
 	}
 }
 

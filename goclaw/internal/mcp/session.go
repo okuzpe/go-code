@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -351,10 +352,13 @@ func (s *Session) CallTool(ctx context.Context, toolName, argumentsJSON string) 
 		},
 	}
 	if err := s.writeLine(req); err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("mcp: send tools/call: %w", err)
 	}
 	raw, err := s.readUntilResponse(ctx, id)
 	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return "", false, fmt.Errorf("mcp: connection closed while waiting for tools/call (server process may have exited): %w", err)
+		}
 		return "", false, fmt.Errorf("tools/call: %w", err)
 	}
 	var tr toolsCallResult

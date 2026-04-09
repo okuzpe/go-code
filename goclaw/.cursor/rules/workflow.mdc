@@ -44,18 +44,14 @@ For Ollama, point `OLLAMA_HOST` at a local Ollama instance or an HTTP mock.
 ## Current implementation status (2026-04)
 All phases are **done**. The project has: 9 tools, BubbleTea TUI, readline fallback, Cobra CLI, MCP stdio client (multi-server), external hooks + project hooks file, IDE notifier, planfile + `/apply-plan`, all slash commands, permissions, memory, compaction, retry. See `ROADMAP.md` for the next steps.
 
-**Next work areas (in priority order):**
-1. Tier 0: verify `go build ./... && go test ./...` passes cleanly
-2. Tier 1: TUI smoke, error messages, session edge cases
-3. Tier 2: tool edge cases, security hardening (argument injection, curl/wget SSRF)
-4. Tier 3: config + hooks integration tests
+**Next work areas:** see `ROADMAP.md` (remaining items: optional MCP session round-trip test, remote MCP / IDE bridge design, manual TUI checklist runs).
 
 ## Adding a new tool
 1. Read `internal/tools/registry.go` — `Tool` interface
 2. Add `internal/tools/<name>.go`
 3. Enforce output limits from the tool contract (`limits.go`)
 4. Apply security (path boundary + symlinks / SSRF / allowlist) — see `security.mdc`
-5. Register in **`internal/app/chat_wiring.go`** inside `PrepareChatRuntime` (not `cmd/goclaw/main.go`): builtin tools in the `if !disableTools` block; MCP servers use the same file’s `cfg.MCPServers` loop (`mcp.StartStdioSession` + `mcp.RegisterSessionTools`)
+5. Register in **`internal/app/chat_wiring.go`** inside `PrepareChatRuntime` (not `cmd/goclaw/main.go`): builtin tools in the `if !disableTools` block; MCP servers use the same file’s `cfg.MCPServers` loop (`mcp.StartStdioSession` or `mcp.NewHTTPSession` + `mcp.RegisterSessionTools`)
 6. Add `internal/tools/<name>_test.go`
 7. `go build ./... && go test ./...`
 
@@ -64,6 +60,10 @@ All phases are **done**. The project has: 9 tools, BubbleTea TUI, readline fallb
 2. Add `var MyProfile = Profile{...}` after the built-ins
 3. Append to the `All()` slice
 4. `go build ./...`
+
+## Race detector (`go test -race`)
+- **Linux CI:** `goclaw-ci.yml` runs `go test -race` on `ubuntu-latest`.
+- **Local Windows:** the race detector requires **CGO** and a C toolchain (`CGO_ENABLED=1`). If `-race` fails or is unavailable, rely on Linux CI for race coverage, or install a compatible toolchain (e.g. MSYS2/LLVM) for parity.
 
 ## Ollama-dependent tests
 Tests that call `OllamaClient` directly require a live Ollama instance. Guard them:

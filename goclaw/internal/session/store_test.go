@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/okuzpe/goclaw/internal/llm"
 	"github.com/stretchr/testify/require"
@@ -151,7 +152,26 @@ func TestStoreRotation(t *testing.T) {
 
 	// The rotated file (.1.jsonl) must exist.
 	rotated := store.rotatedPath(sess.ID, 1)
-	if _, err := os.Stat(rotated); err != nil {
+		if _, err := os.Stat(rotated); err != nil {
 		t.Errorf("rotation file %s not found after rotation: %v", rotated, err)
 	}
+}
+
+func TestListSessionEntriesOrdersNewestFirst(t *testing.T) {
+	dir := t.TempDir()
+	st, err := NewStore(dir)
+	require.NoError(t, err)
+	s1 := New()
+	require.NoError(t, st.Save(s1))
+	oldID := s1.ID
+
+	require.NoError(t, os.Chtimes(filepath.Join(dir, oldID+".jsonl"), time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC)))
+
+	s2 := New()
+	require.NoError(t, st.Save(s2))
+
+	got, err := st.ListSessionEntries()
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(got), 2)
+	require.Equal(t, s2.ID, got[0].ID, "newer file should sort first")
 }

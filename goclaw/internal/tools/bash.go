@@ -150,7 +150,7 @@ func rejectDangerousArgs(cmdLine string) error {
 	if len(fields) == 0 {
 		return nil
 	}
-	bin := filepath.Base(fields[0])
+	bin := allowlistBinaryName(fields[0])
 	args := fields[1:]
 
 	switch bin {
@@ -165,7 +165,7 @@ func rejectDangerousArgs(cmdLine string) error {
 	case "xargs":
 		// xargs executes a command — validate that the command it would run is on the allowlist.
 		if cmd := xargsCommand(args); cmd != "" {
-			sub := filepath.Base(cmd)
+			sub := allowlistBinaryName(cmd)
 			if _, ok := allowedBinaries[sub]; !ok {
 				return fmt.Errorf("bash: xargs would execute %q which is not on the allowlist", sub)
 			}
@@ -220,7 +220,7 @@ func rejectSSRFInNetworkArgs(cmdLine string) error {
 	if len(fields) == 0 {
 		return nil
 	}
-	bin := filepath.Base(fields[0])
+	bin := allowlistBinaryName(fields[0])
 	if bin != "curl" && bin != "wget" {
 		return nil
 	}
@@ -317,12 +317,22 @@ func shellInvocation(commandLine string) (string, []string) {
 	return "/bin/bash", []string{"-c", commandLine}
 }
 
+// allowlistBinaryName normalizes the first argv token for allowlist checks.
+// On Windows, "git.exe" / "GIT.EXE" is treated as "git".
+func allowlistBinaryName(first string) string {
+	b := strings.ToLower(filepath.Base(strings.TrimSpace(first)))
+	if runtime.GOOS == "windows" && strings.HasSuffix(b, ".exe") {
+		b = strings.TrimSuffix(b, ".exe")
+	}
+	return b
+}
+
 func validateAllowlistedCommand(cmdLine string) error {
 	fields := strings.Fields(cmdLine)
 	if len(fields) == 0 {
 		return fmt.Errorf("empty command")
 	}
-	bin := filepath.Base(fields[0])
+	bin := allowlistBinaryName(fields[0])
 	if bin == "git" {
 		if len(fields) < 2 {
 			return fmt.Errorf("git requires a subcommand")

@@ -47,8 +47,15 @@ type Config struct {
 	// Set in settings.json as "model_context_tokens" when using a non-standard Ollama model.
 	ModelContextTokens int
 
-	// MCPServers lists stdio MCP servers (merged by id from settings files; later files override).
+	// MCPServers lists MCP servers (stdio subprocess and/or streamable HTTP); merged by id from settings.
 	MCPServers []MCPServerConfig
+
+	// MCPServersAllowRemote permits mcp_servers entries with non-loopback URLs (Streamable HTTP).
+	// Default false: only 127.0.0.1, localhost, ::1.
+	MCPServersAllowRemote bool
+
+	// IDEBridgeMCP appends an MCP server from ~/.goclaw/ide/*.json lockfiles when present (D21).
+	IDEBridgeMCP bool
 
 	// TrustedWorkspace allows loading `.goclaw/hooks.json` from the project (D18).
 	TrustedWorkspace bool
@@ -70,13 +77,16 @@ type Config struct {
 	ExternalHooks []ExternalHookEntry
 }
 
-// MCPServerConfig describes one MCP server subprocess (stdio transport).
+// MCPServerConfig describes one MCP server (stdio subprocess and/or Streamable HTTP URL).
+// If both URL and Command are set, URL (HTTP) takes precedence.
 type MCPServerConfig struct {
 	ID       string            `json:"id"`
 	Command  string            `json:"command"`
 	Args     []string          `json:"args"`
 	Env      map[string]string `json:"env,omitempty"`
 	CWD      string            `json:"cwd,omitempty"`
+	URL      string            `json:"url,omitempty"` // Streamable HTTP MCP endpoint
+	Headers  map[string]string `json:"headers,omitempty"`
 	Disabled bool              `json:"disabled,omitempty"`
 }
 

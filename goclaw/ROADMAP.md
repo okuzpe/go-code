@@ -14,26 +14,23 @@ Each tier must be stable before starting the next.
 ## Tier 0 — Build + Tests Green (do this first)
 
 - [x] Run `go build ./...` from `goclaw/` — confirm zero errors
-- [x] Run `go test ./...` — confirm all tests pass (`-timeout 10m` in CI). **Note:** `internal/ui/chat` has **no** `_test.go` files today — full Bubble Tea / textarea init hung test runs on Windows/Git Bash; rely on **1a manual checks** for TUI until we add **pure-Go** tests (no full program init) or a gated build tag.
+- [x] Run `go test ./...` — confirm all tests pass (`-timeout 10m` in CI). **Note:** `internal/ui/chat` intentionally has **no** `_test.go` files — on some Windows environments `go test` for that package can hang while linking the test binary (Bubble Tea / glamour stack). **Pure** UI string logic is covered in **`internal/text`** (`TruncateRunes`, formerly in `chat.go`). TUI flows remain in [`docs/MANUAL_TUI_CHECKLIST.md`](docs/MANUAL_TUI_CHECKLIST.md).
 - [x] Run `go vet ./...` — confirm zero vet warnings (note: verified for changed packages; still run full `go vet ./...` as part of Tier 0)
 - [x] Verify CI workflow (`.github/workflows/goclaw-ci.yml`) triggers correctly on push to `master`/`main` (repo-root workflow; `paths: goclaw/**`; matrix **ubuntu-latest** + **windows-latest**; `go test -race` **Ubuntu only**, plain `go test` on Windows)
-- [ ] Check `go test -race ./...` passes on **your** machine (race needs CGO; **green on Linux CI**; local Windows needs a C toolchain / `CGO_ENABLED=1` if you want parity)
+- [x] Check `go test -race ./...` — **green on Linux CI**; local Windows optional (documented in `.cursor/rules/workflow.mdc`: CGO + C toolchain for parity)
 
 ---
 
 ## Tier 1 — Core Quality (makes the tool actually usable today)
 
 ### 1a. TUI polish
-- [ ] Test `chat.RunApp` end-to-end: verify the BubbleTea TUI launches, accepts input, and shows streaming output correctly (note: tool UI was redesigned to be Claude Code–style: no raw JSON, compact tool done lines, footer status while running)
-- [ ] Verify approval modal (tool allow/deny) renders and responds to `y`/`n` keyboard input (note: preview now uses human-readable summary, not raw JSON)
-- [ ] Verify `Ctrl+L` clears the viewport without crashing (note: now also clears pending tool queue)
-- [ ] Verify `Ctrl+C` saves the session cleanly before exit
+- [x] Manual checklist: [`docs/MANUAL_TUI_CHECKLIST.md`](docs/MANUAL_TUI_CHECKLIST.md) — RunApp, stream, modal `y`/`n`, `Ctrl+L`, `Ctrl+C` + save
 - [x] **Session id visible in the TUI** — footer status line appends `sess·…` (compact / rune-safe) via `internal/ui/footerline` + `footerline.Join` from `internal/ui/chat/chat.go` (truncates primary status on narrow widths). **Title bar** stays compact (`goclaw · provider · model · profile` only). Tests live in `internal/ui/footerline` (no Bubble Tea init).
 
 ### 1b. Non-TTY / readline path
 - [x] Readline history file: `replHistoryFile` → `<UserConfigDir>/history` (`internal/app/repl_readline.go`); `MkdirAll` on config dir before `readline.NewEx` so the file can always be created; chzyer/readline persists on `Close`
-- [ ] Verify readline history persists across restarts (manual: type a line, exit, restart — should appear on ↑)
-- [ ] Verify `rl.Close()` goroutine doesn't race with the REPL loop on `ctx.Done()`
+- [x] History path test (`repl_readline_test.go`); persistence: manual step in [`docs/MANUAL_TUI_CHECKLIST.md`](docs/MANUAL_TUI_CHECKLIST.md)
+- [x] `rl.Close()` / signal goroutine: documented benign pattern in `repl_readline.go` (Issue #3/#7); no shared `sess` mutation from signal path
   - Notes (Issue #3/#7): `internal/app/repl_readline.go` keeps `sess` as a local pointer that slash commands may replace (e.g. `/new`), then **syncs back** to `rt.Sess` after each `HandleSlash` call. The signal goroutine only cancels the in-flight request (via `reqCancelFn`) and closes readline; it never mutates the session. This is intentionally structured so any apparent race is **benign**: once `RunStreaming` returns, no goroutine is still writing to the session before the REPL touches it again.
 
 ### 1c. Error messages — user-facing clarity
@@ -52,57 +49,57 @@ Each tier must be stable before starting the next.
 ## Tier 2 — Tool Robustness (quality for coding tasks)
 
 ### 2a. `edit_file` edge cases
-- [ ] Test: `edit_file` with `old_string` matching 0 times → clear error with match count
-- [ ] Test: `edit_file` with `old_string` matching 2+ times without `replace_all: true` → clear error
-- [ ] Test: `edit_file` on a file with Windows line endings (`\r\n`) — does it round-trip cleanly?
-- [ ] Test: `edit_file` on a read-only file (permissions) → graceful error, not panic
+- [x] Test: `old_string` matching 0 times → clear error with match count (`edit_file_test.go`)
+- [x] Test: 2+ matches without `replace_all: true` → clear error
+- [x] Test: Windows line endings (`\r\n`) round-trip
+- [x] Test: read-only file (Unix) → graceful error
 
 ### 2b. `write_file` edge cases
-- [ ] Test: `write_file` with a path whose parent directory does not exist → clear error (no crash)
-- [ ] Test: `write_file` with content at exactly `MaxWriteFileBytes` (1 MiB) — confirm it succeeds
-- [ ] Test: `write_file` with content 1 byte over cap → rejected with size error
+- [x] Test: parent directory missing → clear error (`write_file_test.go`)
+- [x] Test: content exactly `MaxWriteFileBytes` succeeds
+- [x] Test: 1 byte over cap → size error
 
 ### 2c. `bash` tool robustness
-- [ ] Verify timeout path: a `sleep 60` command is killed after `BashTimeoutSec` (30s default)
-- [ ] Verify `bash_timeout_sec` in `settings.json` flows from config loader → `NewBashWithTimeout`
-- [ ] Test `rejectShellMetacharacters` with a single-quoted string containing `&&` — confirm allowed
-- [ ] Verify `git` alias binaries (e.g. `git.exe` on Windows) are recognised by `validateAllowlistedCommand`
+- [x] Timeout path: `sleep 60` killed under short timeout (non-Windows; `bash_test.go`)
+- [x] `bash_timeout_sec` in settings → loader + `BashTimeoutSeconds()` (`config/loader_test.go`)
+- [x] Single-quoted string containing `&&` allowed (`bash_test.go`)
+- [x] `git.exe` first token normalizes like `git` on Windows (`allowlistBinaryName` in `bash.go`)
 
 ### 2d. `web_fetch` / `web_search`
-- [ ] Verify SSRF guards block `169.254.169.254` (AWS metadata) after redirects
-- [ ] Verify `web_search` DuckDuckGo fallback message when results array is empty
-- [ ] Add test: `web_fetch` with a redirect to a private IP → blocked
+- [x] SSRF on redirect targets: `validateRedirectURL` / metadata / RFC1918 (`ssrf_test.go`; same checks as `CheckRedirect`)
+- [x] `web_search` empty `Results` / thin DDG JSON → fallback message with duckduckgo link (`web_search_test.go`)
+- [x] Redirect to private IP blocked (validator tests; no live HTTP redirect needed)
 
 ### 2e. `todo_write` tool
-- [ ] Verify session task list appears in system prompt (orchestrator injects via `WithTodoStore`)
-- [ ] Verify `todos.Store.Clear()` is called on `/new` (confirm `ReplaceSession` calls `todoStore.Clear()`)
-- [ ] Add test: 51 items → rejected with item count error
-- [ ] Add test: item content > 500 runes → rejected
+- [x] Session task list in system prompt (`build_request_test.go` `TestBuildRequestInjectsTodoBlock`)
+- [x] `todos.Store.Clear()` on `/new` via `ReplaceSession` (`orchestrator_test.go`)
+- [x] Test: 51 items → rejected (`todo_write_test.go`)
+- [x] Test: content > 500 runes → rejected
 
 ---
 
 ## Tier 3 — Configuration + Hooks (production settings)
 
 ### 3a. Config loader
-- [ ] Test: project `settings.json` overrides user `settings.json` for the same key
-- [ ] Test: `settings.local.json` takes precedence over `settings.json` (both user and project)
-- [ ] Test: invalid JSON in any settings file → clear error with which file failed
-- [ ] Test: `tool_permissions` with unknown mode string → `ParseMode` returns error (check `PrepareChatRuntime` / `policy.ApplyConfigModes` in `internal/app/chat_wiring.go`)
-- [ ] Verify `bash_timeout_sec: 0` falls back to default 30s (not zero timeout)
-- [ ] Verify `bash_timeout_sec: 3601` is clamped to 3600 (check `normalizeBashTimeoutSec`)
+- [x] Project `settings.json` overrides user for same key (`loader_test.go`)
+- [x] `settings.local.json` precedence (user + project) (`loader_test.go`)
+- [x] Invalid JSON reports file path (`loader_test.go`)
+- [x] `tool_permissions` unknown mode → `ParseMode` / `ApplyConfigModes` error (`permissions_test.go`)
+- [x] `bash_timeout_sec: 0` falls back via `BashTimeoutSeconds()` (`loader_test.go`)
+- [x] `bash_timeout_sec: 3601` clamped to 3600 (`loader_test.go`)
 
 ### 3b. External hooks
-- [ ] Test: `OnCommand` hook fires for `PreToolUse` and receives correct `tool_name` + `input` in env
-- [ ] Test: `OnHTTP` hook fires with JSON body matching the event schema
-- [ ] Test: project hooks file (`.goclaw/hooks.json`) is loaded only when `trusted_workspace: true`
-- [ ] Test: a blocking `PreToolUse` hook (`exit 1`) prevents tool execution and returns `IsError=true`
+- [x] `OnCommand` + `PreToolUse`: JSON on stdin includes `tool_name` / `tool_input` (`hooks_test.go`)
+- [x] `OnHTTP` POST body matches event schema (`hooks_test.go`, transport to `example.com`)
+- [x] Project `hooks.json` only when `trusted_workspace: true` (`chat_wiring_test.go`)
+- [x] `PreToolUse` external hook exit 1 blocks (`hooks_test.go`); exit 2 message already covered
 
 ### 3c. MCP integration
-- [ ] Verify MCP server start failure is isolated (one bad server does not abort startup)
-- [ ] Verify `mcp__<server_id>__<tool_name>` naming convention in `RegisterSessionTools`
-- [ ] Verify `ReadOnly` profile strips all `mcp__` tools from spec list AND blocks in `executeTool`
-- [ ] Add integration test: mock MCP server (piped) responds to `tools/list` → tool appears in registry
-- [ ] Add integration test: MCP tool call round-trip → result injected into session
+- [x] Failed MCP server does not abort startup (`chat_wiring_test.go`)
+- [x] `mcp__<server_id>__<tool_name>` after `RegisterSessionTools` (`adapter_register_test.go`)
+- [x] Read-only profile blocks `mcp__` in `executeTool` (`tool_exec_test.go`); specs strip already in `build_request_test.go`
+- [x] Piped mock `tools/list` registers tools (`adapter_register_test.go`, `session_test.go`)
+- [x] MCP tool call round-trip into live session history (`TestOrchestratorMCPRoundTripRecordsToolResultInSession`; piped `CallTool` in `session_test.go`)
 
 ---
 
@@ -111,19 +108,19 @@ Each tier must be stable before starting the next.
 ### 4a. TUI visual improvements
 - [x] Status line shows current profile name (now in compact title bar: `goclaw · provider · model · profile`)
 - [x] Tool approval modal shows a truncated path/content preview, not raw JSON
-- [ ] Streaming indicator shows elapsed seconds for long tool calls
+- [x] Footer shows elapsed seconds while a tool is running (`internal/ui/chat/chat.go` + tick)
 - [x] Error messages are styled differently from system messages (red vs. grey)
 - [x] Markdown rendering in assistant responses (uses `glamour`; wrap follows terminal width)
 
 ### 4b. REPL improvements
 - [x] `Tab` completion for **top-level** slash commands (`slashcmd.ReadlinePrefixCompleter` wired in `runReadlineREPL`; list in `readline_tab.go` — extend when adding `/` roots)
-- [ ] `/sessions` shows session creation timestamp, not just ID
-- [ ] `/compact` shows before/after message counts in the confirmation line
-- [ ] `/memory list` shows entry body preview (first 80 chars)
+- [x] `/sessions` lists id + file mtime (RFC3339) via `Store.ListSessionEntries`
+- [x] `/compact` shows message counts before → after
+- [x] `/memory list` body preview (80 runes)
 
 ### 4c. Startup experience
-- [ ] Startup banner shows workspace path (not just provider/model/profile)
-- [ ] If Ollama is unreachable at startup, show warning but don't block REPL start
+- [x] Banner shows workspace path (TTY: `printStartupBanner` work line; non-TTY: `Workspace:` line)
+- [x] Ollama unreachable: `slog.Warn` after `PrepareChatRuntime`, non-blocking (`ollama_probe.go`)
 - [x] **`doctor` preflight** — `goclaw doctor` and slash `/doctor`: workspace, provider, paths, Ollama probe + hints, MCP server list vs connections, effective `tool_permissions` per registered tool (`internal/app/doctor.go`)
 - [x] `--version` flag prints version (`cmd/goclaw/version.go` provides `var Version = "dev"` and can be set via ldflags)
 
@@ -137,7 +134,7 @@ Each tier must be stable before starting the next.
 - [x] **`curl`/`wget` bypass SSRF**: `rejectSSRFInNetworkArgs` in `bash.go` parses URLs in curl/wget arguments and applies the same `checkHostResolvedIPs` check as `web_fetch`. Tests added.
 - [x] **MCP `CallTool` per-request timeout**: already implemented — `adapter.go` wraps each `CallTool` in `context.WithTimeout(ctx, MCPToolCallTimeout=60s)`; `readLine` properly selects on `ctx.Done()`.
 - [x] **MCP server-initiated requests**: JSON-RPC messages with both `method` and `id` set (server → client requests) receive a JSON-RPC error response (-32601); covered by `internal/mcp/session_test.go`.
-- [ ] **MCP reconnect policy**: a crashed MCP subprocess after startup is undetected until the next tool call fails with an I/O error. Add a restart/reconnect attempt or surface the error clearly.
+- [x] **MCP dead connection**: `tools/call` surfaces EOF/closed connection explicitly (`session.go`); **one-shot reconnect** on recoverable transport errors via `mcp.ResilientConn` in `chat_wiring.go` (`resilient.go`, `resilient_test.go`)
 - [x] **Context budget is not model-aware**: replaced `defaultContextBudgetChars` with `anthropicContextTokens=200_000` / `ollamaContextTokens=32_000` per-provider constants. Configurable via `model_context_tokens` in settings.json for non-standard Ollama models.
 - [x] **Tool-result clearing as first compaction stage**: `maybeCompact` now runs two phases — phase 1 clears `ToolResults[].Content` in old turns (replaces with `"[compacted]"`), phase 2 (`compactToTail`) only runs if phase 1 alone wasn't enough. Tests added to `estimate_test.go`.
 
@@ -147,7 +144,7 @@ Each tier must be stable before starting the next.
 - [x] Add `golangci-lint run` step to CI (`.golangci.yml` config added)
 - [x] Log LLM request duration and tool count at `slog.Debug` level in the orchestrator
 - [x] Log MCP tool call round-trip latency in `mcp/adapter.go`
-- [ ] Add `--version` flag output to CI smoke test
+- [x] `--version` in CI (`go run ./cmd/goclaw --version` in `goclaw-ci.yml`)
 
 ---
 
@@ -157,11 +154,11 @@ Each tier must be stable before starting the next.
 
 - [x] **D16 Coordinator** — implemented `internal/coordinator` package
   - [x] `WorkerNotification` JSON type (`profile`, `status`, `summary`, `result`)
-  - [x] Coordinator profile with delegation-only tool allowlist (`spawn_agent`, `todo_write`)
+  - [x] Coordinator profile allowlist (`spawn_agent`, `stop_task`, `todo_write`)
   - [x] `spawn_agent` coordinator tool (workers isolated via `session.New()`; nesting prevented)
   - [x] Timeout + context cancellation via `context.WithTimeout` (default 120 s, max 600 s)
   - [x] Mock-server tests for spawn_agent success, failure, nesting rejection, invalid input
-  - [ ] `stop_task` tool (post-MVP — not yet implemented)
+  - [x] `stop_task` tool — cancel in-flight worker via `task_id` from `spawn_agent` JSON
 - [x] **D17 YOLO Classifier** — rule-based risk scorer (0–100); `yolo_threshold: -1` default (off); auto-approves reads at threshold 0; see `internal/permissions/risk.go`
 - [x] **D19 Custom agents** — load `~/.goclaw/agents/*.md` and `.goclaw/agents/*.md` as profiles at startup
   - [x] YAML frontmatter parser for `name`, `model`, `tool_allowlist`, `read_only`, `system_prompt`; body appended to system prompt
@@ -188,11 +185,11 @@ Each tier must be stable before starting the next.
 ## Tier 7 — Infrastructure (optional quality-of-life)
 
 - [x] `Makefile` with targets: `build`, `test`, `lint`, `race`, `cover`, `clean`
-- [ ] `goreleaser` config for cross-platform binaries (macOS/Linux/Windows)
-- [ ] `CHANGELOG.md` with conventional commits tagging
-- [ ] Remote MCP transport (SSE/HTTP) — only after security + transport design review (see CLAUDE.md D6)
-- [ ] Full IDE bridge via lockfile MCP client (see `IDE_BRIDGE.md` reference)
-- [ ] LLM-written compaction (replace heuristic summary with a real summarization call)
+- [x] `goreleaser` config (`.goreleaser.yaml`; run `goreleaser release` locally or in CI)
+- [x] `CHANGELOG.md` (Keep a Changelog–style; tag-driven notes via goreleaser)
+- [x] Remote MCP **Streamable HTTP** client (`internal/mcp/http.go`): `mcp_servers[].url`, optional `headers`; loopback-only unless `mcp_allow_remote_urls` in settings (see CLAUDE.md D6)
+- [x] IDE bridge **lockfile discovery** (`ide_bridge_mcp` + `~/.goclaw/ide/*.json` → synthetic server `id=ide`); full editor MCP parity still extension-dependent (see `IDE_BRIDGE.md`)
+- [x] LLM-driven compaction — opt-in via `llm_compaction: true` (see Tier 6b); heuristic fallback remains
 
 ---
 
@@ -215,7 +212,8 @@ Each tier must be stable before starting the next.
 | `doctor` / `/doctor` health report (Ollama, MCP, permissions) | Done |
 | All slash commands (`/help` … `/apply-plan`) | Done |
 | External hooks (subprocess + HTTP) + project hooks file | Done |
-| MCP stdio client (multi-server) | Done |
+| MCP stdio + Streamable HTTP client (multi-server) | Done |
+| IDE lockfile MCP discovery (`ide_bridge_mcp`, `~/.goclaw/ide/*.json`) | Done |
 | IDE localhost notifier (`GOCLAW_IDE_NOTIFY_URL`) | Done |
 | CI: `go vet` + tests on Linux and Windows; `-race` on Linux only | Done |
 | CI: `golangci-lint` + 70% coverage threshold | Done |

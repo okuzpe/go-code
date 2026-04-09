@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/memory"
@@ -83,14 +84,22 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string) (handled bo
 		if store == nil {
 			return true, "", false, "", fmt.Errorf("/sessions: no session store configured")
 		}
-		ids, err := store.ListIDs()
+		entries, err := store.ListSessionEntries()
 		if err != nil {
 			return true, "", false, "", err
 		}
-		if len(ids) == 0 {
+		if len(entries) == 0 {
 			return true, "(no saved sessions on disk)", false, "", nil
 		}
-		return true, strings.Join(ids, "\n"), false, "", nil
+		var b strings.Builder
+		for _, e := range entries {
+			ts := e.ModTime.UTC().Format(time.RFC3339)
+			b.WriteString(e.ID)
+			b.WriteString("  ")
+			b.WriteString(ts)
+			b.WriteByte('\n')
+		}
+		return true, strings.TrimSuffix(b.String(), "\n"), false, "", nil
 
 	case "new":
 		if orch == nil {
@@ -131,8 +140,13 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string) (handled bo
 		if orch == nil {
 			return true, "", false, "", fmt.Errorf("/compact requires a running agent")
 		}
+		if sess == nil || *sess == nil {
+			return true, "", false, "", fmt.Errorf("/compact: no active session")
+		}
+		before := (*sess).Len()
 		orch.ForceCompact()
-		return true, "(compaction applied: older turns summarized; tail preserved)", false, "", nil
+		after := (*sess).Len()
+		return true, fmt.Sprintf("(compaction applied: %d → %d messages; older turns summarized; tail preserved)", before, after), false, "", nil
 
 	case "edit":
 		if orch == nil {
@@ -173,6 +187,10 @@ example: /memory add project style Prefer tabs over spaces for Go imports`)
 				if e.Description != "" {
 					b.WriteString(" — ")
 					b.WriteString(e.Description)
+				}
+				if preview := previewRunes(e.Body, 80); preview != "" {
+					b.WriteString(" | ")
+					b.WriteString(preview)
 				}
 				b.WriteByte('\n')
 			}
@@ -384,6 +402,19 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+func previewRunes(s string, max int) string {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, "\n", " ")
+	if max <= 0 || s == "" {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return string(r)
+	}
+	return string(r[:max]) + "…"
 }
 
 // sortedProfileNames returns a comma-separated sorted list of profile names for error messages.

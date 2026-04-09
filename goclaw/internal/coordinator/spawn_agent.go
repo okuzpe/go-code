@@ -30,6 +30,7 @@ const (
 // The coordinator LLM receives this as a tool_result and synthesizes it
 // into its response for the user.
 type WorkerNotification struct {
+	TaskID  string `json:"task_id"` // worker session id; use with stop_task
 	Profile string `json:"profile"`
 	Status  string `json:"status"`  // "completed" | "failed"
 	Summary string `json:"summary"` // first non-empty line of the result
@@ -154,6 +155,9 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 
 	// Isolated session — worker never sees the coordinator's history.
 	workerSess := session.New()
+	taskID := workerSess.ID
+	registerWorkerCancel(taskID, cancel)
+	defer unregisterWorkerCancel(taskID)
 
 	// Auto-allow all tools in the worker registry.
 	// The coordinator's spawn_agent call already received user approval (if any was required).
@@ -182,7 +186,7 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 	// Run the worker with no streaming sink — results are captured and returned as JSON.
 	result, err := orch.RunStreaming(workerCtx, in.Task, nil)
 
-	notif := WorkerNotification{Profile: profile.Name}
+	notif := WorkerNotification{TaskID: taskID, Profile: profile.Name}
 	if err != nil {
 		notif.Status = "failed"
 		notif.Summary = fmt.Sprintf("worker failed: %v", err)

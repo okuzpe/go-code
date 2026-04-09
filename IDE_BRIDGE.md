@@ -87,11 +87,11 @@ Orden de resolución orientativa: variable de entorno (solo dev) → cadena de c
 
 ## 6. goclaw implementation (minimal, English)
 
-**Current code:** [`goclaw/internal/ide/notify.go`](goclaw/internal/ide/notify.go).
+**Current code:** [`goclaw/internal/ide/notify.go`](goclaw/internal/ide/notify.go), [`goclaw/internal/ide/discovery.go`](goclaw/internal/ide/discovery.go).
 
-- Environment variable **`GOCLAW_IDE_NOTIFY_URL`**: if set to `http` or `https` and the host is **`127.0.0.1`**, **`localhost`**, or **`::1`**, the orchestrator’s **after-tool** callback issues a **best-effort POST** with JSON `{"tool", "result_bytes", "is_error"}` after each tool completes.
-- **No** lockfile discovery or full MCP-to-editor client yet — that remains the **D21** roadmap path described in §2–§4 above.
-- Remote URLs are rejected (returns a no-op notifier).
+- Environment variable **`GOCLAW_IDE_NOTIFY_URL`**: if set to `http` or `https` and the host is **`127.0.0.1`**, **`localhost`**, or **`::1`**, the orchestrator’s **after-tool** callback issues a **best-effort POST** with JSON `{"tool", "result_bytes", "is_error"}` after each tool completes. Remote URLs are rejected (no-op notifier).
+- **`ide_bridge_mcp`:** when `true` in merged `settings.json`, goclaw scans **`~/.goclaw/ide/*.json`** (sorted by name), reads the first file with a valid **loopback** `url` and optional `headers`, and appends a synthetic MCP server **`id: "ide"`** before connecting (same Streamable HTTP stack as `mcp_servers[].url` in [`goclaw/internal/mcp/http.go`](goclaw/internal/mcp/http.go)). Extensions can drop a lockfile such as `{"url":"http://127.0.0.1:1234/mcp","headers":{"Authorization":"Bearer …"}}`.
+- **D21 “full bridge”** still depends on editor-side MCP servers and UX; goclaw provides HTTP client + discovery, not IDE UI.
 
 ---
 
@@ -101,3 +101,4 @@ Orden de resolución orientativa: variable de entorno (solo dev) → cadena de c
 |-------|--------|
 | 2026-04-07 | Creación: IDE local vs Bridge remoto, descubrimiento, transports, amenaza localhost, eco Go, **D21** |
 | 2026-04-07 | §6: `GOCLAW_IDE_NOTIFY_URL`, `internal/ide/notify.go`, scope vs full D21. |
+| 2026-04-09 | §6: `ide_bridge_mcp`, `internal/ide/discovery.go`, lockfile JSON → MCP HTTP. |

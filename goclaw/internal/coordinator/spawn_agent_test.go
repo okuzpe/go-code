@@ -55,9 +55,11 @@ func TestSpawnAgentSuccess(t *testing.T) {
 
 	var notif WorkerNotification
 	require.NoError(t, json.Unmarshal([]byte(result.Content), &notif), "content: %s", result.Content)
+	require.NotEmpty(t, notif.TaskID)
 	require.NotEmpty(t, notif.Summary)
 
 	want := WorkerNotification{
+		TaskID:  notif.TaskID,
 		Status:  "completed",
 		Profile: "explore",
 		Result:  "Found: main.go, run.go",

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/spinner"
@@ -14,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
+	"github.com/okuzpe/goclaw/internal/text"
 	"github.com/okuzpe/goclaw/internal/ui/footerline"
 )
 
@@ -53,8 +55,13 @@ type Model struct {
 	// toolWaitQueue pairs each OnToolUse with the following OnToolResult (same order).
 	toolWaitQueue []pendingTool
 
+	// toolWaitStartedAt is when the first pending tool in the queue began (for elapsed seconds in the footer).
+	toolWaitStartedAt time.Time
+
 	sessionID string
 }
+
+type toolTickMsg struct{}
 
 // pendingTool holds human-readable tool activity for compact status + done lines.
 type pendingTool struct {
@@ -193,6 +200,10 @@ func (m *Model) Init() tea.Cmd {
 	return nil
 }
 
+func tickToolWait() tea.Cmd {
+	return tea.Tick(time.Second, func(time.Time) tea.Msg { return toolTickMsg{} })
+}
+
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
@@ -260,9 +271,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.curAssistant.Reset()
 		m.curAssistantLineIdx = -1
 		m.toolWaitQueue = append(m.toolWaitQueue, pendingTool{name: msg.name, summary: msg.preview})
+		if len(m.toolWaitQueue) == 1 {
+			m.toolWaitStartedAt = time.Now()
+		}
 		m.statusLine = m.toolQueueStatusLine()
 		m.viewport.GotoBottom()
-		return m, nil
+		return m, tickToolWait()
+	case toolTickMsg:
+		if len(m.toolWaitQueue) == 0 {
+			m.toolWaitStartedAt = time.Time{}
+			return m, nil
+		}
+		m.statusLine = m.toolQueueStatusLine()
+		m.viewport.GotoBottom()
+		return m, tickToolWait()
 	case toolResultMsg:
 		job, ok := m.popToolJob()
 		if !ok {
@@ -270,11 +292,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.appendToolDoneLine(job.name, job.summary, msg.isError)
 		if len(m.toolWaitQueue) > 0 {
+			m.toolWaitStartedAt = time.Now()
 			m.statusLine = m.toolQueueStatusLine()
 		} else {
+			m.toolWaitStartedAt = time.Time{}
 			m.statusLine = ""
 		}
 		m.viewport.GotoBottom()
+		if len(m.toolWaitQueue) > 0 {
+			return m, tickToolWait()
+		}
 		return m, nil
 	case errMsg:
 		m.streaming = false
@@ -571,7 +598,14 @@ func (m *Model) toolQueueStatusLine() string {
 	if len(m.toolWaitQueue) == 0 {
 		return ""
 	}
-	return orchestrator.ToolWorkingPhrase(m.toolWaitQueue[0].name) + "…"
+	base := orchestrator.ToolWorkingPhrase(m.toolWaitQueue[0].name)
+	if !m.toolWaitStartedAt.IsZero() {
+		secs := int(time.Since(m.toolWaitStartedAt).Seconds())
+		if secs >= 1 {
+			base = fmt.Sprintf("%s (%ds)", base, secs)
+		}
+	}
+	return base + "…"
 }
 
 func (m *Model) popToolJob() (pendingTool, bool) {
@@ -598,7 +632,7 @@ func (m *Model) appendToolDoneLine(toolName, summary string, isError bool) {
 	} else {
 		suffix := ""
 		if s := strings.TrimSpace(summary); s != "" {
-			suffix = "  " + th.Dim.Render(truncateRunes(s, 96))
+			suffix = "  " + th.Dim.Render(text.TruncateRunes(s, 96))
 		}
 		line = fmt.Sprintf("  %s  %s%s",
 			th.ToolResultOk.Render("✓"),
@@ -674,20 +708,6 @@ func (m *Model) finalizeCurrentSegment() {
 
 func stripANSI(s string) string {
 	return ansi.Strip(s)
-}
-
-func truncateRunes(s string, max int) string {
-	if max <= 0 || s == "" {
-		return s
-	}
-	n := 0
-	for i := range s {
-		if n == max {
-			return s[:i] + "…"
-		}
-		n++
-	}
-	return s
 }
 
 type approvalMsg ApprovalRequest

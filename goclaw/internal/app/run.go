@@ -70,6 +70,7 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 	if err != nil {
 		return err
 	}
+	maybeWarnOllamaUnreachable(rt.Cfg)
 	defer func() {
 		for _, s := range rt.McpSessions {
 			_ = s.Close()

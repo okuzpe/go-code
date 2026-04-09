@@ -383,3 +383,66 @@ func TestReplaceSessionClearsTodoStore(t *testing.T) {
 	orch.ReplaceSession(session.New())
 	require.Empty(t, store.FormatForPrompt())
 }
+
+// mcpRoundTripTool stands in for an MCP-backed tool (name uses mcp__ prefix).
+type mcpRoundTripTool struct{}
+
+func (mcpRoundTripTool) Name() string { return "mcp__rt__echo" }
+
+func (mcpRoundTripTool) Description() string { return "round-trip test" }
+
+func (mcpRoundTripTool) InputSchema() any { return map[string]any{"type": "object"} }
+
+func (mcpRoundTripTool) Execute(_ context.Context, _ string) (tools.Result, error) {
+	return tools.Result{Content: "mcp-rt-session-payload"}, nil
+}
+
+func TestOrchestratorMCPRoundTripRecordsToolResultInSession(t *testing.T) {
+	ctx := context.Background()
+	sess := session.New()
+	reg := tools.New()
+	reg.Register(mcpRoundTripTool{})
+
+	pol := permissions.NewPolicy()
+	pol.Set("mcp__rt__echo", permissions.ModeAllow)
+
+	cfg := config.Default()
+	cfg.Provider = "anthropic"
+	cfg.APIKey = "test-key"
+
+	srv := mockserver.New([]mockserver.Scenario{
+		{
+			Match: "invoke mcp",
+			Tool:  &mockserver.ToolReply{Name: "mcp__rt__echo", Input: `{}`},
+		},
+		{Match: "mcp-rt-session-payload", Response: "saw mcp output"},
+	})
+	defer srv.Close()
+
+	orch := New(
+		cfg,
+		llm.NewAnthropic("test-key", srv.URL),
+		sess,
+		reg,
+		pol,
+		hooks.New(),
+		agents.GeneralPurpose,
+	)
+
+	out, err := orch.Run(ctx, "invoke mcp")
+	require.NoError(t, err)
+	require.Equal(t, "saw mcp output", out)
+
+	var found bool
+	for _, m := range sess.Messages {
+		if m.Role != "user" || len(m.ToolResults) == 0 {
+			continue
+		}
+		for _, tr := range m.ToolResults {
+			if tr.ToolName == "mcp__rt__echo" && strings.Contains(tr.Content, "mcp-rt-session-payload") {
+				found = true
+			}
+		}
+	}
+	require.True(t, found, "expected session history to include MCP tool_result content")
+}

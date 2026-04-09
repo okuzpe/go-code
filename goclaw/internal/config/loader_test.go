@@ -116,3 +116,19 @@ func TestLoadBashTimeoutSecAboveMaxClampedInBashTimeoutSeconds(t *testing.T) {
 	require.Equal(t, 3601, cfg.BashTimeoutSec)
 	require.Equal(t, 3600, cfg.BashTimeoutSeconds())
 }
+
+func TestLoadMCPIdeBridgeFlags(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	userDir := filepath.Join(home, ".goclaw")
+	require.NoError(t, os.MkdirAll(userDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(userDir, "settings.json"),
+		[]byte(`{"mcp_allow_remote_urls":true,"ide_bridge_mcp":true}`), 0o600))
+	base := Default()
+	base.UserConfigDir = userDir
+	base.ProjectConfigDir = ".goclaw"
+	cfg, err := Load(base, cwd)
+	require.NoError(t, err)
+	require.True(t, cfg.MCPServersAllowRemote)
+	require.True(t, cfg.IDEBridgeMCP)
+}

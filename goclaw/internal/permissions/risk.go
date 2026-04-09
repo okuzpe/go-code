@@ -34,6 +34,9 @@ func RiskScore(toolName, toolInput string) int {
 	case "spawn_agent":
 		return 20
 
+	case "stop_task":
+		return 5
+
 	case "write_file", "edit_file":
 		return fileWriteRiskScore(toolInput)
 

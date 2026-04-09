@@ -63,10 +63,11 @@ var (
 	// It never uses file or shell tools directly — all work is delegated.
 	Coordinator = Profile{
 		Name:          "coordinator",
-		ToolAllowlist: []string{"spawn_agent", "todo_write"},
+		ToolAllowlist: []string{"spawn_agent", "stop_task", "todo_write"},
 		ReadOnly:      true,
 		SystemPrompt: "You are a coordinator agent. Break complex tasks into focused, self-contained " +
 			"sub-tasks and delegate them to worker agents using spawn_agent. " +
+			"Each spawn_agent result includes task_id; use stop_task with that id to cancel a worker that is still running. " +
 			"Workers are fully isolated — they cannot see this conversation, so include all " +
 			"necessary file paths, function names, and context in each task description. " +
 			"Synthesize worker results into a clear final response for the user. " +

@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/okuzpe/goclaw/internal/config"
+	"github.com/okuzpe/goclaw/internal/mcp"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/spf13/cobra"
@@ -66,6 +68,7 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 	lines = append(lines, mcpSummaryLines(rt)...)
 
 	hintLines := hintLines(cfg, ollamaOK, rt.DisableTools)
+	hintLines = append(hintLines, mcpConnectionHintLines(cfg, rt)...)
 	if len(hintLines) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, "hints:")
@@ -84,7 +87,10 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 func mcpSummaryLines(rt *ChatRuntime) []string {
 	eligible := 0
 	for _, srv := range rt.Cfg.MCPServers {
-		if srv.Disabled || strings.TrimSpace(srv.ID) == "" || strings.TrimSpace(srv.Command) == "" {
+		if srv.Disabled || strings.TrimSpace(srv.ID) == "" {
+			continue
+		}
+		if strings.TrimSpace(srv.Command) == "" && strings.TrimSpace(srv.URL) == "" {
 			continue
 		}
 		eligible++
@@ -97,6 +103,56 @@ func mcpSummaryLines(rt *ChatRuntime) []string {
 	}
 	if !rt.DisableTools && eligible > 0 && connected < eligible {
 		out = append(out, "  - note: one or more MCP servers failed to start; see log output above")
+	}
+	return out
+}
+
+func mcpConnectionHintLines(cfg config.Config, rt *ChatRuntime) []string {
+	if rt.DisableTools {
+		return nil
+	}
+	var out []string
+	eligible := 0
+	connected := len(rt.McpSessions)
+	for _, srv := range cfg.MCPServers {
+		if srv.Disabled || strings.TrimSpace(srv.ID) == "" {
+			continue
+		}
+		if strings.TrimSpace(srv.Command) == "" && strings.TrimSpace(srv.URL) == "" {
+			continue
+		}
+		eligible++
+		u := strings.TrimSpace(srv.URL)
+		if u == "" {
+			continue
+		}
+		parsed, err := url.Parse(u)
+		if err != nil {
+			continue
+		}
+		if verr := mcp.ValidateHTTPURL(parsed, false); verr != nil && !cfg.MCPServersAllowRemote {
+			out = append(out, fmt.Sprintf("  MCP %q: %v — or set \"mcp_allow_remote_urls\": true if you trust this host.", srv.ID, verr))
+		}
+		host := strings.ToLower(parsed.Hostname())
+		if strings.HasPrefix(strings.ToLower(u), "https://") && (host == "127.0.0.1" || host == "localhost" || host == "::1") {
+			out = append(out, "  HTTPS MCP on loopback: ensure the certificate is trusted, or use http:// for local dev.")
+		}
+	}
+	if eligible > 0 && connected < eligible {
+		out = append(out, "  MCP: check startup logs for initialize/tools/list errors. HTTP: confirm the server is up, path is correct, and add Authorization in mcp_servers[].headers if you need auth (401).")
+	}
+	return dedupeDoctorHints(out)
+}
+
+func dedupeDoctorHints(lines []string) []string {
+	seen := make(map[string]struct{}, len(lines))
+	var out []string
+	for _, line := range lines {
+		if _, ok := seen[line]; ok {
+			continue
+		}
+		seen[line] = struct{}{}
+		out = append(out, line)
 	}
 	return out
 }
@@ -122,7 +178,7 @@ func mcpServerSection(rt *ChatRuntime) []string {
 	out := []string{"mcp servers:"}
 	servers := rt.Cfg.MCPServers
 	if len(servers) == 0 {
-		out = append(out, "  (none in settings.json — add \"mcp_servers\" array to configure stdio servers)")
+		out = append(out, "  (none in settings.json — add \"mcp_servers\" with \"command\" and/or \"url\")")
 		return out
 	}
 	connected := make(map[string]struct{}, len(rt.McpConnectedIDs))
@@ -138,12 +194,13 @@ func mcpServerSection(rt *ChatRuntime) []string {
 func formatMCPServerLine(srv config.MCPServerConfig, toolsDisabled bool, connected map[string]struct{}) string {
 	id := strings.TrimSpace(srv.ID)
 	cmd := strings.TrimSpace(srv.Command)
+	url := strings.TrimSpace(srv.URL)
 	prefix := "  "
 	if srv.Disabled {
 		return prefix + "○ disabled  id=" + emptyPlaceholder(id) + "  " + shortCommandSummary(srv)
 	}
-	if id == "" || cmd == "" {
-		return prefix + "✗ invalid  (need non-empty id and command)  id=" + emptyPlaceholder(id)
+	if id == "" || (cmd == "" && url == "") {
+		return prefix + "✗ invalid  (need non-empty id and command or url)  id=" + emptyPlaceholder(id)
 	}
 	if toolsDisabled {
 		return prefix + "○ not started  id=" + id + "  (tools disabled)  " + shortCommandSummary(srv)
@@ -162,6 +219,12 @@ func emptyPlaceholder(s string) string {
 }
 
 func shortCommandSummary(srv config.MCPServerConfig) string {
+	if u := strings.TrimSpace(srv.URL); u != "" {
+		if len(u) > 72 {
+			u = u[:69] + "..."
+		}
+		return "url=" + u
+	}
 	cmd := strings.TrimSpace(srv.Command)
 	var b strings.Builder
 	b.WriteString("cmd=")
