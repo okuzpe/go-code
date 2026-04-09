@@ -114,10 +114,17 @@ Config expansion: `${VAR}` and `${VAR:-default}`.
 
 ---
 
-## 9. Changelog
+## 9. Copy-paste template (`mcp_servers`)
+
+Merge the `mcp_servers` array from [`goclaw/docs/mcp_servers.example.json`](goclaw/docs/mcp_servers.example.json) into `~/.goclaw/settings.json` or `.goclaw/settings.json`. Both entries default to `"disabled": true` so you can enable one at a time after adjusting paths or the loopback URL. Tools appear to the model as `mcp__filesystem_docs__*` and `mcp__streamable_http_local__*` (exact suffixes come from each server’s `tools/list`).
+
+---
+
+## 10. Changelog
 
 | Date | Change |
 |------|--------|
 | 2026-04-07 | Initial doc: naming, scopes, transports, auth, lifecycle, permissions, v2/v3 roadmap, **D6**. |
 | 2026-04-07 | Added pointer to `internal/mcp`, `mcp_servers`, stdio-only scope. |
 | 2026-04-08 | Full English rewrite; **Implemented in goclaw** section first; reference sections retained for future work. |
+| 2026-04-10 | Added `goclaw/docs/mcp_servers.example.json` pointer (stdio filesystem + loopback Streamable HTTP template). |

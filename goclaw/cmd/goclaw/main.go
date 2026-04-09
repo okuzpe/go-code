@@ -18,6 +18,9 @@ func main() {
 		func(cmd *cobra.Command, args []string) error {
 			return app.RunChat(cmd, Version, args, fullscreenChat{})
 		},
+		func(cmd *cobra.Command, args []string) error {
+			return app.RunPrompt(cmd, args)
+		},
 		app.RunListSessions,
 		app.RunDoctor,
 	)

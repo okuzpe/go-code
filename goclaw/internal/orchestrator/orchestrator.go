@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,12 +49,20 @@ func WithMemoryStore(mem *memory.Store) Option {
 }
 
 // AfterToolHook is invoked after each tool finishes (before results are added to the session).
-type AfterToolHook func(toolName string, resultBytes int, isError bool)
+// toolInput is the raw JSON arguments the model sent (may be empty).
+type AfterToolHook func(toolName string, toolInput string, resultBytes int, isError bool)
 
 // WithAfterTool registers a hook for REPL progress / logging (optional).
 func WithAfterTool(h AfterToolHook) Option {
 	return func(o *Orchestrator) {
 		o.afterTool = h
+	}
+}
+
+// WithSkillsSnippet appends discovered SKILL.md content to the system prompt (bounded by the skills package).
+func WithSkillsSnippet(s string) Option {
+	return func(o *Orchestrator) {
+		o.skillsPrompt = strings.TrimSpace(s)
 	}
 }
 
@@ -74,6 +83,13 @@ func WithTodoStore(s *todos.Store) Option {
 	}
 }
 
+// WithInputTokenCounter enables Anthropic count_tokens for compaction decisions (optional).
+func WithInputTokenCounter(c llm.InputTokenCounter) Option {
+	return func(o *Orchestrator) {
+		o.inputTokenCounter = c
+	}
+}
+
 // Orchestrator wires all subsystems and drives the agent loop.
 type Orchestrator struct {
 	cfg       config.Config
@@ -84,9 +100,11 @@ type Orchestrator struct {
 	hooks     *hooks.Registry
 	profile   agents.Profile
 	approver  ToolApprover
-	mem       *memory.Store
-	afterTool AfterToolHook
-	todoStore *todos.Store
+	mem               *memory.Store
+	afterTool         AfterToolHook
+	skillsPrompt      string
+	todoStore         *todos.Store
+	inputTokenCounter llm.InputTokenCounter
 }
 
 // New creates an Orchestrator with the provided subsystems.
@@ -123,6 +141,15 @@ func (o *Orchestrator) Run(ctx context.Context, userMessage string) (string, err
 // RunStreaming processes a single user message. If sink is non-nil, it receives
 // incremental deltas and tool lifecycle events.
 func (o *Orchestrator) RunStreaming(ctx context.Context, userMessage string, sink StreamSink) (string, error) {
+	return o.runUserTurn(ctx, userMessage, sink, nil)
+}
+
+// RunStreamingToolTrace runs one user turn like RunStreaming and appends each executed tool to trace (for automation JSON output).
+func (o *Orchestrator) RunStreamingToolTrace(ctx context.Context, userMessage string, sink StreamSink, trace *[]JSONToolCall) (string, error) {
+	return o.runUserTurn(ctx, userMessage, sink, trace)
+}
+
+func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink StreamSink, toolTrace *[]JSONToolCall) (string, error) {
 	o.session.Add("user", userMessage)
 
 	toolCalls := 0
@@ -189,15 +216,19 @@ func (o *Orchestrator) RunStreaming(ctx context.Context, userMessage string, sin
 			var atomicCalls atomic.Int64
 			results = o.executeToolsParallel(ctx, pendingTools, &atomicCalls)
 			toolCalls += int(atomicCalls.Load())
-			// Surface results through sink/afterTool sequentially in deterministic order.
-			for _, r := range results {
+			for i, r := range results {
+				input := ""
+				if i < len(pendingTools) {
+					input = pendingTools[i].Input
+				}
 				if o.afterTool != nil {
-					o.afterTool(r.ToolName, len(r.Content), r.IsError)
+					o.afterTool(r.ToolName, input, len(r.Content), r.IsError)
 				}
 				if sink != nil {
 					sink.OnToolResult(r.ToolName, len(r.Content), r.IsError)
 				}
 			}
+			appendJSONToolTrace(toolTrace, pendingTools, results)
 		} else {
 			for _, tu := range pendingTools {
 				toolCalls++
@@ -208,7 +239,7 @@ func (o *Orchestrator) RunStreaming(ctx context.Context, userMessage string, sin
 					return "", out.Err
 				}
 				if o.afterTool != nil {
-					o.afterTool(tu.Name, len(out.Content), out.IsError)
+					o.afterTool(tu.Name, tu.Input, len(out.Content), out.IsError)
 				}
 				if sink != nil {
 					sink.OnToolResult(tu.Name, len(out.Content), out.IsError)
@@ -220,6 +251,7 @@ func (o *Orchestrator) RunStreaming(ctx context.Context, userMessage string, sin
 					IsError:   out.IsError,
 				})
 			}
+			appendJSONToolTrace(toolTrace, pendingTools, results)
 		}
 		o.session.AddToolResults(results)
 	}

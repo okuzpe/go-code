@@ -35,8 +35,19 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Mock parity harness
+        shell: bash
+        run: go test ./internal/orchestrator ./internal/coordinator -count=1 -run '^TestMockParityHarness$'
+
       - name: Smoke (--version)
         run: go run ./cmd/goclaw --version
+
+      - name: Smoke (stdin mock, no Ollama)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        env:
+          GOCLAW_MOCK_FAST: "1"
+        run: printf 'ping\n' | go run ./cmd/goclaw --no-tools --mock --readline
 
       - name: Test (race on Linux only)
         shell: bash

@@ -31,3 +31,13 @@ func TestJoin(t *testing.T) {
 func TestJoinPrefersSessionWhenVeryNarrow(t *testing.T) {
 	require.Equal(t, "sess·id", Join(strings.Repeat("x", 200), "id", 14))
 }
+
+func TestHintsWithSession(t *testing.T) {
+	require.Equal(t, "Enter · /help", HintsWithSession("Enter · /help", "", 80))
+	require.Equal(t, "sess·ab", HintsWithSession("", "ab", 80))
+	require.Equal(t, "Enter · /help  sess·ab", HintsWithSession("Enter · /help", "ab", 80))
+
+	narrow := HintsWithSession("abcdefghijklmnopqrstuvwxyz0123456789", "abc", 28)
+	require.Contains(t, narrow, "sess·abc")
+	require.Contains(t, narrow, "\n")
+}

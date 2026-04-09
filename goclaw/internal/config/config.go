@@ -5,6 +5,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/okuzpe/goclaw/internal/tools"
 )
@@ -75,6 +76,33 @@ type Config struct {
 
 	// ExternalHooks are subprocess or HTTP hooks from settings (see hooks package).
 	ExternalHooks []ExternalHookEntry
+
+	// WebSearchBackend selects the web_search tool HTTP backend: "ddg", "brave", or "serpapi".
+	WebSearchBackend string
+
+	// BraveSearchAPIKey is the Brave Search API subscription token (optional; env BRAVE_SEARCH_API_KEY).
+	BraveSearchAPIKey string
+
+	// SerpAPIKey is the SerpAPI key (optional; env SERPAPI_API_KEY).
+	SerpAPIKey string
+
+	// WebSearchFallbackDDG when true (default) retries via DuckDuckGo if the primary backend fails or returns no results.
+	WebSearchFallbackDDG bool
+
+	// TokenCountMode controls session size estimation for compaction when provider is anthropic.
+	// "auto" (default) uses the Anthropic count_tokens API once the heuristic estimate crosses 70% of the compact threshold.
+	// "heuristic" always uses the character-based estimate (legacy behavior).
+	TokenCountMode string
+
+	// PluginDirs lists absolute or relative plugin roots (manifest + optional hooks). Merged from settings; CLI can append.
+	PluginDirs []string
+	// PluginAllow if non-empty: only manifests with Name in this list load (after deny).
+	PluginAllow []string
+	// PluginDeny: manifests with Name in this list never load (deny wins).
+	PluginDeny []string
+
+	// MemoryAutoExtract when true: after successful write_file/edit_file, append a short project memory line (path only).
+	MemoryAutoExtract bool
 }
 
 // MCPServerConfig describes one MCP server (stdio subprocess and/or Streamable HTTP URL).
@@ -87,7 +115,10 @@ type MCPServerConfig struct {
 	CWD      string            `json:"cwd,omitempty"`
 	URL      string            `json:"url,omitempty"` // Streamable HTTP MCP endpoint
 	Headers  map[string]string `json:"headers,omitempty"`
-	Disabled bool              `json:"disabled,omitempty"`
+	// BearerTokenFile is read at MCP dial time; contents (trimmed) are sent as Authorization: Bearer.
+	// Use a chmod 600 file; prefer over committing tokens. Full OAuth flows are future work (V3 doc).
+	BearerTokenFile string `json:"bearer_token_file,omitempty"`
+	Disabled        bool   `json:"disabled,omitempty"`
 }
 
 // EnvSlice returns env as KEY=value pairs for exec.
@@ -122,16 +153,40 @@ func Default() Config {
 		AutoCompactThreshold: 0.85,
 		UserConfigDir:        filepath.Join(home, ".goclaw"),
 		ProjectConfigDir:     ".goclaw",
-		AgentProfile:         "general-purpose",
-		PermissionModes:      nil,
-		YoloThreshold:        -1,
+		AgentProfile:           "general-purpose",
+		PermissionModes:        nil,
+		YoloThreshold:          -1,
+		WebSearchBackend:       "ddg",
+		BraveSearchAPIKey:      os.Getenv("BRAVE_SEARCH_API_KEY"),
+		SerpAPIKey:             os.Getenv("SERPAPI_API_KEY"),
+		WebSearchFallbackDDG:   true,
+		TokenCountMode:           "auto",
 	}
+}
+
+// anthropicModelAliases maps short CLI-style names to full Anthropic model ids
+// (aligned with common claw-code style aliases; unknown values pass through unchanged).
+var anthropicModelAliases = map[string]string{
+	"opus":   "claude-opus-4-6",
+	"sonnet": "claude-sonnet-4-6",
+	"haiku":  "claude-haiku-4-5-20251213",
+}
+
+func resolveAnthropicModelName(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw
+	}
+	if id, ok := anthropicModelAliases[strings.ToLower(raw)]; ok {
+		return id
+	}
+	return raw
 }
 
 // Model returns the model name to pass to the active provider.
 func (c Config) Model() string {
 	if c.Provider == "anthropic" {
-		return envOr("GOCLAW_MODEL", "claude-sonnet-4-6")
+		return resolveAnthropicModelName(envOr("GOCLAW_MODEL", "claude-sonnet-4-6"))
 	}
 	return c.OllamaModel
 }
@@ -154,4 +209,18 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// NormalizeWebSearchBackend returns a canonical backend name ("ddg", "brave", "serpapi").
+// If raw is unknown, it returns ("ddg", false) so callers can log a warning.
+func NormalizeWebSearchBackend(raw string) (string, bool) {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	switch v {
+	case "", "ddg":
+		return "ddg", true
+	case "brave", "serpapi":
+		return v, true
+	default:
+		return "ddg", false
+	}
 }

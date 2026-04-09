@@ -1,0 +1,20 @@
+{
+  "mcp_servers": [
+    {
+      "id": "filesystem_docs",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/path/to/allowed/read-only/root"
+      ],
+      "disabled": true
+    },
+    {
+      "id": "streamable_http_local",
+      "url": "http://127.0.0.1:3000/mcp",
+      "headers": {},
+      "disabled": true
+    }
+  ]
+}

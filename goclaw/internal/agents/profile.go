@@ -1,4 +1,4 @@
-// Package agents defines the six built-in agent profiles.
+// Package agents defines the seven built-in agent profiles.
 package agents
 
 import (

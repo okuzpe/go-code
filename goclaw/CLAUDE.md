@@ -90,19 +90,31 @@ See the `audit` skill for the full checklist.
 
 ---
 
+## Multi-agent model (coordinator vs swarm vs external)
+
+| Layer | What goclaw does |
+|-------|------------------|
+| **Hub-and-spoke coordinator** | Implemented: profile `coordinator` with tools `spawn_agent`, `stop_task`, `todo_write` only; workers use `general-purpose`, `explore`, `plan`, or `verification` with isolated `session.Session` (no access to the coordinator transcript). Code: [`internal/coordinator`](internal/coordinator/), wiring in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go). Design notes: [`docs/D16_COORDINATOR_SKETCH.md`](docs/D16_COORDINATOR_SKETCH.md), product comparison [`COORDINATOR_MODE.md`](../COORDINATOR_MODE.md). |
+| **Team/Swarm (peer agents)** | **Minimal disk hub** — [`internal/swarm`](internal/swarm/): mailboxes under a user-chosen directory (tests + future tools). Not the same as `spawn_agent`; see [`docs/SWARM.md`](docs/SWARM.md). |
+| **External orchestration** | Optional: wrap `goclaw` with your own scheduler/event bus (analogous in spirit to claw-code + clawhip + Discord). Not a goclaw dependency. |
+
+**Deferred until there is a concrete consumer:** structured worker lifecycle events (for external routers) and OAuth / `login` flows for Anthropic. Neither is required for the Ollama-first workflow; add them when an integration needs a stable event schema or token storage.
+
+---
+
 ## Package Structure
 
 ```
 goclaw/
 ├── cmd/goclaw/
-│   ├── main.go                  ← slog + `cli.NewRootCmd` wiring `app.RunChat(..., fullscreenChat{})`
+│   ├── main.go                  ← slog + `cli.NewRootCmd` wiring `app.RunChat` + `app.RunPrompt` + `fullscreenChat{}`
 │   ├── tui.go                   ← Bubble Tea TUI (`FullscreenChatRunner`); keeps `internal/app` tests free of `ui/chat` import
 │   └── version.go               ← `Version` (ldflags)
 ├── internal/
 │   ├── cli/                     ← Cobra tree only (`root.go`: `NewRootCmd` with injected run funcs; tests avoid full UI link)
 │   ├── app/
 │   │   ├── run.go               ← `RunChat`, `RunListSessions`; delegates TUI to `FullscreenChatRunner`; readline REPL
-│   │   ├── chat_wiring.go       ← `PrepareChatRuntime` (`ChatRuntime`): config, client, session, tools, MCP, hooks, orchestrator options
+│   │   ├── chat_wiring.go       ← `PrepareChatRuntime` (`ChatRuntime`): config, client, session, tools, MCP, plugins, skills, hooks, orchestrator options
 │   │   ├── repl_readline.go     ← readline REPL loop, tool approval prompt, `runOrchestratorTurn`
 │   │   ├── terminal_sink.go     ← readline `StreamSink` implementation
 │   │   ├── banner.go            ← startup banner (and related helpers)
@@ -135,6 +147,9 @@ goclaw/
 │   │   ├── config.go            ← Config{…}, Default()
 │   │   └── loader.go            ← Load: user/project settings.json + settings.local.json merge
 │   ├── coordinator/             ← D16 hub-and-spoke coordinator: `spawn_agent` tool + `WorkerNotification`
+│   ├── swarm/                   ← V3+ disk mailboxes (peer messaging), separate from coordinator
+│   ├── plugin/                  ← V3 local plugins: `goclaw-plugin.json`, optional hooks file, allow/deny
+│   ├── skills/                  ← V3 SKILL.md discovery for system prompt injection
 │   ├── hooks/                   ← Registry + external command/HTTP + LoadHooksFile
 │   ├── mcp/                     ← stdio JSON-RPC session, ToolAdapter → tools.Tool
 │   ├── ide/                     ← optional localhost POST notifier (GOCLAW_IDE_NOTIFY_URL)
@@ -157,8 +172,11 @@ goclaw/
 | `OLLAMA_MODEL` | `qwen2.5-coder:14b` | Local model name when `provider=ollama` |
 | `ANTHROPIC_API_KEY` | — | Required when `provider=anthropic` |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Override for tests (mock server) |
-| `GOCLAW_MODEL` | `claude-sonnet-4-6` | Anthropic model when `provider=anthropic` |
+| `GOCLAW_MODEL` | `claude-sonnet-4-6` | Anthropic model when `provider=anthropic`; short aliases `opus`, `sonnet`, `haiku` resolve to full ids (see [`internal/config/config.go`](internal/config/config.go)) |
 | `GOCLAW_DISABLE_TOOLS` | (empty) | Set to `1` to run without tools (same idea as `--no-tools`) |
+| `GOCLAW_MOCK_FAST` | (empty) | Set to `1` to remove pacing delays from `--mock` (CI / scripts) |
+| `BRAVE_SEARCH_API_KEY` | — | Brave Search API token when `web_search_backend` is `brave` (optional; can use `brave_search_api_key` in settings) |
+| `SERPAPI_API_KEY` | — | SerpAPI key when `web_search_backend` is `serpapi` (optional; can use `serpapi_api_key` in settings) |
 | `GOCLAW_LOG` | `info` | `debug` / `warn` / `error` for slog level |
 | `GOCLAW_USE_TUI` | (empty) | Set to `1` to use fullscreen Bubble Tea TUI (same as `--tui`; default is readline REPL on a TTY) |
 | `GOCLAW_USE_READLINE` | (empty) | Set to `1` to force readline and disable TUI |
@@ -177,6 +195,10 @@ goclaw/
 - **`--no-tools`** — do not register tools (chat-only; useful with models that hallucinate tool JSON).
 - **`--tui`** — fullscreen Bubble Tea TUI; default interactive mode is **readline** with a `>` prompt (claw-style). Also **`GOCLAW_USE_TUI=1`**.
 - **`--readline`** — force readline; disables TUI even if `GOCLAW_USE_TUI` is set.
+- **`--mock`** — stream a canned assistant reply without calling the model (UI check; use with `GOCLAW_MOCK_FAST=1` in automation).
+- **`--output-format text|json`** — for one-shot stdout: `text` prints the final assistant message; `json` prints `{"response","toolCalls"}` (same shape as `--json-output`).
+- **`--json-output`** — shorthand for `--output-format json` when piping one line on stdin (no REPL; incompatible with `--tui`; set `tool_permissions` to `allow` for tools you need without prompts).
+- **`goclaw prompt "…"`** — same one-turn loop using argv instead of stdin; respects `--output-format` / `--json-output`.
 
 **REPL slash commands** (do not go to the LLM): `/help` or `help` or `?`; `/session`; `/sessions` (list saved ids); `/quit` or `/exit` (save and exit); `/new` (save current JSONL, start empty session); `/save` (persist without exit); `/compact` (force compaction); `/profile <name>` (switch profile without restart); `/plan path|init|template`; `/apply-plan [path]` (load plan file, switch to `general-purpose`, run one orchestrator turn); `/memory list|add|delete`. Hooks `SessionStart` / `SessionEnd` fire when the REPL starts and exits.
 
@@ -194,9 +216,15 @@ Example **`settings.json`:**
     "read_file": "allow",
     "bash": "ask",
     "web_fetch": "ask"
-  }
+  },
+  "web_search_backend": "brave",
+  "brave_search_api_key": "your-token",
+  "web_search_fallback_ddg": true,
+  "token_count_mode": "auto"
 }
 ```
+
+Optional keys: **`web_search_backend`** (`ddg` \| `brave` \| `serpapi`), **`brave_search_api_key`**, **`serpapi_api_key`**, **`web_search_fallback_ddg`** (default true when using a non-DDG backend), **`token_count_mode`** (`auto` \| `heuristic`) for Anthropic compaction (`auto` uses the [count_tokens API](https://docs.anthropic.com/en/api/messages-count-tokens) once the heuristic estimate crosses 70% of the compaction threshold).
 
 Optional key **`bash_timeout_sec`** (positive integer, max 3600): overrides the default bash tool timeout ([`internal/tools/limits.go`](internal/tools/limits.go) `BashTimeoutSec` = 30). Omitted or zero keeps the default.
 
@@ -340,8 +368,8 @@ var _ llm.Client = (*AnthropicClient)(nil)
 | `bash` | shell | command, cwd? | 256 KiB truncated | Allowlist (D4); single simple command — `rejectShellMetacharacters` blocks pipes, `;`, `&&`, redirects, `$(...)`, unquoted `&`; timeout from `bash_timeout_sec` or default 30s |
 | `write_file` | write | path, content | 1 MiB content | Atomic (temp+rename); parent dir must exist; stripped from ReadOnly |
 | `edit_file` | write | path, old_string, new_string, replace_all? | 1 MiB result | str_replace; exact match unless replace_all:true; preserves file mode; stripped from ReadOnly |
-| `web_search` | network | query | Top 8 hits, 2 KiB/snippet | DuckDuckGo JSON |
-| `web_fetch` | network | url, max_bytes? | 1 MiB text/HTML | SSRF guards required |
+| `web_search` | network | query | Top 8 hits, 2 KiB/snippet | Backend from `web_search_backend` (DDG / Brave / SerpAPI; optional DDG fallback). DDG uses instant JSON first, then HTML SERP when JSON has no hits |
+| `web_fetch` | network | url, max_bytes? | 1 MiB text/HTML | SSRF guards; HTML responses reduced to plain text when extraction yields enough words |
 | `todo_write` | session_meta | merge, todos[] | 50 items; 500 runes/content | Session task list; snapshot in system prompt via `orchestrator.WithTodoStore`; cleared on `/new` |
 
 ### Message / tool protocol
@@ -373,15 +401,17 @@ var _ llm.Client = (*AnthropicClient)(nil)
 | D1: Providers | Ollama = default. Anthropic = opt-in with API key. Do not couple provider logic. |
 | D4: Bash security | Allowlist (expanded binaries + git subcommands), not denylist. Single simple command: `rejectShellMetacharacters` blocks shell chaining that would bypass the allowlist. User confirmation always required in Ask mode. |
 | D5: Permissions | Default = ModeAsk (fail-closed). `bypassPermissions` NOT implemented in MVP. |
-| D6: MCP | **stdio + Streamable HTTP** (`internal/mcp`, `http.go`): subprocess **or** `mcp_servers[].url` (optional `headers`); tools as `mcp__server__tool`. HTTP URLs must be **loopback** unless `mcp_allow_remote_urls` is set in settings. **Not done:** OAuth, WebSocket, legacy HTTP+SSE-only servers. |
+| D6: MCP | **stdio + Streamable HTTP** (`internal/mcp`, `http.go`): subprocess **or** `mcp_servers[].url` (optional `headers`, optional **`bearer_token_file`** → `Authorization: Bearer` if no header set); tools as `mcp__server__tool`. HTTP URLs must be **loopback** unless `mcp_allow_remote_urls` is set in settings. **Not done:** OAuth, WebSocket, legacy HTTP+SSE-only servers. See [`docs/V3_MCP_REMOTE.md`](docs/V3_MCP_REMOTE.md). |
 | D7: Config paths | `~/.goclaw/` (user), `.goclaw/` (project). Decided, do not change. |
 | D12: Dedicated tools | Prefer `read_file`/`glob`/`grep` over bash equivalents. Bash = last resort. |
-| D13: Memory | Filesystem at `~/.goclaw/memory/`. 4 types: user/feedback/project/reference. |
-| D15: Compaction | Threshold as configurable fraction (default 0.85). Session size for compaction uses a **token estimate** (chars/4 heuristic, capped) mapped against a budget derived from `defaultContextBudgetChars`; no live provider token APIs in MVP. |
-| D16: Multi-agent | **Done** — `internal/coordinator`: `spawn_agent` tool, `Coordinator` profile (allowlist: spawn_agent + todo_write), isolated worker sessions via `session.New()`, `WorkerNotification` JSON result, nesting prevention. Team/Swarm remains Phase 3+. |
+| D13: Memory | Filesystem at `~/.goclaw/memory/`. 4 types: user/feedback/project/reference. Opt-in **auto-capture** (`memory_auto_extract: true`): after successful `write_file` / `edit_file`, one-line project entry (path only), capped per session — [`internal/memory/autocapture.go`](internal/memory/autocapture.go). |
+| D15: Compaction | Threshold as configurable fraction (default 0.85). Session size uses a **heuristic token estimate** (chars÷N by provider) against `model_context_tokens` / provider defaults. When `provider=anthropic` and `token_count_mode` is `auto` (default), goclaw calls Anthropic **`POST /v1/messages/count_tokens`** once the heuristic crosses 70% of the compaction threshold; on failure it falls back to the heuristic. |
+| D16: Multi-agent | **Done** — `internal/coordinator`: `spawn_agent` and `stop_task` tools, `Coordinator` profile (allowlist: spawn_agent, stop_task, todo_write), isolated worker sessions via `session.New()`, `WorkerNotification` JSON result, nesting prevention. **Swarm** (separate): `internal/swarm` disk hub — [`docs/SWARM.md`](docs/SWARM.md). |
 | D17: YOLO Classifier | **Implemented** in `internal/permissions/risk.go` — rule-based risk scorer (0–100); `yolo_threshold: -1` default (off); auto-approves reads at threshold 0. |
 | D18: Hooks | PreToolUse can block. PostToolUse is best-effort (non-fatal). |
 | D19: Custom agents | **Implemented** — Markdown + YAML frontmatter in `~/.goclaw/agents/*.md` and `.goclaw/agents/*.md`; fields: `name`, `model`, `tool_allowlist`, `read_only`, `system_prompt`; body appended to system prompt; hot-reload on `/profile`; project overrides user overrides built-in. See [`internal/agents/profile.go`](internal/agents/profile.go). |
+| D20: Plugins | **MVP** — `internal/plugin`: each root contains `goclaw-plugin.json` (`name`, optional `hooks_file`); `plugin_dirs` in settings + `--plugin-dir` (repeatable); `plugin_allow` / `plugin_deny` (deny wins). Hooks load via same mechanism as `.goclaw/hooks.json`. Treat plugins as **executable config** (supply chain), like `trusted_workspace`. |
+| Skills (runtime) | **`internal/skills`** discovers `SKILL.md` under `.goclaw/skills/`, `.claude/skills/`, `~/.goclaw/skills/`, `~/.goclaw/.claude/skills/` (recursive under each root); content is injected under `## Loaded skills (SKILL.md)` in the system prompt (bounded size). |
 | D22: Retry | **Implemented** in [`internal/llm/retry.go`](internal/llm/retry.go): `doHTTPWithRetry` wraps Anthropic and Ollama POSTs — retries on **429**, **503**, **504** with `Retry-After` when present, else exponential backoff (base 500ms, ceiling 5min), up to **10** attempts; transient **network errors** retry with the same backoff. |
 
 ---
@@ -395,7 +425,7 @@ var _ llm.Client = (*AnthropicClient)(nil)
 - **Do not use `fmt.Println`** for logging
 - **Do not commit `.goclaw/settings.local.json`** — it is machine-local
 - **Do not assume Ollama is running** — handle connection refused with a clear error
-- **Do not point MCP HTTP at non-loopback URLs** unless the user explicitly sets `mcp_allow_remote_urls` (SSRF posture); **do not add OAuth** for MCP without a dedicated security pass
+- **Do not point MCP HTTP at non-loopback URLs** unless the user explicitly sets `mcp_allow_remote_urls` (SSRF posture); **do not add OAuth** for MCP without a dedicated security pass (see [`docs/V3_MCP_REMOTE.md`](docs/V3_MCP_REMOTE.md))
 - **Do not mix session (RAM) with memory (disk)** — they are separate systems
 - **Do not write Spanish** in code, comments, or commit messages — English only
 
@@ -426,7 +456,9 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 
 1. **Binary and session store:** from the module root, `go run ./cmd/goclaw --list-sessions` or `go run ./cmd/goclaw sessions list` must exit 0 (prints ids or `(no saved sessions)`). Same for `go build -o goclaw ./cmd/goclaw && ./goclaw sessions list`.
 2. **Chat-only path:** `GOCLAW_DISABLE_TOOLS=1 go run ./cmd/goclaw --no-tools` starts the REPL; with Ollama down you should still see a clear connection error after sending one line, not a silent hang on startup.
-3. **Full REPL (manual, TTY):** run without `--no-tools`, press ↑ for history, trigger a tool in Ask mode and confirm the `Allow execution?` prompt uses readline editing.
+3. **Stdin + mock (CI):** `GOCLAW_MOCK_FAST=1 printf 'ping\n' | go run ./cmd/goclaw --no-tools --mock --readline` exits 0 without a live LLM (Linux CI; readline + pipe can be flaky on some Windows shells).
+4. **JSON one-shot:** `printf 'hello\n' | go run ./cmd/goclaw --output-format json --no-tools` prints one JSON object on stdout (`--json-output` is equivalent; use `--mock` for a canned response without the provider). **Text one-shot:** `go run ./cmd/goclaw prompt "hello" --no-tools`.
+5. **Full REPL (manual, TTY):** run without `--no-tools`, press ↑ for history, trigger a tool in Ask mode and confirm the `Allow execution?` prompt uses readline editing.
 
 **Mock server** in `testutil/mockserver/`:
 - Start with `mockserver.New(scenarios)` → returns `*Server` with `.URL`
@@ -448,15 +480,15 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 [DONE] write_file + edit_file: workspace-scoped atomic writes, str_replace edit, ReadOnly profile stripping
 [DONE] Post-MVP slice: MCP stdio client + multi-server config, MCP tools on Registry, external hooks + workspace trust, IDE localhost notifier (`GOCLAW_IDE_NOTIFY_URL`)
 [DONE] v2: YOLO Classifier (`internal/permissions/risk.go`), multi-agent coordinator (`internal/coordinator`), custom agents (`internal/agents/profile.go`), parallel tool execution, LLM-driven compaction, script tool
-[POST-MVP] v3+: Plugins, deeper IDE/editor parity (extension-side), Team/Swarm — see [IDE_BRIDGE.md](../IDE_BRIDGE.md)
+[DONE] v3 slice: local plugins (`internal/plugin`), SKILL.md prompt injection (`internal/skills`), MCP `bearer_token_file`, opt-in memory auto-capture, minimal swarm hub (`internal/swarm`), IDE extension contract §7 in [IDE_BRIDGE.md](../IDE_BRIDGE.md). **Still open:** MCP OAuth/WS, remote plugin marketplace, full editor MCP UX.
 ```
 
 ### To continue (polish / post-MVP):
 1. ~~`go test -race` in CI~~ — [`.github/workflows/goclaw-ci.yml`](../.github/workflows/goclaw-ci.yml) at monorepo root (`defaults.run.working-directory: goclaw`). Subfolder workflows under `goclaw/.github/` are not executed by GitHub Actions.
-2. ~~`web_search` MVP fallback~~ — DDG JSON fields `Answer`, `Definition`, `Results` (HTML stripped), empty-query message with `duckduckgo.com` link; optional later: non-DDG backend.
+2. ~~`web_search` backends~~ — `web_search_backend` (`ddg` \| `brave` \| `serpapi`), optional DDG fallback; keys in settings / env (`BRAVE_SEARCH_API_KEY`, `SERPAPI_API_KEY`).
 3. ~~Compaction + tests~~ — summary lists removed/tail counts; [`internal/orchestrator/estimate_test.go`](internal/orchestrator/estimate_test.go) and extra edge tests.
 4. ~~REPL slash UX~~ — `/help`, `/session`, `/sessions`, `/quit`/`/exit`, `/new`, `/save`, `/memory`, `/compact`; short id prompt.
-5. ~~Compaction threshold tokens~~ — `sessionTokenEstimate` + `contextBudgetTokens` (provider-tuned char÷N heuristic, not live tokenizer APIs).
+5. ~~Compaction threshold tokens~~ — heuristic + Anthropic `count_tokens` when `token_count_mode` is `auto` (see D15).
 6. ~~D22 HTTP retries~~ — [`internal/llm/retry.go`](internal/llm/retry.go) + tests.
 7. ~~README + hooks logging~~ — [`README.md`](README.md); post-tool hook handler errors logged with `slog.WarnContext` in [`internal/hooks/hooks.go`](internal/hooks/hooks.go).
 8. ~~`glob` / `grep` tools~~ — workspace-scoped ([`internal/tools/glob.go`](internal/tools/glob.go), [`grep.go`](internal/tools/grep.go)); explore/plan allowlists updated.
@@ -466,7 +498,7 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 12. ~~`bash_timeout_sec` in settings~~ — [`internal/config/loader.go`](internal/config/loader.go); [`NewBashWithTimeout`](internal/tools/bash.go).
 13. ~~Clearer Ollama dial errors~~ — [`wrapOllamaDialErr`](internal/llm/ollama.go) on connection refused.
 14. ~~D12 in base system prompt~~ — dedicated tools before bash; [`internal/orchestrator/request.go`](internal/orchestrator/request.go) `baseSystemPrompt`.
-15. Further optional: LLM-written compaction text; provider token APIs; stdin smoke test in CI.
+15. ~~stdin smoke test in CI~~ — `.github/workflows/goclaw-ci.yml` runs `printf 'ping\n' \| go run ... --no-tools --mock --readline` with `GOCLAW_MOCK_FAST=1` on Ubuntu.
 
 When adding sections to this file, keep them in English (Language Rule — STRICT). Cursor rules (`.cursor/rules/*.mdc`) and agent skills (`.claude/skills/*.md`) are also maintained in English.
 
@@ -485,6 +517,6 @@ When adding sections to this file, keep them in English (Language Rule — STRIC
 | **IDE** | Localhost MCP toward editor | **Partial** — lockfile → `mcp_servers` when `ide_bridge_mcp`; `GOCLAW_IDE_NOTIFY_URL`; see [IDE_BRIDGE.md](../IDE_BRIDGE.md) (**D21**) |
 | **Hooks** | Subprocess / HTTP + project file | **Done** — `external_hooks`, `.goclaw/hooks.json` + `trusted_workspace` |
 
-**Future epics (no code until scoped):** plugins (**PLUGINS.md**) — track as a **separate planning pass**. D16 coordinator (**done** — `internal/coordinator`), D17 YOLO classifier (**done** — `internal/permissions/risk.go`), D19 custom agents (**done** — `internal/agents/profile.go`) are all implemented.
+**Plugins (D20):** MVP implemented — see D20 row; full marketplace / remote install remains out of scope. D16 coordinator (**done** — `internal/coordinator`), D17 YOLO classifier (**done** — `internal/permissions/risk.go`), D19 custom agents (**done** — `internal/agents/profile.go`).
 
 Further IDE work: extension publishers adopt `~/.goclaw/ide/*.json` (or document alternate paths) and exercise the same MCP HTTP path as other remote servers.

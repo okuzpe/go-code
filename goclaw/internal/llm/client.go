@@ -36,3 +36,8 @@ func (Done) isEvent()      {}
 type Client interface {
 	Stream(ctx context.Context, req Request) (<-chan Event, <-chan error)
 }
+
+// InputTokenCounter counts input tokens for a messages request (Anthropic Messages count_tokens API).
+type InputTokenCounter interface {
+	CountInputTokens(ctx context.Context, req Request) (int, error)
+}

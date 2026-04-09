@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
- 
+
 	"github.com/okuzpe/goclaw/internal/tools"
 	"github.com/stretchr/testify/require"
 )
@@ -131,4 +131,22 @@ func TestLoadMCPIdeBridgeFlags(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, cfg.MCPServersAllowRemote)
 	require.True(t, cfg.IDEBridgeMCP)
+}
+
+func TestLoadV3PluginAndMemoryFlags(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	userDir := filepath.Join(home, ".goclaw")
+	require.NoError(t, os.MkdirAll(userDir, 0o700))
+	raw := `{"plugin_dirs":["./p"],"plugin_allow":["a"],"plugin_deny":["b"],"memory_auto_extract":true}`
+	require.NoError(t, os.WriteFile(filepath.Join(userDir, "settings.json"), []byte(raw), 0o600))
+	base := Default()
+	base.UserConfigDir = userDir
+	base.ProjectConfigDir = ".goclaw"
+	cfg, err := Load(base, cwd)
+	require.NoError(t, err)
+	require.Equal(t, []string{"./p"}, cfg.PluginDirs)
+	require.Equal(t, []string{"a"}, cfg.PluginAllow)
+	require.Equal(t, []string{"b"}, cfg.PluginDeny)
+	require.True(t, cfg.MemoryAutoExtract)
 }

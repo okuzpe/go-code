@@ -138,7 +138,7 @@ reg.Register(tools.NewBashWithTimeout(cfg.BashTimeoutSeconds()))
 reg.Register(tools.NewWriteFile(workdir))
 reg.Register(tools.NewEditFile(workdir))
 reg.Register(tools.NewWebFetch())
-reg.Register(tools.NewWebSearch())
+reg.Register(tools.NewWebSearch(tools.WebSearchOptions{}))
 reg.Register(tools.NewTodoWrite(todoStore))
 // MCP tools registered after: mcp.RegisterSessionTools(ctx, reg, mcpSess, srv.ID)
 ```

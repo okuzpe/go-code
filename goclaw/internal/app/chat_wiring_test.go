@@ -34,6 +34,7 @@ func TestPrepareChatRuntime_MCPServerStartFailureContinues(t *testing.T) {
 
 	cmd := cli.NewRootCmd("dev",
 		func(*cobra.Command, []string) error { return nil },
+		func(*cobra.Command, []string) error { return nil },
 		func() error { return nil },
 		func(*cobra.Command, []string) error { return nil },
 	)
@@ -73,6 +74,7 @@ func TestPrepareChatRuntime_ProjectHooksOnlyWhenTrusted(t *testing.T) {
 
 	cmd := cli.NewRootCmd("dev",
 		func(*cobra.Command, []string) error { return nil },
+		func(*cobra.Command, []string) error { return nil },
 		func() error { return nil },
 		func(*cobra.Command, []string) error { return nil },
 	)
@@ -93,6 +95,7 @@ func TestPrepareChatRuntime_ProjectHooksOnlyWhenTrusted(t *testing.T) {
 	require.NoError(t, os.Remove(marker))
 
 	cmd2 := cli.NewRootCmd("dev",
+		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
 		func() error { return nil },
 		func(*cobra.Command, []string) error { return nil },

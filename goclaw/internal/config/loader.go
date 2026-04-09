@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // settingsFile is the JSON shape for ~/.goclaw/settings.json and .goclaw/settings.json.
@@ -26,7 +27,16 @@ type settingsFile struct {
 	YoloThreshold        *int                `json:"yolo_threshold"`
 	LLMCompaction        *bool               `json:"llm_compaction"`
 	MCPServersAllowRemote *bool              `json:"mcp_allow_remote_urls,omitempty"`
-	IDEBridgeMCP         *bool               `json:"ide_bridge_mcp,omitempty"`
+	IDEBridgeMCP          *bool   `json:"ide_bridge_mcp,omitempty"`
+	WebSearchBackend      *string `json:"web_search_backend,omitempty"`
+	BraveSearchAPIKey     *string `json:"brave_search_api_key,omitempty"`
+	SerpAPIKey            *string `json:"serpapi_api_key,omitempty"`
+	WebSearchFallbackDDG  *bool   `json:"web_search_fallback_ddg,omitempty"`
+	TokenCountMode         *string `json:"token_count_mode,omitempty"`
+	PluginDirs             []string `json:"plugin_dirs,omitempty"`
+	PluginAllow            []string `json:"plugin_allow,omitempty"`
+	PluginDeny             []string `json:"plugin_deny,omitempty"`
+	MemoryAutoExtract      *bool    `json:"memory_auto_extract,omitempty"`
 }
 
 // Load merges JSON settings into base in this order (later wins for overlapping keys):
@@ -121,6 +131,33 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.IDEBridgeMCP != nil && *sf.IDEBridgeMCP {
 		cfg.IDEBridgeMCP = true
+	}
+	if sf.WebSearchBackend != nil {
+		cfg.WebSearchBackend = strings.TrimSpace(*sf.WebSearchBackend)
+	}
+	if sf.BraveSearchAPIKey != nil && strings.TrimSpace(*sf.BraveSearchAPIKey) != "" {
+		cfg.BraveSearchAPIKey = strings.TrimSpace(*sf.BraveSearchAPIKey)
+	}
+	if sf.SerpAPIKey != nil && strings.TrimSpace(*sf.SerpAPIKey) != "" {
+		cfg.SerpAPIKey = strings.TrimSpace(*sf.SerpAPIKey)
+	}
+	if sf.WebSearchFallbackDDG != nil {
+		cfg.WebSearchFallbackDDG = *sf.WebSearchFallbackDDG
+	}
+	if sf.TokenCountMode != nil && strings.TrimSpace(*sf.TokenCountMode) != "" {
+		cfg.TokenCountMode = strings.TrimSpace(*sf.TokenCountMode)
+	}
+	if len(sf.PluginDirs) > 0 {
+		cfg.PluginDirs = append(cfg.PluginDirs, sf.PluginDirs...)
+	}
+	if len(sf.PluginAllow) > 0 {
+		cfg.PluginAllow = append(cfg.PluginAllow, sf.PluginAllow...)
+	}
+	if len(sf.PluginDeny) > 0 {
+		cfg.PluginDeny = append(cfg.PluginDeny, sf.PluginDeny...)
+	}
+	if sf.MemoryAutoExtract != nil && *sf.MemoryAutoExtract {
+		cfg.MemoryAutoExtract = true
 	}
 	if len(sf.ExternalHooks) > 0 {
 		cfg.ExternalHooks = append(cfg.ExternalHooks, sf.ExternalHooks...)

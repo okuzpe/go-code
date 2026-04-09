@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "description": "Scenario ids match TestMockParityHarness subtest names in internal/orchestrator and internal/coordinator.",
+  "orchestrator": [
+    "streaming_text",
+    "read_file_roundtrip",
+    "multi_tool_turn_roundtrip",
+    "tool_ask_requires_approver",
+    "tool_user_declines",
+    "mcp_tool_roundtrip"
+  ],
+  "coordinator": [
+    "spawn_agent_success",
+    "spawn_agent_worker_failure"
+  ],
+  "run": {
+    "orchestrator": "go test ./internal/orchestrator -count=1 -run '^TestMockParityHarness$'",
+    "coordinator": "go test ./internal/coordinator -count=1 -run '^TestMockParityHarness$'"
+  }
+}

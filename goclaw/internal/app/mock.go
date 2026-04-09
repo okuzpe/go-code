@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/okuzpe/goclaw/internal/orchestrator"
@@ -14,6 +16,13 @@ var (
 	mockStreamInitialDelay = 380 * time.Millisecond
 	mockStreamRuneDelay    = 11 * time.Millisecond
 )
+
+func effectiveMockStreamDelays() (initial, perRune time.Duration) {
+	if strings.TrimSpace(os.Getenv("GOCLAW_MOCK_FAST")) == "1" {
+		return 0, 0
+	}
+	return mockStreamInitialDelay, mockStreamRuneDelay
+}
 
 func shortSessionID(id string) string {
 	if len(id) > 12 {
@@ -31,9 +40,10 @@ func mockAssistantReplyBody(userText string) string {
 
 // StreamMockAssistant streams a canned assistant reply for --mock (TUI and readline).
 func StreamMockAssistant(ctx context.Context, userText string, sink orchestrator.StreamSink, sess *session.Session) (string, error) {
-	if mockStreamInitialDelay > 0 {
+	initialDelay, runeDelay := effectiveMockStreamDelays()
+	if initialDelay > 0 {
 		select {
-		case <-time.After(mockStreamInitialDelay):
+		case <-time.After(initialDelay):
 		case <-ctx.Done():
 			return "", ctx.Err()
 		}
@@ -43,9 +53,9 @@ func StreamMockAssistant(ctx context.Context, userText string, sink orchestrator
 	reply := mockAssistantReplyBody(userText)
 	for _, ch := range reply {
 		sink.OnTextDelta(string(ch))
-		if mockStreamRuneDelay > 0 {
+		if runeDelay > 0 {
 			select {
-			case <-time.After(mockStreamRuneDelay):
+			case <-time.After(runeDelay):
 			case <-ctx.Done():
 				sink.OnDone("")
 				return reply, ctx.Err()

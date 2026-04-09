@@ -13,7 +13,7 @@ goclaw is a local-first CLI coding agent. The goal is daily-driver usability: pr
 
 ## What this project is not
 
-- Not a multi-agent orchestration system.
+- Not a **Team/Swarm** product (tmux-style peer agents or external job grids). In-process **coordinator** delegation (`spawn_agent`) is intentional and bounded; see [docs/D16_COORDINATOR_SKETCH.md](docs/D16_COORDINATOR_SKETCH.md).
 - Not a plugin marketplace.
-- Not a “cloud-first” agent that requires external services to be usable.
+- Not a “cloud-first” agent that requires external services to be usable (Anthropic is optional).
 

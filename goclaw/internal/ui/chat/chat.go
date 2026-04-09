@@ -142,6 +142,15 @@ func (b *ApprovalBroker) ToolApprover() orchestrator.ToolApprover {
 // inputMaxHeight is the maximum number of visible lines in the input textarea.
 const inputMaxHeight = 6
 
+func placeholderForWidth(termWidth int) string {
+	const full = "Message goclaw…  /help  Ctrl+J newline"
+	const narrow = "Message…  /help  Ctrl+J newline"
+	if termWidth > 0 && termWidth < 72 {
+		return narrow
+	}
+	return full
+}
+
 func New(ctx context.Context, opts Options) Model {
 	th := opts.Theme
 	if th == nil {
@@ -150,10 +159,11 @@ func New(ctx context.Context, opts Options) Model {
 
 	vp := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 	vp.MouseWheelEnabled = true
+	vp.SoftWrap = true
 
 	// Use textarea for multi-line input support (modern CLI standard).
 	in := textarea.New()
-	in.Placeholder = "Message goclaw…  /help  Ctrl+J newline"
+	in.Placeholder = placeholderForWidth(0)
 	in.Prompt = th.InputPrompt
 	in.ShowLineNumbers = false
 	in.SetHeight(1) // start compact, grows dynamically
@@ -221,6 +231,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.input.SetWidth(m.width - 2) // leave room for border
+		m.syncInputPlaceholder()
 		m.reflowTitleSeparator()
 		m.layout()
 		var vcmd tea.Cmd
@@ -237,7 +248,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.curAssistant.Reset()
 		m.curAssistantLineIdx = -1
 		m.appendAssistantDim("…")
-		m.viewport.GotoBottom()
 		m.spinner = spinner.New(
 			spinner.WithSpinner(spinner.Dot),
 			spinner.WithStyle(SpinnerAccentStyle()),
@@ -253,7 +263,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.curAssistant.WriteString(string(msg))
 		m.refreshAssistantLine()
-		m.viewport.GotoBottom()
 		return m, nil
 	case assistantDoneMsg:
 		m.streaming = false
@@ -262,7 +271,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusLine = ""
 		// Finalize the current segment with markdown rendering.
 		m.finalizeCurrentSegment()
-		m.viewport.GotoBottom()
 		return m, nil
 	case toolUseMsg:
 		// Finalize the pre-tool text with markdown rendering BEFORE resetting.
@@ -275,7 +283,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toolWaitStartedAt = time.Now()
 		}
 		m.statusLine = m.toolQueueStatusLine()
-		m.viewport.GotoBottom()
 		return m, tickToolWait()
 	case toolTickMsg:
 		if len(m.toolWaitQueue) == 0 {
@@ -283,7 +290,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.statusLine = m.toolQueueStatusLine()
-		m.viewport.GotoBottom()
 		return m, tickToolWait()
 	case toolResultMsg:
 		job, ok := m.popToolJob()
@@ -298,7 +304,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toolWaitStartedAt = time.Time{}
 			m.statusLine = ""
 		}
-		m.viewport.GotoBottom()
 		if len(m.toolWaitQueue) > 0 {
 			return m, tickToolWait()
 		}
@@ -368,10 +373,10 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 	case "ctrl+l":
 		m.lines = nil
 		m.toolWaitQueue = nil
-		m.viewport.SetContent("")
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
 		m.curAssistantLineIdx = -1
+		m.setLinesContent(true)
 		return m, nil, true
 	case "enter":
 		txt := strings.TrimSpace(m.input.Value())
@@ -394,7 +399,6 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 				} else if strings.TrimSpace(out) != "" {
 					m.appendSystem(out)
 				}
-				m.viewport.GotoBottom()
 				if strings.TrimSpace(modelSubmit) != "" && m.submitter != nil && m.submitter.fn != nil {
 					m.runModelSubmit(modelSubmit)
 				}
@@ -409,7 +413,6 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 		} else {
 			m.appendAssistant("(TUI wired; missing submit handler)")
 		}
-		m.viewport.GotoBottom()
 		return m, nil, true
 	}
 	return m, nil, false
@@ -434,6 +437,37 @@ func (m *Model) resizeInput() {
 	}
 	m.input.SetHeight(lineCount)
 	m.layout()
+}
+
+// setLinesContent refreshes the transcript in the viewport. If stickToBottom is true or the user
+// was already at the bottom, scroll stays pinned to the latest output.
+func (m *Model) setLinesContent(stickToBottom bool) {
+	joined := strings.Join(m.lines, "\n")
+	stick := stickToBottom || m.viewport.AtBottom()
+	m.viewport.SetContent(joined)
+	if stick {
+		m.viewport.GotoBottom()
+	}
+}
+
+func (m *Model) syncInputPlaceholder() {
+	m.input.Placeholder = placeholderForWidth(m.width)
+}
+
+func (m *Model) footerPrimaryStatus() string {
+	status := strings.TrimSpace(m.statusLine)
+	if m.spinnerActive {
+		spin := strings.TrimSpace(m.spinner.View())
+		base := strings.TrimSpace(status)
+		if base == "" {
+			base = "Thinking…"
+		}
+		return strings.TrimSpace(spin + "  " + base)
+	}
+	if m.streaming && !m.spinnerActive && status == "" {
+		return "Responding…"
+	}
+	return status
 }
 
 func (m *Model) View() tea.View {
@@ -470,10 +504,13 @@ func (m *Model) layout() {
 	if h < 1 {
 		h = 1
 	}
+	stick := m.viewport.AtBottom()
 	m.viewport.SetWidth(m.width)
 	m.viewport.SetHeight(h)
 	m.viewport.SetContent(strings.Join(m.lines, "\n"))
-	m.viewport.GotoBottom()
+	if stick {
+		m.viewport.GotoBottom()
+	}
 }
 
 func (m *Model) footerView() string {
@@ -481,23 +518,16 @@ func (m *Model) footerView() string {
 	if th == nil {
 		th = DefaultTheme()
 	}
-	status := strings.TrimSpace(m.statusLine)
-	if m.spinnerActive {
-		spin := strings.TrimSpace(m.spinner.View())
-		base := strings.TrimSpace(status)
-		if base == "" {
-			base = "Thinking…"
-		}
-		status = strings.TrimSpace(spin + "  " + base)
-	}
-	if m.streaming && !m.spinnerActive && strings.TrimSpace(status) == "" {
-		status = "Responding…"
-	}
-	if status == "" {
-		status = th.FooterHint()
-	}
+	primary := strings.TrimSpace(m.footerPrimaryStatus())
+	hints := th.FooterHint()
+	second := footerline.HintsWithSession(hints, m.sessionID, m.width)
 
-	status = footerline.Join(status, m.sessionID, m.width)
+	var meta string
+	if primary != "" {
+		meta = th.FooterDim.Render(primary) + "\n" + th.FooterDim.Render(second)
+	} else {
+		meta = th.FooterDim.Render(second)
+	}
 
 	// Input area with a subtle border
 	inputView := m.input.View()
@@ -505,7 +535,7 @@ func (m *Model) footerView() string {
 		inputView = th.InputBorder.Width(m.width - 4).Render(inputView)
 	}
 
-	footer := th.FooterDim.Render(status) + "\n" + inputView
+	footer := meta + "\n" + inputView
 	if m.pending != nil {
 		inner := fmt.Sprintf(
 			"%s\n\n%s\n\n%s\n\n%s",
@@ -528,7 +558,7 @@ func (m *Model) appendSeparator() {
 		th = DefaultTheme()
 	}
 	m.lines = append(m.lines, th.SeparatorLine(m.width))
-	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+	m.setLinesContent(true)
 }
 
 func (m *Model) appendSystem(s string) {
@@ -537,7 +567,7 @@ func (m *Model) appendSystem(s string) {
 		th = DefaultTheme()
 	}
 	m.lines = append(m.lines, th.System.Render(s))
-	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+	m.setLinesContent(true)
 }
 
 func (m *Model) appendError(s string) {
@@ -546,7 +576,7 @@ func (m *Model) appendError(s string) {
 		th = DefaultTheme()
 	}
 	m.lines = append(m.lines, th.ErrorStyle.Render(s))
-	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+	m.setLinesContent(true)
 }
 
 func (m *Model) appendUser(s string) {
@@ -555,7 +585,7 @@ func (m *Model) appendUser(s string) {
 		th = DefaultTheme()
 	}
 	m.lines = append(m.lines, fmt.Sprintf("%s %s", th.UserPrefix(), s))
-	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+	m.setLinesContent(true)
 }
 
 func (m *Model) appendAssistant(s string) {
@@ -564,7 +594,7 @@ func (m *Model) appendAssistant(s string) {
 		th = DefaultTheme()
 	}
 	m.lines = append(m.lines, fmt.Sprintf("%s %s", th.AssistantPrefix(), s))
-	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+	m.setLinesContent(true)
 }
 
 func (m *Model) appendAssistantDim(s string) {
@@ -574,7 +604,7 @@ func (m *Model) appendAssistantDim(s string) {
 	}
 	dim := th.Dim.Render(s)
 	m.lines = append(m.lines, fmt.Sprintf("%s %s", th.AssistantPrefix(), dim))
-	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+	m.setLinesContent(false)
 }
 
 func (m *Model) stripAssistantPlaceholderLine() {
@@ -590,7 +620,7 @@ func (m *Model) stripAssistantPlaceholderLine() {
 	pfx := th.AssistantPlainPrefix()
 	if strings.HasPrefix(plain, pfx) && strings.Contains(plain, "…") {
 		m.lines = m.lines[:len(m.lines)-1]
-		m.viewport.SetContent(strings.Join(m.lines, "\n"))
+		m.setLinesContent(false)
 	}
 }
 
@@ -640,7 +670,7 @@ func (m *Model) appendToolDoneLine(toolName, summary string, isError bool) {
 			suffix)
 	}
 	m.lines = append(m.lines, line)
-	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+	m.setLinesContent(false)
 }
 
 // refreshAssistantLine updates or appends a line with streaming content.
@@ -661,7 +691,7 @@ func (m *Model) refreshAssistantLine() {
 		m.lines = append(m.lines, rendered)
 		m.curAssistantLineIdx = len(m.lines) - 1
 	}
-	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+	m.setLinesContent(false)
 }
 
 // finalizeCurrentSegment renders the current curAssistant buffer as markdown
@@ -703,7 +733,7 @@ func (m *Model) finalizeCurrentSegment() {
 		m.lines = append(m.lines, finalRendered)
 	}
 	m.curAssistantLineIdx = -1
-	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+	m.setLinesContent(false)
 }
 
 func stripANSI(s string) string {

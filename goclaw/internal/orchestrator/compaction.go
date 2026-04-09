@@ -35,14 +35,14 @@ func (o *Orchestrator) maybeCompact(ctx context.Context) {
 	}
 	budget := contextBudgetTokens(o.cfg.Provider, o.cfg.ModelContextTokens)
 	limit := int(float64(budget) * o.cfg.AutoCompactThreshold)
-	if sessionTokenEstimate(o.session.Messages, o.cfg.Provider) < limit {
+	if o.estimatedSessionTokens(ctx, limit) < limit {
 		return
 	}
 
 	// Phase 1: clear tool-result payloads in old turns — cheapest, preserves conversation structure.
 	if msgs, cleared := clearOldToolResults(o.session.Messages, compactPreserveTail); cleared {
 		o.session.ReplaceMessages(msgs)
-		if sessionTokenEstimate(o.session.Messages, o.cfg.Provider) < limit {
+		if o.estimatedSessionTokens(ctx, limit) < limit {
 			return
 		}
 	}
@@ -128,6 +128,31 @@ func clearOldToolResults(msgs []llm.Message, preserve int) ([]llm.Message, bool)
 		}
 	}
 	return msgs, changed
+}
+
+// estimatedSessionTokens returns token count for compaction decisions. For Anthropic with
+// InputTokenCounter and token_count_mode auto, uses the count_tokens API once the heuristic
+// estimate reaches 70% of the compaction threshold.
+func (o *Orchestrator) estimatedSessionTokens(ctx context.Context, compactLimit int) int {
+	heuristic := sessionTokenEstimate(o.session.Messages, o.cfg.Provider)
+	if o.inputTokenCounter == nil || o.cfg.Provider != "anthropic" {
+		return heuristic
+	}
+	mode := strings.ToLower(strings.TrimSpace(o.cfg.TokenCountMode))
+	if mode == "heuristic" {
+		return heuristic
+	}
+	soft := int(float64(compactLimit) * 0.7)
+	if heuristic < soft {
+		return heuristic
+	}
+	req := o.buildRequest()
+	n, err := o.inputTokenCounter.CountInputTokens(ctx, req)
+	if err != nil || n <= 0 {
+		slog.Debug("count_tokens failed, using heuristic", "err", err)
+		return heuristic
+	}
+	return n
 }
 
 // contextBudgetTokens returns the effective context window in estimated tokens.

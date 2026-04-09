@@ -51,3 +51,21 @@ func Join(primary, sessionID string, width int) string {
 	}
 	return label
 }
+
+// HintsWithSession appends an optional session label to hints. When the combined string is wider
+// than width (terminal cells, 0 = no wrap), the session label moves to the next line.
+func HintsWithSession(hints, sessionID string, width int) string {
+	hints = strings.TrimSpace(hints)
+	label := SessionLabel(sessionID)
+	if label == "" {
+		return hints
+	}
+	if hints == "" {
+		return label
+	}
+	combined := hints + "  " + label
+	if width <= 0 || lipgloss.Width(combined) <= width {
+		return combined
+	}
+	return hints + "\n" + label
+}

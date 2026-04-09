@@ -156,9 +156,9 @@ func (t *Theme) AssistantPlainPrefix() string {
 	return fmt.Sprintf("%s %s", t.AssistantEmoji, t.AssistantName)
 }
 
-// FooterHint is the default status line when idle.
+// FooterHint is the default hints row when idle (session id is shown separately in the TUI footer).
 func (t *Theme) FooterHint() string {
-	return "Enter: send · Ctrl+J: newline · /help · Esc / Ctrl+C: exit · Ctrl+L: clear"
+	return "Enter send · Ctrl+J newline · /help · Esc or Ctrl+C exit · Ctrl+L clear"
 }
 
 // SpinnerAccentStyle is Lip Gloss v2 (required by bubbles/v2 spinner).

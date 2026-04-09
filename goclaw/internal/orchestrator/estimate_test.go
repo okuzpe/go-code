@@ -89,6 +89,79 @@ func TestClearOldToolResultsIdempotent(t *testing.T) {
 	require.False(t, changed)
 }
 
+type stubTokenCounter struct {
+	value     int
+	err       error
+	callCount int
+}
+
+func (s *stubTokenCounter) CountInputTokens(_ context.Context, _ llm.Request) (int, error) {
+	s.callCount++
+	return s.value, s.err
+}
+
+func TestEstimatedSessionTokensSkipsAPIBelowSoftThreshold(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Provider = "anthropic"
+	cfg.ModelContextTokens = 1000
+	cfg.AutoCompactThreshold = 0.85
+	cfg.TokenCountMode = "auto"
+
+	sess := session.New()
+	sess.Add("user", strings.Repeat("a", 100))
+
+	counter := &stubTokenCounter{value: 999}
+	orch := New(cfg, nil, sess, tools.New(), permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose,
+		WithInputTokenCounter(counter))
+
+	limit := int(float64(1000) * 0.85)
+	got := orch.estimatedSessionTokens(context.Background(), limit)
+	require.Equal(t, sessionTokenEstimate(sess.Messages, "anthropic"), got)
+	require.Zero(t, counter.callCount)
+}
+
+func TestEstimatedSessionTokensUsesCounterAboveSoftThreshold(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Provider = "anthropic"
+	cfg.ModelContextTokens = 1000
+	cfg.AutoCompactThreshold = 0.85
+	cfg.TokenCountMode = "auto"
+
+	sess := session.New()
+	sess.Add("user", strings.Repeat("a", 2500))
+
+	counter := &stubTokenCounter{value: 812}
+	orch := New(cfg, nil, sess, tools.New(), permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose,
+		WithInputTokenCounter(counter))
+
+	limit := int(float64(1000) * 0.85)
+	got := orch.estimatedSessionTokens(context.Background(), limit)
+	require.Equal(t, 812, got)
+	require.Equal(t, 1, counter.callCount)
+}
+
+func TestEstimatedSessionTokensHeuristicMode(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Provider = "anthropic"
+	cfg.ModelContextTokens = 1000
+	cfg.TokenCountMode = "heuristic"
+
+	sess := session.New()
+	sess.Add("user", strings.Repeat("a", 2500))
+
+	counter := &stubTokenCounter{value: 812}
+	orch := New(cfg, nil, sess, tools.New(), permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose,
+		WithInputTokenCounter(counter))
+
+	limit := int(float64(1000) * 0.85)
+	got := orch.estimatedSessionTokens(context.Background(), limit)
+	require.Equal(t, sessionTokenEstimate(sess.Messages, "anthropic"), got)
+	require.Zero(t, counter.callCount)
+}
+
 func TestMaybeCompactPhase1OnlyAvoidsPhase2(t *testing.T) {
 	t.Parallel()
 	// Huge tool payloads outside the preserved tail should be cleared first; if that

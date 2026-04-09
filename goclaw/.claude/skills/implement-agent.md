@@ -6,7 +6,8 @@ description: Use when the user asks to add, change, or define an agent profile i
 ## Add or change an agent profile
 
 ### Read first
-- `internal/agents/profile.go` — `Profile` and the six built-ins
+- `internal/agents/profile.go` — `Profile` and the seven built-ins
+- [`AGENT_PROFILES.md`](../../../AGENT_PROFILES.md) (monorepo root) — full table and coordinator semantics
 
 ### Profile shape
 
@@ -30,6 +31,7 @@ type Profile struct {
 | `verification` | — | read_file, bash, todo_write | false | PASS/FAIL checks |
 | `guide` | — | none (`[]string{}`) | true | Q&A only |
 | `statusline` | — | none | true | single-line status |
+| `coordinator` | — | spawn_agent, stop_task, todo_write | true | delegate to workers; no direct file/shell tools |
 
 (Align with `profile.go` if this table drifts.)
 
@@ -49,7 +51,7 @@ Register in `All()`:
 
 ```go
 profiles := []Profile{
-    GeneralPurpose, Explore, Plan, Verification, Guide, StatusLine,
+    GeneralPurpose, Explore, Plan, Verification, Guide, StatusLine, Coordinator,
     MyProfile,
 }
 ```

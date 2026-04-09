@@ -25,7 +25,7 @@ Each tier must be stable before starting the next.
 
 ### 1a. TUI polish
 - [x] Manual checklist: [`docs/MANUAL_TUI_CHECKLIST.md`](docs/MANUAL_TUI_CHECKLIST.md) — RunApp, stream, modal `y`/`n`, `Ctrl+L`, `Ctrl+C` + save
-- [x] **Session id visible in the TUI** — footer status line appends `sess·…` (compact / rune-safe) via `internal/ui/footerline` + `footerline.Join` from `internal/ui/chat/chat.go` (truncates primary status on narrow widths). **Title bar** stays compact (`goclaw · provider · model · profile` only). Tests live in `internal/ui/footerline` (no Bubble Tea init).
+- [x] **Session id visible in the TUI** — footer uses a two-line layout in `internal/ui/chat/chat.go`: primary row for spinner / tool / “Responding…”, second row for `Theme.FooterHint()` plus `sess·…` via `footerline.HintsWithSession` (wraps session to the next line when narrow). **Title bar** stays compact (`goclaw · provider · model · profile` only). Tests live in `internal/ui/footerline` (no Bubble Tea init).
 
 ### 1b. Non-TTY / readline path
 - [x] Readline history file: `replHistoryFile` → `<UserConfigDir>/history` (`internal/app/repl_readline.go`); `MkdirAll` on config dir before `readline.NewEx` so the file can always be created; chzyer/readline persists on `Close`
@@ -217,10 +217,24 @@ Each tier must be stable before starting the next.
 | IDE localhost notifier (`GOCLAW_IDE_NOTIFY_URL`) | Done |
 | CI: `go vet` + tests on Linux and Windows; `-race` on Linux only | Done |
 | CI: `golangci-lint` + 61% coverage threshold (`-coverpkg=./...`) | Done |
-| 6 built-in agent profiles | Done |
+| 7 built-in agent profiles (incl. `coordinator`) | Done |
 | Custom agent profiles (`~/.goclaw/agents/*.md`, `.goclaw/agents/*.md`) | Done |
 | `script` tool (multi-line shell, opt-in via `allow_script: true`) | Done |
 | YOLO risk classifier (`yolo_threshold` in settings, default -1/off) | Done |
 | Parallel read-tool execution (auto-approve turns only) | Done |
 | LLM-driven compaction (`llm_compaction: true`, opt-in) | Done |
 | `slog.Debug` timing for LLM stream and MCP tool calls | Done |
+
+---
+
+## Tier 8 — V3+ slice (2026-04)
+
+First-pass implementation of roadmap items that were still “post-MVP” on paper; **not** full enterprise parity (no MCP OAuth/WS here).
+
+- [x] **MCP remote token file** — `mcp_servers[].bearer_token_file` merged into HTTP `Authorization` when headers omit it ([`internal/app/chat_wiring.go`](internal/app/chat_wiring.go)); notes in [`docs/V3_MCP_REMOTE.md`](docs/V3_MCP_REMOTE.md)
+- [x] **Local plugins (hooks MVP)** — [`internal/plugin`](internal/plugin): `goclaw-plugin.json`, `plugin_dirs` / `plugin_allow` / `plugin_deny` in settings, `--plugin-dir` flag
+- [x] **Memory auto-capture (opt-in)** — `memory_auto_extract` → short project line after successful `write_file` / `edit_file` ([`internal/memory/autocapture.go`](internal/memory/autocapture.go))
+- [x] **Runtime skills** — [`internal/skills`](internal/skills) + orchestrator `WithSkillsSnippet` (`.goclaw/skills`, `.claude/skills`, user mirrors)
+- [x] **Swarm disk hub** — [`internal/swarm`](internal/swarm) + [`docs/SWARM.md`](docs/SWARM.md) (vs coordinator)
+- [x] **IDE extension contract** — [IDE_BRIDGE.md](../IDE_BRIDGE.md) §7
+- [x] **Docs sync** — [`CLAUDE.md`](CLAUDE.md), [`../DOCS_MAP.md`](../DOCS_MAP.md), this tier

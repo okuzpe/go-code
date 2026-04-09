@@ -10,3 +10,6 @@
 
 # Debug / trace dumps (local only)
 *_inittrace.txt
+
+# Go coverage profiles and other local *.out artifacts
+*.out

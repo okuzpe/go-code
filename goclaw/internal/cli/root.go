@@ -14,9 +14,12 @@ type RunListSessionsFunc func() error
 // RunDoctorFunc prints a preflight health check and exits.
 type RunDoctorFunc func(cmd *cobra.Command, args []string) error
 
+// RunPromptFunc runs one agent turn from argv text (`goclaw prompt ...`).
+type RunPromptFunc func(cmd *cobra.Command, args []string) error
+
 // NewRootCmd builds the Cobra command tree. runChat and listSessions are injected so tests
 // do not link the full UI stack.
-func NewRootCmd(version string, runChat RunChatFunc, listSessions RunListSessionsFunc, runDoctor RunDoctorFunc) *cobra.Command {
+func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, listSessions RunListSessionsFunc, runDoctor RunDoctorFunc) *cobra.Command {
 	root := &cobra.Command{
 		Use:     "goclaw",
 		Short:   "Go CLI coding agent (Ollama or Anthropic)",
@@ -43,6 +46,9 @@ func NewRootCmd(version string, runChat RunChatFunc, listSessions RunListSession
 	root.PersistentFlags().Bool("readline", false, "force readline REPL; disables TUI even if GOCLAW_USE_TUI=1")
 	root.PersistentFlags().Bool("tui", false, "use fullscreen Bubble Tea TUI instead of readline (also GOCLAW_USE_TUI=1)")
 	root.PersistentFlags().Bool("mock", false, "stream a canned assistant reply without calling the model (UI demo; TUI and readline)")
+	root.PersistentFlags().String("output-format", "text", `stdout for one-shot modes: "text" (final assistant only) or "json" (object with response and toolCalls); use with stdin automation or goclaw prompt`)
+	root.PersistentFlags().Bool("json-output", false, `shorthand for --output-format json with stdin automation (echo "hi" | goclaw --json-output); same JSON shape as --output-format json`)
+	root.PersistentFlags().StringSlice("plugin-dir", nil, `plugin root directories (each contains goclaw-plugin.json); repeat flag or comma-separated; merges with settings "plugin_dirs"`)
 
 	sessionsCmd := &cobra.Command{
 		Use:   "sessions",
@@ -59,6 +65,7 @@ func NewRootCmd(version string, runChat RunChatFunc, listSessions RunListSession
 	root.AddCommand(sessionsCmd)
 	root.AddCommand(newDoctorCmd(runDoctor))
 	root.AddCommand(newChatCmd(runChat))
+	root.AddCommand(newPromptCmd(runPrompt))
 
 	return root
 }
@@ -78,7 +85,26 @@ func newChatCmd(runChat RunChatFunc) *cobra.Command {
 		Long: `Opens the coding-agent chat: streaming assistant, tool loop, slash commands, and session persistence.
 
 Default is readline (claw-style). Use --tui or GOCLAW_USE_TUI=1 for fullscreen TUI.
-Use --mock to stream a canned reply without calling the model (UI / wiring check).`,
+Use --mock to stream a canned reply without calling the model (UI / wiring check).
+Use --output-format json or --json-output to read one stdin line and print JSON (automation; incompatible with --tui).
+Use goclaw prompt "message" for a one-shot turn without piping stdin.`,
 		RunE: runChat,
+	}
+}
+
+func newPromptCmd(runPrompt RunPromptFunc) *cobra.Command {
+	return &cobra.Command{
+		Use:   "prompt [message]...",
+		Short: "Run one agent turn from argument text and exit",
+		Long: `Joins all arguments into a single user message and runs the same one-turn loop as the REPL (no interactive session).
+
+Default prints the final assistant text to stdout. Use --output-format json (or --json-output) for machine-readable JSON.
+Non-interactive tool runs need tool_permissions "allow" for tools that would otherwise prompt (or use --no-tools).
+
+Incompatible with --tui; use the chat subcommand for fullscreen UI.`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runPrompt(cmd, args)
+		},
 	}
 }

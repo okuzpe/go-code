@@ -35,7 +35,8 @@ var _ Tool = (*WebFetchTool)(nil)
 func (WebFetchTool) Name() string { return "web_fetch" }
 
 func (WebFetchTool) Description() string {
-	return "Fetch public http(s) content as text. Private IPs and metadata endpoints are blocked."
+	return "Fetch public http(s) content. HTML responses are reduced to plain text when possible. " +
+		"Private IPs and metadata endpoints are blocked."
 }
 
 func (WebFetchTool) InputSchema() any {
@@ -119,6 +120,11 @@ func (t *WebFetchTool) Execute(ctx context.Context, input string) (Result, error
 		body = body[:maxBytes]
 	}
 	out := string(body)
+	if isLikelyHTMLResponse(ct, body) {
+		if plain, ok := htmlResponseToPlainText(body); ok {
+			out = plain
+		}
+	}
 	if truncated {
 		out += "\n\n[truncated]"
 	}

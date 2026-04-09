@@ -100,6 +100,27 @@ func TestBuildRequestInjectsTodoBlock(t *testing.T) {
 	}
 }
 
+func TestBuildRequestInjectsSkillsBlock(t *testing.T) {
+	reg := tools.New()
+	reg.Register(fakeTool{name: "read_file"})
+	o := &Orchestrator{
+		cfg:          config.Default(),
+		session:      session.New(),
+		tools:        reg,
+		perms:        permissions.NewPolicy(),
+		hooks:        hooks.New(),
+		profile:      agents.Explore,
+		skillsPrompt: "Use the frobnicate pattern.",
+	}
+	req := o.buildRequest()
+	if !strings.Contains(req.System, "## Loaded skills (SKILL.md)") {
+		t.Fatalf("missing skills header: %q", req.System)
+	}
+	if !strings.Contains(req.System, "frobnicate") {
+		t.Fatalf("missing skills body: %q", req.System)
+	}
+}
+
 func TestBuildRequestReadOnlyStripsMCP(t *testing.T) {
 	reg := tools.New()
 	reg.Register(fakeTool{name: "mcp__srv__t"})

@@ -20,7 +20,9 @@ import (
 	"github.com/okuzpe/goclaw/internal/memory"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/permissions"
+	"github.com/okuzpe/goclaw/internal/plugin"
 	"github.com/okuzpe/goclaw/internal/session"
+	"github.com/okuzpe/goclaw/internal/skills"
 	"github.com/okuzpe/goclaw/internal/todos"
 	"github.com/okuzpe/goclaw/internal/tools"
 	"github.com/spf13/cobra"
@@ -80,6 +82,11 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	}
 	if p := strings.TrimSpace(profileFlag); p != "" {
 		cfg.AgentProfile = p
+	}
+	if cmd != nil {
+		if vals, err := cmd.Flags().GetStringSlice("plugin-dir"); err == nil && len(vals) > 0 {
+			cfg.PluginDirs = append(cfg.PluginDirs, vals...)
+		}
 	}
 
 	sessDir := filepath.Join(cfg.UserConfigDir, "sessions")
@@ -156,6 +163,9 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 			hookReg.OnCommand(et, h.Command, h.Args...)
 		}
 	}
+	for _, name := range plugin.RegisterHooksFromDirs(hookReg, cfg.PluginDirs, workdir, cfg.PluginAllow, cfg.PluginDeny) {
+		slog.Info("plugin hooks registered", "name", name)
+	}
 	if cfg.TrustedWorkspace {
 		hookPath := filepath.Join(workdir, ".goclaw", "hooks.json")
 		if err := hooks.LoadHooksFile(hookReg, hookPath); err != nil {
@@ -229,7 +239,17 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 					continue
 				}
 				urlStr := parsed.String()
-				hdrs := srv.Headers
+				hdrs := cloneHeaderMap(srv.Headers)
+				if tf := strings.TrimSpace(srv.BearerTokenFile); tf != "" {
+					if tok, err := readBearerTokenFile(workdir, tf); err != nil {
+						slog.Warn("mcp bearer_token_file unreadable", "id", srv.ID, "err", err)
+					} else if tok != "" && !headerHasAuthorization(hdrs) {
+						if hdrs == nil {
+							hdrs = make(map[string]string)
+						}
+						hdrs["Authorization"] = "Bearer " + tok
+					}
+				}
 				dial = func(_ context.Context) (mcp.Conn, error) {
 					return mcp.NewHTTPSession(urlStr, hdrs)
 				}
@@ -262,12 +282,29 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	}
 
 	ideNotifier := ide.FromEnv()
+	skillRoots := []string{
+		filepath.Join(workdir, cfg.ProjectConfigDir, "skills"),
+		filepath.Join(workdir, ".claude", "skills"),
+		filepath.Join(cfg.UserConfigDir, "skills"),
+		filepath.Join(cfg.UserConfigDir, ".claude", "skills"),
+	}
+	skillSnippet, _ := skills.Collect(skillRoots, 24000)
 	orchOpts := []orchestrator.Option{orchestrator.WithMemoryStore(memStore)}
+	if skillSnippet != "" {
+		orchOpts = append(orchOpts, orchestrator.WithSkillsSnippet(skillSnippet))
+	}
 	if !disableTools {
 		orchOpts = append(orchOpts, orchestrator.WithTodoStore(todoStore))
-		orchOpts = append(orchOpts, orchestrator.WithAfterTool(func(toolName string, resultBytes int, isError bool) {
+		sid := sess.ID
+		orchOpts = append(orchOpts, orchestrator.WithAfterTool(func(toolName string, toolInput string, resultBytes int, isError bool) {
 			ideNotifier.AfterTool(toolName, resultBytes, isError)
+			memory.MaybeAutoCaptureFromTool(cfg, memStore, sid, toolName, toolInput, isError)
 		}))
+	}
+	if cfg.Provider == "anthropic" && strings.ToLower(strings.TrimSpace(cfg.TokenCountMode)) != "heuristic" {
+		if ac, ok := client.(*llm.AnthropicClient); ok {
+			orchOpts = append(orchOpts, orchestrator.WithInputTokenCounter(ac))
+		}
 	}
 
 	return &ChatRuntime{
@@ -306,6 +343,15 @@ func registerBuiltInTools(r *tools.Registry, workdir string, cfg config.Config, 
 	r.Register(tools.NewWriteFile(workdir))
 	r.Register(tools.NewEditFile(workdir))
 	r.Register(tools.NewWebFetch())
-	r.Register(tools.NewWebSearch())
+	webBackend, webBackendOK := config.NormalizeWebSearchBackend(cfg.WebSearchBackend)
+	if !webBackendOK && strings.TrimSpace(cfg.WebSearchBackend) != "" {
+		slog.Warn("unknown web_search_backend, using ddg", "value", cfg.WebSearchBackend)
+	}
+	r.Register(tools.NewWebSearch(tools.WebSearchOptions{
+		Backend:     webBackend,
+		BraveAPIKey: cfg.BraveSearchAPIKey,
+		SerpAPIKey:  cfg.SerpAPIKey,
+		FallbackDDG: cfg.WebSearchFallbackDDG,
+	}))
 	r.Register(tools.NewTodoWrite(todoStore))
 }

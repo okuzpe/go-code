@@ -1,70 +1,68 @@
-# D16 Coordinator mode — implementation sketch (pre-code)
+# D16 Coordinator mode — implementation reference
 
-This document narrows [COORDINATOR_MODE.md](../../COORDINATOR_MODE.md) into concrete Go shapes for a future **hub-and-spoke** coordinator. It is **not** implemented in goclaw today; it exists so the plan → execute workflow ([`internal/planfile`](../internal/planfile/), `/apply-plan`) can evolve without mixing Coordinator semantics with Team/Swarm.
+This document ties [COORDINATOR_MODE.md](../../COORDINATOR_MODE.md) to the **implemented** hub-and-spoke coordinator in goclaw. It complements the plan → execute workflow ([`internal/planfile`](../internal/planfile/), `/apply-plan`) and stays separate from future **Team/Swarm** designs.
+
+## Implementation map
+
+| Concept | Location |
+|---------|----------|
+| `spawn_agent` tool (isolated worker session, no nesting) | [`internal/coordinator/spawn_agent.go`](../internal/coordinator/spawn_agent.go) |
+| `stop_task` tool | [`internal/coordinator/stop_task.go`](../internal/coordinator/stop_task.go) |
+| Worker cancel registry | [`internal/coordinator/worker_registry.go`](../internal/coordinator/worker_registry.go) |
+| Coordinator profile (`spawn_agent`, `stop_task`, `todo_write` only) | [`internal/agents/profile.go`](../internal/agents/profile.go) (`Coordinator`) |
+| Wiring into chat runtime | [`internal/app/chat_wiring.go`](../internal/app/chat_wiring.go) |
 
 ## Design constraints (from product docs)
 
-- **Coordinator** must not use `read_file`, `write_file`, `edit_file`, or `bash` directly — only delegation tools and messaging ([COORDINATOR_MODE.md](../../COORDINATOR_MODE.md) §2.1–2.2).
-- **Workers** get the normal toolbox (or a narrowed worker profile) and **must not** see the full user ↔ coordinator transcript; each task message must be self-contained (§2.7).
+- **Coordinator** does not use `read_file`, `write_file`, `edit_file`, or `bash` directly — only delegation tools ([COORDINATOR_MODE.md](../../COORDINATOR_MODE.md) §2.1–2.2).
+- **Workers** use a normal (or narrowed) profile and **do not** see the full user ↔ coordinator transcript; each `task` string must be self-contained (§2.7).
 - Do **not** merge Coordinator routing with Team/Swarm mailboxes in the same abstraction (§1).
 
-## Proposed wire type: worker result
+## Wire type: worker result (as implemented)
 
-JSON (or XML-like envelope) the worker runner sends back to the coordinator loop:
-
-```json
-{
-  "task_id": "uuid-or-slug",
-  "status": "completed",
-  "summary": "one-line outcome for the coordinator",
-  "result": "detailed text or structured payload",
-  "usage": { "prompt_tokens": 0, "completion_tokens": 0 }
-}
-```
-
-`status` values: `completed`, `failed`, `killed`.
-
-**Go shape (illustrative):**
+The `spawn_agent` tool returns JSON matching `WorkerNotification`:
 
 ```go
 type WorkerNotification struct {
-	TaskID  string `json:"task_id"`
-	Status  string `json:"status"`
-	Summary string `json:"summary"`
-	Result  string `json:"result"`
-	Usage   any    `json:"usage,omitempty"`
+	TaskID  string `json:"task_id"` // worker session id; use with stop_task
+	Profile string `json:"profile"`
+	Status  string `json:"status"`  // "completed" | "failed"
+	Summary string `json:"summary"` // first non-empty line of the result
+	Result  string `json:"result"`  // full worker response text
 }
 ```
 
-The orchestrator (or a thin `internal/coordinator` package) would parse this, update an in-memory registry of tasks, and **summarize** into the coordinator session instead of dumping full worker transcripts by default.
+The coordinator LLM receives this as a `tool_result` and synthesizes it for the user. Token `usage` is not attached in the current struct (optional future extension).
 
-## Coordinator profile (illustrative)
+## Coordinator profile (implemented)
 
-| Field | Proposed value |
-|-------|----------------|
-| `ToolAllowlist` | Delegation-only tools (names TBD), e.g. spawn/continue worker, stop task — **not** file/shell tools |
-| `ReadOnly` | `true` at the filesystem layer (no direct mutation tools) |
-| `SystemPrompt` | Coordinator-only: synthesize specs, delegate with verbatim paths and line numbers |
+| Field | Value |
+|-------|--------|
+| `Name` | `coordinator` |
+| `ToolAllowlist` | `spawn_agent`, `stop_task`, `todo_write` |
+| `ReadOnly` | `true` (no direct file/shell tools) |
+| `SystemPrompt` | Delegation-first; workers hold the full toolbox |
 
-Worker profile: reuse `general-purpose` or a dedicated `worker` profile with full tools minus coordinator-only tools.
+Workers are started with a registry **without** `spawn_agent` to prevent coordinator nesting.
 
 ## Phases (reference mapping)
 
-| Phase | Owner | goclaw direction |
-|-------|--------|------------------|
-| Research | Workers (parallel) | Multiple `Run` contexts with isolated `session.Session` |
-| Synthesis | Coordinator | Current REPL thread; may use `plan` profile + `.goclaw/plan.md` |
-| Implementation | Workers | `/apply-plan` today approximates a **single-threaded** handoff to `general-purpose` |
-| Verification | Workers | `verification` profile in separate turns or worker runs |
+| Phase | Owner | goclaw |
+|-------|--------|--------|
+| Research | Workers (parallel) | Multiple `spawn_agent` calls / parallel tool execution where the model issues parallel tool calls |
+| Synthesis | Coordinator | REPL thread; often `plan` profile + `.goclaw/plan.md` |
+| Implementation | Workers | `/apply-plan` handoff to `general-purpose` or worker profiles |
+| Verification | Workers | `verification` profile in separate worker runs |
 
-## Dependencies before coding D16
+## Tests and harness
 
-- Stable **task id** generation and cancellation (context + optional process kill for subprocess workers).
-- Tests with [`testutil/mockserver`](../testutil/mockserver/) for multi-turn coordinator + fake worker responses.
-- Permission policy: coordinator tools subject to the same `ask` / `allow` / `deny` rules as built-ins.
+- Unit / integration tests: [`internal/coordinator/spawn_agent_test.go`](../internal/coordinator/spawn_agent_test.go), [`internal/coordinator/stop_task_test.go`](../internal/coordinator/stop_task_test.go).
+- Mock Anthropic: [`testutil/mockserver`](../testutil/mockserver/).
+- Scripted checklist: [`scripts/run_mock_parity_harness.sh`](../scripts/run_mock_parity_harness.sh) and [`scripts/mock_parity_scenarios.json`](../scripts/mock_parity_scenarios.json).
 
 ## Changelog
 
 | Date | Change |
 |------|--------|
-| 2026-04-08 | Initial sketch: WorkerNotification JSON, profile split, phase mapping, dependencies. |
+| 2026-04-08 | Initial sketch (pre-code). |
+| 2026-04-09 | Updated to reflect implemented `internal/coordinator`, links to code and parity harness. |

@@ -95,6 +95,22 @@ Orden de resolución orientativa: variable de entorno (solo dev) → cadena de c
 
 ---
 
+## 7. goclaw ↔ extension contract (V3 spec)
+
+**Goal:** keep editor extensions and goclaw aligned without coupling the orchestrator to a specific IDE.
+
+| Concern | Contract |
+|---------|-----------|
+| **MCP endpoint** | Extension writes a JSON lockfile under `~/.goclaw/ide/*.json` with `url` (loopback `http`/`https`) and optional `headers`. User sets `ide_bridge_mcp: true`; goclaw appends synthetic MCP server `id: "ide"` and uses the same streamable HTTP client as other `mcp_servers[].url` entries. |
+| **Bearer / auth** | Prefer `headers.Authorization` in the lockfile, or use `mcp_servers` with `bearer_token_file` for static tokens (see [`goclaw/docs/V3_MCP_REMOTE.md`](goclaw/docs/V3_MCP_REMOTE.md)). |
+| **Post-tool notify** | `GOCLAW_IDE_NOTIFY_URL` must stay **loopback-only**. Payload shape is stable JSON: `{"tool","result_bytes","is_error"}`. Extensions may use this for progress UI without MCP. |
+| **Future events** | Additional notification types should be versioned (e.g. `event` field) and remain **best-effort**; the REPL must not depend on the IDE replying. |
+| **OAuth / remote IDE** | Out of scope until explicitly designed; same posture as D6 OAuth for MCP. |
+
+**Reference implementation:** [`goclaw/internal/ide/discovery.go`](goclaw/internal/ide/discovery.go), [`goclaw/internal/ide/notify.go`](goclaw/internal/ide/notify.go), wiring in [`goclaw/internal/app/chat_wiring.go`](goclaw/internal/app/chat_wiring.go).
+
+---
+
 ## 5. Changelog
 
 | Fecha | Cambio |
@@ -102,3 +118,4 @@ Orden de resolución orientativa: variable de entorno (solo dev) → cadena de c
 | 2026-04-07 | Creación: IDE local vs Bridge remoto, descubrimiento, transports, amenaza localhost, eco Go, **D21** |
 | 2026-04-07 | §6: `GOCLAW_IDE_NOTIFY_URL`, `internal/ide/notify.go`, scope vs full D21. |
 | 2026-04-09 | §6: `ide_bridge_mcp`, `internal/ide/discovery.go`, lockfile JSON → MCP HTTP. |
+| 2026-04-09 | §7: goclaw ↔ extension contract (lockfile MCP, notify payload, future versioning). |

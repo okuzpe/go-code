@@ -38,7 +38,7 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 | `internal/permissions/` | `Policy.Evaluate(toolName)` + `ApplyConfigModes` for `tool_permissions` |
 | `internal/config/` | `Config`, `Default()`, hierarchical load (user → project → local) |
 | `internal/hooks/` | Go handler registry + external subprocess/HTTP hooks + project hooks file |
-| `internal/agents/` | Six built-in profiles + `All()` lookup |
+| `internal/agents/` | Seven built-in profiles + `All()` lookup; custom agents from `~/.goclaw/agents` and `.goclaw/agents` |
 | `internal/memory/` | Filesystem store under `~/.goclaw/memory/`, MEMORY.md index |
 | `internal/mcp/` | Stdio JSON-RPC MCP client: process lifecycle, tool discovery, `mcp__id__name` naming |
 | `internal/planfile/` | Workspace `.goclaw/plan.md` path, template, size limits, handoff message |
@@ -65,6 +65,6 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 - **memory** — durable facts under `~/.goclaw/memory/`
 
 ## Implemented status (2026-04)
-- **Done:** core loop, Ollama + Anthropic clients + retry, session JSONL store, default readline REPL, opt-in BubbleTea TUI (`--tui`), Cobra CLI, all 9 tools (read_file/glob/grep/bash/write_file/edit_file/web_fetch/web_search/todo_write), permissions, memory, compaction, hooks (Go + external + project file), MCP stdio client (multi-server), IDE notifier, planfile + `/apply-plan`, all slash commands.
-- **Post-MVP v2+:** YOLO Classifier (D17), multi-agent coordinator (D16), custom agents from `.goclaw/agents/*.md` (D19).
+- **Done:** core loop, Ollama + Anthropic clients + retry, session JSONL store, default readline REPL, opt-in BubbleTea TUI (`--tui`), Cobra CLI, all 9 tools (read_file/glob/grep/bash/write_file/edit_file/web_fetch/web_search/todo_write), permissions, memory, compaction, hooks (Go + external + project file), MCP stdio client (multi-server), IDE notifier, planfile + `/apply-plan`, all slash commands, hub-and-spoke coordinator (`spawn_agent` / `stop_task`, profile `coordinator`; see `docs/D16_COORDINATOR_SKETCH.md`).
+- **Post-MVP v2+:** Team/Swarm peer-agent topology (distinct from in-process coordinator); see `COORDINATOR_MODE.md` at repo root.
 - **Post-MVP v3+:** Plugins, full IDE bridge, remote MCP transports, OAuth.

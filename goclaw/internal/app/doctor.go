@@ -43,6 +43,23 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 	}
 
 	lines = append(lines, "")
+	webBackend, webBackendOK := config.NormalizeWebSearchBackend(cfg.WebSearchBackend)
+	if !webBackendOK && strings.TrimSpace(cfg.WebSearchBackend) != "" {
+		lines = append(lines, fmt.Sprintf("web_search: unknown backend %q (using ddg)", strings.TrimSpace(cfg.WebSearchBackend)))
+	} else {
+		lines = append(lines, fmt.Sprintf("web_search backend: %s", webBackend))
+	}
+	if webBackend == "brave" {
+		lines = append(lines, checkLine("brave search api key configured", strings.TrimSpace(cfg.BraveSearchAPIKey) != ""))
+	}
+	if webBackend == "serpapi" {
+		lines = append(lines, checkLine("serpapi key configured", strings.TrimSpace(cfg.SerpAPIKey) != ""))
+	}
+	if webBackend != "ddg" {
+		lines = append(lines, fmt.Sprintf("  - fallback to duckduckgo: %v", cfg.WebSearchFallbackDDG))
+	}
+
+	lines = append(lines, "")
 	lines = append(lines, fmt.Sprintf("user config dir: %s", cfg.UserConfigDir))
 	lines = append(lines, fmt.Sprintf("sessions dir:    %s", filepath.Join(cfg.UserConfigDir, "sessions")))
 	lines = append(lines, fmt.Sprintf("memory dir:      %s", filepath.Join(cfg.UserConfigDir, "memory")))
@@ -52,6 +69,11 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 	var ollamaOK bool
 	if cfg.Provider == "anthropic" {
 		lines = append(lines, checkLine("anthropic api key", strings.TrimSpace(cfg.APIKey) != ""))
+		mode := strings.ToLower(strings.TrimSpace(cfg.TokenCountMode))
+		if mode == "" {
+			mode = "auto"
+		}
+		lines = append(lines, fmt.Sprintf("token_count_mode: %s (auto uses count_tokens API near compaction threshold)", mode))
 	} else {
 		ollamaHost := effectiveOllamaHost(cfg.OllamaHost)
 		ollamaOK = probeOllama(ctx, ollamaHost)
@@ -170,6 +192,12 @@ func hintLines(cfg config.Config, ollamaOK, toolsDisabled bool) []string {
 	}
 	if toolsDisabled {
 		hints = append(hints, "  Tools are disabled (--no-tools or GOCLAW_DISABLE_TOOLS=1); MCP servers were not started.")
+	}
+	if !toolsDisabled && cfg.Provider != "anthropic" && ollamaOK {
+		hints = append(hints,
+			"  Local Ollama models may still refuse to summarize news or pages even when web_search/web_fetch succeed.",
+			"  - Try a general instruct/chat model, or switch provider to anthropic for more reliable web summarization.",
+		)
 	}
 	return hints
 }

@@ -21,7 +21,10 @@ const baseSystemPrompt = "You are the goclaw coding agent.\n\n" +
 	"or get any online information, you MUST call the web_search tool. " +
 	"You CAN search the internet — the web_search tool is available to you. " +
 	"NEVER say \"I cannot search the web\" or \"I cannot access the internet\". " +
-	"After web_search returns, summarize the results for the user.\n" +
+	"When web_search or web_fetch returns content in a tool result, you MUST answer from that output: " +
+	"give a concise summary in plain language (headlines, topics, and factual points). " +
+	"Do not refuse to summarize tool-returned public web content the user asked you to fetch; " +
+	"paraphrase and attribute sources by domain or page title when possible.\n" +
 	"4. TOOL PRIORITY: " +
 	"read_file, glob, grep → read/search code. " +
 	"write_file, edit_file → edit code. " +
@@ -73,6 +76,9 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	}
 
 	sys := baseSystemPrompt + o.profile.SystemPrompt
+	if o.skillsPrompt != "" {
+		sys = sys + "\n\n## Loaded skills (SKILL.md)\n" + o.skillsPrompt
+	}
 	if o.mem != nil {
 		if block, err := o.mem.RecentContext(memorySnippetEntries); err == nil && block != "" {
 			sys = sys + "\n\n## Persistent memory (recent)\n" + block

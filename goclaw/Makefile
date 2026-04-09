@@ -1,7 +1,7 @@
 # Convenience targets for goclaw (macOS, Linux, Git Bash on Windows).
 # Without make: use the same `go` commands shown under each target.
 
-.PHONY: build test vet fmt lint race cover clean run run-chat run-chat-cmd
+.PHONY: build test vet fmt lint race cover clean parity run run-tui run-chat run-chat-cmd
 
 CMD := ./cmd/goclaw
 
@@ -10,6 +10,10 @@ build:
 
 test:
 	go test ./...
+
+# Mock Anthropic parity bundle (no API keys; see scripts/MOCK_PARITY_HARNESS.md).
+parity:
+	go test ./internal/orchestrator ./internal/coordinator -count=1 -run '^TestMockParityHarness$$'
 
 vet:
 	go vet ./...
@@ -33,6 +37,10 @@ lint:
 
 run:
 	go run $(CMD)
+
+# Fullscreen Bubble Tea TUI (same as --tui / GOCLAW_USE_TUI=1).
+run-tui:
+	go run $(CMD) --tui
 
 # Same interactive session as `run`; explicit subcommand for Claude Code–style muscle memory.
 run-chat-cmd:
