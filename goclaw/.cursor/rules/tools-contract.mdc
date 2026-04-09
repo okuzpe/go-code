@@ -143,7 +143,7 @@ reg.Register(tools.NewTodoWrite(todoStore))
 // MCP tools registered after: mcp.RegisterSessionTools(ctx, reg, mcpSess, srv.ID)
 ```
 
-> Note: registration is in `internal/app/run.go`, not `main.go`.
+> Note: registration is in `internal/app/chat_wiring.go` (`PrepareChatRuntime`), not `main.go`.
 
 ## MCP tools (`mcp__<server_id>__<tool_name>`)
 - Registered at startup for each server in `cfg.MCPServers` (stdio JSON-RPC subprocess).

@@ -53,6 +53,19 @@ type Config struct {
 	// TrustedWorkspace allows loading `.goclaw/hooks.json` from the project (D18).
 	TrustedWorkspace bool
 
+	// AllowScript enables the script tool, which allows multi-line shell scripts with
+	// pipes, &&, and redirections. Default false (opt-in via allow_script: true).
+	AllowScript bool
+
+	// YoloThreshold auto-approves tool calls with a risk score at or below this value.
+	// -1 (default) disables auto-approval; 0 auto-approves only pure reads.
+	// Range: -1..100.
+	YoloThreshold int
+
+	// LLMCompaction uses the active LLM to summarize compacted context instead of
+	// the heuristic placeholder. Default false (opt-in via llm_compaction: true).
+	LLMCompaction bool
+
 	// ExternalHooks are subprocess or HTTP hooks from settings (see hooks package).
 	ExternalHooks []ExternalHookEntry
 }
@@ -100,7 +113,8 @@ func Default() Config {
 		UserConfigDir:        filepath.Join(home, ".goclaw"),
 		ProjectConfigDir:     ".goclaw",
 		AgentProfile:         "general-purpose",
-		PermissionModes:    nil,
+		PermissionModes:      nil,
+		YoloThreshold:        -1,
 	}
 }
 

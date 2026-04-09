@@ -129,6 +129,9 @@ var globalClient llm.Client
 - Test files: `<package>_test.go`
 - Test functions: `TestSomething(t *testing.T)`
 
+### Full words — no lazy abbreviations
+No lazy truncations (`fun`, `re`, generic `str`, vague `cnt`/`tmp`, …). Use domain-clear names at call sites. Idiomatic Go shorts stay OK (`ctx`, `err`, `ok`, `i`/`j`, `t`/`tb`, HTTP `r`/`w`, `mu`, tight-scope `buf`). Details: `.cursor/rules/naming-full-words.mdc` and `.claude/skills/naming-full-words.md`.
+
 ## Forbidden
 - `fmt.Println` for logging
 - `panic()` except for unrecoverable programming errors

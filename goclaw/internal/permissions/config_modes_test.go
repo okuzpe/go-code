@@ -21,6 +21,9 @@ func TestApplyConfigModesValid(t *testing.T) {
 	if p.Evaluate("read_file") != DecisionAllow {
 		t.Fatalf("read_file: got %v", p.Evaluate("read_file"))
 	}
+	if p.Evaluate("web_fetch") != DecisionDeny {
+		t.Fatalf("web_fetch: got %v", p.Evaluate("web_fetch"))
+	}
 }
 
 func TestApplyConfigModesInvalidMode(t *testing.T) {

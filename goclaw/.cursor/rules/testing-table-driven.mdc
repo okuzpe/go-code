@@ -1,0 +1,22 @@
+---
+description: Testing conventions for goclaw. Applies when working in Go test files.
+alwaysApply: false
+globs: ["**/*_test.go"]
+---
+
+# GoClaw — Testing Conventions
+
+- Prefer `github.com/stretchr/testify/require` for most assertions (fail-fast, less boilerplate).
+- Prefer `github.com/google/go-cmp/cmp` for comparing structs/slices/maps and getting readable diffs.
+- Prefer **table-driven tests** with `t.Run` for multi-case coverage.
+- Use **clear case names** (behavior-focused, not `case1`).
+- Use `t.TempDir()` for filesystem isolation; avoid shared temp paths.
+- Mark helper assertions with `t.Helper()`.
+- Keep tests **deterministic**: no sleeps, no randomness without a fixed seed.
+- Default `go test ./...` must not require network or external services.
+- Use **golden files** under `testdata/` only for large/stable outputs; update only via an explicit env flag (e.g. `UPDATE_GOLDEN=1`).
+- Use **few E2E CLI smoke tests** (2–5) to validate wiring: exit codes + stable output substrings.
+
+## Table test gotcha: loop variable capture
+- If the test body closes over the loop variable, use `tt := tt` inside the loop before `t.Run`.
+

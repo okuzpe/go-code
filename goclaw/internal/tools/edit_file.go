@@ -66,10 +66,17 @@ type editFileInput struct {
 	ReplaceAll bool   `json:"replace_all"`
 }
 
+// Execute implements Tool.
+//
+// Path resolution: uses resolveExistingPathUnderRoot — edit_file requires the target
+// file to already exist (it reads, replaces, and atomically rewrites it). EvalSymlinks
+// is called on the full path before reading; the atomic rewrite writes to the resolved
+// real path (not the symlink), preserving the original file permissions.
+// For creating new files that do not yet exist, use write_file (resolveWriteTarget).
 func (t *EditFileTool) Execute(_ context.Context, input string) (Result, error) {
 	var in editFileInput
 	if err := json.Unmarshal([]byte(input), &in); err != nil {
-		return Result{}, fmt.Errorf("invalid json input: %w", err)
+		return Result{Content: fmt.Sprintf("invalid json input: %v", err), IsError: true}, nil
 	}
 
 	in.Path = strings.TrimSpace(in.Path)

@@ -1,84 +1,54 @@
-package memory_test
+package memory
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/okuzpe/goclaw/internal/memory"
+ 
+	"github.com/stretchr/testify/require"
 )
 
 func TestStoreRoundtripListDelete(t *testing.T) {
 	dir := t.TempDir()
-	st := memory.New(dir)
+	st := New(dir)
 
-	name, err := st.Save(memory.Entry{
+	name, err := st.Save(Entry{
 		Name:        "hello world",
 		Description: "test entry",
-		Type:        memory.TypeUser,
+		Type:        TypeUser,
 		Body:        "remember this fact",
 	})
-	if err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-	if !strings.HasSuffix(name, ".md") {
-		t.Fatalf("unexpected basename %q", name)
-	}
+	require.NoError(t, err)
+	require.True(t, strings.HasSuffix(name, ".md"), "unexpected basename %q", name)
 
 	list, err := st.List()
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(list) != 1 {
-		t.Fatalf("want 1 entry, got %d", len(list))
-	}
-	if list[0].Name != "hello world" || list[0].Type != memory.TypeUser {
-		t.Fatalf("list[0]: %+v", list[0])
-	}
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, "hello world", list[0].Name)
+	require.Equal(t, TypeUser, list[0].Type)
 
 	loaded, err := st.Load(name)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if loaded == nil {
-		t.Fatal("Load returned nil")
-	}
-	if loaded.Body != "remember this fact" {
-		t.Fatalf("body: %q", loaded.Body)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, "remember this fact", loaded.Body)
 
 	ctx, err := st.RecentContext(5)
-	if err != nil {
-		t.Fatalf("RecentContext: %v", err)
-	}
-	if !strings.Contains(ctx, "hello world") {
-		t.Fatalf("context: %q", ctx)
-	}
+	require.NoError(t, err)
+	require.Contains(t, ctx, "hello world")
 
-	if err := st.Delete(name); err != nil {
-		t.Fatalf("Delete: %v", err)
-	}
+	require.NoError(t, st.Delete(name))
 	list2, _ := st.List()
-	if len(list2) != 0 {
-		t.Fatalf("after delete want 0, got %d", len(list2))
-	}
+	require.Len(t, list2, 0)
 }
 
 func TestWriteIndex(t *testing.T) {
 	dir := t.TempDir()
-	st := memory.New(dir)
-	if _, err := st.Save(memory.Entry{Name: "a", Type: memory.TypeProject, Body: "x"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := memory.WriteIndex(st); err != nil {
-		t.Fatal(err)
-	}
+	st := New(dir)
+	_, err := st.Save(Entry{Name: "a", Type: TypeProject, Body: "x"})
+	require.NoError(t, err)
+	require.NoError(t, WriteIndex(st))
 	b, err := os.ReadFile(filepath.Join(dir, "MEMORY.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(b), "a") {
-		t.Fatalf("MEMORY.md: %s", b)
-	}
+	require.NoError(t, err)
+	require.Contains(t, string(b), "a")
 }

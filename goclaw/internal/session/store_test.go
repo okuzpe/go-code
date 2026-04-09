@@ -2,9 +2,11 @@ package session
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/okuzpe/goclaw/internal/llm"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStoreRoundtrip(t *testing.T) {
@@ -44,6 +46,66 @@ func TestStoreRoundtrip(t *testing.T) {
 			t.Errorf("message[%d]: expected no tool fields, got calls=%d results=%d", i, len(m.ToolCalls), len(m.ToolResults))
 		}
 	}
+}
+
+func TestStoreRoundtripWithToolTurn(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	sess := New()
+	sess.AddAssistant("I will run a tool.", []llm.ToolCallRecord{
+		{ID: "call-1", Name: "bash", Input: `{"command":"echo hi"}`},
+	})
+	sess.AddToolResults([]llm.ToolResultRecord{
+		{ToolUseID: "call-1", ToolName: "bash", Content: "hi\n", IsError: false},
+	})
+	sess.Add("user", "thanks")
+
+	if err := store.Save(sess); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := store.Load(sess.ID)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("Load returned nil")
+	}
+	if len(loaded.Messages) != 3 {
+		t.Fatalf("want 3 messages after round-trip, got %d", len(loaded.Messages))
+	}
+
+	a := loaded.Messages[0]
+	if a.Role != "assistant" || len(a.ToolCalls) != 1 || a.ToolCalls[0].ID != "call-1" || a.ToolCalls[0].Name != "bash" {
+		t.Fatalf("assistant+tool_calls mismatch: %+v", a)
+	}
+	u := loaded.Messages[1]
+	if u.Role != "user" || len(u.ToolResults) != 1 || u.ToolResults[0].ToolUseID != "call-1" || u.ToolResults[0].Content != "hi\n" {
+		t.Fatalf("user tool_results mismatch: %+v", u)
+	}
+	if loaded.Messages[2].Role != "user" || loaded.Messages[2].Content != "thanks" {
+		t.Fatalf("final user message: %+v", loaded.Messages[2])
+	}
+}
+
+func TestStoreListIDsIgnoresRotationFiles(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	id := "abc123def456"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".jsonl"), []byte("{}\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".1.jsonl"), []byte("{}\n"), 0o600))
+
+	ids, err := store.ListIDs()
+	if err != nil {
+		t.Fatalf("ListIDs: %v", err)
+	}
+	require.Equal(t, []string{id}, ids)
 }
 
 func TestStoreLoadMissing(t *testing.T) {

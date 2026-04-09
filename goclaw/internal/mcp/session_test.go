@@ -1,4 +1,4 @@
-package mcp_test
+package mcp
 
 import (
 	"bufio"
@@ -6,17 +6,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 	"testing"
+	"time"
 
-	"github.com/okuzpe/goclaw/internal/mcp"
+	"github.com/stretchr/testify/require"
 )
 
 // runMockMCPServer reads JSON-RPC lines from in and writes responses to out.
 func runMockMCPServer(in io.Reader, out io.Writer) error {
 	sc := bufio.NewScanner(in)
 	buf := make([]byte, 0, 64*1024)
-	sc.Buffer(buf, mcp.MaxMessageBytes)
+	sc.Buffer(buf, MaxMessageBytes)
 	enc := json.NewEncoder(out)
 	for sc.Scan() {
 		line := sc.Bytes()
@@ -38,7 +38,7 @@ func runMockMCPServer(in io.Reader, out io.Writer) error {
 				"jsonrpc": "2.0",
 				"id":      json.RawMessage(msg.ID),
 				"result": map[string]any{
-					"protocolVersion": mcp.ProtocolVersion,
+					"protocolVersion": ProtocolVersion,
 					"capabilities":    map[string]any{"tools": map[string]any{}},
 					"serverInfo":      map[string]any{"name": "mock", "version": "1.0"},
 				},
@@ -98,29 +98,19 @@ func TestPipedSessionInitializeListCall(t *testing.T) {
 		done <- runMockMCPServer(c2sR, s2cW)
 	}()
 
-	sess := mcp.NewPipedSession(c2sW, s2cR)
-	ctx := context.Background()
+	sess := NewPipedSession(c2sW, s2cR)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
 
-	if err := sess.Initialize(ctx); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, sess.Initialize(ctx))
 	tools, err := sess.ListTools(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tools) != 1 || tools[0].Name != "echo" {
-		t.Fatalf("tools: %+v", tools)
-	}
+	require.NoError(t, err)
+	require.Len(t, tools, 1)
+	require.Equal(t, "echo", tools[0].Name)
 	out, isErr, err := sess.CallTool(ctx, "echo", `{"msg":"x"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if isErr {
-		t.Fatal("unexpected isError")
-	}
-	if !strings.Contains(out, "hello from mock") {
-		t.Fatalf("got %q", out)
-	}
+	require.NoError(t, err)
+	require.False(t, isErr)
+	require.Contains(t, out, "hello from mock")
 
 	_ = sess.Close()
 	_ = c2sW.Close()
@@ -138,24 +128,18 @@ func TestServerInitiatedRequestGetsErrorResponse(t *testing.T) {
 	clientDone := make(chan struct{})
 	go func() {
 		defer close(clientDone)
-		sess := mcp.NewPipedSession(c2sW, s2cR)
-		ctx := context.Background()
+		sess := NewPipedSession(c2sW, s2cR)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
 
 		// The server will inject a server-initiated request before returning
 		// the tools/list response. The client must reply with an error for
 		// that request and still successfully read the tools/list response.
-		if err := sess.Initialize(ctx); err != nil {
-			t.Errorf("initialize: %v", err)
-			return
-		}
+		require.NoError(t, sess.Initialize(ctx))
 		tools, err := sess.ListTools(ctx)
-		if err != nil {
-			t.Errorf("list tools: %v", err)
-			return
-		}
-		if len(tools) != 1 || tools[0].Name != "echo" {
-			t.Errorf("unexpected tools: %+v", tools)
-		}
+		require.NoError(t, err)
+		require.Len(t, tools, 1)
+		require.Equal(t, "echo", tools[0].Name)
 		_ = sess.Close()
 		_ = c2sW.Close()
 	}()
@@ -163,7 +147,7 @@ func TestServerInitiatedRequestGetsErrorResponse(t *testing.T) {
 	// Custom mock server that injects a server-initiated request.
 	sc := bufio.NewScanner(c2sR)
 	buf := make([]byte, 0, 64*1024)
-	sc.Buffer(buf, mcp.MaxMessageBytes)
+	sc.Buffer(buf, MaxMessageBytes)
 	enc := json.NewEncoder(s2cW)
 
 	var gotErrorResponse bool
@@ -196,7 +180,7 @@ func TestServerInitiatedRequestGetsErrorResponse(t *testing.T) {
 				"jsonrpc": "2.0",
 				"id":      json.RawMessage(msg.ID),
 				"result": map[string]any{
-					"protocolVersion": mcp.ProtocolVersion,
+					"protocolVersion": ProtocolVersion,
 					"capabilities":    map[string]any{"tools": map[string]any{}},
 					"serverInfo":      map[string]any{"name": "mock", "version": "1.0"},
 				},
@@ -226,7 +210,5 @@ func TestServerInitiatedRequestGetsErrorResponse(t *testing.T) {
 	_ = s2cW.Close()
 	<-clientDone
 
-	if !gotErrorResponse {
-		t.Fatal("expected client to send a -32601 error response for the server-initiated request")
-	}
+	require.True(t, gotErrorResponse, "expected client to send a -32601 error response for the server-initiated request")
 }

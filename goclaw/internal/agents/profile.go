@@ -1,6 +1,11 @@
 // Package agents defines the six built-in agent profiles.
 package agents
 
+import (
+	"sort"
+	"strings"
+)
+
 // Profile configures how the orchestrator behaves for a given agent type.
 type Profile struct {
 	Name           string
@@ -53,14 +58,44 @@ var (
 		ReadOnly:      true,
 		SystemPrompt:  "Output a single short status line, no markdown.",
 	}
+
+	// Coordinator orchestrates complex tasks by delegating to worker agents via spawn_agent.
+	// It never uses file or shell tools directly — all work is delegated.
+	Coordinator = Profile{
+		Name:          "coordinator",
+		ToolAllowlist: []string{"spawn_agent", "todo_write"},
+		ReadOnly:      true,
+		SystemPrompt: "You are a coordinator agent. Break complex tasks into focused, self-contained " +
+			"sub-tasks and delegate them to worker agents using spawn_agent. " +
+			"Workers are fully isolated — they cannot see this conversation, so include all " +
+			"necessary file paths, function names, and context in each task description. " +
+			"Synthesize worker results into a clear final response for the user. " +
+			"Never use file or shell tools directly; always delegate to workers.",
+	}
 )
 
 // All returns all built-in profiles indexed by name.
 func All() map[string]Profile {
-	profiles := []Profile{GeneralPurpose, Explore, Plan, Verification, Guide, StatusLine}
+	profiles := []Profile{GeneralPurpose, Explore, Plan, Verification, Guide, StatusLine, Coordinator}
 	m := make(map[string]Profile, len(profiles))
 	for _, p := range profiles {
 		m[p.Name] = p
 	}
 	return m
+}
+
+// SortedProfileNames returns all built-in profile names, sorted for CLI errors and help text.
+func SortedProfileNames() []string {
+	m := All()
+	names := make([]string, 0, len(m))
+	for k := range m {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ProfileListHint is a comma-separated list of profile names for error messages.
+func ProfileListHint() string {
+	return strings.Join(SortedProfileNames(), ", ")
 }

@@ -2,10 +2,17 @@
 
 Go CLI coding agent — local-first with Ollama (`qwen2.5-coder:14b` by default), optional Anthropic API (`claude-sonnet-4-6`). No cloud required.
 
+## Documentation map
+
+- [`USAGE.md`](USAGE.md) — quick start, sessions, tools, common workflows
+- [`ROADMAP.md`](ROADMAP.md) — prioritized checklist toward a shippable daily driver
+- [`PHILOSOPHY.md`](PHILOSOPHY.md) — product principles and UX intent
+- [`CLAUDE.md`](CLAUDE.md) — architecture + tool contract + implementation rules
+
 ## Why goclaw
 
 - **Runs 100% locally with Ollama** — no API key, no cost, no data leaving your machine.
-- **Six purpose-built agent profiles** (`explore`, `plan`, `verification`, and more) with tool allowlists baked in — swap context with a single flag.
+- **Seven purpose-built agent profiles** (`explore`, `plan`, `coordinator`, and more) with tool allowlists baked in — swap context with a single flag.
 - **Persistent sessions and cross-session memory** — conversation history saved as JSONL; four memory types (`user`, `feedback`, `project`, `reference`) survive restarts.
 - **Hooks and per-tool permissions** — intercept any tool call before execution; configure `ask`/`allow`/`deny` per tool in `settings.json`.
 
@@ -13,7 +20,13 @@ Go CLI coding agent — local-first with Ollama (`qwen2.5-coder:14b` by default)
 
 ```bash
 cd goclaw
-go run ./cmd/goclaw
+go run ./cmd/goclaw --tui
+```
+
+First-run health check:
+
+```bash
+go run ./cmd/goclaw doctor
 ```
 
 Build a standalone binary:
@@ -48,6 +61,17 @@ go run ./cmd/goclaw
 | `web_fetch` | Fetch a URL as text | SSRF-protected: RFC1918, loopback, and metadata endpoints blocked; max 5 redirects re-validated; 1 MiB cap, 30 s timeout |
 | `web_search` | Search via DuckDuckGo | No API key required; returns up to 8 results with 2 KiB snippets; 15 s timeout |
 | `todo_write` | Update a session-scoped task list | In-memory until exit; merged into context for planning-style turns |
+| `spawn_agent` | Launch an isolated worker agent for a sub-task | Coordinator profile only; workers run with their own session; profile must be `explore`, `plan`, `verification`, or `general-purpose`; default 120 s timeout (max 600 s); workers cannot spawn coordinators |
+
+#### Path resolution in file tools (Issue #11)
+
+All workspace file tools are **workspace-scoped** and defend against **symlink escapes**.
+At a high level:
+
+- **`read_file`, `grep`, `edit_file`**: resolve the *full target path*, then `EvalSymlinks`, then verify the resolved path is still under the workspace root via `filepath.Rel`.
+- **`write_file`**: resolves and `EvalSymlinks` the **parent directory** (the file may not exist yet), verifies the parent is under the workspace root, then writes atomically (temp + rename).
+
+Implementation lives in [`internal/tools/workspace_paths.go`](internal/tools/workspace_paths.go) and per-tool guards (e.g. [`internal/tools/write_file.go`](internal/tools/write_file.go)).
 
 **MCP tools:** each remote tool is registered as `mcp__<server_id>__<remote_tool_name>` (see [`../MCP.md`](../MCP.md) and [`../TOOL_CONTRACT.md`](../TOOL_CONTRACT.md)). Unlisted tools default to **ask** mode; add explicit keys such as `mcp__myserver__fetch` for `allow` / `deny` overrides.
 
@@ -63,6 +87,7 @@ Select a profile with `--profile <name>` (or `-profile`) or set `agent_profile` 
 | Verification | `verification` | read_file, bash, todo_write | No | Returns PASS or FAIL with a brief reason |
 | Guide | `guide` | (none) | Yes | Chat-only Q&A; never runs commands |
 | StatusLine | `statusline` | (none) | Yes | Outputs a single short status line |
+| Coordinator | `coordinator` | spawn_agent, todo_write | Yes | Decomposes tasks; delegates to isolated workers; never uses file or shell tools directly |
 
 ### Session & Memory
 
@@ -250,6 +275,8 @@ go test -race ./...
 # Tests without an API token — point at the mock server
 ANTHROPIC_BASE_URL=http://localhost:PORT go test ./...
 ```
+
+On Windows, `go test` may compile and run temporary `*.exe` test binaries as part of the normal toolchain behavior. These artifacts are not meant to be committed and are ignored by `goclaw/.gitignore`.
 
 The mock server lives in `testutil/mockserver/` and is used by `internal/orchestrator/*_test.go`. It handles Anthropic-format SSE streaming without a real API key.
 

@@ -15,8 +15,20 @@ import (
 
 // SlashEnv carries workspace paths and profile lookup for slash commands.
 type SlashEnv struct {
-	Workdir string
-	Profs   map[string]agents.Profile
+	Workdir         string
+	Profs           map[string]agents.Profile
+	UserAgentsDir   string // for hot-reload of custom profiles on /profile
+	ProjectAgentsDir string
+	Doctor          func(ctx context.Context) (string, error)
+}
+
+// SlashContext carries dependencies for HandleSlash (memory, orchestrator, session pointer, disk store).
+type SlashContext struct {
+	SlashEnv
+	Mem   *memory.Store
+	Orch  *orchestrator.Orchestrator
+	Sess  **session.Session
+	Store *session.Store
 }
 
 // ErrReplQuit is returned by HandleSlash for /quit and /exit so the REPL can save and exit cleanly.
@@ -25,7 +37,13 @@ var ErrReplQuit = errors.New("repl quit")
 // HandleSlash processes REPL slash commands. Returns handled=true if input was consumed.
 // modelSubmit is non-empty when the caller should send that text to the model (e.g. /edit).
 // quit with ErrReplQuit means the REPL should exit after printing out.
-func HandleSlash(ctx context.Context, env SlashEnv, input string, mem *memory.Store, orch *orchestrator.Orchestrator, sess **session.Session, store *session.Store) (handled bool, out string, quit bool, modelSubmit string, err error) {
+func HandleSlash(ctx context.Context, sc SlashContext, input string) (handled bool, out string, quit bool, modelSubmit string, err error) {
+	mem := sc.Mem
+	orch := sc.Orch
+	sess := sc.Sess
+	store := sc.Store
+	env := sc.SlashEnv
+
 	s := strings.TrimSpace(input)
 	if s == "" {
 		return false, "", false, "", nil
@@ -47,6 +65,16 @@ func HandleSlash(ctx context.Context, env SlashEnv, input string, mem *memory.St
 	switch cmd {
 	case "help":
 		return true, replHelpText(env, sess, orch), false, "", nil
+
+	case "doctor":
+		if env.Doctor == nil {
+			return true, "", false, "", fmt.Errorf("/doctor: not available (missing wiring)")
+		}
+		out, derr := env.Doctor(ctx)
+		if derr != nil {
+			return true, "", false, "", derr
+		}
+		return true, out, false, "", nil
 
 	case "quit", "exit":
 		return true, "bye", true, "", ErrReplQuit
@@ -200,17 +228,15 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		if orch == nil {
 			return true, "", false, "", fmt.Errorf("/profile requires a running agent")
 		}
-		if env.Profs == nil {
-			return true, "", false, "", fmt.Errorf("/profile: profile map not configured")
-		}
 		if len(fields) < 2 {
-			return true, "", false, "", fmt.Errorf(`usage: /profile <name>
-names: general-purpose, explore, plan, verification, guide, statusline`)
+			return true, "", false, "", fmt.Errorf("usage: /profile <name>\nnames: %s", agents.ProfileListHint())
 		}
+		// Hot-reload: re-scan agent dirs so newly added *.md files are visible without restart.
+		profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
 		name := strings.ToLower(strings.TrimSpace(fields[1]))
-		p, ok := env.Profs[name]
+		p, ok := profs[name]
 		if !ok {
-			return true, "", false, "", fmt.Errorf("unknown profile %q", name)
+			return true, "", false, "", fmt.Errorf("unknown profile %q; valid: %s", name, sortedProfileNames(profs))
 		}
 		orch.SetProfile(p)
 		return true, fmt.Sprintf("active profile: %s", p.Name), false, "", nil
@@ -291,7 +317,7 @@ template — print the template to the terminal`)
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /plan   /apply-plan   /memory   /compact   /profile   /quit\n")
+	b.WriteString("  /help   /doctor   /plan   /apply-plan   /memory   /compact   /profile   /quit\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
 		b.WriteString(planfile.Path(workdir))
@@ -326,6 +352,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	var b strings.Builder
 	b.WriteString("Slash commands (not sent to the model):\n")
 	b.WriteString("  /help, help, ?   — this text\n")
+	b.WriteString("  /doctor          — health check (config, provider reachability, session paths)\n")
 	b.WriteString("  /session         — show full session id and message count\n")
 	b.WriteString("  /sessions        — list saved session ids (same as --list-sessions, without restart)\n")
 	b.WriteString("  /quit, /exit     — save session and exit (same shutdown path as Ctrl+C)\n")
@@ -357,4 +384,19 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// sortedProfileNames returns a comma-separated sorted list of profile names for error messages.
+func sortedProfileNames(profs map[string]agents.Profile) string {
+	names := make([]string, 0, len(profs))
+	for name := range profs {
+		names = append(names, name)
+	}
+	// inline sort to avoid importing "sort" if it isn't already present
+	for i := 1; i < len(names); i++ {
+		for j := i; j > 0 && names[j] < names[j-1]; j-- {
+			names[j], names[j-1] = names[j-1], names[j]
+		}
+	}
+	return strings.Join(names, ", ")
 }

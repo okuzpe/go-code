@@ -1,0 +1,12 @@
+# Windows and local build artifacts
+# Literal %TEMP% folder (some test runs place binaries here)
+**/%TEMP%/
+*.exe
+*.exe~
+*.dll
+*.test
+*test*.exe
+*Test*.exe
+
+# Debug / trace dumps (local only)
+*_inittrace.txt

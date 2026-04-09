@@ -26,7 +26,6 @@ var (
 	colAI      = lipgloss.Color("#818CF8")
 	colWarning = lipgloss.Color("#F59E0B")
 	colMuted   = lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"}
-	colBorder  = lipgloss.Color("#4C1D95")
 )
 
 var asciiLogo = `
@@ -142,4 +141,12 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return string(r[:max]) + "…"
+}
+
+// FormatChatWindowTitle keeps the TUI header on one line for typical terminal widths.
+func FormatChatWindowTitle(provider, model, profile string) string {
+	if len(model) > 44 {
+		model = model[:43] + "…"
+	}
+	return fmt.Sprintf("goclaw · %s · %s · %s", provider, model, profile)
 }

@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/okuzpe/goclaw/internal/tools"
@@ -50,7 +51,9 @@ func (t *ToolAdapter) InputSchema() any { return t.schema }
 func (t *ToolAdapter) Execute(ctx context.Context, input string) (tools.Result, error) {
 	callCtx, cancel := context.WithTimeout(ctx, MCPToolCallTimeout)
 	defer cancel()
+	start := time.Now()
 	content, isErr, err := t.sess.CallTool(callCtx, t.remote, input)
+	slog.Debug("mcp call done", "server", t.serverID, "tool", t.remote, "elapsed", time.Since(start))
 	if err != nil {
 		return tools.Result{Content: "", IsError: true}, fmt.Errorf("mcp tools/call: %w", err)
 	}

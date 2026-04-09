@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/spf13/cobra"
 )
 
@@ -10,9 +11,12 @@ type RunChatFunc func(cmd *cobra.Command, args []string) error
 // RunListSessionsFunc prints saved session ids and exits.
 type RunListSessionsFunc func() error
 
+// RunDoctorFunc prints a preflight health check and exits.
+type RunDoctorFunc func(cmd *cobra.Command, args []string) error
+
 // NewRootCmd builds the Cobra command tree. runChat and listSessions are injected so tests
 // do not link the full UI stack.
-func NewRootCmd(version string, runChat RunChatFunc, listSessions RunListSessionsFunc) *cobra.Command {
+func NewRootCmd(version string, runChat RunChatFunc, listSessions RunListSessionsFunc, runDoctor RunDoctorFunc) *cobra.Command {
 	root := &cobra.Command{
 		Use:     "goclaw",
 		Short:   "Go CLI coding agent (Ollama or Anthropic)",
@@ -32,7 +36,7 @@ func NewRootCmd(version string, runChat RunChatFunc, listSessions RunListSession
 		SilenceErrors: true,
 	}
 
-	root.PersistentFlags().String("profile", "", "agent profile (general-purpose, explore, plan, verification, guide, statusline)")
+	root.PersistentFlags().String("profile", "", "agent profile ("+agents.ProfileListHint()+")")
 	root.PersistentFlags().String("session", "", "resume an existing session id (JSONL in ~/.goclaw/sessions)")
 	root.PersistentFlags().Bool("list-sessions", false, "list saved session ids and exit")
 	root.PersistentFlags().Bool("no-tools", false, "run without registering tools (chat-only; also GOCLAW_DISABLE_TOOLS=1)")
@@ -53,9 +57,18 @@ func NewRootCmd(version string, runChat RunChatFunc, listSessions RunListSession
 	}
 	sessionsCmd.AddCommand(sessionsListCmd)
 	root.AddCommand(sessionsCmd)
+	root.AddCommand(newDoctorCmd(runDoctor))
 	root.AddCommand(newChatCmd(runChat))
 
 	return root
+}
+
+func newDoctorCmd(runDoctor RunDoctorFunc) *cobra.Command {
+	return &cobra.Command{
+		Use:   "doctor",
+		Short: "Print a short preflight health check and exit",
+		RunE:  runDoctor,
+	}
 }
 
 func newChatCmd(runChat RunChatFunc) *cobra.Command {

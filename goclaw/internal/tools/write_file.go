@@ -55,10 +55,17 @@ type writeFileInput struct {
 	Content string `json:"content"`
 }
 
+// Execute implements Tool.
+//
+// Path resolution: uses resolveWriteTarget — the target file may not exist yet.
+// EvalSymlinks is called only on the parent directory (which must exist), and the
+// filename is appended afterward. This differs from resolveExistingPathUnderRoot,
+// which requires the full path to already exist. Use resolveWriteTarget for any tool
+// that creates or overwrites a file; use resolveExistingPathUnderRoot for read-only tools.
 func (t *WriteFileTool) Execute(_ context.Context, input string) (Result, error) {
 	var in writeFileInput
 	if err := json.Unmarshal([]byte(input), &in); err != nil {
-		return Result{}, fmt.Errorf("invalid json input: %w", err)
+		return Result{Content: fmt.Sprintf("invalid json input: %v", err), IsError: true}, nil
 	}
 
 	in.Path = strings.TrimSpace(in.Path)

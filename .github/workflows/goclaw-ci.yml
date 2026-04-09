@@ -19,7 +19,11 @@ defaults:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,5 +35,35 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Test with race detector
-        run: go test -race ./...
+      - name: Test (race on Linux only)
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            go test -race -shuffle=on -timeout 10m -coverprofile=coverage.out ./...
+          else
+            go test -timeout 10m ./...
+          fi
+
+      - name: Check coverage threshold (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          total=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $3}' | tr -d '%')
+          echo "Total coverage: ${total}%"
+          awk -v cov="$total" 'BEGIN { if (cov+0 < 70) { print "Coverage " cov "% is below 70% threshold"; exit 1 } }'
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: goclaw/go.mod
+          cache-dependency-path: goclaw/go.sum
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: goclaw

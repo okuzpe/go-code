@@ -42,12 +42,14 @@ grep -rn "// .*[áéíóúñü]" --include="*.go" .
 
 ### 3. Code Quality
 
+- [ ] Identifiers avoid *lazy* abbreviations (`fun`, `re`, generic `str`, …); idiomatic Go shorts (`ctx`, `err`, `ok`, …) are fine — see skill **`naming-full-words`**
+
 ```bash
 # Install staticcheck if not present: go install honnef.co/go/tools/cmd/staticcheck@latest
 staticcheck ./...
 
 # Check for goroutine leaks in packages that spawn goroutines
-# (add go.uber.org/goleak to test files when needed)
+# (add go.uber.org/goleak to test files when needed; keep it targeted to goroutine-heavy packages)
 ```
 
 - [ ] No unused variables or imports
@@ -115,7 +117,7 @@ grep -n "return err$" --include="*.go" -r .
   ```go
   var _ Tool = (*MyTool)(nil)
   ```
-- [ ] All new `Tool` implementations registered in **`internal/app/run.go`** (not `main.go`)
+- [ ] All new `Tool` implementations registered in **`internal/app/chat_wiring.go`** (`PrepareChatRuntime`, not `main.go`)
 - [ ] All new `Profile` entries added to `agents.All()`
 
 ---

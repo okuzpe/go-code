@@ -1,0 +1,42 @@
+---
+description: Full-word identifiers; forbid lazy truncations (fun, re, str, etc.). Idiomatic Go shorts allowed.
+alwaysApply: true
+---
+
+# Naming — full words, no lazy abbreviations
+
+## What to enforce
+
+Use **complete words** (or domain terms everyone on the team already uses) for functions, methods, variables, parameters, struct fields, types, and test names.
+
+A **lazy abbreviation** is a name made shorter by chopping a word without a stable Go/stdlib meaning—usually to type less, not to clarify.
+
+**Quick check:** If reading the name at a call site does not make the role obvious, spell it out or rename after what the value *is* (e.g. `payload`, `query`, `sessionID`), not after its type alone.
+
+## Prefer / avoid (non-exhaustive)
+
+| Avoid (lazy) | Prefer |
+|--------------|--------|
+| `fun`, `fn` | Verbs/roles: `run`, `execute`, `parse`, `build`, or name the callback: `factory`, `provider`, `handler` |
+| `re`, `res` as “result” | `result`, `output`, `outcome`, or a precise noun (`summary`, `body`, `rendered`) |
+| `str` as “some string” | `text`, `content`, `value`, `raw`, `path`, `label` — match semantics |
+| `num`, `cnt` (unclear) | `count`, `total`, `limit`, `offset` |
+| `tmp`, `temp` (vague) | `scratch`, `staging`, `pending`, or scope-limited clarity |
+| `v`, `x`, `d` (opaque locals) | `item`, `entry`, `line`, `delta` — unless loop is trivial |
+
+## Allowed short names (do not “fix” these)
+
+- **stdlib / widespread Go:** `ctx`, `err`, `ok`, `i`/`j`/`k`, `t *testing.T`, `tb *testing.B`, `r`/`w` on `http.Handler`, `mu sync.Mutex`
+- **Small scope:** `buf` for `bytes.Buffer` or read buffer in a few lines; single-letter receivers when the type name is already clear (`func (s *Server)`)
+
+## Examples (Go)
+
+```go
+// WRONG — lazy truncations
+func merge(re string, str string) (res string, err error) { ... }
+
+// CORRECT — meaning at the call site
+func merge(prefix string, suffix string) (combined string, err error) { ... }
+```
+
+When two names compete, choose the one that reads correctly in prose, not the shortest token.

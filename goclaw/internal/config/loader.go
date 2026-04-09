@@ -22,6 +22,9 @@ type settingsFile struct {
 	TrustedWorkspace     *bool               `json:"trusted_workspace"`
 	ExternalHooks        []ExternalHookEntry `json:"external_hooks"`
 	ToolPermissions      map[string]string   `json:"tool_permissions"`
+	AllowScript          *bool               `json:"allow_script"`
+	YoloThreshold        *int                `json:"yolo_threshold"`
+	LLMCompaction        *bool               `json:"llm_compaction"`
 }
 
 // Load merges JSON settings into base in this order (later wins for overlapping keys):
@@ -101,6 +104,15 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.TrustedWorkspace != nil && *sf.TrustedWorkspace {
 		cfg.TrustedWorkspace = true
+	}
+	if sf.AllowScript != nil && *sf.AllowScript {
+		cfg.AllowScript = true
+	}
+	if sf.YoloThreshold != nil {
+		cfg.YoloThreshold = *sf.YoloThreshold
+	}
+	if sf.LLMCompaction != nil && *sf.LLMCompaction {
+		cfg.LLMCompaction = true
 	}
 	if len(sf.ExternalHooks) > 0 {
 		cfg.ExternalHooks = append(cfg.ExternalHooks, sf.ExternalHooks...)

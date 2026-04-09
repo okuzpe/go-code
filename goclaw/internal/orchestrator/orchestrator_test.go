@@ -1,4 +1,4 @@
-package orchestrator_test
+package orchestrator
 
 import (
 	"context"
@@ -13,12 +13,12 @@ import (
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/hooks"
 	"github.com/okuzpe/goclaw/internal/llm"
-	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/todos"
 	"github.com/okuzpe/goclaw/internal/tools"
 	"github.com/okuzpe/goclaw/testutil/mockserver"
+	"github.com/stretchr/testify/require"
 )
 
 func testToolPolicy() *permissions.Policy {
@@ -30,13 +30,13 @@ func testToolPolicy() *permissions.Policy {
 }
 
 // newOrch builds a test orchestrator wired to the given LLM client.
-func newOrch(t *testing.T, client llm.Client) *orchestrator.Orchestrator {
+func newOrch(t *testing.T, client llm.Client) *Orchestrator {
 	t.Helper()
 	cfg := config.Default()
 	cfg.Provider = "anthropic"
 	cfg.APIKey = "test-key"
 
-	return orchestrator.New(
+	return New(
 		cfg,
 		client,
 		session.New(),
@@ -47,12 +47,12 @@ func newOrch(t *testing.T, client llm.Client) *orchestrator.Orchestrator {
 	)
 }
 
-func newOrchWithRegistry(t *testing.T, client llm.Client, reg *tools.Registry) *orchestrator.Orchestrator {
+func newOrchWithRegistry(t *testing.T, client llm.Client, reg *tools.Registry) *Orchestrator {
 	t.Helper()
 	cfg := config.Default()
 	cfg.Provider = "anthropic"
 	cfg.APIKey = "test-key"
-	return orchestrator.New(
+	return New(
 		cfg,
 		client,
 		session.New(),
@@ -74,12 +74,8 @@ func TestOrchestratorTextOnly(t *testing.T) {
 	orch := newOrch(t, llm.NewAnthropic("test-key", srv.URL))
 
 	resp, err := orch.Run(context.Background(), "ping")
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if resp != "pong" {
-		t.Errorf("got %q, want %q", resp, "pong")
-	}
+	require.NoError(t, err)
+	require.Equal(t, "pong", resp)
 }
 
 // --- Scenario 2: multi-turn conversation (streaming accumulates correctly) ---
@@ -96,20 +92,12 @@ func TestOrchestratorMultiTurn(t *testing.T) {
 	orch := newOrch(t, client)
 
 	r1, err := orch.Run(context.Background(), "first question")
-	if err != nil {
-		t.Fatalf("turn 1: %v", err)
-	}
-	if r1 != "this is the first reply" {
-		t.Errorf("turn 1: got %q", r1)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "this is the first reply", r1)
 
 	r2, err := orch.Run(context.Background(), "second question")
-	if err != nil {
-		t.Fatalf("turn 2: %v", err)
-	}
-	if r2 != "this is the second reply" {
-		t.Errorf("turn 2: got %q", r2)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "this is the second reply", r2)
 }
 
 // --- Scenario 3: server returns 500 → error propagated, no panic ---
@@ -123,10 +111,7 @@ func TestOrchestratorServerError(t *testing.T) {
 	orch := newOrch(t, llm.NewAnthropic("test-key", srv.URL))
 
 	_, err := orch.Run(context.Background(), "anything")
-	if err == nil {
-		t.Fatal("expected error from 500 response, got nil")
-	}
-	t.Logf("got expected error: %v", err)
+	require.Error(t, err)
 }
 
 // --- Scenario 4: model requests read_file → tool runs → final assistant text ---
@@ -134,9 +119,7 @@ func TestOrchestratorServerError(t *testing.T) {
 func TestOrchestratorReadFileRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte("tool-content"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("tool-content"), 0o600))
 
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
@@ -153,20 +136,14 @@ func TestOrchestratorReadFileRoundTrip(t *testing.T) {
 	orch := newOrchWithRegistry(t, llm.NewAnthropic("test-key", srv.URL), reg)
 
 	out, err := orch.Run(ctx, "phase-a please read")
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if out != "ack" {
-		t.Fatalf("got %q, want ack", out)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "ack", out)
 }
 
 func TestOrchestratorAskRequiresApprover(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("x"), 0o600))
 
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
@@ -183,7 +160,7 @@ func TestOrchestratorAskRequiresApprover(t *testing.T) {
 	cfg.Provider = "anthropic"
 	cfg.APIKey = "test-key"
 
-	orch := orchestrator.New(
+	orch := New(
 		cfg,
 		llm.NewAnthropic("test-key", srv.URL),
 		session.New(),
@@ -194,20 +171,14 @@ func TestOrchestratorAskRequiresApprover(t *testing.T) {
 	)
 
 	_, err := orch.Run(ctx, "phase-a trigger")
-	if err == nil {
-		t.Fatal("expected error when DecisionAsk has no approver")
-	}
-	if !strings.Contains(err.Error(), "approver") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "approver")
 }
 
 func TestOrchestratorUserDeclinesTool(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("x"), 0o600))
 
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
@@ -226,7 +197,7 @@ func TestOrchestratorUserDeclinesTool(t *testing.T) {
 	cfg.APIKey = "test-key"
 
 	decline := func(context.Context, string, string) (bool, error) { return false, nil }
-	orch := orchestrator.New(
+	orch := New(
 		cfg,
 		llm.NewAnthropic("test-key", srv.URL),
 		session.New(),
@@ -234,27 +205,19 @@ func TestOrchestratorUserDeclinesTool(t *testing.T) {
 		permissions.NewPolicy(),
 		hooks.New(),
 		agents.GeneralPurpose,
-		orchestrator.WithToolApprover(decline),
+		WithToolApprover(decline),
 	)
 
 	out, err := orch.Run(ctx, "phase-a trigger")
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if out != "understood, I will skip that read" {
-		t.Fatalf("got %q, want assistant follow-up after declined tool", out)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "understood, I will skip that read", out)
 }
 
 func TestOrchestratorMultiToolRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("alpha"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("beta"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("alpha"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.txt"), []byte("beta"), 0o600))
 
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
@@ -274,12 +237,8 @@ func TestOrchestratorMultiToolRoundTrip(t *testing.T) {
 	orch := newOrchWithRegistry(t, llm.NewAnthropic("test-key", srv.URL), reg)
 
 	out, err := orch.Run(ctx, "multi-read both files")
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if out != "done" {
-		t.Fatalf("got %q, want done", out)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "done", out)
 }
 
 func TestOrchestratorForceCompact(t *testing.T) {
@@ -297,7 +256,7 @@ func TestOrchestratorForceCompact(t *testing.T) {
 		sess.Add("user", strings.Repeat("y", 200))
 	}
 
-	orch := orchestrator.New(
+	orch := New(
 		cfg,
 		llm.NewAnthropic("test-key", srv.URL),
 		sess,
@@ -306,13 +265,9 @@ func TestOrchestratorForceCompact(t *testing.T) {
 		hooks.New(),
 		agents.GeneralPurpose,
 	)
-	if sess.Len() != 30 {
-		t.Fatalf("precondition: want 30 messages, got %d", sess.Len())
-	}
+	require.Equal(t, 30, sess.Len(), "precondition: want 30 messages")
 	orch.ForceCompact()
-	if sess.Len() >= 30 {
-		t.Fatalf("expected message count to drop after ForceCompact, got %d", sess.Len())
-	}
+	require.Less(t, sess.Len(), 30)
 	var found bool
 	for _, m := range sess.Messages {
 		if strings.Contains(m.Content, "[compaction]") {
@@ -321,7 +276,7 @@ func TestOrchestratorForceCompact(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("expected compaction summary message")
+		require.Fail(t, "expected compaction summary message")
 	}
 }
 
@@ -343,7 +298,7 @@ func TestOrchestratorCompactionTrimsHead(t *testing.T) {
 		sess.Add("user", fmt.Sprintf("msg-%d-", i)+strings.Repeat("x", 5000))
 	}
 
-	orch := orchestrator.New(
+	orch := New(
 		cfg,
 		llm.NewAnthropic("test-key", srv.URL),
 		sess,
@@ -354,9 +309,7 @@ func TestOrchestratorCompactionTrimsHead(t *testing.T) {
 	)
 
 	_, err := orch.Run(context.Background(), "ping")
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
+	require.NoError(t, err)
 	var found bool
 	for _, m := range sess.Messages {
 		if strings.Contains(m.Content, "[compaction]") {
@@ -365,7 +318,7 @@ func TestOrchestratorCompactionTrimsHead(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("expected a compaction summary message in session history")
+		require.Fail(t, "expected a compaction summary message in session history")
 	}
 }
 
@@ -373,7 +326,7 @@ func TestCompactToTailNoOpShortHistory(t *testing.T) {
 	cfg := config.Default()
 	sess := session.New()
 	sess.Add("user", "only one")
-	orch := orchestrator.New(
+	orch := New(
 		cfg,
 		nil,
 		sess,
@@ -383,9 +336,7 @@ func TestCompactToTailNoOpShortHistory(t *testing.T) {
 		agents.GeneralPurpose,
 	)
 	orch.ForceCompact()
-	if sess.Len() != 1 {
-		t.Fatalf("expected no compaction for 1 message, len=%d", sess.Len())
-	}
+	require.Equal(t, 1, sess.Len())
 }
 
 func TestForceCompactSummaryIncludesCounts(t *testing.T) {
@@ -394,7 +345,7 @@ func TestForceCompactSummaryIncludesCounts(t *testing.T) {
 	for i := range 30 {
 		sess.Add("user", fmt.Sprintf("line-%d", i))
 	}
-	orch := orchestrator.New(
+	orch := New(
 		cfg,
 		nil,
 		sess,
@@ -404,32 +355,22 @@ func TestForceCompactSummaryIncludesCounts(t *testing.T) {
 		agents.GeneralPurpose,
 	)
 	orch.ForceCompact()
-	if sess.Len() != 25 { // 1 summary + 24 tail
-		t.Fatalf("unexpected len %d", sess.Len())
-	}
+	require.Equal(t, 25, sess.Len()) // 1 summary + 24 tail
 	first := sess.Messages[0].Content
-	if !strings.Contains(first, "Summarized 6 earlier message") {
-		t.Fatalf("expected removed count in summary: %q", first)
-	}
-	if !strings.Contains(first, "tail of 24 kept") {
-		t.Fatalf("expected tail count: %q", first)
-	}
+	require.Contains(t, first, "Summarized 6 earlier message")
+	require.Contains(t, first, "tail of 24 kept")
 }
 
 func TestReplaceSessionClearsTodoStore(t *testing.T) {
 	store := todos.NewStore()
-	if err := store.Apply(`{"merge":false,"todos":[{"id":"a","content":"task","status":"pending"}]}`); err != nil {
-		t.Fatal(err)
-	}
-	if store.FormatForPrompt() == "" {
-		t.Fatal("precondition: todo store should be non-empty")
-	}
+	require.NoError(t, store.Apply(`{"merge":false,"todos":[{"id":"a","content":"task","status":"pending"}]}`))
+	require.NotEmpty(t, store.FormatForPrompt(), "precondition: todo store should be non-empty")
 	srv := mockserver.New([]mockserver.Scenario{{Match: "", Response: "ok"}})
 	defer srv.Close()
 	cfg := config.Default()
 	cfg.Provider = "anthropic"
 	cfg.APIKey = "test-key"
-	orch := orchestrator.New(
+	orch := New(
 		cfg,
 		llm.NewAnthropic("test-key", srv.URL),
 		session.New(),
@@ -437,10 +378,8 @@ func TestReplaceSessionClearsTodoStore(t *testing.T) {
 		testToolPolicy(),
 		hooks.New(),
 		agents.GeneralPurpose,
-		orchestrator.WithTodoStore(store),
+		WithTodoStore(store),
 	)
 	orch.ReplaceSession(session.New())
-	if store.FormatForPrompt() != "" {
-		t.Fatalf("ReplaceSession should clear todo store, still got: %q", store.FormatForPrompt())
-	}
+	require.Empty(t, store.FormatForPrompt())
 }

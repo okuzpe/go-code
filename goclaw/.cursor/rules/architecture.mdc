@@ -15,10 +15,11 @@ Sibling folders such as `claw-code/` in the parent directory are **reference onl
 
 | File | Responsibility |
 |------|---------------|
-| `main.go` | slog default, `cli.NewRootCmd(Version, app.RunChat, app.RunListSessions).Execute()` |
+| `main.go` | slog default, `cli.NewRootCmd` with `app.RunChat(cmd, Version, args, fullscreenChat{})` |
+| `tui.go` | `FullscreenChatRunner` implementation (Bubble Tea); links `internal/ui/chat` so `internal/app` tests do not |
 | `version.go` | `Version` var for `-ldflags -X` |
 
-> **Rule:** No `*_test.go` under `cmd/goclaw` — tests that need the full REPL graph live in `internal/cli`, `internal/slashcmd`, `internal/app`-free packages. Keeps `go test ./cmd/goclaw` instant on Windows (readline/Bubble Tea `init`).
+> **Rule:** No `*_test.go` under `cmd/goclaw` — tests that need the full REPL graph live in `internal/cli`, `internal/slashcmd`, `internal/app` (without importing `ui/chat`). Keeps `go test ./internal/app` reliable on Windows (Bubble Tea stack can block non-TTY test binaries if linked from `app`).
 
 All REPL wiring, banner, and slash handlers live under `internal/app`, `internal/cli`, `internal/slashcmd`.
 
@@ -26,7 +27,7 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 
 | Package | Single responsibility |
 |---------|----------------------|
-| `cmd/goclaw/` | Thin `main` + `Version` only |
+| `cmd/goclaw/` | Thin `main` + TUI wiring + `Version` |
 | `internal/cli/` | Cobra tree (`NewRootCmd`); inject `RunChat` / `RunListSessions` for testability without linking TUI |
 | `internal/app/` | `RunChat`, `RunListSessions`, banner, default readline REPL; Bubble Tea TUI when `--tui` / `GOCLAW_USE_TUI` |
 | `internal/slashcmd/` | REPL `/` slash command handlers + `$EDITOR` prompt |

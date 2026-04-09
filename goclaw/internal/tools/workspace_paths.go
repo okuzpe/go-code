@@ -8,7 +8,19 @@ import (
 )
 
 // resolveExistingPathUnderRoot resolves userPath to an absolute path that exists under root,
-// following symlinks. Used by read_file, grep, and edit_file for the same boundary checks.
+// following symlinks.
+//
+// Path resolution strategy (Issue #11):
+// - Accept either an absolute path or a path relative to the tool's workspace root.
+// - Clean the candidate path (so `a/../b` normalizes).
+// - Evaluate symlinks on the full path to obtain the real on-disk location.
+// - Evaluate symlinks on root as well (best-effort; if it fails, fall back to root).
+// - Enforce workspace scoping by checking `filepath.Rel(rootEval, eval)` does not escape.
+//
+// This prevents common symlink-escape tricks where a path appears to be inside the workspace
+// before resolving symlinks but points outside after resolution.
+//
+// Used by read_file, grep, and edit_file for consistent boundary checks.
 func resolveExistingPathUnderRoot(root, userPath string) (string, error) {
 	candidate := userPath
 	if !filepath.IsAbs(candidate) {

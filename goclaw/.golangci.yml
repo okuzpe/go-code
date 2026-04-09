@@ -1,0 +1,20 @@
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+
+linters-settings:
+  errcheck:
+    exclude-functions:
+      # BubbleTea Cmd returns are intentionally discarded in update loops.
+      - (github.com/charmbracelet/bubbletea.Model).Update
+
+issues:
+  exclude-rules:
+    # internal/ui/chat uses BubbleTea patterns where errcheck is noisy.
+    - path: internal/ui/chat/
+      linters:
+        - errcheck

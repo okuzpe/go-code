@@ -45,6 +45,26 @@ This applies to:
 
 ---
 
+## Naming — full words (no lazy abbreviations)
+
+**Identifiers must use complete words.** Do not use *lazy* abbreviations: shortened words with no stable Go meaning, only to type less.
+
+- **Definition:** If expanding the name sounds like half a word, spell it out or use a domain term (`payload`, `sessionID`, `rendered`).
+- **Avoid:** `fun` / `fn`; `re` / `res` for “result”; generic `str`; vague `num` / `cnt` / `tmp`; opaque `v` / `x` in non-trivial logic.
+- **Keep:** Idiomatic shorts: `ctx`, `err`, `ok`, `i` / `j` / `k`, `t *testing.T`, `tb *testing.B`, `r` / `w` on HTTP handlers, `mu`, tight-scope `buf`, clear single-letter receivers.
+
+```go
+// WRONG
+func join(re, str string) string { ... }
+
+// CORRECT
+func join(prefix, suffix string) string { ... }
+```
+
+**Artifacts:** Cursor — `.cursor/rules/naming-full-words.mdc`. Claude Code skill — `.claude/skills/naming-full-words.md` (use for refactors or name reviews).
+
+---
+
 ## End-of-Phase Audit Rule
 
 **Before closing any development phase, run `/audit` to verify quality, security, and correctness.**
@@ -75,22 +95,34 @@ See the `audit` skill for the full checklist.
 ```
 goclaw/
 ├── cmd/goclaw/
-│   ├── main.go                  ← slog + `cli.NewRootCmd(Version, app.RunChat, app.RunListSessions)`
+│   ├── main.go                  ← slog + `cli.NewRootCmd` wiring `app.RunChat(..., fullscreenChat{})`
+│   ├── tui.go                   ← Bubble Tea TUI (`FullscreenChatRunner`); keeps `internal/app` tests free of `ui/chat` import
 │   └── version.go               ← `Version` (ldflags)
 ├── internal/
-│   ├── cli/                     ← Cobra tree only (`NewRootCmd` with injected run funcs; tests avoid TUI link)
-│   ├── app/                     ← `RunChat`, `RunListSessions`, banner, default readline REPL; Bubble Tea when `--tui`, tool registration
-│   ├── slashcmd/                ← `/` slash handlers + editor helper
+│   ├── cli/                     ← Cobra tree only (`root.go`: `NewRootCmd` with injected run funcs; tests avoid full UI link)
+│   ├── app/
+│   │   ├── run.go               ← `RunChat`, `RunListSessions`; delegates TUI to `FullscreenChatRunner`; readline REPL
+│   │   ├── chat_wiring.go       ← `PrepareChatRuntime` (`ChatRuntime`): config, client, session, tools, MCP, hooks, orchestrator options
+│   │   ├── repl_readline.go     ← readline REPL loop, tool approval prompt, `runOrchestratorTurn`
+│   │   ├── terminal_sink.go     ← readline `StreamSink` implementation
+│   │   ├── banner.go            ← startup banner (and related helpers)
+│   │   └── mock.go              ← canned assistant stream for `--mock` / UI wiring tests
+│   ├── slashcmd/                ← `/` slash handlers: `HandleSlash` (`slash.go`), `editor.go`, tests
+│   ├── ui/chat/                 ← Bubble Tea fullscreen TUI (`--tui` / `GOCLAW_USE_TUI`): `chat.go`, `sink.go`, `theme.go`
 │   ├── llm/                     ← Client interface + AnthropicClient + OllamaClient
 │   │   ├── client.go            ← Client interface, Request, ToolSpec, Event types
 │   │   ├── message.go           ← Message (text + ToolCalls / ToolResults)
 │   │   ├── anthropic_wire.go    ← Maps messages to Anthropic content blocks
 │   │   ├── ollama_wire.go       ← Expands tool turns for Ollama /api/chat
 │   │   ├── anthropic.go         ← SSE streaming to /v1/messages
-│   │   └── ollama.go            ← NDJSON streaming to /api/chat
+│   │   ├── ollama.go            ← NDJSON streaming to /api/chat
+│   │   └── retry.go             ← HTTP retries / backoff (D22) for Anthropic and Ollama POSTs
 │   ├── session/session.go       ← Session{ID, Messages[]}, Add / AddAssistant / AddToolResults
-│   ├── orchestrator/            ← main loop: user → LLM → tools → repeat
-│   │   └── orchestrator.go      ← Run(ctx, userMsg); limits 32 iterations / 64 tool calls
+│   ├── orchestrator/            ← main loop: user → LLM → tools → repeat (32 iter / 64 tool calls)
+│   │   ├── orchestrator.go      ← `Run` / `RunStreaming`, `Orchestrator`, options, session/profile helpers
+│   │   ├── compaction.go        ← token estimate, `maybeCompact`, `ForceCompact`
+│   │   ├── request.go           ← `buildRequest`, allowlist / ReadOnly tool filtering
+│   │   └── tool_exec.go         ← `executeTool`, permissions + hooks + registry dispatch
 │   ├── tools/
 │   │   ├── registry.go          ← interface Tool, Registry{Get/Register/Specs}
 │   │   ├── read_file.go, write_file.go, edit_file.go, glob.go, grep.go, bash.go, web_fetch.go, web_search.go, todo_write.go
@@ -102,6 +134,7 @@ goclaw/
 │   ├── config/
 │   │   ├── config.go            ← Config{…}, Default()
 │   │   └── loader.go            ← Load: user/project settings.json + settings.local.json merge
+│   ├── coordinator/             ← D16 hub-and-spoke coordinator: `spawn_agent` tool + `WorkerNotification`
 │   ├── hooks/                   ← Registry + external command/HTTP + LoadHooksFile
 │   ├── mcp/                     ← stdio JSON-RPC session, ToolAdapter → tools.Tool
 │   ├── ide/                     ← optional localhost POST notifier (GOCLAW_IDE_NOTIFY_URL)
@@ -345,7 +378,7 @@ var _ llm.Client = (*AnthropicClient)(nil)
 | D12: Dedicated tools | Prefer `read_file`/`glob`/`grep` over bash equivalents. Bash = last resort. |
 | D13: Memory | Filesystem at `~/.goclaw/memory/`. 4 types: user/feedback/project/reference. |
 | D15: Compaction | Threshold as configurable fraction (default 0.85). Session size for compaction uses a **token estimate** (chars/4 heuristic, capped) mapped against a budget derived from `defaultContextBudgetChars`; no live provider token APIs in MVP. |
-| D16: Multi-agent | Hub-and-spoke coordinator (Phase 2+). Do not mix with Team/Swarm (Phase 3+). |
+| D16: Multi-agent | **Done** — `internal/coordinator`: `spawn_agent` tool, `Coordinator` profile (allowlist: spawn_agent + todo_write), isolated worker sessions via `session.New()`, `WorkerNotification` JSON result, nesting prevention. Team/Swarm remains Phase 3+. |
 | D17: YOLO Classifier | v2+ only. In MVP = does not exist. Do not design dependencies on it. |
 | D18: Hooks | PreToolUse can block. PostToolUse is best-effort (non-fatal). |
 | D19: Custom agents | **Post-MVP:** Markdown + YAML frontmatter in `.goclaw/agents/*.md` (format TBD). MVP uses six built-in profiles in Go only ([`internal/agents/profile.go`](internal/agents/profile.go)). |
@@ -428,11 +461,11 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 7. ~~README + hooks logging~~ — [`README.md`](README.md); post-tool hook handler errors logged with `slog.WarnContext` in [`internal/hooks/hooks.go`](internal/hooks/hooks.go).
 8. ~~`glob` / `grep` tools~~ — workspace-scoped ([`internal/tools/glob.go`](internal/tools/glob.go), [`grep.go`](internal/tools/grep.go)); explore/plan allowlists updated.
 9. ~~`write_file` / `edit_file` tools~~ — atomic writes, str_replace, ReadOnly stripping; [`internal/tools/write_file.go`](internal/tools/write_file.go), [`edit_file.go`](internal/tools/edit_file.go).
-10. ~~REPL readline + expanded bash allowlist~~ — [`github.com/chzyer/readline`](https://github.com/chzyer/readline) in [`internal/app/run.go`](internal/app/run.go); allowlist in [`internal/tools/bash.go`](internal/tools/bash.go).
+10. ~~REPL readline + expanded bash allowlist~~ — [`github.com/chzyer/readline`](https://github.com/chzyer/readline) in [`internal/app/repl_readline.go`](internal/app/repl_readline.go); allowlist in [`internal/tools/bash.go`](internal/tools/bash.go).
 11. ~~Bash single-command shell policy~~ — [`rejectShellMetacharacters`](internal/tools/bash.go) blocks pipes, `;`, `&&`, redirects, subshells, `$(...)`, and unquoted `&` (URLs with query strings must be quoted).
 12. ~~`bash_timeout_sec` in settings~~ — [`internal/config/loader.go`](internal/config/loader.go); [`NewBashWithTimeout`](internal/tools/bash.go).
 13. ~~Clearer Ollama dial errors~~ — [`wrapOllamaDialErr`](internal/llm/ollama.go) on connection refused.
-14. ~~D12 in base system prompt~~ — dedicated tools before bash; [`internal/orchestrator/orchestrator.go`](internal/orchestrator/orchestrator.go) `baseSystemPrompt`.
+14. ~~D12 in base system prompt~~ — dedicated tools before bash; [`internal/orchestrator/request.go`](internal/orchestrator/request.go) `baseSystemPrompt`.
 15. Further optional: LLM-written compaction text; provider token APIs; stdin smoke test in CI.
 
 When adding sections to this file, keep them in English (Language Rule — STRICT). Cursor rules (`.cursor/rules/*.mdc`) and agent skills (`.claude/skills/*.md`) are also maintained in English.
@@ -446,11 +479,11 @@ When adding sections to this file, keep them in English (Language Rule — STRIC
 | Phase | Scope | Status |
 |-------|--------|--------|
 | **MCP-1** | stdio client, process lifecycle, JSON-RPC framing | **Done** — `internal/mcp`, tests with piped mock |
-| **MCP-2** | Tool discovery → `mcp__server__tool` on `Registry` | **Done** — `mcp.ToolAdapter`, `internal/app/run.go`, permissions |
+| **MCP-2** | Tool discovery → `mcp__server__tool` on `Registry` | **Done** — `mcp.ToolAdapter`, [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go) (`RegisterSessionTools`), permissions |
 | **MCP-3** | Multiple servers, config merge by `id` | **Done** — `mcp_servers` in loader; failed server isolated |
 | **IDE** | Full localhost MCP toward editor | **Partial** — `GOCLAW_IDE_NOTIFY_URL` only; see [IDE_BRIDGE.md](../IDE_BRIDGE.md) (**D21**) |
 | **Hooks** | Subprocess / HTTP + project file | **Done** — `external_hooks`, `.goclaw/hooks.json` + `trusted_workspace` |
 
-**Future epics (no code until scoped):** coordinator mode (**D16**), YOLO classifier (**D17**), custom agents `.md` (**D19**), plugins (**PLUGINS.md**) — track as a **separate planning pass** after MCP/hooks/IDE baselines; they do not block MCP work.
+**Future epics (no code until scoped):** YOLO classifier (**D17**), custom agents `.md` (**D19**), plugins (**PLUGINS.md**) — track as a **separate planning pass**. D16 coordinator is **done** (`internal/coordinator`).
 
 Further IDE work should build on the existing MCP stdio client patterns and integration tests.

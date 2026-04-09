@@ -50,6 +50,18 @@ func (s *Session) AddToolResults(results []llm.ToolResultRecord) {
 // Len returns the number of messages in the session.
 func (s *Session) Len() int { return len(s.Messages) }
 
+// ReplaceMessages replaces the full message history (used by compaction only).
+// Callers should prefer the Add* methods for normal appends.
+func (s *Session) ReplaceMessages(msgs []llm.Message) {
+	s.Messages = msgs
+}
+
+// PrependMessage inserts a single message at the front of the history.
+// Used by compaction to add a summary before the preserved tail.
+func (s *Session) PrependMessage(msg llm.Message) {
+	s.Messages = append([]llm.Message{msg}, s.Messages...)
+}
+
 // newID returns a 16-byte hex-encoded random identifier.
 func newID() string {
 	b := make([]byte, 16)

@@ -172,8 +172,10 @@ func (c *OllamaClient) streamTextOnly(scanner *bufio.Scanner, out chan<- Event) 
 	return nil
 }
 
-// streamWithTools buffers assistant content and prefers native tool_calls; if the model
-// emits tool JSON in content (common with some local models), parse it at stream end.
+// streamWithTools buffers all assistant content until the stream ends, then decides
+// whether the content is a tool call or plain text. If it's a tool call, only the
+// ToolUse event is emitted (no raw JSON in the chat). If it's text, it's emitted as
+// a single TextDelta. The TUI shows a "thinking" spinner during the buffering phase.
 func (c *OllamaClient) streamWithTools(scanner *bufio.Scanner, out chan<- Event, specs []ToolSpec) error {
 	var contentBuf strings.Builder
 	var lastNative []ollamaToolCallWire
@@ -192,17 +194,37 @@ func (c *OllamaClient) streamWithTools(scanner *bufio.Scanner, out chan<- Event,
 		}
 		if chunk.Message.Content != "" {
 			contentBuf.WriteString(chunk.Message.Content)
+			// Text is buffered — NOT streamed yet. We only emit it at
+			// the end once we know it's not a tool call.
 		}
 		if chunk.Done {
+			emittedTool := false
+
 			if tus := allNativeToolUses(lastNative); len(tus) > 0 {
+				// Native tool calls — emit them, suppress raw text.
 				for _, tu := range tus {
 					out <- tu
 				}
-			} else if tu, ok := parseOllamaContentAsToolUse(contentBuf.String(), specs); ok {
-				out <- tu
-			} else if s := contentBuf.String(); s != "" {
-				out <- TextDelta{Text: s}
+				emittedTool = true
+			} else {
+				fullContent := contentBuf.String()
+				// Try parsing content as a tool call (various formats).
+				if tu, ok := parseOllamaContentAsToolUse(fullContent, specs); ok {
+					out <- tu
+					emittedTool = true
+				} else if tu, _, ok := extractEmbeddedToolCall(fullContent, specs); ok {
+					out <- tu
+					emittedTool = true
+				}
 			}
+
+			// Only show the text to the user if it was NOT a tool call.
+			if !emittedTool {
+				if s := contentBuf.String(); s != "" {
+					out <- TextDelta{Text: s}
+				}
+			}
+
 			out <- Usage{
 				InputTokens:  chunk.PromptEvalCount,
 				OutputTokens: chunk.EvalCount,
@@ -242,31 +264,199 @@ func normalizeOllamaToolArgs(raw json.RawMessage) string {
 	return s
 }
 
-// parseOllamaContentAsToolUse handles models that print {"name":"tool","arguments":{...}} as plain text.
+// parseOllamaContentAsToolUse handles models that print {"name":"tool","arguments":{...}} as plain text,
+// optionally wrapped in markdown code fences (```json ... ```).
 func parseOllamaContentAsToolUse(body string, specs []ToolSpec) (ToolUse, bool) {
 	body = strings.TrimSpace(body)
-	if body == "" || !strings.HasPrefix(body, "{") {
+	if body == "" {
 		return ToolUse{}, false
 	}
+
+	// Strip markdown code fences if present (```json ... ``` or ``` ... ```).
+	body = stripCodeFences(body)
+
+	if !strings.HasPrefix(body, "{") {
+		return ToolUse{}, false
+	}
+
+	// Try format 1: {"name":"tool","arguments":{...}}
 	var v struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	}
-	if err := json.Unmarshal([]byte(body), &v); err != nil {
-		return ToolUse{}, false
+	if err := json.Unmarshal([]byte(body), &v); err == nil && strings.TrimSpace(v.Name) != "" {
+		allowed := make(map[string]struct{}, len(specs))
+		for _, sp := range specs {
+			allowed[sp.Name] = struct{}{}
+		}
+		if _, ok := allowed[v.Name]; ok {
+			args := normalizeOllamaToolArgs(v.Arguments)
+			return ToolUse{ID: "ollama-json-0", Name: v.Name, Input: args}, true
+		}
 	}
-	if strings.TrimSpace(v.Name) == "" {
-		return ToolUse{}, false
+
+	// Try format 2: direct tool arguments {"query":"..."} — check if body is valid JSON
+	// and matches any single-tool scenario (model just emitted the args directly).
+	// Skip this format as it's too ambiguous without knowing which tool.
+
+	return ToolUse{}, false
+}
+
+// stripCodeFences removes markdown code fences (```lang\n...\n```) from around content.
+// Returns the unwrapped content. If no fences are found, returns the input unchanged.
+func stripCodeFences(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "```") {
+		return s
 	}
+	// Find the end of the opening fence line.
+	firstNewline := strings.Index(s, "\n")
+	if firstNewline < 0 {
+		return s
+	}
+	inner := s[firstNewline+1:]
+	// Find the closing fence.
+	lastFence := strings.LastIndex(inner, "```")
+	if lastFence >= 0 {
+		inner = inner[:lastFence]
+	}
+	return strings.TrimSpace(inner)
+}
+
+// extractEmbeddedToolCall scans prose text for embedded tool calls that local
+// models sometimes emit. Patterns supported:
+//
+//	tool_name {"key":"value"}
+//	tool_name({"key":"value"})
+//	... prose ... {"name":"tool_name","arguments":{...}} ... prose ...
+//	```json\n{"name":"tool_name","arguments":{...}}\n``` (inside code fences)
+//
+// Returns the ToolUse, any surrounding prose text, and whether a match was found.
+func extractEmbeddedToolCall(body string, specs []ToolSpec) (ToolUse, string, bool) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return ToolUse{}, body, false
+	}
+
+	// Strip code fences if the whole body is wrapped.
+	stripped := stripCodeFences(body)
+
+	// Build a set of known tool names.
 	allowed := make(map[string]struct{}, len(specs))
 	for _, sp := range specs {
 		allowed[sp.Name] = struct{}{}
 	}
-	if _, ok := allowed[v.Name]; !ok {
-		return ToolUse{}, false
+
+	// Strategy 1: Search for {"name":"tool_name"...} JSON objects anywhere in the text.
+	// This catches models that emit the full call spec as JSON embedded in prose.
+	for _, candidate := range []string{stripped, body} {
+		for toolName := range allowed {
+			// Look for {"name":"tool_name" pattern (with various quoting/spacing).
+			patterns := []string{
+				`"name":"` + toolName + `"`,
+				`"name": "` + toolName + `"`,
+				`"name" : "` + toolName + `"`,
+			}
+			for _, pat := range patterns {
+				idx := strings.Index(candidate, pat)
+				if idx < 0 {
+					continue
+				}
+				// Walk backward to find the opening {.
+				jsonStart := strings.LastIndex(candidate[:idx], "{")
+				if jsonStart < 0 {
+					continue
+				}
+				// Walk forward to find matching closing }.
+				jsonEnd := findMatchingBrace(candidate, jsonStart)
+				if jsonEnd < 0 {
+					continue
+				}
+				jsonStr := candidate[jsonStart : jsonEnd+1]
+				var v struct {
+					Name      string          `json:"name"`
+					Arguments json.RawMessage `json:"arguments"`
+				}
+				if err := json.Unmarshal([]byte(jsonStr), &v); err != nil {
+					continue
+				}
+				if strings.TrimSpace(v.Name) == "" {
+					continue
+				}
+				if _, ok := allowed[v.Name]; !ok {
+					continue
+				}
+				prose := strings.TrimSpace(candidate[:jsonStart]) + " " + strings.TrimSpace(candidate[jsonEnd+1:])
+				prose = strings.TrimSpace(prose)
+				args := normalizeOllamaToolArgs(v.Arguments)
+				return ToolUse{
+					ID:    "ollama-embedded-0",
+					Name:  v.Name,
+					Input: args,
+				}, prose, true
+			}
+		}
 	}
-	args := normalizeOllamaToolArgs(v.Arguments)
-	return ToolUse{ID: "ollama-json-0", Name: v.Name, Input: args}, true
+
+	// Strategy 2: Search for "tool_name {" or "tool_name({" pattern in the text.
+	for toolName := range allowed {
+		for _, candidate := range []string{stripped, body} {
+			idx := strings.Index(candidate, toolName+" {")
+			if idx < 0 {
+				idx = strings.Index(candidate, toolName+"({")
+			}
+			if idx < 0 {
+				continue
+			}
+
+			// Find the JSON start.
+			jsonStart := strings.Index(candidate[idx:], "{")
+			if jsonStart < 0 {
+				continue
+			}
+			jsonStart += idx
+
+			jsonEnd := findMatchingBrace(candidate, jsonStart)
+			if jsonEnd < 0 {
+				continue
+			}
+
+			jsonStr := candidate[jsonStart : jsonEnd+1]
+			var raw json.RawMessage
+			if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
+				continue
+			}
+
+			prose := strings.TrimSpace(candidate[:idx]) + " " + strings.TrimSpace(candidate[jsonEnd+1:])
+			prose = strings.TrimSpace(prose)
+
+			return ToolUse{
+				ID:    "ollama-embedded-0",
+				Name:  toolName,
+				Input: jsonStr,
+			}, prose, true
+		}
+	}
+
+	return ToolUse{}, body, false
+}
+
+// findMatchingBrace finds the index of the closing '}' that matches the opening
+// '{' at position start. Returns -1 if no match is found.
+func findMatchingBrace(s string, start int) int {
+	depth := 0
+	for i := start; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 func toolSpecsToOllama(specs []ToolSpec) []map[string]any {
@@ -299,14 +489,35 @@ func wrapOllamaDialErr(host string, err error) error {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
+	low := strings.ToLower(err.Error())
+
 	var opErr *net.OpError
 	if errors.As(err, &opErr) && opErr.Err != nil {
 		if errors.Is(opErr.Err, syscall.ECONNREFUSED) {
-			return fmt.Errorf("cannot reach Ollama at %s (connection refused): start the server (e.g. `ollama serve`) or set OLLAMA_HOST — %w", host, err)
+			return fmt.Errorf("cannot reach Ollama at %s (connection refused). Is Ollama running? Try `ollama serve`, confirm `ollama ps`, or set OLLAMA_HOST if the daemon listens elsewhere — %w", host, err)
 		}
 	}
-	if strings.Contains(strings.ToLower(err.Error()), "connection refused") {
-		return fmt.Errorf("cannot reach Ollama at %s (connection refused): start the server (e.g. `ollama serve`) or set OLLAMA_HOST — %w", host, err)
+	if strings.Contains(low, "connection refused") {
+		return fmt.Errorf("cannot reach Ollama at %s (connection refused). Is Ollama running? Try `ollama serve`, confirm `ollama ps`, or set OLLAMA_HOST if the daemon listens elsewhere — %w", host, err)
 	}
+
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return fmt.Errorf("Ollama at %s did not respond in time. Is the daemon running and reachable? Check VPN/firewall and OLLAMA_HOST — %w", host, err)
+	}
+
+	if strings.Contains(low, "no such host") || strings.Contains(low, "could not resolve") {
+		return fmt.Errorf("Ollama host %s could not be resolved (DNS). Check the host name in OLLAMA_HOST or settings.json — %w", host, err)
+	}
+
+	if strings.Contains(low, "tls") || strings.Contains(low, "x509") || strings.Contains(low, "certificate") {
+		return fmt.Errorf("TLS error talking to Ollama at %s (https URL or proxy?). For a local daemon use http://127.0.0.1:11434 unless you have HTTPS termination — %w", host, err)
+	}
+
+	// Typical client dial / transport errors
+	if strings.Contains(low, "dial tcp") || strings.Contains(low, "dial ") || strings.Contains(low, "connectex") || strings.Contains(low, "wsarefuse") {
+		return fmt.Errorf("cannot connect to Ollama at %s. Is Ollama running (`ollama serve`)? Confirm OLLAMA_HOST matches where the daemon listens; run `goclaw doctor` — %w", host, err)
+	}
+
 	return err
 }

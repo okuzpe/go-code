@@ -9,6 +9,12 @@ import (
 	"github.com/okuzpe/goclaw/internal/session"
 )
 
+// Mock stream pacing (production defaults). Tests set to zero for speed (see app_test.go).
+var (
+	mockStreamInitialDelay = 380 * time.Millisecond
+	mockStreamRuneDelay    = 11 * time.Millisecond
+)
+
 func shortSessionID(id string) string {
 	if len(id) > 12 {
 		return id[:12] + "…"
@@ -23,21 +29,30 @@ func mockAssistantReplyBody(userText string) string {
 	)
 }
 
-func streamMockAssistant(ctx context.Context, userText string, sink orchestrator.StreamSink, sess *session.Session) (string, error) {
-	select {
-	case <-time.After(380 * time.Millisecond):
-	case <-ctx.Done():
-		return "", ctx.Err()
+// StreamMockAssistant streams a canned assistant reply for --mock (TUI and readline).
+func StreamMockAssistant(ctx context.Context, userText string, sink orchestrator.StreamSink, sess *session.Session) (string, error) {
+	if mockStreamInitialDelay > 0 {
+		select {
+		case <-time.After(mockStreamInitialDelay):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	} else if err := ctx.Err(); err != nil {
+		return "", err
 	}
 	reply := mockAssistantReplyBody(userText)
-	const tick = 11 * time.Millisecond
 	for _, ch := range reply {
 		sink.OnTextDelta(string(ch))
-		select {
-		case <-time.After(tick):
-		case <-ctx.Done():
+		if mockStreamRuneDelay > 0 {
+			select {
+			case <-time.After(mockStreamRuneDelay):
+			case <-ctx.Done():
+				sink.OnDone("")
+				return reply, ctx.Err()
+			}
+		} else if err := ctx.Err(); err != nil {
 			sink.OnDone("")
-			return reply, ctx.Err()
+			return reply, err
 		}
 	}
 	sink.OnDone("")
@@ -45,4 +60,3 @@ func streamMockAssistant(ctx context.Context, userText string, sink orchestrator
 	sess.AddAssistant(reply, nil)
 	return reply, nil
 }
-

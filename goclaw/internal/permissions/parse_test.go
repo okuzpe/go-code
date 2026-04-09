@@ -1,30 +1,25 @@
-package permissions_test
+package permissions
 
 import (
 	"testing"
-
-	"github.com/okuzpe/goclaw/internal/permissions"
+ 
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseMode(t *testing.T) {
 	tests := []struct {
 		in   string
-		want permissions.Mode
+		want Mode
 	}{
-		{"allow", permissions.ModeAllow},
-		{"ASK", permissions.ModeAsk},
-		{"  deny ", permissions.ModeDeny},
+		{"allow", ModeAllow},
+		{"ASK", ModeAsk},
+		{"  deny ", ModeDeny},
 	}
 	for _, tt := range tests {
-		got, err := permissions.ParseMode(tt.in)
-		if err != nil {
-			t.Fatalf("ParseMode(%q): %v", tt.in, err)
-		}
-		if got != tt.want {
-			t.Fatalf("ParseMode(%q) = %v, want %v", tt.in, got, tt.want)
-		}
+		got, err := ParseMode(tt.in)
+		require.NoError(t, err)
+		require.Equal(t, tt.want, got)
 	}
-	if _, err := permissions.ParseMode("nope"); err == nil {
-		t.Fatal("expected error for invalid mode")
-	}
+	_, err := ParseMode("nope")
+	require.Error(t, err)
 }

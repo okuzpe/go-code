@@ -60,11 +60,17 @@ type readFileInput struct {
 }
 
 // Execute implements Tool.
+//
+// Path resolution: uses resolveExistingPathUnderRoot — the target must already exist.
+// EvalSymlinks is called on the full path so the real location (after following symlinks)
+// is verified to be inside the workspace root. Use this strategy for any tool that reads
+// an existing file. For tools that write potentially non-existent files, use resolveWriteTarget
+// (defined in write_file.go), which only resolves the parent directory.
 func (t *ReadFileTool) Execute(ctx context.Context, input string) (Result, error) {
 	_ = ctx
 	var in readFileInput
 	if err := json.Unmarshal([]byte(input), &in); err != nil {
-		return Result{Content: "", IsError: true}, fmt.Errorf("invalid json input: %w", err)
+		return Result{Content: fmt.Sprintf("invalid json input: %v", err), IsError: true}, nil
 	}
 	in.Path = strings.TrimSpace(in.Path)
 	if in.Path == "" {

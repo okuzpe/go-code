@@ -16,9 +16,10 @@ func main() {
 	})))
 	root := cli.NewRootCmd(Version,
 		func(cmd *cobra.Command, args []string) error {
-			return app.RunChat(cmd, Version, args)
+			return app.RunChat(cmd, Version, args, fullscreenChat{})
 		},
 		app.RunListSessions,
+		app.RunDoctor,
 	)
 	if err := root.Execute(); err != nil {
 		slog.Error("fatal", "err", err)

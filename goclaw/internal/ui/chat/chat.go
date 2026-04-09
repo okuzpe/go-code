@@ -9,24 +9,25 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/spinner"
-	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
+	"github.com/okuzpe/goclaw/internal/ui/footerline"
 )
 
 type Model struct {
 	ctx context.Context
 
 	viewport viewport.Model
-	input    textinput.Model
+	input    textarea.Model
 	spinner  spinner.Model
 
 	width  int
 	height int
 
-	lines        []string
+	lines      []string
 	streaming  bool
 	statusLine string
 
@@ -44,11 +45,26 @@ type Model struct {
 	submitter *submitRunner
 
 	curAssistant strings.Builder
+
+	// curAssistantLineIdx tracks which index in m.lines the current streaming
+	// assistant text occupies. -1 means no active assistant line.
+	curAssistantLineIdx int
+
+	// toolWaitQueue pairs each OnToolUse with the following OnToolResult (same order).
+	toolWaitQueue []pendingTool
+
+	sessionID string
+}
+
+// pendingTool holds human-readable tool activity for compact status + done lines.
+type pendingTool struct {
+	name    string
+	summary string
 }
 
 type submitRunner struct {
-	fn  func(userText string)
-	mu  sync.Mutex
+	fn         func(userText string)
+	mu         sync.Mutex
 	cancelLast context.CancelFunc
 }
 
@@ -68,8 +84,9 @@ func (r *submitRunner) cancel() {
 }
 
 type Options struct {
-	Title string
-	Theme *Theme
+	Title     string
+	SessionID string
+	Theme     *Theme
 }
 
 // SlashHandler: if modelSubmit is non-empty, send that text to the model after displaying out (e.g. /edit).
@@ -92,7 +109,7 @@ func NewApprovalBroker() *ApprovalBroker {
 
 func (b *ApprovalBroker) ToolApprover() orchestrator.ToolApprover {
 	return func(ctx context.Context, toolName, toolInput string) (bool, error) {
-		preview := toolInput
+		preview := orchestrator.FormatToolUsePreview(toolName, toolInput)
 		if len(preview) > 400 {
 			preview = preview[:400] + "…"
 		}
@@ -115,6 +132,9 @@ func (b *ApprovalBroker) ToolApprover() orchestrator.ToolApprover {
 	}
 }
 
+// inputMaxHeight is the maximum number of visible lines in the input textarea.
+const inputMaxHeight = 6
+
 func New(ctx context.Context, opts Options) Model {
 	th := opts.Theme
 	if th == nil {
@@ -124,10 +144,20 @@ func New(ctx context.Context, opts Options) Model {
 	vp := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 	vp.MouseWheelEnabled = true
 
-	in := textinput.New()
-	in.Placeholder = "Message…  /help  /edit multiline"
+	// Use textarea for multi-line input support (modern CLI standard).
+	in := textarea.New()
+	in.Placeholder = "Message goclaw…  /help  Ctrl+J newline"
 	in.Prompt = th.InputPrompt
+	in.ShowLineNumbers = false
+	in.SetHeight(1) // start compact, grows dynamically
+	in.SetWidth(0)
+	in.CharLimit = 0 // no char limit
 	in.Focus()
+
+	// Override key bindings: Enter submits, Alt+Enter / Ctrl+J inserts newline
+	km := in.KeyMap
+	km.InsertNewline.SetKeys("ctrl+j", "alt+enter")
+	in.KeyMap = km
 
 	spin := spinner.New(
 		spinner.WithSpinner(spinner.Dot),
@@ -135,19 +165,22 @@ func New(ctx context.Context, opts Options) Model {
 	)
 
 	m := Model{
-		ctx:       ctx,
-		viewport:  vp,
-		input:     in,
-		spinner:   spin,
-		theme:     th,
-		lines:     nil,
-		submitter: new(submitRunner),
+		ctx:                 ctx,
+		viewport:            vp,
+		input:               in,
+		spinner:             spin,
+		theme:               th,
+		lines:               nil,
+		submitter:           new(submitRunner),
+		curAssistantLineIdx: -1,
+		sessionID:           strings.TrimSpace(opts.SessionID),
 	}
 	if strings.TrimSpace(opts.Title) != "" {
 		titleStyle := lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#4F46E5", Dark: "#A5B4FC"})
+			Foreground(lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#C4B5FD"})
 		m.lines = append(m.lines, titleStyle.Render(opts.Title))
+		m.lines = append(m.lines, th.SeparatorLine(0))
 	}
 	m.appendSystem("Ready. " + th.FooterHint())
 	return m
@@ -170,85 +203,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, sc = m.spinner.Update(msg)
 		return m, sc
 	case tea.KeyMsg:
-		// Ctrl+C during streaming cancels the in-flight request; at the prompt it quits.
-		if msg.String() == "ctrl+c" {
-			if m.streaming {
-				m.submitter.cancel()
-				return m, nil
-			}
-			return m, tea.Quit
-		}
-		if m.pending == nil && msg.String() == "esc" {
-			return m, tea.Quit
-		}
-		if m.pending != nil {
-			switch msg.String() {
-			case "y", "Y":
-				select {
-				case m.pending.Resp <- true:
-				default:
-				}
-				m.pending = nil
-				return m, waitForApproval(m.approval.Requests)
-			case "n", "N", "esc":
-				select {
-				case m.pending.Resp <- false:
-				default:
-				}
-				m.pending = nil
-				return m, waitForApproval(m.approval.Requests)
-			default:
-				// Modal approval: ignore other keys (including Enter) so they are not treated as a new chat message.
-				return m, nil
-			}
-		}
-		switch msg.String() {
-		case "ctrl+l":
-			m.lines = nil
-			m.viewport.SetContent("")
-			m.assistantPlaceholder = false
-			m.spinnerActive = false
-			return m, nil
-		case "enter":
-			txt := strings.TrimSpace(m.input.Value())
-			if txt == "" {
-				return m, nil
-			}
-			// Avoid overlapping RunStreaming calls on the same session (or sending while awaiting tools).
-			if m.streaming {
-				return m, nil
-			}
-			m.input.SetValue("")
-			m.appendUser(txt)
-			if m.slashHandle != nil {
-				handled, out, quit, modelSubmit, err := m.slashHandle(txt)
-				if handled {
-					if err != nil {
-						m.appendSystem(fmt.Sprintf("error: %v", err))
-					} else if strings.TrimSpace(out) != "" {
-						m.appendSystem(out)
-					}
-					m.viewport.GotoBottom()
-					if strings.TrimSpace(modelSubmit) != "" && m.submitter != nil && m.submitter.fn != nil {
-						m.runModelSubmit(modelSubmit)
-					}
-					if quit {
-						return m, tea.Quit
-					}
-					return m, nil
-				}
-			}
-			if m.submitter != nil && m.submitter.fn != nil {
-				m.runModelSubmit(txt)
-			} else {
-				m.appendAssistant("(TUI wired; missing submit handler)")
-			}
-			m.viewport.GotoBottom()
-			return m, nil
+		if mdl, cmd, handled := m.handleKeyString(msg.String()); handled {
+			return mdl, cmd
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.input.SetWidth(m.width - 2) // leave room for border
+		m.reflowTitleSeparator()
 		m.layout()
 		var vcmd tea.Cmd
 		m.viewport, vcmd = m.viewport.Update(msg)
@@ -260,8 +222,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case assistantPlaceholderMsg:
 		m.streaming = true
 		m.assistantPlaceholder = true
-		m.statusLine = "thinking"
+		m.statusLine = ""
 		m.curAssistant.Reset()
+		m.curAssistantLineIdx = -1
 		m.appendAssistantDim("…")
 		m.viewport.GotoBottom()
 		m.spinner = spinner.New(
@@ -279,28 +242,37 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.curAssistant.WriteString(string(msg))
 		m.refreshAssistantLine()
+		m.viewport.GotoBottom()
 		return m, nil
 	case assistantDoneMsg:
 		m.streaming = false
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
 		m.statusLine = ""
-		m.refreshAssistantLine()
+		// Finalize the current segment with markdown rendering.
+		m.finalizeCurrentSegment()
 		m.viewport.GotoBottom()
 		return m, nil
 	case toolUseMsg:
-		// New LLM segment after tools: reset buffer so the next stream round does not repeat prior text.
+		// Finalize the pre-tool text with markdown rendering BEFORE resetting.
+		m.finalizeCurrentSegment()
+		// Reset buffer for the next assistant segment (post-tool).
 		m.curAssistant.Reset()
-		m.appendToolUseLine(msg.name, msg.preview)
-		m.statusLine = fmt.Sprintf("running tool: %s", msg.name)
+		m.curAssistantLineIdx = -1
+		m.toolWaitQueue = append(m.toolWaitQueue, pendingTool{name: msg.name, summary: msg.preview})
+		m.statusLine = m.toolQueueStatusLine()
 		m.viewport.GotoBottom()
 		return m, nil
 	case toolResultMsg:
-		m.appendToolResultLine(msg.name, msg.bytes, msg.isError)
-		if msg.isError {
-			m.statusLine = fmt.Sprintf("tool result: %s (error, %d bytes)", msg.name, msg.bytes)
+		job, ok := m.popToolJob()
+		if !ok {
+			job = pendingTool{name: msg.name, summary: ""}
+		}
+		m.appendToolDoneLine(job.name, job.summary, msg.isError)
+		if len(m.toolWaitQueue) > 0 {
+			m.statusLine = m.toolQueueStatusLine()
 		} else {
-			m.statusLine = fmt.Sprintf("tool result: %s (%d bytes)", msg.name, msg.bytes)
+			m.statusLine = ""
 		}
 		m.viewport.GotoBottom()
 		return m, nil
@@ -309,8 +281,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
 		m.statusLine = ""
+		m.toolWaitQueue = nil
 		m.stripAssistantPlaceholderLine()
-		m.appendSystem(fmt.Sprintf("error: %v", msg.err))
+		m.appendError(fmt.Sprintf("✗ %v", msg.err))
+		m.curAssistantLineIdx = -1
 		return m, nil
 	}
 
@@ -324,14 +298,115 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.input, cmd = m.input.Update(msg)
 	cmds = append(cmds, cmd)
 
+	// Dynamic input height: grow textarea as user types more lines (up to inputMaxHeight).
+	m.resizeInput()
+
 	return m, tea.Batch(cmds...)
+}
+
+func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
+	// Ctrl+C during streaming cancels the in-flight request; at the prompt it quits.
+	if k == "ctrl+c" {
+		if m.streaming {
+			m.submitter.cancel()
+			return m, nil, true
+		}
+		return m, tea.Quit, true
+	}
+	if m.pending == nil && k == "esc" {
+		return m, tea.Quit, true
+	}
+	if m.pending != nil {
+		switch k {
+		case "y", "Y":
+			select {
+			case m.pending.Resp <- true:
+			default:
+			}
+			m.pending = nil
+			return m, waitForApproval(m.approval.Requests), true
+		case "n", "N", "esc":
+			select {
+			case m.pending.Resp <- false:
+			default:
+			}
+			m.pending = nil
+			return m, waitForApproval(m.approval.Requests), true
+		default:
+			// Modal approval: ignore other keys (including Enter) so they are not treated as a new chat message.
+			return m, nil, true
+		}
+	}
+	switch k {
+	case "ctrl+l":
+		m.lines = nil
+		m.toolWaitQueue = nil
+		m.viewport.SetContent("")
+		m.assistantPlaceholder = false
+		m.spinnerActive = false
+		m.curAssistantLineIdx = -1
+		return m, nil, true
+	case "enter":
+		txt := strings.TrimSpace(m.input.Value())
+		if txt == "" {
+			return m, nil, true
+		}
+		// Avoid overlapping RunStreaming calls on the same session (or sending while awaiting tools).
+		if m.streaming {
+			return m, nil, true
+		}
+		m.input.Reset()
+		m.resizeInput() // shrink back to 1 line after submit
+		m.appendSeparator()
+		m.appendUser(txt)
+		if m.slashHandle != nil {
+			handled, out, quit, modelSubmit, err := m.slashHandle(txt)
+			if handled {
+				if err != nil {
+					m.appendError(fmt.Sprintf("error: %v", err))
+				} else if strings.TrimSpace(out) != "" {
+					m.appendSystem(out)
+				}
+				m.viewport.GotoBottom()
+				if strings.TrimSpace(modelSubmit) != "" && m.submitter != nil && m.submitter.fn != nil {
+					m.runModelSubmit(modelSubmit)
+				}
+				if quit {
+					return m, tea.Quit, true
+				}
+				return m, nil, true
+			}
+		}
+		if m.submitter != nil && m.submitter.fn != nil {
+			m.runModelSubmit(txt)
+		} else {
+			m.appendAssistant("(TUI wired; missing submit handler)")
+		}
+		m.viewport.GotoBottom()
+		return m, nil, true
+	}
+	return m, nil, false
 }
 
 func (m *Model) runModelSubmit(userText string) {
 	m.streaming = true
 	m.statusLine = ""
 	m.curAssistant.Reset()
+	m.curAssistantLineIdx = -1
 	m.submitter.fn(userText)
+}
+
+// resizeInput dynamically adjusts the textarea height based on content.
+func (m *Model) resizeInput() {
+	lineCount := m.input.LineCount()
+	if lineCount < 1 {
+		lineCount = 1
+	}
+	if lineCount > inputMaxHeight {
+		lineCount = inputMaxHeight
+	}
+	m.input.SetHeight(lineCount)
+	m.layout()
 }
 
 func (m *Model) View() tea.View {
@@ -344,6 +419,22 @@ func (m *Model) View() tea.View {
 	// AllMotion emits SGR mouse sequences; on Windows/Git Bash they can leak into the shell after exit.
 	v.MouseMode = tea.MouseModeNone
 	return v
+}
+
+// reflowTitleSeparator widens the rule under the banner when the terminal resizes.
+func (m *Model) reflowTitleSeparator() {
+	if m.width <= 0 || len(m.lines) < 2 {
+		return
+	}
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	plain0 := stripANSI(m.lines[0])
+	if !strings.HasPrefix(strings.TrimSpace(plain0), "goclaw") {
+		return
+	}
+	m.lines[1] = th.SeparatorLine(m.width)
 }
 
 func (m *Model) layout() {
@@ -365,31 +456,52 @@ func (m *Model) footerView() string {
 	}
 	status := strings.TrimSpace(m.statusLine)
 	if m.spinnerActive {
-		status = strings.TrimSpace(m.spinner.View() + "  " + status)
-		if status == "" {
-			status = m.spinner.View()
+		spin := strings.TrimSpace(m.spinner.View())
+		base := strings.TrimSpace(status)
+		if base == "" {
+			base = "Thinking…"
 		}
+		status = strings.TrimSpace(spin + "  " + base)
 	}
-	if m.streaming && !m.spinnerActive {
-		if status != "" {
-			status += " · "
-		}
-		status += "streaming…"
+	if m.streaming && !m.spinnerActive && strings.TrimSpace(status) == "" {
+		status = "Responding…"
 	}
 	if status == "" {
 		status = th.FooterHint()
 	}
-	footer := th.FooterDim.Render(status) + "\n" + m.input.View()
+
+	status = footerline.Join(status, m.sessionID, m.width)
+
+	// Input area with a subtle border
+	inputView := m.input.View()
+	if m.width > 4 {
+		inputView = th.InputBorder.Width(m.width - 4).Render(inputView)
+	}
+
+	footer := th.FooterDim.Render(status) + "\n" + inputView
 	if m.pending != nil {
 		inner := fmt.Sprintf(
-			"Allow tool?\n\n%s\n\n%s\n\n(y) allow  (n/esc) deny",
-			th.ModalTitle.Render(m.pending.ToolName),
+			"%s\n\n%s\n\n%s\n\n%s",
+			th.ModalTitle.Render("⚡ Allow tool execution?"),
+			th.ModalBody.Render("Tool: "+th.Tool.Render(m.pending.ToolName)),
 			th.ModalBody.Render(m.pending.Preview),
+			th.Dim.Render("(y) allow  (n/esc) deny"),
 		)
 		box := th.ModalBorder.Padding(1, 2).Render(inner)
 		return footer + "\n\n" + box
 	}
 	return footer
+}
+
+// ─── Line append helpers ────────────────────────────────────────────────────
+
+func (m *Model) appendSeparator() {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	m.lines = append(m.lines, th.SeparatorLine(m.width))
+	m.viewport.SetContent(strings.Join(m.lines, "\n"))
 }
 
 func (m *Model) appendSystem(s string) {
@@ -398,6 +510,15 @@ func (m *Model) appendSystem(s string) {
 		th = DefaultTheme()
 	}
 	m.lines = append(m.lines, th.System.Render(s))
+	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+}
+
+func (m *Model) appendError(s string) {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	m.lines = append(m.lines, th.ErrorStyle.Render(s))
 	m.viewport.SetContent(strings.Join(m.lines, "\n"))
 }
 
@@ -446,41 +567,50 @@ func (m *Model) stripAssistantPlaceholderLine() {
 	}
 }
 
-func (m *Model) appendToolUseLine(name, preview string) {
-	th := m.theme
-	if th == nil {
-		th = DefaultTheme()
+func (m *Model) toolQueueStatusLine() string {
+	if len(m.toolWaitQueue) == 0 {
+		return ""
 	}
-	preview = strings.TrimSpace(preview)
-	if len(preview) > 220 {
-		preview = preview[:220] + "…"
-	}
-	tag := th.ToolTag.Render("[tool]")
-	line := fmt.Sprintf("%s %s", tag, th.Assistant.Render(name))
-	if preview != "" {
-		line += " " + th.Dim.Render(preview)
-	}
-	m.lines = append(m.lines, line)
-	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+	return orchestrator.ToolWorkingPhrase(m.toolWaitQueue[0].name) + "…"
 }
 
-func (m *Model) appendToolResultLine(name string, nbytes int, isError bool) {
+func (m *Model) popToolJob() (pendingTool, bool) {
+	if len(m.toolWaitQueue) == 0 {
+		return pendingTool{}, false
+	}
+	j := m.toolWaitQueue[0]
+	m.toolWaitQueue = m.toolWaitQueue[1:]
+	return j, true
+}
+
+// appendToolDoneLine adds one compact Claude-style line after a tool finishes (no JSON).
+func (m *Model) appendToolDoneLine(toolName, summary string, isError bool) {
 	th := m.theme
 	if th == nil {
 		th = DefaultTheme()
 	}
-	tag := th.ToolTag.Render("[result]")
-	status := "ok"
+	label := orchestrator.ToolFinishedPhrase(toolName)
+	var line string
 	if isError {
-		status = th.Dim.Render("error")
+		line = fmt.Sprintf("  %s  %s",
+			th.ToolResultErr.Render("✗"),
+			label)
 	} else {
-		status = th.Dim.Render("ok")
+		suffix := ""
+		if s := strings.TrimSpace(summary); s != "" {
+			suffix = "  " + th.Dim.Render(truncateRunes(s, 96))
+		}
+		line = fmt.Sprintf("  %s  %s%s",
+			th.ToolResultOk.Render("✓"),
+			label,
+			suffix)
 	}
-	line := fmt.Sprintf("%s %s — %d bytes — %s", tag, th.Assistant.Render(name), nbytes, status)
 	m.lines = append(m.lines, line)
 	m.viewport.SetContent(strings.Join(m.lines, "\n"))
 }
 
+// refreshAssistantLine updates or appends a line with streaming content.
+// Uses curAssistantLineIdx to track which line we're updating.
 func (m *Model) refreshAssistantLine() {
 	th := m.theme
 	if th == nil {
@@ -488,13 +618,57 @@ func (m *Model) refreshAssistantLine() {
 	}
 	prefix := th.AssistantPrefix()
 	rendered := fmt.Sprintf("%s %s", prefix, m.curAssistant.String())
+
+	if m.curAssistantLineIdx >= 0 && m.curAssistantLineIdx < len(m.lines) {
+		// We know exactly which line to update.
+		m.lines[m.curAssistantLineIdx] = rendered
+	} else {
+		// Start a new assistant line.
+		m.lines = append(m.lines, rendered)
+		m.curAssistantLineIdx = len(m.lines) - 1
+	}
+	m.viewport.SetContent(strings.Join(m.lines, "\n"))
+}
+
+// finalizeCurrentSegment renders the current curAssistant buffer as markdown
+// and replaces the streaming line with the formatted version. Called both
+// before a tool use (to finalize pre-tool text) and on assistantDone.
+func (m *Model) finalizeCurrentSegment() {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	raw := m.curAssistant.String()
+	if strings.TrimSpace(raw) == "" {
+		return
+	}
+
+	prefix := th.AssistantPrefix()
 	pfxPlain := th.AssistantPlainPrefix()
 
-	if len(m.lines) > 0 && strings.HasPrefix(stripANSI(m.lines[len(m.lines)-1]), pfxPlain) {
-		m.lines[len(m.lines)-1] = rendered
-	} else {
-		m.lines = append(m.lines, rendered)
+	// Render markdown
+	rendered := th.RenderMarkdown(raw, m.width)
+
+	// Indent continuation lines to align with the prefix
+	mdLines := strings.Split(rendered, "\n")
+	padStr := strings.Repeat(" ", len([]rune(pfxPlain))+1)
+	var finalLines []string
+	for i, line := range mdLines {
+		if i == 0 {
+			finalLines = append(finalLines, fmt.Sprintf("%s %s", prefix, line))
+		} else {
+			finalLines = append(finalLines, padStr+line)
+		}
 	}
+	finalRendered := strings.Join(finalLines, "\n")
+
+	// Replace the tracked streaming line with the markdown version.
+	if m.curAssistantLineIdx >= 0 && m.curAssistantLineIdx < len(m.lines) {
+		m.lines[m.curAssistantLineIdx] = finalRendered
+	} else {
+		m.lines = append(m.lines, finalRendered)
+	}
+	m.curAssistantLineIdx = -1
 	m.viewport.SetContent(strings.Join(m.lines, "\n"))
 }
 

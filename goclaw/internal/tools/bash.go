@@ -58,7 +58,8 @@ func (BashTool) Description() string {
 		"build (go, make, cmake, cargo, npm, yarn, pnpm, node, npx, bun, python3, pip, uv, java, mvn, gradle, ruby, gem…), " +
 		"network (curl, wget), git (status, log, diff, add, commit, push, pull, fetch, checkout, merge, rebase, stash, clone, remote…), " +
 		"and utilities (echo, sleep, pwd, date, env, which, uname, gh). " +
-		"Prefer read_file / glob / grep tools for pure read operations."
+		"Prefer read_file / glob / grep tools for pure read operations. " +
+		"For multi-step commands requiring pipes (|), &&, or redirections, use the script tool if available."
 }
 
 func (BashTool) InputSchema() any {

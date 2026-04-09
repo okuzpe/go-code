@@ -12,6 +12,7 @@ func testRoot(t *testing.T) *cobra.Command {
 	return NewRootCmd("dev",
 		func(*cobra.Command, []string) error { return nil },
 		func() error { return nil },
+		func(*cobra.Command, []string) error { return nil },
 	)
 }
 
@@ -41,11 +42,23 @@ func TestSessionsListExecute(t *testing.T) {
 	root := NewRootCmd("dev",
 		func(*cobra.Command, []string) error { return nil },
 		func() error { return nil },
+		func(*cobra.Command, []string) error { return nil },
 	)
 	root.SetOut(io.Discard)
 	root.SetErr(io.Discard)
 	root.SetArgs([]string{"sessions", "list"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
+	}
+}
+
+func TestDoctorSubcommandResolved(t *testing.T) {
+	root := testRoot(t)
+	cmd, _, err := root.Find([]string{"doctor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Name() != "doctor" {
+		t.Fatalf("expected doctor subcommand, got %q", cmd.Name())
 	}
 }
