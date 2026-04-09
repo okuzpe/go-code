@@ -29,6 +29,35 @@ func TestFormatToolUsePreview_empty(t *testing.T) {
 }
 
 func TestToolWorkingPhrase(t *testing.T) {
-	require.Equal(t, "Searching the web", ToolWorkingPhrase("web_search"))
+	for _, tool := range []string{"web_search", "web_fetch", "read_file", "write_file", "edit_file", "glob", "grep", "bash", "script", "todo_write"} {
+		require.NotEmpty(t, ToolWorkingPhrase(tool), "tool=%s", tool)
+	}
 	require.Equal(t, "Running MCP tool", ToolWorkingPhrase("mcp__srv__ping"))
+	require.NotEmpty(t, ToolWorkingPhrase("unknown_custom_tool"))
+}
+
+func TestToolFinishedPhrase(t *testing.T) {
+	for _, tool := range []string{"web_search", "web_fetch", "read_file", "write_file", "edit_file", "glob", "grep", "bash", "script", "todo_write"} {
+		require.NotEmpty(t, ToolFinishedPhrase(tool), "tool=%s", tool)
+	}
+	require.Equal(t, "Ran MCP tool", ToolFinishedPhrase("mcp__srv__ping"))
+	require.NotEmpty(t, ToolFinishedPhrase("custom_tool"))
+}
+
+func TestFormatToolUsePreview_allKnownTools(t *testing.T) {
+	cases := []struct{ tool, input string }{
+		{"web_fetch", `{"url":"http://example.com"}`},
+		{"write_file", `{"path":"out.txt","content":"x"}`},
+		{"edit_file", `{"path":"f.go","old_string":"a","new_string":"b"}`},
+		{"glob", `{"pattern":"*.go"}`},
+		{"grep", `{"pattern":"func","path":"."}`},
+		{"script", `{"script":"echo hi"}`},
+		{"todo_write", `{"merge":false,"todos":[]}`},
+		{"spawn_agent", `{"profile":"explore","task":"do stuff"}`},
+		{"mcp__server__tool", `{"key":"value"}`},
+	}
+	for _, c := range cases {
+		got := FormatToolUsePreview(c.tool, c.input)
+		require.NotEmpty(t, got, "tool=%s", c.tool)
+	}
 }

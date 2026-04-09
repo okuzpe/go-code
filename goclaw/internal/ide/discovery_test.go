@@ -8,24 +8,55 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDiscoverMCPEndpoint(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "ide")
-	require.NoError(t, os.MkdirAll(dir, 0o700))
+func TestDiscoverMCPEndpoint_nonExistentDir(t *testing.T) {
+	_, _, err := DiscoverMCPEndpoint("/nonexistent/ide/dir")
+	require.Error(t, err)
+}
+
+func TestDiscoverMCPEndpoint_emptyDir(t *testing.T) {
+	dir := t.TempDir()
 	_, _, err := DiscoverMCPEndpoint(dir)
 	require.Error(t, err)
+}
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "z.json"), []byte(`not json`), 0o600))
-	_, _, err = DiscoverMCPEndpoint(dir)
+func TestDiscoverMCPEndpoint_allInvalidFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bad.json"), []byte(`not json`), 0o600))
+	_, _, err := DiscoverMCPEndpoint(dir)
 	require.Error(t, err)
+}
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.json"), []byte(`{"url":"http://127.0.0.1:1234/mcp"}`), 0o600))
+func TestDiscoverMCPEndpoint_validLoopback(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ide.json"),
+		[]byte(`{"url":"http://127.0.0.1:4321/mcp","headers":{"Authorization":"Bearer tok"}}`),
+		0o600))
 	u, hdrs, err := DiscoverMCPEndpoint(dir)
 	require.NoError(t, err)
-	require.Equal(t, "http://127.0.0.1:1234/mcp", u)
-	require.Nil(t, hdrs)
+	require.Equal(t, "http://127.0.0.1:4321/mcp", u)
+	require.Equal(t, "Bearer tok", hdrs["Authorization"])
+}
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.json"), []byte(`{"url":"https://example.com/mcp"}`), 0o600))
-	u2, _, err := DiscoverMCPEndpoint(dir)
+func TestDiscoverMCPEndpoint_skipsRemoteURL(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "remote.json"),
+		[]byte(`{"url":"https://example.com/mcp"}`), 0o600))
+	_, _, err := DiscoverMCPEndpoint(dir)
+	require.Error(t, err, "remote URL must be skipped")
+}
+
+func TestDiscoverMCPEndpoint_sortedFirstWins(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "z.json"), []byte(`{"url":"http://127.0.0.1:9999/z"}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.json"), []byte(`{"url":"http://127.0.0.1:1111/a"}`), 0o600))
+	u, _, err := DiscoverMCPEndpoint(dir)
 	require.NoError(t, err)
-	require.Equal(t, "http://127.0.0.1:1234/mcp", u2, "first sorted valid lockfile wins")
+	require.Contains(t, u, "1111", "a.json (sorted first) must win over z.json")
+}
+
+func TestDiscoverMCPEndpoint_emptyURLSkipped(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty.json"), []byte(`{"url":""}`), 0o600))
+	_, _, err := DiscoverMCPEndpoint(dir)
+	require.Error(t, err)
 }
