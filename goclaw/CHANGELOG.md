@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+<!-- next release notes here -->
+
+## [1.2.0] - 2026-04-09
+
 ### Added
 
 - Coordinator `stop_task` tool to cancel in-flight `spawn_agent` workers via `task_id` from spawn results.

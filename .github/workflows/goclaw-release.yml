@@ -1,0 +1,34 @@
+name: goclaw Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+defaults:
+  run:
+    working-directory: goclaw
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: goclaw/go.mod
+          cache-dependency-path: goclaw/go.sum
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean
+          workdir: goclaw
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
