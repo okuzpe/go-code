@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
@@ -36,12 +37,11 @@ var asciiLogo = `
  ╚██████╔╝╚██████╔╝╚██████╗███████╗██║  ██║╚███╔███╔╝
   ╚═════╝  ╚═════╝  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝`
 
-// printStartupBanner renders the ASCII header and session summary. useTUI selects copy for the UI line.
-func printStartupBanner(version, provider, model, profileName, sessionID, workdir string, disableTools, useTUI bool) {
-	uiMode := "readline REPL (default; type at the > prompt)"
-	if useTUI {
-		uiMode = "fullscreen TUI (--tui)"
-	}
+// printStartupBanner renders the ASCII header and session summary for the readline REPL path (and the
+// plain-text branch when stdout is not a TTY). Default fullscreen TUI does not call this — startup UX
+// lives in internal/ui/chat (welcome panel, footer).
+func printStartupBanner(version, provider, model, profileName, sessionID, workdir string, disableTools bool) {
+	uiMode := "readline REPL (use --readline or GOCLAW_USE_READLINE=1, or GOCLAW_USE_TUI=0)"
 
 	if !isTTY(os.Stdout) {
 		fmt.Printf("goclaw %s  provider=%s  model=%s  profile=%s  session=%s\n",
@@ -98,12 +98,13 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 		toolsNote = dim.Render("🔧 Tools active — ask mode prompts y/N before execution")
 	}
 
-	var helpLine string
-	if useTUI {
-		helpLine = dim.Render("💡 /help · /edit multiline · Ctrl+L clear · Esc or Ctrl+C exit")
-	} else {
-		helpLine = dim.Render("💡 /help · /edit multiline · Ctrl+C exit · type freely at the prompt (claw-style REPL)")
+	var modeLine string
+	showCoordinatorHub := strings.EqualFold(strings.TrimSpace(profileName), "coordinator")
+	if showCoordinatorHub {
+		modeLine = dim.Render("🧭 Coordinator hub — ask for several spawn_agent calls in one message for parallel workers; /workers lists only interactive workers; /profile general-purpose to edit the repo yourself")
 	}
+
+	helpLine := dim.Render("/help · /capabilities · /workers · /focus · /detach · /edit multiline · Ctrl+C exit · claw-style REPL")
 	uiLine := dim.Render("🖥  UI: " + uiMode)
 
 	fmt.Println(logo)
@@ -113,6 +114,9 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 	fmt.Println(" " + workLine)
 	fmt.Println(sep)
 	fmt.Println(" " + toolsNote)
+	if showCoordinatorHub {
+		fmt.Println(" " + modeLine)
+	}
 	fmt.Println(" " + helpLine)
 	fmt.Println(" " + uiLine)
 	fmt.Println(sep)
@@ -121,18 +125,61 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 
 func printToolApprovalPrompt(w io.Writer, toolName, preview string) {
 	if !isTTY(w) {
-		fmt.Fprintf(w, "\n[tool] %s\narguments: %s\n", toolName, preview)
+		fmt.Fprintf(w, "\n[tool] %s\n%s\n", toolName, preview)
 		return
 	}
-	label := lipgloss.NewStyle().
-		Background(colWarning).
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Bold(true).
-		Padding(0, 1).
-		Render("TOOL")
+	head := lipgloss.NewStyle().Bold(true).Foreground(colWarning).Render("⚡  Tool approval")
 	name := lipgloss.NewStyle().Bold(true).Foreground(colAccent2).Render(toolName)
-	argsStyle := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#374151", Dark: "#D1D5DB"})
-	fmt.Fprintf(w, "\n%s %s\n%s %s\n", label, name, argsStyle.Render("arguments:"), argsStyle.Render(preview))
+	body := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#374151", Dark: "#D1D5DB"}).
+		Render(wrapPlain(preview, 76))
+	foot := lipgloss.NewStyle().Foreground(colMuted).Italic(true).Render("y + Enter = allow · n = deny · readline prompt below →")
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.AdaptiveColor{Light: "#D1D5DB", Dark: "#4B5563"}).
+		Padding(0, 1).
+		Width(78).
+		Render(name + "\n" + body)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, head)
+	fmt.Fprintln(w, box)
+	fmt.Fprintln(w, foot)
+}
+
+// wrapPlain breaks text at spaces to fit width (runes); newlines become spaces first.
+func wrapPlain(text string, width int) string {
+	if width < 12 {
+		width = 76
+	}
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return ""
+	}
+	var lines []string
+	var b strings.Builder
+	lineLen := 0
+	for _, w := range words {
+		wl := utf8.RuneCountInString(w)
+		if lineLen == 0 {
+			b.WriteString(w)
+			lineLen = wl
+			continue
+		}
+		if lineLen+1+wl > width {
+			lines = append(lines, b.String())
+			b.Reset()
+			b.WriteString(w)
+			lineLen = wl
+		} else {
+			b.WriteByte(' ')
+			b.WriteString(w)
+			lineLen += 1 + wl
+		}
+	}
+	if b.Len() > 0 {
+		lines = append(lines, b.String())
+	}
+	return strings.Join(lines, "\n")
 }
 
 func truncate(s string, max int) string {

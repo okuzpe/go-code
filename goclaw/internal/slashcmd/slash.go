@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/okuzpe/goclaw/internal/agents"
+	"github.com/okuzpe/goclaw/internal/coordinator"
 	"github.com/okuzpe/goclaw/internal/memory"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/planfile"
@@ -16,11 +17,14 @@ import (
 
 // SlashEnv carries workspace paths and profile lookup for slash commands.
 type SlashEnv struct {
-	Workdir         string
-	Profs           map[string]agents.Profile
-	UserAgentsDir   string // for hot-reload of custom profiles on /profile
+	Workdir          string
+	UserConfigDir    string // ~/.goclaw — for /theme merge-write
+	Profs            map[string]agents.Profile
+	UserAgentsDir    string // for hot-reload of custom profiles on /profile
 	ProjectAgentsDir string
-	Doctor          func(ctx context.Context) (string, error)
+	Doctor           func(ctx context.Context) (string, error)
+	// Focus is optional; when set, /focus and /detach route input to interactive workers.
+	Focus *coordinator.FocusRouter
 }
 
 // SlashContext carries dependencies for HandleSlash (memory, orchestrator, session pointer, disk store).
@@ -135,6 +139,12 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string) (handled bo
 			return true, "(no session)", false, "", nil
 		}
 		return true, fmt.Sprintf("session id: %s\nmessages: %d", (*sess).ID, (*sess).Len()), false, "", nil
+
+	case "theme":
+		return handleSlashTheme(env, fields)
+
+	case "capabilities":
+		return true, UserCapabilitiesGuide(), false, "", nil
 
 	case "compact":
 		if orch == nil {
@@ -289,6 +299,55 @@ template — print the template to the terminal`)
 			return true, "", false, "", fmt.Errorf("unknown /plan %q — use path, init, or template", fields[1])
 		}
 
+	case "workers":
+		list := coordinator.ListInteractiveWorkers()
+		if len(list) == 0 {
+			return true, "(no interactive workers — spawn with spawn_agent interactive: true)", false, "", nil
+		}
+		var b strings.Builder
+		for _, w := range list {
+			b.WriteString(w.TaskID)
+			b.WriteString("  ")
+			b.WriteString(w.Profile)
+			b.WriteString("  ")
+			b.WriteString(w.Status)
+			if strings.TrimSpace(w.Summary) != "" {
+				b.WriteString("  — ")
+				b.WriteString(previewRunes(w.Summary, 72))
+			}
+			b.WriteByte('\n')
+		}
+		return true, strings.TrimSuffix(b.String(), "\n"), false, "", nil
+
+	case "detach":
+		if env.Focus == nil {
+			return true, "", false, "", fmt.Errorf("/detach: focus routing not enabled")
+		}
+		env.Focus.Detach()
+		return true, "focus: coordinator (parent session)", false, "", nil
+
+	case "focus":
+		if env.Focus == nil {
+			return true, "", false, "", fmt.Errorf("/focus: focus routing not enabled")
+		}
+		if len(fields) < 2 {
+			return true, "", false, "", fmt.Errorf(`usage: /focus <task_id_prefix> | /focus parent
+parent — return to coordinator (same as /detach)
+use /workers to list interactive worker ids`)
+		}
+		arg := strings.TrimSpace(strings.ToLower(fields[1]))
+		if arg == "parent" || arg == ".." || arg == "coordinator" {
+			env.Focus.Detach()
+			return true, "focus: coordinator (parent session)", false, "", nil
+		}
+		prefix := strings.TrimSpace(fields[1])
+		full, ok := coordinator.ResolveInteractiveTaskID(prefix)
+		if !ok {
+			return true, "", false, "", fmt.Errorf("no unique interactive worker matches prefix %q (try /workers)", prefix)
+		}
+		env.Focus.FocusTaskID(full)
+		return true, fmt.Sprintf("focus: worker %s (messages go to this worker until /detach)", full), false, "", nil
+
 	case "apply-plan":
 		if orch == nil {
 			return true, "", false, "", fmt.Errorf("/apply-plan requires a running agent")
@@ -335,7 +394,7 @@ template — print the template to the terminal`)
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /doctor   /plan   /apply-plan   /memory   /compact   /profile   /quit\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /memory   /theme   /workers   /focus   /detach   /compact   /profile   /quit\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
 		b.WriteString(planfile.Path(workdir))
@@ -349,11 +408,13 @@ func PreChatHelpSummary(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Slash commands (after chat starts; not sent to the model):\n")
 	b.WriteString("  /help, help, ? — full list with session id and profile\n")
+	b.WriteString("  /capabilities — structured overview (what the agent can do; not sent to the model)\n")
 	b.WriteString("  /plan path|init|template — workspace plan under .goclaw/plan.md\n")
 	b.WriteString("  /apply-plan [path] — run one execution turn from the plan\n")
 	b.WriteString("  /memory list | add | delete — durable memory under ~/.goclaw/memory/\n")
-	b.WriteString("  /compact, /edit, /profile, /new, /save, /session, /sessions, /quit\n")
-	b.WriteString("Flags: --tui, --no-tools, --session <id>, --profile <name>\n")
+	b.WriteString("  /workers, /focus <id>, /detach — interactive spawn_agent workers\n")
+	b.WriteString("  /compact, /edit, /profile, /theme, /new, /save, /session, /sessions, /quit\n")
+	b.WriteString("Flags: --readline (line REPL), --no-tools, --session <id>, --profile <name>\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan file: ")
 		b.WriteString(planfile.Path(workdir))
@@ -370,6 +431,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	var b strings.Builder
 	b.WriteString("Slash commands (not sent to the model):\n")
 	b.WriteString("  /help, help, ?   — this text\n")
+	b.WriteString("  /capabilities    — what I can help with (overview; not sent to the model)\n")
 	b.WriteString("  /doctor          — health check (config, provider reachability, session paths)\n")
 	b.WriteString("  /session         — show full session id and message count\n")
 	b.WriteString("  /sessions        — list saved session ids (same as --list-sessions, without restart)\n")
@@ -381,12 +443,15 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /memory list     — list memory files under ~/.goclaw/memory/\n")
 	b.WriteString("  /memory add <type> <name> <text...>  — types: user | feedback | project | reference\n")
 	b.WriteString("  /memory delete <file.md> — remove one file (see list for basename)\n")
-	b.WriteString("  /profile <name>  — switch agent profile (general-purpose, explore, plan, …)\n")
+	b.WriteString("  /profile <name>  — switch agent profile (coordinator, general-purpose, explore, plan, …)\n")
+	b.WriteString("  /theme [preset]  — show or set TUI ui_appearance (restart TUI to apply)\n")
+	b.WriteString("  /workers — list interactive workers; /focus <task_id_prefix> — send input to worker; /detach — back to parent\n")
 	b.WriteString("  /plan path|init|template — default plan path, create from template, or print template\n")
 	b.WriteString("  /apply-plan [path] — load plan file and run with general-purpose profile\n")
 	b.WriteString("  Ctrl+C           — exit (session is saved on shutdown)\n")
-	b.WriteString("\nRestart CLI flags: --session <id>  --list-sessions  --no-tools  --tui  --profile <name>\n")
-	b.WriteString("Env: GOCLAW_USE_TUI=1 enables fullscreen TUI; GOCLAW_USE_READLINE=1 forces readline if set.\n")
+	b.WriteString("\nRestart CLI flags: --session <id>  --list-sessions  --no-tools  --readline  --profile <name>\n")
+	b.WriteString("Env: default UI on a TTY is fullscreen TUI; GOCLAW_USE_TUI=0 or GOCLAW_USE_READLINE=1 uses line readline.\n")
+	b.WriteString("Env: GOCLAW_AGENT_PROFILE overrides agent_profile from settings (e.g. general-purpose).\n")
 	b.WriteString("CLI subcommand: goclaw sessions list (same as --list-sessions)\n")
 	b.WriteString("Current session id: ")
 	b.WriteString(id)

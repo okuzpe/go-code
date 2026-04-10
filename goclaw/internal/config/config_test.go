@@ -4,6 +4,13 @@ import (
 	"testing"
 )
 
+func TestDefaultAgentProfileCoordinator(t *testing.T) {
+	t.Parallel()
+	if got := Default().AgentProfile; got != "coordinator" {
+		t.Fatalf("Default().AgentProfile = %q, want coordinator", got)
+	}
+}
+
 func TestResolveAnthropicModelName(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

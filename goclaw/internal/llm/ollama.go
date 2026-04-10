@@ -75,7 +75,8 @@ type ollamaMessage struct {
 }
 
 type ollamaOptions struct {
-	NumCtx int `json:"num_ctx,omitempty"` // context window size
+	NumCtx     int `json:"num_ctx,omitempty"`     // context window size
+	NumPredict int `json:"num_predict,omitempty"` // max tokens to generate (maps from Request.MaxTokens)
 }
 
 // ollamaChunk is one NDJSON line from the streaming response.
@@ -92,6 +93,9 @@ func (c *OllamaClient) stream(ctx context.Context, req Request, out chan<- Event
 	body := ollamaRequest{
 		Model:  req.Model,
 		Stream: true,
+	}
+	if req.MaxTokens > 0 {
+		body.Options.NumPredict = req.MaxTokens
 	}
 
 	// Prepend system message if provided.

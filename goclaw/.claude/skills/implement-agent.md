@@ -7,7 +7,7 @@ description: Use when the user asks to add, change, or define an agent profile i
 
 ### Read first
 - `internal/agents/profile.go` — `Profile` and the seven built-ins
-- [`AGENT_PROFILES.md`](../../../AGENT_PROFILES.md) (monorepo root) — full table and coordinator semantics
+- [`agent-profiles.md`](../../../docs/reference/agent-profiles.md) — full table and coordinator semantics
 
 ### Profile shape
 

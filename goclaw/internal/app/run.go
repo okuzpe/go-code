@@ -71,9 +71,32 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 	}
 
 	forceReadline := readlineFlag || strings.TrimSpace(os.Getenv("GOCLAW_USE_READLINE")) == "1"
-	wantTUI := tuiFlag || strings.TrimSpace(os.Getenv("GOCLAW_USE_TUI")) == "1"
-	if useJSON && wantTUI && !forceReadline {
+	explicitTUI := tuiFlag || strings.TrimSpace(os.Getenv("GOCLAW_USE_TUI")) == "1"
+	denyTUI := strings.TrimSpace(os.Getenv("GOCLAW_USE_TUI")) == "0"
+	if useJSON && explicitTUI && !forceReadline {
 		return errors.New("--output-format json and --json-output cannot be used with --tui or GOCLAW_USE_TUI=1")
+	}
+
+	mockFlag, err := cmd.Flags().GetBool("mock")
+	if err != nil {
+		return err
+	}
+
+	// Default TUI on an interactive terminal; opt out with GOCLAW_USE_TUI=0 or readline flags.
+	useTUI := isTTY(os.Stdout) && !forceReadline && (explicitTUI || !denyTUI)
+	ttyChat := isTTY(os.Stdout) && isTTY(os.Stdin)
+
+	earlyCfg, workdir, err := loadMergedConfigForRun(cmd)
+	if err != nil {
+		return err
+	}
+	if ShouldRunOnboarding(ttyChat, useJSON, mockFlag, earlyCfg.UserConfigDir) {
+		if err := RunOnboarding(version, workdir, useTUI, earlyCfg); err != nil {
+			if errors.Is(err, ErrOnboardingAborted) {
+				return nil
+			}
+			return err
+		}
 	}
 
 	rt, err := PrepareChatRuntime(cmd)
@@ -97,11 +120,16 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 		return RunChatJSONOutput(ctx, rt)
 	}
 
-	useTUI := isTTY(os.Stdout) && !forceReadline && wantTUI
-
-	printStartupBanner(version, rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name, rt.Sess.ID, rt.Workdir, rt.DisableTools, useTUI)
+	// Fullscreen TUI shows welcome panel + footer; skip ASCII banner to avoid scrollback flash and duplicate UX.
+	if !useTUI {
+		printStartupBanner(version, rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name, rt.Sess.ID, rt.Workdir, rt.DisableTools)
+	}
 
 	if !useTUI && isTTY(os.Stdout) {
+		if banner := slashcmd.SessionLocationBanner(rt.Workdir); banner != "" {
+			fmt.Println(banner)
+			fmt.Println()
+		}
 		fmt.Print(slashcmd.PopularSlashHint(rt.Workdir))
 		fmt.Println()
 	}
@@ -165,11 +193,11 @@ func RunPrompt(cmd *cobra.Command, args []string) error {
 	}
 
 	forceReadline := readlineFlag || strings.TrimSpace(os.Getenv("GOCLAW_USE_READLINE")) == "1"
-	wantTUI := tuiFlag || strings.TrimSpace(os.Getenv("GOCLAW_USE_TUI")) == "1"
-	if useJSON && wantTUI && !forceReadline {
+	explicitTUI := tuiFlag || strings.TrimSpace(os.Getenv("GOCLAW_USE_TUI")) == "1"
+	if useJSON && explicitTUI && !forceReadline {
 		return errors.New("--output-format json and --json-output cannot be used with --tui or GOCLAW_USE_TUI=1")
 	}
-	if !useJSON && wantTUI && !forceReadline {
+	if !useJSON && explicitTUI && !forceReadline {
 		return errors.New("prompt: use readline or text output for one-shot prompts; --tui is for interactive chat only")
 	}
 
@@ -194,4 +222,30 @@ func RunPrompt(cmd *cobra.Command, args []string) error {
 		return RunChatJSONOutputFromLine(ctx, rt, line)
 	}
 	return RunChatTextOutputFromLine(ctx, rt, line)
+}
+
+// loadMergedConfigForRun mirrors the config merge applied in PrepareChatRuntime (without building clients)
+// so onboarding can run before the full runtime exists.
+func loadMergedConfigForRun(cmd *cobra.Command) (config.Config, string, error) {
+	workdir, err := os.Getwd()
+	if err != nil {
+		return config.Config{}, "", fmt.Errorf("get working directory: %w", err)
+	}
+	cfg := config.Default()
+	cfg, err = config.Load(cfg, workdir)
+	if err != nil {
+		return config.Config{}, "", fmt.Errorf("load config: %w", err)
+	}
+	if ep := strings.TrimSpace(os.Getenv("GOCLAW_AGENT_PROFILE")); ep != "" {
+		cfg.AgentProfile = ep
+	}
+	if cmd != nil {
+		if p, err := cmd.Flags().GetString("profile"); err == nil && strings.TrimSpace(p) != "" {
+			cfg.AgentProfile = strings.TrimSpace(p)
+		}
+		if vals, err := cmd.Flags().GetStringSlice("plugin-dir"); err == nil && len(vals) > 0 {
+			cfg.PluginDirs = append(cfg.PluginDirs, vals...)
+		}
+	}
+	return cfg, workdir, nil
 }

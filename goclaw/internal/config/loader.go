@@ -37,6 +37,8 @@ type settingsFile struct {
 	PluginAllow            []string `json:"plugin_allow,omitempty"`
 	PluginDeny             []string `json:"plugin_deny,omitempty"`
 	MemoryAutoExtract      *bool    `json:"memory_auto_extract,omitempty"`
+	UIAppearance           *string  `json:"ui_appearance,omitempty"`
+	APIKey                 *string  `json:"api_key,omitempty"`
 }
 
 // Load merges JSON settings into base in this order (later wins for overlapping keys):
@@ -161,6 +163,12 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if len(sf.ExternalHooks) > 0 {
 		cfg.ExternalHooks = append(cfg.ExternalHooks, sf.ExternalHooks...)
+	}
+	if sf.UIAppearance != nil && strings.TrimSpace(*sf.UIAppearance) != "" {
+		cfg.UIAppearance = NormalizeUIAppearance(*sf.UIAppearance)
+	}
+	if sf.APIKey != nil && strings.TrimSpace(*sf.APIKey) != "" {
+		cfg.APIKey = strings.TrimSpace(*sf.APIKey)
 	}
 
 	for k, v := range sf.ToolPermissions {

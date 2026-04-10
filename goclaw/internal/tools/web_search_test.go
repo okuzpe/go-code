@@ -57,6 +57,9 @@ func TestWebSearchExecuteMockServer(t *testing.T) {
 	if !strings.Contains(res.Content, "https://example.com/") {
 		t.Fatalf("missing url: %q", res.Content)
 	}
+	if !strings.Contains(res.Content, "Use the material above to answer the user") {
+		t.Fatalf("expected reply hint for model: %q", res.Content)
+	}
 }
 
 func TestWebSearchEmptyFallbackIncludesSearchURL(t *testing.T) {

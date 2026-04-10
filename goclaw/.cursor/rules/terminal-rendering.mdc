@@ -1,0 +1,37 @@
+---
+description: Terminal output and TUI must use the Charm stack and respect ui_appearance (theme) like the chat TUI.
+globs: goclaw/internal/app/**/*.go,goclaw/internal/ui/**/*.go,goclaw/cmd/**/*.go
+alwaysApply: false
+---
+
+# goclaw — Terminal rendering & theme
+
+## Stack (do not diverge without reason)
+
+| Mode | Libraries |
+|------|-----------|
+| Fullscreen TUI | **Bubble Tea v2** (`charm.land/bubbletea/v2`), **Bubbles v2** (`charm.land/bubbles/v2`) — viewport, textarea, spinner, etc. |
+| Styles | **Lip Gloss** — `github.com/charmbracelet/lipgloss` and, in chat, `charm.land/lipgloss/v2` + `compat` where Bubbles v2 needs it |
+| Markdown → ANSI | **Glamour** (`github.com/charmbracelet/glamour`) |
+| Utilities | `github.com/charmbracelet/x/ansi` where the chat UI needs ANSI helpers |
+| Line REPL | **readline** (`github.com/chzyer/readline`) — not Bubble Tea |
+| TTY | `golang.org/x/term` for terminal detection / size when relevant |
+
+## Theme source of truth: `ui_appearance`
+
+- User setting: `ui_appearance` in settings (`config.Config.UIAppearance`), normalized via `config.NormalizeUIAppearance`.
+- Chat TUI builds the canonical look with **`chat.NewThemeForAppearance(cfg.UIAppearance)`** (`internal/ui/chat/theme_appearance.go`): Lip Gloss palette + **`Theme.RenderMarkdown`** / internal `mdGlamourStyle` (`dark`, `light`, `ascii`, or `auto` → `glamour.WithAutoStyle()`).
+
+## Rules when adding or changing terminal UI
+
+1. **Respect the chosen theme** whenever settings (or the `config.Config` / model in scope) expose `UIAppearance`. Do not hardcode only `glamour.WithAutoStyle()` for user-visible styled output if a fixed preset was chosen — use the same glamour mapping as the chat theme.
+2. **Single mapping** — Use **`config.GlamourTermRendererOptions(uiAppearance, wordWrap)`** for standalone Glamour renders outside `package chat` so `app` never imports `internal/ui/chat` (see `internal/app/run.go` import policy / Windows tests).
+3. **Lip Gloss** — Prefer **`lipgloss.AdaptiveColor`** or colors aligned with `internal/app/banner.go` / `Theme` for borders, titles, and muted text; avoid one-off RGB that clashes with purple/emerald brand accents unless the preset requires it (e.g. colorblind / ANSI themes).
+4. **Non-TTY** — Keep plain `fmt` fallbacks when `stdout` is not a terminal (no ANSI assumptions).
+5. **New fullscreen flows** — Use Bubble Tea v2’s `tea.View` / `tea.NewView` patterns consistent with `internal/ui/chat` (AltScreen, etc.).
+
+## Quick references
+
+- Theme presets and Glamour keys: `internal/ui/chat/theme_appearance.go`
+- Shared Glamour options for any package: `internal/config/glamour_opts.go`
+- First-run security preflight (summary + **s** full doc viewport): `internal/app/onboarding_security_gate.go` — uses Bubble Tea + `bubbles/viewport`, Glamour for the embedded `onboarding_security_full.md` (keep in sync with `docs/goclaw/security.md`).

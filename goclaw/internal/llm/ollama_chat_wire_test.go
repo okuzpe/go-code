@@ -50,6 +50,41 @@ func TestOllamaChatRequestContainsToolName(t *testing.T) {
 	}
 }
 
+func TestOllamaChatRequestPassesNumPredictFromMaxTokens(t *testing.T) {
+	var captured []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		captured = b
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		_, _ = io.WriteString(w, `{"model":"m","message":{"role":"assistant","content":"hi"},"done":true}`+"\n")
+	}))
+	defer srv.Close()
+
+	client := NewOllama(srv.URL)
+	req := Request{
+		Model:     "m",
+		MaxTokens: 8192,
+		Messages:  []Message{PlainMessage("user", "hello")},
+	}
+	events, errc := client.Stream(context.Background(), req)
+	for range events {
+	}
+	if err := <-errc; err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Options struct {
+			NumPredict int `json:"num_predict"`
+		} `json:"options"`
+	}
+	if err := json.Unmarshal(captured, &body); err != nil {
+		t.Fatalf("parse body: %v\n%s", err, captured)
+	}
+	if body.Options.NumPredict != 8192 {
+		t.Fatalf("num_predict=%d want 8192; body=%s", body.Options.NumPredict, captured)
+	}
+}
+
 // TestOllamaNativeToolCallsStream emits ToolUse from streamed tool_calls on final chunk.
 func TestOllamaNativeToolCallsStream(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

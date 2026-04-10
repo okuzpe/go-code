@@ -18,16 +18,43 @@ import (
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/todos"
 	"github.com/okuzpe/goclaw/internal/tools"
+	"github.com/stretchr/testify/require"
 )
 
 func testSlashEnv(t *testing.T) SlashEnv {
 	t.Helper()
-	return SlashEnv{Workdir: t.TempDir(), Profs: agents.All()}
+	root := t.TempDir()
+	return SlashEnv{
+		Workdir:       filepath.Join(root, "workspace"),
+		UserConfigDir: filepath.Join(root, "usergoclaw"),
+		Profs:         agents.All(),
+	}
 }
 
 func testSlashCtx(t *testing.T, mem *memory.Store, orch *orchestrator.Orchestrator, sp **session.Session, store *session.Store) SlashContext {
 	t.Helper()
 	return SlashContext{SlashEnv: testSlashEnv(t), Mem: mem, Orch: orch, Sess: sp, Store: store}
+}
+
+func TestHandleSlashTheme(t *testing.T) {
+	env := testSlashEnv(t)
+	require.NoError(t, os.MkdirAll(env.Workdir, 0o700))
+	require.NoError(t, os.MkdirAll(env.UserConfigDir, 0o700))
+	ctx := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: nil, Sess: nil, Store: nil}
+
+	handled, out, _, _, err := HandleSlash(context.Background(), ctx, "/theme")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Contains(t, out, "ui_appearance")
+
+	handled, out, _, _, err = HandleSlash(context.Background(), ctx, "/theme dark")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Contains(t, out, "dark")
+
+	raw, err := os.ReadFile(filepath.Join(env.UserConfigDir, "settings.json"))
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "dark")
 }
 
 func TestHandleSlashHelp(t *testing.T) {
@@ -39,10 +66,23 @@ func TestHandleSlashHelp(t *testing.T) {
 	}
 	if !strings.Contains(out, "abc123") || !strings.Contains(out, "/memory") || !strings.Contains(out, "/new") ||
 		!strings.Contains(out, "/sessions") || !strings.Contains(out, "/quit") ||
+		!strings.Contains(out, "/theme") ||
 		!strings.Contains(out, "/apply-plan") || !strings.Contains(out, "/plan path") ||
+		!strings.Contains(out, "/capabilities") ||
 		!strings.Contains(out, "sessions list") {
 		t.Fatalf("unexpected help: %s", out)
 	}
+}
+
+func TestHandleSlashCapabilities(t *testing.T) {
+	var sp *session.Session
+	handled, out, quit, ms, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/capabilities")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.False(t, quit)
+	require.Empty(t, ms)
+	require.Contains(t, out, "goclaw")
+	require.Contains(t, out, "web_search")
 }
 
 func TestHandleSlashQuit(t *testing.T) {

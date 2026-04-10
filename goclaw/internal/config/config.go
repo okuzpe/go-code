@@ -32,7 +32,7 @@ type Config struct {
 	UserConfigDir    string // ~/.goclaw
 	ProjectConfigDir string // .goclaw (relative to cwd)
 
-	// AgentProfile is a key from agents.All() (e.g. general-purpose, explore).
+	// AgentProfile is a key from agents.All() (e.g. coordinator, general-purpose, explore).
 	AgentProfile string
 
 	// PermissionModes maps tool name → mode string from JSON ("ask"|"allow"|"deny").
@@ -103,6 +103,10 @@ type Config struct {
 
 	// MemoryAutoExtract when true: after successful write_file/edit_file, append a short project memory line (path only).
 	MemoryAutoExtract bool
+
+	// UIAppearance selects TUI colors and markdown style: auto, dark, light, dark_colorblind, light_colorblind, dark_ansi, light_ansi.
+	// JSON key: ui_appearance. Empty or "auto" uses terminal-adaptive styling.
+	UIAppearance string
 }
 
 // MCPServerConfig describes one MCP server (stdio subprocess and/or Streamable HTTP URL).
@@ -153,7 +157,7 @@ func Default() Config {
 		AutoCompactThreshold: 0.85,
 		UserConfigDir:        filepath.Join(home, ".goclaw"),
 		ProjectConfigDir:     ".goclaw",
-		AgentProfile:           "general-purpose",
+		AgentProfile:           "coordinator",
 		PermissionModes:        nil,
 		YoloThreshold:          -1,
 		WebSearchBackend:       "ddg",
@@ -161,6 +165,7 @@ func Default() Config {
 		SerpAPIKey:             os.Getenv("SERPAPI_API_KEY"),
 		WebSearchFallbackDDG:   true,
 		TokenCountMode:           "auto",
+		UIAppearance:             "auto",
 	}
 }
 

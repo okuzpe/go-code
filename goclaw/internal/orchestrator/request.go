@@ -1,39 +1,17 @@
 package orchestrator
 
 import (
+	_ "embed"
 	"strings"
 
 	"github.com/okuzpe/goclaw/internal/llm"
 	"github.com/okuzpe/goclaw/internal/tools"
 )
 
-const memorySnippetEntries = 8
+//go:embed base_system_prompt.md
+var baseSystemPrompt string
 
-// baseSystemPrompt is prepended to every profile.
-// Written as short numbered rules so local models (Ollama) are more likely to obey.
-const baseSystemPrompt = "You are the goclaw coding agent.\n\n" +
-	"RULES (follow strictly):\n" +
-	"1. TOOL CALLS: Always use the native tool/function-calling mechanism. " +
-	"NEVER write tool requests as ```json, fenced JSON, or {\"name\":…} in your reply text.\n" +
-	"2. GREETINGS: If the user just says hello, thanks, or asks a simple conversational question, " +
-	"reply in plain text. DO NOT call bash, DO NOT call any tool.\n" +
-	"3. WEB / NEWS / INTERNET: When the user asks you to search the web, find news, look up current events, " +
-	"or get any online information, you MUST call the web_search tool. " +
-	"You CAN search the internet — the web_search tool is available to you. " +
-	"NEVER say \"I cannot search the web\" or \"I cannot access the internet\". " +
-	"When web_search or web_fetch returns content in a tool result, you MUST answer from that output: " +
-	"give a concise summary in plain language (headlines, topics, and factual points). " +
-	"Do not refuse to summarize tool-returned public web content the user asked you to fetch; " +
-	"paraphrase and attribute sources by domain or page title when possible.\n" +
-	"4. TOOL PRIORITY: " +
-	"read_file, glob, grep → read/search code. " +
-	"write_file, edit_file → edit code. " +
-	"web_search → internet queries. " +
-	"web_fetch → fetch a specific URL. " +
-	"bash → single commands (build, git, package managers); no pipes or chaining. " +
-	"script → shell composition requiring pipes (|), && chaining, or redirections (if available). " +
-	"NEVER use bash to echo a message, print a greeting, or do something a dedicated tool handles.\n" +
-	"5. After any tool returns, answer the user in clear prose. Do not repeat raw JSON output.\n\n"
+const memorySnippetEntries = 8
 
 func (o *Orchestrator) buildRequest() llm.Request {
 	model := o.cfg.Model()

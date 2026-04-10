@@ -14,6 +14,10 @@ func TestFormatToolUsePreview(t *testing.T) {
 		{"read_file", `{"path":"internal/app/run.go"}`, "internal/app/run.go"},
 		{"bash", `{"command":"go test ./..."}`, "go test ./..."},
 		{"unknown", `{"query":"x","extra":1}`, "x"},
+		{"spawn_agent", `{"profile":"explore","task":"search the web for alog","interactive":false}`, "explore"},
+		{"spawn_agent", `{"profile":"explore","task":"search the web for alog","interactive":false}`, "one-shot"},
+		{"spawn_agent", `{"profile":"explore","task":"x","interactive":true}`, "interactive"},
+		{"stop_task", `{"task_id":"abc123"}`, "abc123"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.tool, func(t *testing.T) {

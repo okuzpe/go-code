@@ -8,13 +8,14 @@ import (
 	"sync"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
+	"github.com/okuzpe/goclaw/internal/slashcmd"
 	"github.com/okuzpe/goclaw/internal/text"
 	"github.com/okuzpe/goclaw/internal/ui/footerline"
 )
@@ -59,6 +60,17 @@ type Model struct {
 	toolWaitStartedAt time.Time
 
 	sessionID string
+
+	focusLine func() string
+
+	// Welcome panel (optional): reflow when terminal width is first known or on resize.
+	welcomeOpts     WelcomeOptions
+	welcomeBlockEnd int // exclusive index in m.lines after dashboard + trailing blank line; 0 if none
+
+	// TUI help overlay (/help): viewport shows helpFullText; transcript stays in m.lines underneath.
+	helpOpen     bool
+	helpFullText string
+	appVersion   string
 }
 
 type toolTickMsg struct{}
@@ -94,6 +106,12 @@ type Options struct {
 	Title     string
 	SessionID string
 	Theme     *Theme
+	// Workdir when set enables the cwd-aware session intro before "Ready."
+	Workdir string
+	// Welcome optional bordered panel before the title (version + tips).
+	Welcome WelcomeOptions
+	// FocusLine optional; when non-nil, its return value is shown in the footer (e.g. worker focus).
+	FocusLine func() string
 }
 
 // SlashHandler: if modelSubmit is non-empty, send that text to the model after displaying out (e.g. /edit).
@@ -142,6 +160,9 @@ func (b *ApprovalBroker) ToolApprover() orchestrator.ToolApprover {
 // inputMaxHeight is the maximum number of visible lines in the input textarea.
 const inputMaxHeight = 6
 
+// maxSlashSuggestRows caps the TUI slash-command picker (single-line / buffer); keeps the UI compact.
+const maxSlashSuggestRows = 5
+
 func placeholderForWidth(termWidth int) string {
 	const full = "Message goclaw…  /help  Ctrl+J newline"
 	const narrow = "Message…  /help  Ctrl+J newline"
@@ -178,7 +199,7 @@ func New(ctx context.Context, opts Options) Model {
 
 	spin := spinner.New(
 		spinner.WithSpinner(spinner.Dot),
-		spinner.WithStyle(SpinnerAccentStyle()),
+		spinner.WithStyle(th.SpinnerAccentV2()),
 	)
 
 	m := Model{
@@ -191,6 +212,16 @@ func New(ctx context.Context, opts Options) Model {
 		submitter:           new(submitRunner),
 		curAssistantLineIdx: -1,
 		sessionID:           strings.TrimSpace(opts.SessionID),
+		focusLine:           opts.FocusLine,
+		appVersion:          strings.TrimSpace(opts.Welcome.Version),
+	}
+	if strings.TrimSpace(opts.Welcome.Version) != "" {
+		if dash := WelcomeDashboardLines(th, opts.Welcome, 0); len(dash) > 0 {
+			m.welcomeOpts = opts.Welcome
+			m.lines = append(m.lines, dash...)
+			m.lines = append(m.lines, "")
+			m.welcomeBlockEnd = len(m.lines)
+		}
 	}
 	if strings.TrimSpace(opts.Title) != "" {
 		titleStyle := lipgloss.NewStyle().
@@ -199,6 +230,8 @@ func New(ctx context.Context, opts Options) Model {
 		m.lines = append(m.lines, titleStyle.Render(opts.Title))
 		m.lines = append(m.lines, th.SeparatorLine(0))
 	}
+	intro := SessionIntroSystemText(opts.Workdir)
+	m.appendSystem(intro)
 	m.appendSystem("Ready. " + th.FooterHint())
 	return m
 }
@@ -224,6 +257,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, sc = m.spinner.Update(msg)
 		return m, sc
 	case tea.KeyMsg:
+		if m.helpOpen {
+			switch msg.String() {
+			case "esc":
+				m.closeHelpOverlay()
+				return m, nil
+			case "ctrl+c":
+				return m, tea.Quit
+			default:
+				var vcmd tea.Cmd
+				m.viewport, vcmd = m.viewport.Update(msg)
+				return m, vcmd
+			}
+		}
 		if mdl, cmd, handled := m.handleKeyString(msg.String()); handled {
 			return mdl, cmd
 		}
@@ -232,6 +278,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.input.SetWidth(m.width - 2) // leave room for border
 		m.syncInputPlaceholder()
+		m.rebuildWelcomeForWidth()
 		m.reflowTitleSeparator()
 		m.layout()
 		var vcmd tea.Cmd
@@ -248,9 +295,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.curAssistant.Reset()
 		m.curAssistantLineIdx = -1
 		m.appendAssistantDim("…")
+		th := m.theme
+		if th == nil {
+			th = DefaultTheme()
+		}
 		m.spinner = spinner.New(
 			spinner.WithSpinner(spinner.Dot),
-			spinner.WithStyle(SpinnerAccentStyle()),
+			spinner.WithStyle(th.SpinnerAccentV2()),
 		)
 		m.spinnerActive = true
 		return m, func() tea.Msg { return m.spinner.Tick() }
@@ -327,25 +378,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
-	m.input, cmd = m.input.Update(msg)
-	cmds = append(cmds, cmd)
-
-	// Dynamic input height: grow textarea as user types more lines (up to inputMaxHeight).
-	m.resizeInput()
+	if !m.helpOpen {
+		m.input, cmd = m.input.Update(msg)
+		cmds = append(cmds, cmd)
+		// Dynamic input height: grow textarea as user types more lines (up to inputMaxHeight).
+		m.resizeInput()
+	}
 
 	return m, tea.Batch(cmds...)
 }
 
 func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
-	// Ctrl+C during streaming cancels the in-flight request; at the prompt it quits.
+	// Ctrl+C always exits the TUI (Unix-style). Cancel any in-flight model request first.
 	if k == "ctrl+c" {
 		if m.streaming {
 			m.submitter.cancel()
-			return m, nil, true
 		}
 		return m, tea.Quit, true
 	}
 	if m.pending == nil && k == "esc" {
+		// Match common agent UIs: Esc stops an in-flight reply; Esc again exits when idle.
+		if m.streaming {
+			m.submitter.cancel()
+			return m, nil, true
+		}
 		return m, tea.Quit, true
 	}
 	if m.pending != nil {
@@ -378,6 +434,18 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 		m.curAssistantLineIdx = -1
 		m.setLinesContent(true)
 		return m, nil, true
+	case "tab":
+		if m.streaming || m.pending != nil {
+			return m, nil, false
+		}
+		if repl, ok := slashcmd.SlashTabExpand(m.input.Value()); ok {
+			m.input.SetValue(repl)
+			m.input.CursorEnd()
+			m.resizeInput()
+			m.layout()
+			return m, nil, true
+		}
+		return m, nil, false
 	case "enter":
 		txt := strings.TrimSpace(m.input.Value())
 		if txt == "" {
@@ -397,7 +465,11 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 				if err != nil {
 					m.appendError(fmt.Sprintf("error: %v", err))
 				} else if strings.TrimSpace(out) != "" {
-					m.appendSystem(out)
+					if slashcmd.PlainHelpREPLRequest(txt) {
+						m.openHelpOverlay(out)
+					} else {
+						m.appendSystem(out)
+					}
 				}
 				if strings.TrimSpace(modelSubmit) != "" && m.submitter != nil && m.submitter.fn != nil {
 					m.runModelSubmit(modelSubmit)
@@ -482,6 +554,31 @@ func (m *Model) View() tea.View {
 	return v
 }
 
+// rebuildWelcomeForWidth rebuilds the top welcome panel using the real terminal width so layout
+// does not rely on a too-wide two-column block before the first WindowSizeMsg.
+func (m *Model) rebuildWelcomeForWidth() {
+	if m.welcomeBlockEnd <= 0 || m.width <= 0 {
+		return
+	}
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	dash := WelcomeDashboardLines(th, m.welcomeOpts, m.width)
+	if len(dash) == 0 {
+		return
+	}
+	newHead := append(append([]string(nil), dash...), "")
+	oldEnd := m.welcomeBlockEnd
+	if len(newHead) != oldEnd {
+		tail := append([]string(nil), m.lines[oldEnd:]...)
+		m.lines = append(newHead, tail...)
+	} else {
+		copy(m.lines, newHead)
+	}
+	m.welcomeBlockEnd = len(newHead)
+}
+
 // reflowTitleSeparator widens the rule under the banner when the terminal resizes.
 func (m *Model) reflowTitleSeparator() {
 	if m.width <= 0 || len(m.lines) < 2 {
@@ -491,11 +588,13 @@ func (m *Model) reflowTitleSeparator() {
 	if th == nil {
 		th = DefaultTheme()
 	}
-	plain0 := stripANSI(m.lines[0])
-	if !strings.HasPrefix(strings.TrimSpace(plain0), "goclaw") {
-		return
+	for idx := 0; idx < len(m.lines)-1; idx++ {
+		plain := strings.TrimSpace(stripANSI(m.lines[idx]))
+		if strings.HasPrefix(plain, "goclaw ·") {
+			m.lines[idx+1] = th.SeparatorLine(m.width)
+			return
+		}
 	}
-	m.lines[1] = th.SeparatorLine(m.width)
 }
 
 func (m *Model) layout() {
@@ -504,13 +603,42 @@ func (m *Model) layout() {
 	if h < 1 {
 		h = 1
 	}
-	stick := m.viewport.AtBottom()
 	m.viewport.SetWidth(m.width)
 	m.viewport.SetHeight(h)
+	if m.helpOpen {
+		m.viewport.SetContent(m.helpFullText)
+		return
+	}
+	stick := m.viewport.AtBottom()
 	m.viewport.SetContent(strings.Join(m.lines, "\n"))
 	if stick {
 		m.viewport.GotoBottom()
 	}
+}
+
+func (m *Model) openHelpOverlay(replBody string) {
+	var b strings.Builder
+	if m.appVersion != "" {
+		b.WriteString("goclaw · v")
+		b.WriteString(m.appVersion)
+	} else {
+		b.WriteString("goclaw")
+	}
+	b.WriteString("\n\n")
+	b.WriteString(slashcmd.TUIHelpShortcutsText())
+	b.WriteString("\n\n")
+	b.WriteString(strings.TrimSpace(replBody))
+	m.helpFullText = b.String()
+	m.helpOpen = true
+	m.layout()
+	m.viewport.GotoTop()
+}
+
+func (m *Model) closeHelpOverlay() {
+	m.helpOpen = false
+	m.helpFullText = ""
+	m.layout()
+	m.viewport.GotoBottom()
 }
 
 func (m *Model) footerView() string {
@@ -518,8 +646,11 @@ func (m *Model) footerView() string {
 	if th == nil {
 		th = DefaultTheme()
 	}
+	if m.helpOpen {
+		return th.FooterDim.Render("Esc close help · ↑↓ PgUp/PgDn or mouse wheel · Ctrl+C quit")
+	}
 	primary := strings.TrimSpace(m.footerPrimaryStatus())
-	hints := th.FooterHint()
+	hints := th.FooterHintForWidth(m.width)
 	second := footerline.HintsWithSession(hints, m.sessionID, m.width)
 
 	var meta string
@@ -528,6 +659,11 @@ func (m *Model) footerView() string {
 	} else {
 		meta = th.FooterDim.Render(second)
 	}
+	if m.focusLine != nil {
+		if fh := strings.TrimSpace(m.focusLine()); fh != "" {
+			meta = meta + "\n" + th.FooterDim.Render(fh)
+		}
+	}
 
 	// Input area with a subtle border
 	inputView := m.input.View()
@@ -535,19 +671,124 @@ func (m *Model) footerView() string {
 		inputView = th.InputBorder.Width(m.width - 4).Render(inputView)
 	}
 
-	footer := meta + "\n" + inputView
-	if m.pending != nil {
-		inner := fmt.Sprintf(
-			"%s\n\n%s\n\n%s\n\n%s",
-			th.ModalTitle.Render("⚡ Allow tool execution?"),
-			th.ModalBody.Render("Tool: "+th.Tool.Render(m.pending.ToolName)),
-			th.ModalBody.Render(m.pending.Preview),
-			th.Dim.Render("(y) allow  (n/esc) deny"),
-		)
-		box := th.ModalBorder.Padding(1, 2).Render(inner)
-		return footer + "\n\n" + box
+	var b strings.Builder
+	b.WriteString(meta)
+	if strip := m.slashSuggestStripView(); strip != "" {
+		b.WriteString("\n")
+		b.WriteString(strip)
 	}
-	return footer
+	if m.pending != nil {
+		b.WriteString("\n")
+		b.WriteString(m.approvalStripView())
+	}
+	b.WriteString("\n")
+	b.WriteString(inputView)
+	return b.String()
+}
+
+// slashSuggestStripView renders filtered /commands above the input (single-line buffer only).
+func (m *Model) slashSuggestStripView() string {
+	if m.helpOpen || m.streaming || m.pending != nil {
+		return ""
+	}
+	raw := m.input.Value()
+	sugs := slashcmd.TUISlashSuggestions(raw)
+	if len(sugs) == 0 {
+		return ""
+	}
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	ruleW := m.width
+	maxW := m.width - 4
+	if maxW < 40 {
+		maxW = m.width
+	}
+	if maxW < 24 {
+		maxW = 72
+	}
+	more := 0
+	if len(sugs) > maxSlashSuggestRows {
+		more = len(sugs) - maxSlashSuggestRows
+		sugs = sugs[:maxSlashSuggestRows]
+	}
+	var b strings.Builder
+	b.WriteString(th.SeparatorLine(ruleW))
+	b.WriteString("\n")
+	b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("/ commands · max %d shown · Tab · type to narrow", maxSlashSuggestRows)))
+	for _, s := range sugs {
+		nameW := lipgloss.Width(th.SlashPickerName.Render(s.Name))
+		budget := maxW - nameW - 2
+		if budget < 8 {
+			budget = 8
+		}
+		snippet := text.TruncateRunes(s.Summary, budget)
+		line := lipgloss.JoinHorizontal(lipgloss.Top, th.SlashPickerName.Render(s.Name), th.SlashPickerDesc.Render("  "+snippet))
+		if lipgloss.Width(line) > maxW {
+			line = th.SlashPickerName.Render(s.Name)
+		}
+		b.WriteString("\n")
+		b.WriteString(line)
+	}
+	if more > 0 {
+		b.WriteString("\n")
+		b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("… +%d more — keep typing", more)))
+	}
+	return b.String()
+}
+
+// approvalStripView is a single compact line above the input (no modal below).
+func (m *Model) approvalStripView() string {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	maxW := m.width - 4
+	if maxW < 24 {
+		maxW = m.width
+	}
+	if maxW < 24 {
+		maxW = 72
+	}
+	toolPlain := m.pending.ToolName
+	previewPlain := m.pending.Preview
+
+	title := th.ModalTitle.Render("⚡ Allow:")
+	sep := th.ModalBody.Render(" · ")
+	hint := th.Dim.Render(" · y/n esc")
+
+	try := func(toolShow, prevShow string) (string, bool) {
+		toolSt := th.Tool.Render(toolShow)
+		body := th.ModalBody.Render(prevShow)
+		s := title + " " + toolSt + sep + body + hint
+		if lipgloss.Width(s) <= maxW {
+			return s, true
+		}
+		return s, false
+	}
+
+	toolShow := toolPlain
+	if lipgloss.Width(toolShow) > 24 {
+		toolShow = text.TruncateRunes(toolShow, 20)
+	}
+
+	previewRunes := len([]rune(previewPlain))
+	if previewRunes > 240 {
+		previewRunes = 240
+	}
+	for previewRunes >= 8 {
+		prevShow := text.TruncateRunes(previewPlain, previewRunes)
+		if s, ok := try(toolShow, prevShow); ok {
+			return s
+		}
+		previewRunes -= 8
+	}
+	if s, ok := try(toolShow, "…"); ok {
+		return s
+	}
+	toolSt := th.Tool.Render(text.TruncateRunes(toolShow, 12))
+	return title + " " + toolSt + hint
 }
 
 // ─── Line append helpers ────────────────────────────────────────────────────
@@ -694,6 +935,65 @@ func (m *Model) refreshAssistantLine() {
 	m.setLinesContent(false)
 }
 
+// normalizeAssistantMarkdownLines removes glamour's heavy left padding on wrapped
+// paragraphs so we do not stack it on top of our gutter padding (looked like a staircase).
+// Lines inside fenced code blocks are left unchanged.
+func normalizeAssistantMarkdownLines(lines []string) []string {
+	out := make([]string, len(lines))
+	inFence := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(strings.TrimRight(line, "\r"))
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			out[i] = line
+			continue
+		}
+		if inFence {
+			out[i] = line
+			continue
+		}
+		if i == 0 {
+			out[i] = strings.TrimLeft(line, " \t")
+			continue
+		}
+		// Continuation lines: strip runaway indentation from word-wrap, keep shallow list indents.
+		n := countLeadingASCIISpaces(line)
+		if n >= 4 {
+			out[i] = strings.TrimLeft(line, " \t")
+		} else {
+			out[i] = line
+		}
+	}
+	return out
+}
+
+func countLeadingASCIISpaces(s string) int {
+	n := 0
+	for _, r := range s {
+		if r == ' ' {
+			n++
+		} else if r == '\t' {
+			n += 4
+		} else {
+			break
+		}
+	}
+	return n
+}
+
+// dropLeadingBlankLines removes empty / whitespace-only lines glamour often emits
+// before the first paragraph (otherwise the prefix sits alone on its own row).
+func dropLeadingBlankLines(lines []string) []string {
+	i := 0
+	for i < len(lines) && strings.TrimSpace(lines[i]) == "" {
+		i++
+	}
+	if i == 0 {
+		return lines
+	}
+	return lines[i:]
+}
+
 // finalizeCurrentSegment renders the current curAssistant buffer as markdown
 // and replaces the streaming line with the formatted version. Called both
 // before a tool use (to finalize pre-tool text) and on assistantDone.
@@ -708,14 +1008,18 @@ func (m *Model) finalizeCurrentSegment() {
 	}
 
 	prefix := th.AssistantPrefix()
-	pfxPlain := th.AssistantPlainPrefix()
+	prefixW := lipgloss.Width(prefix)
+	// Render markdown in the column width that fits next to the assistant gutter.
+	rendered := th.RenderMarkdown(raw, m.width, prefixW)
 
-	// Render markdown
-	rendered := th.RenderMarkdown(raw, m.width)
-
-	// Indent continuation lines to align with the prefix
 	mdLines := strings.Split(rendered, "\n")
-	padStr := strings.Repeat(" ", len([]rune(pfxPlain))+1)
+	mdLines = normalizeAssistantMarkdownLines(mdLines)
+	mdLines = dropLeadingBlankLines(mdLines)
+	if len(mdLines) == 0 {
+		return
+	}
+	// Align continuation lines with the visual width of the styled prefix + one space.
+	padStr := strings.Repeat(" ", prefixW+1)
 	var finalLines []string
 	for i, line := range mdLines {
 		if i == 0 {

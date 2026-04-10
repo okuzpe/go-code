@@ -80,6 +80,9 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
+	if ep := strings.TrimSpace(os.Getenv("GOCLAW_AGENT_PROFILE")); ep != "" {
+		cfg.AgentProfile = ep
+	}
 	if p := strings.TrimSpace(profileFlag); p != "" {
 		cfg.AgentProfile = p
 	}

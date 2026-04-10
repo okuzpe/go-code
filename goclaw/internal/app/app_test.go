@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/okuzpe/goclaw/internal/coordinator"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/stretchr/testify/require"
@@ -50,13 +51,17 @@ func TestMockAssistantReplyBody(t *testing.T) {
 }
 
 func TestReplPrompt(t *testing.T) {
-	require.Equal(t, "> ", replPrompt(nil))
+	require.Equal(t, "> ", replPrompt(nil, nil))
 
 	s := &session.Session{ID: "abcd"}
-	require.Equal(t, "abcd> ", replPrompt(s))
+	require.Equal(t, "abcd> ", replPrompt(s, nil))
 
 	s.ID = "123456789"
-	require.Equal(t, "12345678> ", replPrompt(s))
+	require.Equal(t, "12345678> ", replPrompt(s, nil))
+
+	f := coordinator.NewFocusRouter()
+	f.FocusTaskID("deadbeefcafe")
+	require.Equal(t, "12345678@wdeadbeef> ", replPrompt(s, f))
 }
 
 type noopStreamSink struct{}

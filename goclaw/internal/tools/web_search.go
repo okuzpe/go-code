@@ -105,6 +105,11 @@ type webSearchInput struct {
 	Query string `json:"query"`
 }
 
+// Hint appended to successful web_search results so the model answers with prose, not a raw headline dump.
+// Keep this plain text (no bracket tags): some local models treat tags as policy and refuse to follow up.
+const webSearchReplyHint = "\n\nUse the material above to answer the user in their language with a short prose summary " +
+	"(main themes and facts). A full numbered list of every headline is only if they explicitly asked for links."
+
 // Execute implements Tool.
 func (t *WebSearchTool) Execute(ctx context.Context, input string) (Result, error) {
 	var in webSearchInput
@@ -116,24 +121,39 @@ func (t *WebSearchTool) Execute(ctx context.Context, input string) (Result, erro
 		return Result{Content: "query is required", IsError: true}, nil
 	}
 
+	var res Result
 	switch t.backend {
 	case "ddg":
-		return t.searchDuckDuckGo(ctx, q), nil
+		res = t.searchDuckDuckGo(ctx, q)
 	case "brave":
-		res := t.searchBrave(ctx, q)
+		res = t.searchBrave(ctx, q)
 		if t.shouldFallbackToDDG(res) {
-			return t.searchDuckDuckGo(ctx, q), nil
+			res = t.searchDuckDuckGo(ctx, q)
 		}
-		return res, nil
 	case "serpapi":
-		res := t.searchSerpAPI(ctx, q)
+		res = t.searchSerpAPI(ctx, q)
 		if t.shouldFallbackToDDG(res) {
-			return t.searchDuckDuckGo(ctx, q), nil
+			res = t.searchDuckDuckGo(ctx, q)
 		}
-		return res, nil
 	default:
-		return t.searchDuckDuckGo(ctx, q), nil
+		res = t.searchDuckDuckGo(ctx, q)
 	}
+	return attachWebSearchReplyHint(res), nil
+}
+
+func attachWebSearchReplyHint(r Result) Result {
+	if r.IsError {
+		return r
+	}
+	c := strings.TrimSpace(r.Content)
+	if c == "" {
+		return r
+	}
+	if strings.Contains(c, "Use the material above to answer the user") {
+		return r
+	}
+	r.Content = c + webSearchReplyHint
+	return r
 }
 
 func (t *WebSearchTool) shouldFallbackToDDG(res Result) bool {

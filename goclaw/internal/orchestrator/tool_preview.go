@@ -14,7 +14,11 @@ func FormatToolUsePreview(toolName, input string) string {
 		return ""
 	}
 	if s := formatKnownToolPreview(toolName, input); s != "" {
-		return truncatePreviewRunes(s, 160)
+		max := 160
+		if toolName == "spawn_agent" {
+			max = 280
+		}
+		return truncatePreviewRunes(s, max)
 	}
 	return truncatePreviewRunes(genericJSONSummary(input), 160)
 }
@@ -98,6 +102,45 @@ func formatKnownToolPreview(toolName, input string) string {
 			}
 			return "replace · " + strconv.Itoa(n) + " task(s)"
 		}
+	case "spawn_agent":
+		var v struct {
+			Profile     string `json:"profile"`
+			Task        string `json:"task"`
+			Interactive bool   `json:"interactive"`
+			TimeoutSec  int    `json:"timeout_sec"`
+		}
+		if json.Unmarshal([]byte(input), &v) != nil {
+			return ""
+		}
+		prof := strings.TrimSpace(v.Profile)
+		if prof == "" {
+			prof = "(profile?)"
+		}
+		mode := "one-shot worker"
+		if v.Interactive {
+			mode = "interactive worker (then /focus <id>)"
+		}
+		task := strings.TrimSpace(v.Task)
+		task = strings.Join(strings.Fields(task), " ")
+		if task == "" {
+			task = "(no task text)"
+		}
+		suffix := ""
+		if v.TimeoutSec > 0 {
+			suffix = " · timeout " + strconv.Itoa(v.TimeoutSec) + "s"
+		}
+		return prof + " · " + mode + " · " + task + suffix
+	case "stop_task":
+		var v struct {
+			TaskID string `json:"task_id"`
+		}
+		if json.Unmarshal([]byte(input), &v) == nil {
+			id := strings.TrimSpace(v.TaskID)
+			if id == "" {
+				return "(missing task_id)"
+			}
+			return "cancel worker " + id
+		}
 	}
 	return ""
 }
@@ -158,6 +201,10 @@ func ToolWorkingPhrase(toolName string) string {
 		return "Running shell script"
 	case "todo_write":
 		return "Updating tasks"
+	case "spawn_agent":
+		return "Spawning sub-agent"
+	case "stop_task":
+		return "Stopping worker"
 	default:
 		if strings.HasPrefix(toolName, "mcp__") {
 			return "Running MCP tool"
@@ -189,6 +236,10 @@ func ToolFinishedPhrase(toolName string) string {
 		return "Ran shell script"
 	case "todo_write":
 		return "Updated tasks"
+	case "spawn_agent":
+		return "Spawned sub-agent"
+	case "stop_task":
+		return "Stopped worker"
 	default:
 		if strings.HasPrefix(toolName, "mcp__") {
 			return "Ran MCP tool"

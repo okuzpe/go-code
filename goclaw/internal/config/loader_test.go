@@ -133,6 +133,24 @@ func TestLoadMCPIdeBridgeFlags(t *testing.T) {
 	require.True(t, cfg.IDEBridgeMCP)
 }
 
+func TestLoadUIAppearanceAndAPIKey(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	userDir := filepath.Join(home, ".goclaw")
+	require.NoError(t, os.MkdirAll(userDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(userDir, "settings.json"),
+		[]byte(`{"ui_appearance":"light"}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(userDir, "settings.local.json"),
+		[]byte(`{"api_key":"sk-test"}`), 0o600))
+	base := Default()
+	base.UserConfigDir = userDir
+	base.ProjectConfigDir = ".goclaw"
+	cfg, err := Load(base, cwd)
+	require.NoError(t, err)
+	require.Equal(t, UIAppearanceLight, cfg.UIAppearance)
+	require.Equal(t, "sk-test", cfg.APIKey)
+}
+
 func TestLoadV3PluginAndMemoryFlags(t *testing.T) {
 	home := t.TempDir()
 	cwd := t.TempDir()

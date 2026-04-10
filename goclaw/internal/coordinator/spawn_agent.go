@@ -32,15 +32,16 @@ const (
 type WorkerNotification struct {
 	TaskID  string `json:"task_id"` // worker session id; use with stop_task
 	Profile string `json:"profile"`
-	Status  string `json:"status"`  // "completed" | "failed"
+	Status  string `json:"status"`  // "completed" | "failed" | "running" (interactive)
 	Summary string `json:"summary"` // first non-empty line of the result
 	Result  string `json:"result"`  // full worker response text
 }
 
 type spawnInput struct {
-	Profile    string `json:"profile"`
-	Task       string `json:"task"`
-	TimeoutSec int    `json:"timeout_sec,omitempty"`
+	Profile     string `json:"profile"`
+	Task        string `json:"task"`
+	TimeoutSec  int    `json:"timeout_sec,omitempty"`
+	Interactive bool   `json:"interactive,omitempty"`
 }
 
 // SpawnAgentTool launches an isolated worker orchestrator for a sub-task.
@@ -89,6 +90,7 @@ func (t *SpawnAgentTool) Description() string {
 		"The worker runs with its own context and tool access; its session is not visible to you. " +
 		"Provide a fully self-contained task description — include all relevant file paths, " +
 		"function names, and context the worker will need. " +
+		"Set interactive: true to keep the worker running after this call; the user can send more input via /focus <task_id> in the REPL until /detach or stop_task. " +
 		"Available profiles: explore (read-only search), plan (architecture planning), " +
 		"verification (run tests and report PASS/FAIL), general-purpose (full tool access)."
 }
@@ -111,6 +113,10 @@ func (t *SpawnAgentTool) InputSchema() any {
 				"description": "Worker timeout in seconds (1–600). Default: 120.",
 				"minimum":     1,
 				"maximum":     maxWorkerTimeoutSec,
+			},
+			"interactive": map[string]any{
+				"type":        "boolean",
+				"description": "If true, worker stays running: tool returns immediately with status running; user uses /focus <task_id> to send more messages until /detach or stop_task.",
 			},
 		},
 		"required": []string{"profile", "task"},
@@ -150,14 +156,21 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 		timeout = maxWorkerTimeoutSec
 	}
 
-	workerCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
-	defer cancel()
+	timeoutDur := time.Duration(timeout) * time.Second
+	// Interactive workers must outlive the parent orchestrator tool-call context (reqCtx),
+	// which is cancelled when the user's RunStreaming turn finishes. Use a detached root
+	// so the worker keeps running until timeout, stop_task, or natural exit.
+	var workerCtx context.Context
+	var cancel context.CancelFunc
+	if in.Interactive {
+		workerCtx, cancel = context.WithTimeout(context.Background(), timeoutDur)
+	} else {
+		workerCtx, cancel = context.WithTimeout(ctx, timeoutDur)
+	}
 
 	// Isolated session — worker never sees the coordinator's history.
 	workerSess := session.New()
 	taskID := workerSess.ID
-	registerWorkerCancel(taskID, cancel)
-	defer unregisterWorkerCancel(taskID)
 
 	// Auto-allow all tools in the worker registry.
 	// The coordinator's spawn_agent call already received user approval (if any was required).
@@ -182,6 +195,40 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 		profile,
 		workerOpts...,
 	)
+
+	if in.Interactive {
+		registerWorkerCancel(taskID, cancel)
+		inbox := make(chan workerJob, 32)
+		iw := &interactiveWorker{
+			taskID:  taskID,
+			profile: profile.Name,
+			inbox:   inbox,
+			status:  "running",
+			summary: "starting…",
+		}
+		storeInteractive(iw)
+		go runInteractiveWorkerLoop(workerCtx, cancel, iw, orch, in.Task)
+		short := taskID
+		if len(short) > 12 {
+			short = short[:12] + "…"
+		}
+		notif := WorkerNotification{
+			TaskID:  taskID,
+			Profile: profile.Name,
+			Status:  "running",
+			Summary: fmt.Sprintf("interactive worker started — /focus %s then type; /detach for coordinator", short),
+			Result:  "",
+		}
+		out, marshalErr := json.Marshal(notif)
+		if marshalErr != nil {
+			return tools.Result{Content: fmt.Sprintf("failed to encode result: %v", marshalErr), IsError: true}, nil
+		}
+		return tools.Result{Content: string(out)}, nil
+	}
+
+	defer cancel()
+	registerWorkerCancel(taskID, cancel)
+	defer unregisterWorkerCancel(taskID)
 
 	// Run the worker with no streaming sink — results are captured and returned as JSON.
 	result, err := orch.RunStreaming(workerCtx, in.Task, nil)

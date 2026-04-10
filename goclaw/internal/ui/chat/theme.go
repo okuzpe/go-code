@@ -5,10 +5,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
 	lipv2 "charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/compat"
+	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Theme holds Lip Gloss styles and copy for the chat TUI. Centralize here so the
@@ -21,42 +21,53 @@ type Theme struct {
 	AssistantEmoji string
 	InputPrompt    string
 
-	System    lipgloss.Style
-	UserTag   lipgloss.Style
-	Assistant lipgloss.Style
-	Dim       lipgloss.Style
-	Tool      lipgloss.Style
-	ToolTag   lipgloss.Style
-	FooterDim lipgloss.Style
+	System      lipgloss.Style
+	UserTag     lipgloss.Style
+	Assistant   lipgloss.Style
+	Dim         lipgloss.Style
+	Tool        lipgloss.Style
+	ToolTag     lipgloss.Style
+	FooterDim   lipgloss.Style
 	ModalBorder lipgloss.Style
 	ModalTitle  lipgloss.Style
 	ModalBody   lipgloss.Style
 
 	// New: modern polish styles
-	ErrorStyle     lipgloss.Style
-	Separator      lipgloss.Style
-	ToolSpinner    lipgloss.Style
-	ToolResultOk   lipgloss.Style
-	ToolResultErr  lipgloss.Style
-	InputBorder    lipgloss.Style // border around active input area
+	ErrorStyle    lipgloss.Style
+	Separator     lipgloss.Style
+	ToolSpinner   lipgloss.Style
+	ToolResultOk  lipgloss.Style
+	ToolResultErr lipgloss.Style
+	InputBorder   lipgloss.Style // border around active input area
 
-	// Markdown renderer (glamour), recreated when terminal width changes.
-	mdMu       sync.Mutex
-	mdWrap     int
-	mdRenderer *glamour.TermRenderer
+	// SlashPickerName / SlashPickerDesc style the / command rows above the input (TUI).
+	SlashPickerName lipgloss.Style
+	SlashPickerDesc lipgloss.Style
+
+	// Markdown renderer (glamour), recreated when terminal width or mdGlamourStyle changes.
+	mdMu           sync.Mutex
+	mdWrap         int
+	mdGlamourStyle string // "auto", "dark", "light", "ascii" — passed to glamour
+	mdBuiltStyle   string // style key last used to construct mdRenderer
+	mdRenderer     *glamour.TermRenderer
+
+	// appearance is the canonical preset name (see config.NormalizeUIAppearance); used for spinner accents.
+	appearance string
 }
 
 // DefaultTheme returns the standard in-terminal look: goclaw persona, clear 👤/🤖 lanes.
 func DefaultTheme() *Theme {
 	// Modern palette — inspired by Claude Code / Cursor / Warp
-	accentUser := lipgloss.AdaptiveColor{Light: "#059669", Dark: "#34D399"}  // emerald
+	accentUser := lipgloss.AdaptiveColor{Light: "#059669", Dark: "#34D399"} // emerald
 	accentAI := lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#C4B5FD"}   // purple (brand)
 	muted := lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"}
 	dimFG := lipgloss.AdaptiveColor{Light: "#9CA3AF", Dark: "#6B7280"}
-	toolFG := lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FBBF24"}     // amber
+	toolFG := lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FBBF24"} // amber
 	modalBody := lipgloss.AdaptiveColor{Light: "#374151", Dark: "#D1D5DB"}
-	errorFG := lipgloss.AdaptiveColor{Light: "#DC2626", Dark: "#F87171"}    // red
-	sepFG := lipgloss.AdaptiveColor{Light: "#E5E7EB", Dark: "#374151"}      // subtle border
+	errorFG := lipgloss.AdaptiveColor{Light: "#DC2626", Dark: "#F87171"} // red
+	sepFG := lipgloss.AdaptiveColor{Light: "#E5E7EB", Dark: "#374151"}   // subtle border
+	slashPick := lipgloss.AdaptiveColor{Light: "#1D4ED8", Dark: "#60A5FA"} // blue command names
+	slashDesc := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}
 
 	return &Theme{
 		AssistantName:  "goclaw",
@@ -64,6 +75,8 @@ func DefaultTheme() *Theme {
 		UserEmoji:      "❯",
 		AssistantEmoji: "✦",
 		InputPrompt:    "› ",
+		mdGlamourStyle: "auto",
+		appearance:     "auto",
 
 		System:    lipgloss.NewStyle().Foreground(muted).Italic(true),
 		UserTag:   lipgloss.NewStyle().Bold(true).Foreground(accentUser),
@@ -87,37 +100,51 @@ func DefaultTheme() *Theme {
 		InputBorder: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.AdaptiveColor{Light: "#D1D5DB", Dark: "#4B5563"}),
-
+		SlashPickerName: lipgloss.NewStyle().Bold(true).Foreground(slashPick),
+		SlashPickerDesc: lipgloss.NewStyle().Foreground(slashDesc),
 	}
 }
 
 // RenderMarkdown renders markdown text for terminal display using glamour.
-// Word wrap follows the TUI width (minus gutter for the assistant prefix).
+// prefixDisplayWidth is lipgloss.Width(AssistantPrefix()) so wrapped lines fit the column under the gutter.
 // Falls back to plain text if glamour fails.
-func (t *Theme) RenderMarkdown(md string, width int) string {
+func (t *Theme) RenderMarkdown(md string, termWidth int, prefixDisplayWidth int) string {
 	if strings.TrimSpace(md) == "" {
 		return md
 	}
-	wrap := width - 10
-	if wrap < 40 {
-		wrap = 40
+	// Reserve: prefix column + one space after prefix + small right margin.
+	margin := 3
+	wrap := termWidth - prefixDisplayWidth - margin
+	if wrap < 36 {
+		wrap = 36
 	}
-	if wrap > 118 {
-		wrap = 118
+	if wrap > 120 {
+		wrap = 120
+	}
+
+	glamStyle := t.mdGlamourStyle
+	if glamStyle == "" {
+		glamStyle = "auto"
 	}
 
 	t.mdMu.Lock()
-	if t.mdRenderer == nil || t.mdWrap != wrap {
-		r, err := glamour.NewTermRenderer(
-			glamour.WithAutoStyle(),
-			glamour.WithWordWrap(wrap),
-		)
+	if t.mdRenderer == nil || t.mdWrap != wrap || t.mdBuiltStyle != glamStyle {
+		var opts []glamour.TermRendererOption
+		opts = append(opts, glamour.WithWordWrap(wrap))
+		switch glamStyle {
+		case "auto":
+			opts = append(opts, glamour.WithAutoStyle())
+		default:
+			opts = append(opts, glamour.WithStandardStyle(glamStyle))
+		}
+		r, err := glamour.NewTermRenderer(opts...)
 		if err != nil {
 			t.mdMu.Unlock()
 			return md
 		}
 		t.mdRenderer = r
 		t.mdWrap = wrap
+		t.mdBuiltStyle = glamStyle
 	}
 	r := t.mdRenderer
 	t.mdMu.Unlock()
@@ -158,7 +185,25 @@ func (t *Theme) AssistantPlainPrefix() string {
 
 // FooterHint is the default hints row when idle (session id is shown separately in the TUI footer).
 func (t *Theme) FooterHint() string {
-	return "Enter send · Ctrl+J newline · /help · Esc or Ctrl+C exit · Ctrl+L clear"
+	return t.FooterHintForWidth(0)
+}
+
+// FooterHintForWidth returns footer hints; when width is small, uses a shorter line so it does not
+// hard-wrap mid-token in narrow terminals.
+func (t *Theme) FooterHintForWidth(termWidth int) string {
+	const full = "Enter send · Ctrl+J newline · ? /help · / Tab · Esc · stop reply while streaming, exit when idle · Ctrl+C · quit · Ctrl+L clear"
+	const mid = "Enter · Ctrl+J newline · ? /help · Tab · Esc / Ctrl+C · Ctrl+L clear"
+	const short = "Enter · /help · Esc · Ctrl+C quit · Ctrl+L clear"
+	if termWidth <= 0 {
+		return full
+	}
+	if termWidth < 58 {
+		return short
+	}
+	if termWidth < 96 {
+		return mid
+	}
+	return full
 }
 
 // SpinnerAccentStyle is Lip Gloss v2 (required by bubbles/v2 spinner).

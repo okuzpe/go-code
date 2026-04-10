@@ -1,0 +1,179 @@
+package coordinator
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+
+	"github.com/okuzpe/goclaw/internal/orchestrator"
+)
+
+// workerJob is one user message delivered to an interactive worker's loop.
+type workerJob struct {
+	Text string
+	Sink orchestrator.StreamSink
+	Done chan error
+}
+
+// interactiveWorker holds runtime state for spawn_agent(interactive: true).
+type interactiveWorker struct {
+	taskID  string
+	profile string
+	inbox   chan workerJob
+	mu      sync.Mutex
+	summary string
+	result  string
+	status  string // running | completed | failed
+}
+
+var interactiveReg sync.Map // string(taskID) -> *interactiveWorker
+
+func storeInteractive(w *interactiveWorker) {
+	interactiveReg.Store(w.taskID, w)
+}
+
+func deleteInteractive(taskID string) {
+	interactiveReg.Delete(taskID)
+}
+
+func loadInteractive(taskID string) (*interactiveWorker, bool) {
+	v, ok := interactiveReg.Load(taskID)
+	if !ok {
+		return nil, false
+	}
+	w, _ := v.(*interactiveWorker)
+	return w, w != nil
+}
+
+// ListInteractiveWorkers returns a snapshot of running interactive workers.
+func ListInteractiveWorkers() []InteractiveWorkerInfo {
+	var out []InteractiveWorkerInfo
+	interactiveReg.Range(func(k, v any) bool {
+		id, _ := k.(string)
+		w, _ := v.(*interactiveWorker)
+		if w == nil {
+			return true
+		}
+		w.mu.Lock()
+		out = append(out, InteractiveWorkerInfo{
+			TaskID:  id,
+			Profile: w.profile,
+			Status:  w.status,
+			Summary: w.summary,
+		})
+		w.mu.Unlock()
+		return true
+	})
+	return out
+}
+
+// InteractiveWorkerInfo is a row for /workers and debugging.
+type InteractiveWorkerInfo struct {
+	TaskID  string
+	Profile string
+	Status  string
+	Summary string
+}
+
+// ResolveInteractiveTaskID returns the full task id if prefix uniquely matches one interactive worker.
+func ResolveInteractiveTaskID(prefix string) (full string, ok bool) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return "", false
+	}
+	var matches []string
+	interactiveReg.Range(func(k, _ any) bool {
+		id, _ := k.(string)
+		if strings.HasPrefix(id, prefix) {
+			matches = append(matches, id)
+		}
+		return true
+	})
+	if len(matches) != 1 {
+		return "", false
+	}
+	return matches[0], true
+}
+
+// InteractiveWorkerRunning reports whether the task id is an active interactive worker.
+func InteractiveWorkerRunning(taskID string) bool {
+	_, ok := loadInteractive(strings.TrimSpace(taskID))
+	return ok
+}
+
+// DeliverWorkerMessage enqueues one user turn for the worker and blocks until it finishes or ctx ends.
+func DeliverWorkerMessage(ctx context.Context, taskID, text string, sink orchestrator.StreamSink) error {
+	id := strings.TrimSpace(taskID)
+	w, ok := loadInteractive(id)
+	if !ok {
+		return fmt.Errorf("no interactive worker with task_id %q (use /workers)", id)
+	}
+	t := strings.TrimSpace(text)
+	if t == "" {
+		return fmt.Errorf("empty message")
+	}
+	done := make(chan error, 1)
+	job := workerJob{Text: t, Sink: sink, Done: done}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case w.inbox <- job:
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
+}
+
+func (w *interactiveWorker) setState(summary, result, status string) {
+	w.mu.Lock()
+	w.summary = summary
+	w.result = result
+	w.status = status
+	w.mu.Unlock()
+}
+
+func runInteractiveWorkerLoop(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	w *interactiveWorker,
+	orch *orchestrator.Orchestrator,
+	initialTask string,
+) {
+	defer cancel()
+	defer unregisterWorkerCancel(w.taskID)
+	defer deleteInteractive(w.taskID)
+
+	runTurn := func(userText string, sink orchestrator.StreamSink) error {
+		res, err := orch.RunStreaming(ctx, userText, sink)
+		if err != nil {
+			w.setState(fmt.Sprintf("error: %v", err), res, "failed")
+			return err
+		}
+		w.setState(firstNonEmptyLine(res), res, "running")
+		return nil
+	}
+
+	if err := runTurn(initialTask, nil); err != nil {
+		return
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			w.setState("stopped", "", "failed")
+			return
+		case job := <-w.inbox:
+			err := runTurn(job.Text, job.Sink)
+			if job.Done != nil {
+				select {
+				case job.Done <- err:
+				default:
+				}
+			}
+		}
+	}
+}

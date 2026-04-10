@@ -48,7 +48,7 @@ The implementation uses **two layers**, both required:
 - `find -exec`, `find -execdir` — can run arbitrary binaries
 - `xargs` — executes its arguments as a command
 - `go test -exec` — executes a binary
-When using or extending the bash tool, do **not** add flags like `-exec`, `-execdir`, or `--exec` to these commands without further validation. Track this in ROADMAP.md Tier 2.
+When using or extending the bash tool, do **not** add flags like `-exec`, `-execdir`, or `--exec` to these commands without further validation. Track this in `docs/goclaw/roadmap.md` Tier 2 (monorepo path).
 
 **`curl` / `wget` bypass SSRF**: these are on the bash allowlist but do NOT go through the `web_fetch` SSRF guards. A model or prompt-injected command could reach `http://169.254.169.254`. Document this trade-off; consider removing them from the allowlist in a future hardening pass.
 

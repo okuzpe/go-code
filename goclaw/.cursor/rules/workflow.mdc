@@ -42,9 +42,9 @@ For Ollama, point `OLLAMA_HOST` at a local Ollama instance or an HTTP mock.
 | Remote MCP (SSE/HTTP) or OAuth | Needs its own security+transport design pass first |
 
 ## Current implementation status (2026-04)
-All phases are **done**. The project has: 9 tools, BubbleTea TUI, readline fallback, Cobra CLI, MCP stdio client (multi-server), external hooks + project hooks file, IDE notifier, planfile + `/apply-plan`, all slash commands, permissions, memory, compaction, retry. See `ROADMAP.md` for the next steps.
+All phases are **done**. The project has: 9 tools, BubbleTea TUI, readline fallback, Cobra CLI, MCP stdio client (multi-server), external hooks + project hooks file, IDE notifier, planfile + `/apply-plan`, all slash commands, permissions, memory, compaction, retry. See monorepo `docs/goclaw/roadmap.md` for the checklist.
 
-**Next work areas:** see `ROADMAP.md` (remaining items: optional MCP session round-trip test, remote MCP / IDE bridge design, manual TUI checklist runs).
+**Next work areas:** same checklist in monorepo [`docs/goclaw/roadmap.md`](../../../docs/goclaw/roadmap.md) (from `goclaw/.cursor/rules/`, three levels up to repo root). From the module root, open `../docs/goclaw/roadmap.md`. Remaining items: optional MCP session round-trip test, remote MCP / IDE bridge design, manual TUI checklist runs.
 
 ## Adding a new tool
 1. Read `internal/tools/registry.go` — `Tool` interface
