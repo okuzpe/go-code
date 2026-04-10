@@ -19,7 +19,10 @@ type WelcomeOptions struct {
 // defaultWelcomeWrap is used when terminal width is not known yet (before first WindowSizeMsg).
 const defaultWelcomeWrap = 72
 
-// WelcomeDashboardLines returns minimal framed content to prepend before the chat title.
+// welcomeWideMinCols enables a two-column dashboard (Claude Code–style) when the terminal is wide enough.
+const welcomeWideMinCols = 86
+
+// WelcomeDashboardLines returns a framed home panel before the transcript.
 // termWidth is the terminal width in cells; use 0 to wrap at defaultWelcomeWrap.
 // Empty Version skips the panel.
 func WelcomeDashboardLines(th *Theme, opt WelcomeOptions, termWidth int) []string {
@@ -33,84 +36,221 @@ func WelcomeDashboardLines(th *Theme, opt WelcomeOptions, termWidth int) []strin
 
 	contentMax := defaultWelcomeWrap
 	if termWidth > 0 {
-		contentMax = termWidth - 3 // left border + inner padding
-		if contentMax < 20 {
-			contentMax = 20
+		contentMax = termWidth - 4
+		if contentMax < 24 {
+			contentMax = 24
 		}
 	}
 
-	name := strings.TrimSpace(os.Getenv("USER"))
-	if name == "" {
-		name = strings.TrimSpace(os.Getenv("USERNAME"))
+	if termWidth >= welcomeWideMinCols {
+		return welcomeDashboardWide(th, opt, v, termWidth)
 	}
-	greeting := "Welcome back!"
-	if name != "" {
-		greeting = "Welcome back, " + name + "!"
+	return welcomeDashboardNarrow(th, opt, v, termWidth, contentMax)
+}
+
+func welcomeBorderColor() lipgloss.TerminalColor {
+	return lipgloss.AdaptiveColor{Light: "#D1D5DB", Dark: "#4B5563"}
+}
+
+// welcomeOSUser returns a short display name for "Welcome back …" (USER / USERNAME).
+func welcomeOSUser() string {
+	if s := strings.TrimSpace(os.Getenv("USER")); s != "" {
+		return s
+	}
+	if s := strings.TrimSpace(os.Getenv("USERNAME")); s != "" {
+		return s
+	}
+	return ""
+}
+
+// Claude Code–style center diamond (compact block).
+func welcomeBrandGlyphLines() []string {
+	return []string{
+		"      ▐▛███▜▌      ",
+		"     ▝▜█████▛▘     ",
+		"       ▘▘ ▝▝       ",
+	}
+}
+
+func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWidth int) []string {
+	borderFG := welcomeBorderColor()
+	border := lipgloss.NewStyle().Foreground(borderFG)
+	titleAccent := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
+	welcomeHi := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
+	dim := th.Dim
+	section := lipgloss.NewStyle().Bold(true).Foreground(th.ToolCardHead.GetForeground())
+
+	inner := termWidth - 2
+	if inner < 40 {
+		inner = 40
+	}
+	mid := border.Render("│")
+	// Wider hero column, narrower tips column (Claude Code proportions).
+	rightW := 26
+	if inner < 50 {
+		rightW = 22
+	}
+	if rightW > inner/3 {
+		rightW = inner / 3
+	}
+	leftW := inner - 1 - rightW
+	if leftW < 24 {
+		leftW = 24
+		rightW = inner - 1 - leftW
 	}
 
+	wd := strings.TrimSpace(opt.Workdir)
+	if wd != "" {
+		if abs, err := filepath.Abs(wd); err == nil {
+			wd = abs
+		}
+	}
+	home := workspaceLooksLikeUserHome(wd)
+
+	centerInLeft := func(s string) string {
+		return lipgloss.PlaceHorizontal(leftW, lipgloss.Center, s, lipgloss.WithWhitespaceChars(" "))
+	}
+
+	var leftLines []string
+	leftLines = append(leftLines, "")
+	if u := welcomeOSUser(); u != "" {
+		leftLines = append(leftLines, centerInLeft(welcomeHi.Render("Welcome back "+u+"!")))
+	} else {
+		leftLines = append(leftLines, centerInLeft(welcomeHi.Render("Welcome to goclaw")))
+	}
+	leftLines = append(leftLines, "")
+	for _, ln := range welcomeBrandGlyphLines() {
+		leftLines = append(leftLines, centerInLeft(dim.Render(strings.TrimSpace(ln))))
+	}
+	leftLines = append(leftLines, "")
+	if sub := strings.TrimSpace(opt.Subtitle); sub != "" {
+		for _, ln := range wrapSubtitle(sub, leftW-2) {
+			leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(dim.Render(ln)))
+		}
+	}
+	if wd != "" {
+		for _, ln := range wrapWorkdir(wd, leftW-2) {
+			leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(dim.Render(ln)))
+		}
+	}
+	if home {
+		for _, ln := range wrapPlainWords("Note: started in your home directory. cd into a project for a focused workspace.", leftW-2) {
+			leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(dim.Render(ln)))
+		}
+	}
+
+	var rightLines []string
+	rightLines = append(rightLines, "")
+	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(section.Render("Tips for getting started")))
+	for _, ln := range wrapPlainWords("Run /help for commands. Try /init or /plan when you want a structured run.", rightW-1) {
+		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+	}
+	for _, ln := range wrapPlainWords("CLAUDE.md and .goclaw/ carry project context.", rightW-1) {
+		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+	}
+
+	ruleLen := rightW - 1
+	if ruleLen < 8 {
+		ruleLen = 8
+	}
+	rightLines = append(rightLines, "")
+	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(strings.Repeat("─", ruleLen))))
+	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(section.Render("Recent activity")))
+	if len(opt.RecentSessionIDs) == 0 {
+		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render("No recent activity")))
+	} else {
+		for i, id := range opt.RecentSessionIDs {
+			if i >= 4 {
+				break
+			}
+			rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render("· "+shortenSessionID(id))))
+		}
+	}
+	rightLines = append(rightLines, "")
+
+	n := len(leftLines)
+	if len(rightLines) > n {
+		n = len(rightLines)
+	}
+	for len(leftLines) < n {
+		leftLines = append(leftLines, "")
+	}
+	for len(rightLines) < n {
+		rightLines = append(rightLines, "")
+	}
+
+	rows := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		lCell := lipgloss.NewStyle().Width(leftW).Align(lipgloss.Left).Render(leftLines[i])
+		rCell := lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(rightLines[i])
+		row := lipgloss.JoinHorizontal(lipgloss.Top, lCell, mid, rCell)
+		fullRow := lipgloss.JoinHorizontal(lipgloss.Top, border.Render("│"), row, border.Render("│"))
+		rows = append(rows, fullRow)
+	}
+
+	// Claude Code top rule: ╭─── goclaw v… ───────────────────╮
+	titlePlain := "goclaw v" + version
+	topPrefix := "╭─── "
+	dashAfterTitle := termWidth - lipgloss.Width(topPrefix) - lipgloss.Width(titlePlain) - 2 // space + dashes + ╮
+	if dashAfterTitle < 1 {
+		dashAfterTitle = 1
+	}
+	topLine := border.Render(topPrefix) + titleAccent.Render(titlePlain) + border.Render(" "+strings.Repeat("─", dashAfterTitle)+"╮")
+	botLine := border.Render("╰" + strings.Repeat("─", inner) + "╯")
+
+	innerBlock := strings.Join(rows, "\n")
+	framed := topLine + "\n" + innerBlock + "\n" + botLine
+	return strings.Split(framed, "\n")
+}
+
+func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, _ int, contentMax int) []string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
 	dim := th.Dim
+	accent := lipgloss.NewStyle().Bold(true).Foreground(th.ToolCardHead.GetForeground())
 
 	var body strings.Builder
-	body.WriteString(titleStyle.Render("goclaw " + v))
-	body.WriteString("\n")
-	body.WriteString(dim.Render(greeting))
-
+	body.WriteString(titleStyle.Render("goclaw v" + version))
 	if sub := strings.TrimSpace(opt.Subtitle); sub != "" {
+		body.WriteString("\n")
 		for _, ln := range wrapSubtitle(sub, contentMax) {
-			body.WriteString("\n")
 			body.WriteString(dim.Render(ln))
 		}
 	}
-
 	if wd := strings.TrimSpace(opt.Workdir); wd != "" {
 		if abs, err := filepath.Abs(wd); err == nil {
 			wd = abs
 		}
 		body.WriteString("\n")
 		for _, ln := range wrapWorkdir(wd, contentMax) {
-			body.WriteString("\n")
 			body.WriteString(dim.Render(ln))
 		}
 		if workspaceLooksLikeUserHome(wd) {
-			for _, ln := range wrapPlainWords("Tip: cd into a project folder for a focused workspace.", contentMax) {
-				body.WriteString("\n")
-				body.WriteString(dim.Render(ln))
-			}
+			body.WriteString("\n")
+			body.WriteString(dim.Render("Tip: cd into a project folder for focused context"))
 		}
 	}
-
-	// Compact tips — short lines so they rarely wrap mid-command.
+	body.WriteString("\n\n")
+	body.WriteString(accent.Render("Tips"))
 	body.WriteString("\n")
-	body.WriteString(dim.Render("Plain language or /capabilities"))
-	body.WriteString("\n")
-	body.WriteString(dim.Render("/help   /plan   /sessions   /theme"))
-	body.WriteString("\n")
-	body.WriteString(dim.Render("Docs: CLAUDE.md  .goclaw/"))
+	body.WriteString(dim.Render("/help  /capabilities  ·  CLAUDE.md  ·  .goclaw/"))
 
 	if len(opt.RecentSessionIDs) > 0 {
 		body.WriteString("\n")
 		var parts []string
 		for i, id := range opt.RecentSessionIDs {
-			if i >= 4 {
+			if i >= 3 {
 				break
 			}
 			parts = append(parts, shortenSessionID(id))
 		}
-		recent := "Recent: " + strings.Join(parts, " · ")
-		for _, ln := range wrapPlainWords(recent, contentMax) {
-			body.WriteString("\n")
-			body.WriteString(dim.Render(ln))
-		}
+		body.WriteString(dim.Render("Recent  " + strings.Join(parts, "  ")))
 	}
 
-	// Single left rule — calmer than a full box; avoids heavy corners in narrow terminals.
 	frame := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder(), false, false, false, true).
-		BorderForeground(lipgloss.AdaptiveColor{Light: "#D1D5DB", Dark: "#4B5563"}).
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(welcomeBorderColor()).
 		Padding(0, 1).
 		Render(strings.TrimSpace(body.String()))
-
 	return strings.Split(frame, "\n")
 }
 
@@ -177,13 +317,37 @@ func wrapHardRunes(s string, maxW int) []string {
 	return out
 }
 
-// wrapSubtitle prefers breaks at " · " so provider / model / profile stay readable.
+// wrapSubtitle prefers breaks at " · " or double-space chunks (new title format).
 func wrapSubtitle(sub string, maxW int) []string {
 	sub = strings.TrimSpace(sub)
 	if sub == "" {
 		return nil
 	}
-	parts := strings.Split(sub, " · ")
+
+	if strings.Contains(sub, " · ") {
+		if lines := wrapSubtitleFromChunks(splitSubtitleChunks(sub, " · "), maxW); len(lines) > 0 {
+			return lines
+		}
+	}
+	if strings.Contains(sub, "  ") {
+		var chunks []string
+		for _, p := range strings.Split(sub, "  ") {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				chunks = append(chunks, p)
+			}
+		}
+		if len(chunks) > 1 {
+			if lines := wrapSubtitleFromChunks(chunks, maxW); len(lines) > 0 {
+				return lines
+			}
+		}
+	}
+	return wrapPlainWords(sub, maxW)
+}
+
+func splitSubtitleChunks(sub, sep string) []string {
+	parts := strings.Split(sub, sep)
 	var chunks []string
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
@@ -191,10 +355,13 @@ func wrapSubtitle(sub string, maxW int) []string {
 			chunks = append(chunks, p)
 		}
 	}
-	if len(chunks) == 0 {
-		return wrapPlainWords(sub, maxW)
-	}
+	return chunks
+}
 
+func wrapSubtitleFromChunks(chunks []string, maxW int) []string {
+	if len(chunks) == 0 {
+		return nil
+	}
 	var lines []string
 	var line strings.Builder
 	for i, ch := range chunks {
@@ -255,7 +422,6 @@ func wrapWorkdir(path string, maxW int) []string {
 			pieces = append(pieces, "")
 		}
 	}
-	// Rejoin drive + first chunk for Windows (e.g. C: + \Users\...)
 	if len(pieces) >= 2 && strings.HasSuffix(pieces[0], ":") {
 		pieces[1] = pieces[0] + pieces[1]
 		pieces = pieces[1:]

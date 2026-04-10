@@ -21,9 +21,12 @@ flowchart TB
   Tools --> MCP[internal/mcp]
 ```
 
+**Docs ↔ code layers:** when you change a subsystem, see **[reference/code-adjustment-map.md](./reference/code-adjustment-map.md)** for which Markdown files to read and which packages to edit (and [`docs-map.md`](./docs-map.md) for the full file index).
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
 | 2026-04-10 | Replaced with English hub; prior content moved to [architecture-legacy-es.md](./archive/architecture-legacy-es.md). |
 | 2026-04-10 | Removed duplicate “Where to read” table; single index is [docs-map.md](./docs-map.md). |
+| 2026-04-10 | Link to [code-adjustment-map.md](./reference/code-adjustment-map.md) for docs-to-package adjustment routes. |

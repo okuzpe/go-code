@@ -13,17 +13,28 @@ import (
 // Config holds all runtime settings for goclaw.
 type Config struct {
 	// LLM provider — set Provider to select which client to build.
-	// "ollama"    → local Ollama (default)
-	// "anthropic" → Anthropic API (requires APIKey)
+	// "ollama"             → local Ollama (default)
+	// "anthropic"          → Anthropic API (requires APIKey)
+	// "openai_compatible"  → OpenAI Chat Completions–compatible HTTP API (OpenRouter, Groq, LM Studio, vLLM, …)
 	Provider string
 
 	// Ollama settings
 	OllamaHost  string // default: http://localhost:11434
 	OllamaModel string // default: qwen2.5-coder:14b
 
+	// CompactionModel overrides the model id for LLM-driven context compaction only (llm_compaction: true).
+	// Empty means use Model(). Set via settings.json "compaction_model" or GOCLAW_COMPACTION_MODEL.
+	CompactionModel string
+
 	// Anthropic settings (only used when Provider == "anthropic")
 	APIKey  string // ANTHROPIC_API_KEY env var
 	BaseURL string // override for mock server
+
+	// OpenAI-compatible settings (only used when Provider == "openai_compatible")
+	// Base URL should include the /v1 prefix, e.g. https://openrouter.ai/api/v1 or http://localhost:1234/v1
+	OpenAICompatBaseURL string // OPENAI_BASE_URL
+	OpenAICompatAPIKey  string // OPENAI_API_KEY
+	OpenAICompatModel   string // OPENAI_MODEL
 
 	// Context & compaction
 	AutoCompactThreshold float64 // fraction of context used before compacting (e.g. 0.85)
@@ -44,8 +55,8 @@ type Config struct {
 	BashTimeoutSec int
 
 	// ModelContextTokens overrides the provider-default context window estimate used for compaction.
-	// 0 = use built-in default: anthropic=200_000, ollama=32_000.
-	// Set in settings.json as "model_context_tokens" when using a non-standard Ollama model.
+	// 0 = use built-in default: anthropic=200_000, ollama and openai_compatible=32_000.
+	// Set in settings.json as "model_context_tokens" when using a non-standard model or remote endpoint.
 	ModelContextTokens int
 
 	// MCPServers lists MCP servers (stdio subprocess and/or streamable HTTP); merged by id from settings.
@@ -152,8 +163,12 @@ func Default() Config {
 		Provider:             "ollama",
 		OllamaHost:           envOr("OLLAMA_HOST", "http://localhost:11434"),
 		OllamaModel:          envOr("OLLAMA_MODEL", "qwen2.5-coder:14b"),
+		CompactionModel:      envOr("GOCLAW_COMPACTION_MODEL", ""),
 		APIKey:               os.Getenv("ANTHROPIC_API_KEY"),
 		BaseURL:              envOr("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+		OpenAICompatBaseURL:  envOr("OPENAI_BASE_URL", ""),
+		OpenAICompatAPIKey:   envOr("OPENAI_API_KEY", ""),
+		OpenAICompatModel:    envOr("OPENAI_MODEL", ""),
 		AutoCompactThreshold: 0.85,
 		UserConfigDir:        filepath.Join(home, ".goclaw"),
 		ProjectConfigDir:     ".goclaw",
@@ -190,10 +205,26 @@ func resolveAnthropicModelName(raw string) string {
 
 // Model returns the model name to pass to the active provider.
 func (c Config) Model() string {
-	if c.Provider == "anthropic" {
+	switch c.Provider {
+	case "anthropic":
 		return resolveAnthropicModelName(envOr("GOCLAW_MODEL", "claude-sonnet-4-6"))
+	case "openai_compatible":
+		if m := strings.TrimSpace(c.OpenAICompatModel); m != "" {
+			return m
+		}
+		return envOr("OPENAI_MODEL", "")
+	default:
+		return c.OllamaModel
 	}
-	return c.OllamaModel
+}
+
+// ModelForCompaction returns the model id for LLM compaction summaries. When CompactionModel is set,
+// it is used so a smaller/faster model can run compaction while Model() serves the main turn.
+func (c Config) ModelForCompaction() string {
+	if m := strings.TrimSpace(c.CompactionModel); m != "" {
+		return m
+	}
+	return c.Model()
 }
 
 // BashTimeoutSeconds returns the bash tool timeout in seconds (clamped to 1..3600).

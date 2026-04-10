@@ -14,7 +14,7 @@ import (
 func TestFormatChatWindowTitle(t *testing.T) {
 	longModel := strings.Repeat("m", 50)
 	got := FormatChatWindowTitle("ollama", longModel, "explore")
-	require.True(t, strings.HasPrefix(got, "goclaw · ollama · "), "unexpected prefix: %q", got)
+	require.True(t, strings.HasPrefix(got, "goclaw  ollama/"), "unexpected prefix: %q", got)
 	require.True(t, strings.Contains(got, "…"), "expected truncated model in compact title: %q (len=%d)", got, len(got))
 	require.LessOrEqual(t, len(got), 130, "expected compact title length cap: %q (len=%d)", got, len(got))
 }

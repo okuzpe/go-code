@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/okuzpe/goclaw/internal/config"
+	"github.com/okuzpe/goclaw/internal/ui/terminalstyle"
 	"golang.org/x/term"
 )
 
@@ -62,8 +63,9 @@ func renderOnboardingSecurityMarkdown(version, uiAppearance string, width int) s
 	}
 	out = strings.TrimRight(out, "\n")
 	// Subtle top rule so it matches startup banner rhythm.
+	p := terminalstyle.PaletteForAppearance(uiAppearance)
 	rule := lipgloss.NewStyle().
-		Foreground(colMuted).
+		Foreground(p.Muted).
 		Render(strings.Repeat("─", min(wrap+2, 72)))
 	return rule + "\n" + out
 }
@@ -76,7 +78,7 @@ func printOnboardingSecurityWelcome(version, uiAppearance string) {
 	}
 	rendered := renderOnboardingSecurityMarkdown(version, uiAppearance, 0)
 	if rendered == "" {
-		printOnboardingWelcomeLipglossFallback(version)
+		printOnboardingWelcomeLipglossFallback(version, uiAppearance)
 		return
 	}
 	fmt.Println()
@@ -119,15 +121,16 @@ func printOnboardingWelcomePlain(version string) {
 	fmt.Print(onboardingWelcomePlainBlock(version, stdoutWrapWidth()))
 }
 
-func printOnboardingWelcomeLipglossFallback(version string) {
+func printOnboardingWelcomeLipglossFallback(version, uiAppearance string) {
 	w := stdoutWrapWidth()
-	title := lipgloss.NewStyle().Bold(true).Foreground(colAccent).Render(onboardingWelcomeTitle(version))
-	rule := lipgloss.NewStyle().Foreground(colMuted).Render(strings.Repeat("─", min(w, 72)))
+	p := terminalstyle.PaletteForAppearance(uiAppearance)
+	title := lipgloss.NewStyle().Bold(true).Foreground(p.TrustAccent).Render(onboardingWelcomeTitle(version))
+	rule := lipgloss.NewStyle().Foreground(p.Muted).Render(strings.Repeat("─", min(w, 72)))
 	sub := lipgloss.NewStyle().Bold(true).
 		Foreground(lipgloss.AdaptiveColor{Light: "#374151", Dark: "#E5E7EB"}).
 		Render("Before you start")
-	body := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#374151", Dark: "#D1D5DB"})
-	dim := lipgloss.NewStyle().Foreground(colMuted).Italic(true)
+	body := lipgloss.NewStyle().Foreground(p.ModalBody)
+	dim := lipgloss.NewStyle().Foreground(p.Muted).Italic(true)
 
 	fmt.Println()
 	fmt.Println(title)

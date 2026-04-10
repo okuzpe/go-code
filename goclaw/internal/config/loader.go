@@ -14,6 +14,7 @@ type settingsFile struct {
 	Provider             *string           `json:"provider"`
 	OllamaHost           *string           `json:"ollama_host"`
 	OllamaModel          *string           `json:"ollama_model"`
+	CompactionModel      *string           `json:"compaction_model,omitempty"`
 	AnthropicBaseURL     *string           `json:"anthropic_base_url"`
 	AgentProfile         *string           `json:"agent_profile"`
 	AutoCompactThreshold *float64          `json:"auto_compact_threshold"`
@@ -39,6 +40,9 @@ type settingsFile struct {
 	MemoryAutoExtract      *bool    `json:"memory_auto_extract,omitempty"`
 	UIAppearance           *string  `json:"ui_appearance,omitempty"`
 	APIKey                 *string  `json:"api_key,omitempty"`
+	OpenAIBaseURL          *string  `json:"openai_base_url,omitempty"`
+	OpenAIAPIKey           *string  `json:"openai_api_key,omitempty"`
+	OpenAIModel            *string  `json:"openai_model,omitempty"`
 }
 
 // Load merges JSON settings into base in this order (later wins for overlapping keys):
@@ -97,6 +101,9 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.OllamaModel != nil {
 		cfg.OllamaModel = *sf.OllamaModel
+	}
+	if sf.CompactionModel != nil && strings.TrimSpace(*sf.CompactionModel) != "" {
+		cfg.CompactionModel = strings.TrimSpace(*sf.CompactionModel)
 	}
 	if sf.AnthropicBaseURL != nil {
 		cfg.BaseURL = *sf.AnthropicBaseURL
@@ -169,6 +176,15 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.APIKey != nil && strings.TrimSpace(*sf.APIKey) != "" {
 		cfg.APIKey = strings.TrimSpace(*sf.APIKey)
+	}
+	if sf.OpenAIBaseURL != nil && strings.TrimSpace(*sf.OpenAIBaseURL) != "" {
+		cfg.OpenAICompatBaseURL = strings.TrimSpace(*sf.OpenAIBaseURL)
+	}
+	if sf.OpenAIAPIKey != nil && strings.TrimSpace(*sf.OpenAIAPIKey) != "" {
+		cfg.OpenAICompatAPIKey = strings.TrimSpace(*sf.OpenAIAPIKey)
+	}
+	if sf.OpenAIModel != nil && strings.TrimSpace(*sf.OpenAIModel) != "" {
+		cfg.OpenAICompatModel = strings.TrimSpace(*sf.OpenAIModel)
 	}
 
 	for k, v := range sf.ToolPermissions {

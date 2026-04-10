@@ -31,10 +31,10 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 | `internal/cli/` | Cobra tree (`NewRootCmd`); inject `RunChat` / `RunListSessions` for testability without linking TUI |
 | `internal/app/` | `RunChat`, `RunListSessions`, banner; default Bubble Tea TUI on TTY; readline with `--readline` / `GOCLAW_USE_TUI=0` |
 | `internal/slashcmd/` | REPL `/` slash command handlers + `$EDITOR` prompt |
-| `internal/llm/` | `Client` interface + Anthropic (SSE) + Ollama (NDJSON) + HTTP retry |
+| `internal/llm/` | `Client` interface + Anthropic (SSE) + Ollama (NDJSON) + OpenAI-compat (SSE `/v1/chat/completions`) + HTTP retry |
 | `internal/session/` | In-memory history, JSONL serialization, store |
 | `internal/orchestrator/` | Main loop: user → LLM → tools → repeat (32 iter / 64 tool calls) |
-| `internal/tools/` | `Tool` interface + `Registry` + nine built-in tools + limits |
+| `internal/tools/` | `Tool` interface + `Registry` + ten built-in tools + limits |
 | `internal/permissions/` | `Policy.Evaluate(toolName)` + `ApplyConfigModes` for `tool_permissions` |
 | `internal/config/` | `Config`, `Default()`, hierarchical load (user → project → local) |
 | `internal/hooks/` | Go handler registry + external subprocess/HTTP hooks + project hooks file |
@@ -66,6 +66,6 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 - **memory** — durable facts under `~/.goclaw/memory/`
 
 ## Implemented status (2026-04)
-- **Done:** core loop, Ollama + Anthropic clients + retry, session JSONL store, default BubbleTea TUI on TTY (readline opt-in), Cobra CLI, all 9 tools (read_file/glob/grep/bash/write_file/edit_file/web_fetch/web_search/todo_write), permissions, memory, compaction, hooks (Go + external + project file), MCP stdio client (multi-server), IDE notifier, planfile + `/apply-plan`, all slash commands, hub-and-spoke coordinator (`spawn_agent` / `stop_task`, profile `coordinator`; see monorepo `docs/goclaw/coordinator.md`).
+- **Done:** core loop, Ollama + Anthropic clients + retry, session JSONL store, default BubbleTea TUI on TTY (readline opt-in), Cobra CLI, all 10 tools (read_file/glob/grep/bash/write_file/edit_file/patch/web_fetch/web_search/todo_write), permissions, memory, compaction, hooks (Go + external + project file), MCP stdio client (multi-server), IDE notifier, planfile + `/apply-plan`, all slash commands, hub-and-spoke coordinator (`spawn_agent` / `stop_task`, profile `coordinator`; see monorepo `docs/goclaw/coordinator.md`).
 - **Post-MVP v2+:** Team/Swarm peer-agent topology (distinct from in-process coordinator); see `docs/reference/coordinator-mode.md` at monorepo root.
 - **Post-MVP v3+:** Plugins, full IDE bridge, remote MCP transports, OAuth.

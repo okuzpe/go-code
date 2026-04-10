@@ -41,6 +41,7 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		specs = stripToolName(specs, "bash")
 		specs = stripToolName(specs, "write_file")
 		specs = stripToolName(specs, "edit_file")
+		specs = stripToolName(specs, "patch")
 		specs = stripMCPNames(specs)
 	}
 
@@ -66,6 +67,10 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		if block := o.todoStore.FormatForPrompt(); block != "" {
 			sys = sys + "\n\n## Session task list (todo_write)\n" + block
 		}
+	}
+
+	if hint := userLanguageSystemSuffix(lastUserNaturalText(o.session.Messages)); hint != "" {
+		sys = sys + hint
 	}
 
 	return llm.Request{

@@ -13,13 +13,13 @@ const maxAutoEntriesPerSession = 32
 
 var autoCountPerSession sync.Map // session id -> *int32
 
-// MaybeAutoCaptureFromTool appends a short project memory line after successful write_file / edit_file
+// MaybeAutoCaptureFromTool appends a short project memory line after successful write_file / edit_file / patch
 // when cfg.MemoryAutoExtract is true. Best-effort; capped per session.
 func MaybeAutoCaptureFromTool(cfg config.Config, store *Store, sessionID, toolName, toolInput string, isError bool) {
 	if !cfg.MemoryAutoExtract || store == nil || isError || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	if toolName != "write_file" && toolName != "edit_file" {
+	if toolName != "write_file" && toolName != "edit_file" && toolName != "patch" {
 		return
 	}
 	var in struct {

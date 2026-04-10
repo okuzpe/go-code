@@ -1,4 +1,4 @@
-// Package llm provides HTTP clients for Anthropic and Ollama APIs.
+// Package llm provides HTTP clients for Anthropic, Ollama, and OpenAI Chat Completions–compatible APIs.
 package llm
 
 import "context"

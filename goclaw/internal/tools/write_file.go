@@ -96,35 +96,7 @@ func (t *WriteFileTool) Execute(_ context.Context, input string) (Result, error)
 // Unlike resolveExistingPathUnderRoot, it evaluates symlinks on the parent directory
 // because the target file may not exist yet.
 func (t *WriteFileTool) resolveWriteTarget(userPath string) (string, error) {
-	candidate := userPath
-	if !filepath.IsAbs(candidate) {
-		candidate = filepath.Join(t.root, userPath)
-	}
-	candidate = filepath.Clean(candidate)
-
-	parentDir := filepath.Dir(candidate)
-	evalParent, err := filepath.EvalSymlinks(parentDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("parent directory does not exist: %s", parentDir)
-		}
-		return "", fmt.Errorf("resolve parent directory: %w", err)
-	}
-
-	rootEval, err := filepath.EvalSymlinks(t.root)
-	if err != nil {
-		rootEval = t.root
-	}
-
-	rel, err := filepath.Rel(rootEval, evalParent)
-	if err != nil {
-		return "", fmt.Errorf("path escapes workspace")
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("path escapes workspace")
-	}
-
-	return filepath.Join(evalParent, filepath.Base(candidate)), nil
+	return resolveWriteTargetUnderRoot(t.root, userPath)
 }
 
 // atomicWriteFile writes data to targetPath atomically via a temp file in the same directory.

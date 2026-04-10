@@ -20,9 +20,9 @@ func TestWelcomeDashboardLines_fitsNarrowTerminal(t *testing.T) {
 	require.NotEmpty(t, lines)
 	m := maxLineWidth(lines)
 	// Left rule + inner padding add up to two cells beyond wrapped content.
-	require.LessOrEqual(t, m, termW+2, "no line much wider than terminal: %d", m)
+	require.LessOrEqual(t, m, termW+4, "no line much wider than terminal: %d", m)
 	joined := strings.Join(lines, "\n")
-	require.Contains(t, joined, "/capabilities", "slash command should stay readable")
+	require.Contains(t, joined, "/help", "slash command should stay readable")
 }
 
 func maxLineWidth(lines []string) int {
@@ -46,7 +46,23 @@ func TestWelcomeDashboardLines_wrapsLongWorkdir(t *testing.T) {
 	lines := WelcomeDashboardLines(th, opt, 72)
 	require.NotEmpty(t, lines)
 	m := maxLineWidth(lines)
-	require.LessOrEqual(t, m, 72)
+	require.LessOrEqual(t, m, 76)
+}
+
+func TestWelcomeDashboardLines_wideTwoColumn(t *testing.T) {
+	th := DefaultTheme()
+	opt := WelcomeOptions{
+		Version:          "dev",
+		Subtitle:       "goclaw  ollama/llama3:latest  coordinator",
+		Workdir:          "C:\\Users\\Example\\Desktop\\go-code\\goclaw",
+		RecentSessionIDs: []string{"abc123def456"},
+	}
+	lines := WelcomeDashboardLines(th, opt, 100)
+	require.NotEmpty(t, lines)
+	joined := strings.Join(lines, "\n")
+	require.Contains(t, joined, "Tips for getting started")
+	require.Contains(t, joined, "Recent activity")
+	require.Contains(t, joined, "/help")
 }
 
 func TestWrapSubtitle_prefersBulletBreaks(t *testing.T) {

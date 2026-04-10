@@ -2,7 +2,7 @@
 
 **Índice de cobertura ↔ [Claude Code Internals](https://claude-code-explain.helmcode.com/):** [docs-map.md](../docs-map.md) — tabla por tema, alcance MVP, orden de lectura para implementar. **Auditoría histórica del corpus `.md` (español, §8):** [architecture-legacy-es.md §8.0](../archive/architecture-legacy-es.md).
 
-**Decisiones y arquitectura:** [architecture.md](../architecture.md) — hub corto en inglés; borrador largo y anclas **§** en [architecture-legacy-es.md](../archive/architecture-legacy-es.md). Comportamiento GoClaw: [goclaw/CLAUDE.md](../../goclaw/CLAUDE.md).
+**Decisiones y arquitectura:** [architecture.md](../architecture.md) — hub corto en inglés; borrador largo y anclas **§** en [architecture-legacy-es.md](../archive/architecture-legacy-es.md). Comportamiento GoClaw: [goclaw/CLAUDE.md](../../goclaw/CLAUDE.md). **Docs ↔ código (mantenimiento):** [code-adjustment-map.md](./code-adjustment-map.md) — qué leer y qué paquetes `internal/*` tocar por capa.
 
 - [skills.md](./skills.md) — formato `SKILL.md`, hooks en sesión, roadmap v3.
 - [bash-security.md](./bash-security.md) — capas shell/sandbox (referencia vs MVP), **D4**.

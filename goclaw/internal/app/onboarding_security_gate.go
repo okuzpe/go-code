@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/okuzpe/goclaw/internal/config"
+	"github.com/okuzpe/goclaw/internal/ui/terminalstyle"
 )
 
 //go:embed onboarding_security_full.md
@@ -175,16 +176,17 @@ func (m *secPreflightModel) viewSummary(w int) string {
 }
 
 func (m *secPreflightModel) viewDoc(w int) string {
-	return renderOnboardingSecurityDocFrame(m.vp.View(), w)
+	return renderOnboardingSecurityDocFrame(m.vp.View(), w, m.uiAppearance)
 }
 
-// renderOnboardingSecurityDocFrame draws the Claude-style path header + wavy rule + viewport body + footer.
-func renderOnboardingSecurityDocFrame(viewportText string, w int) string {
-	pathStyle := lipgloss.NewStyle().Bold(true).Foreground(colAccent2)
-	rule := lipgloss.NewStyle().Foreground(colMuted).Render(strings.Repeat("╌", min(max(w-2, 40), 78)))
+// renderOnboardingSecurityDocFrame draws the path header + rule + viewport body + footer.
+func renderOnboardingSecurityDocFrame(viewportText string, w int, uiAppearance string) string {
+	p := terminalstyle.PaletteForAppearance(uiAppearance)
+	pathStyle := lipgloss.NewStyle().Bold(true).Foreground(p.TrustAccent2)
+	rule := lipgloss.NewStyle().Foreground(p.Muted).Render(strings.Repeat("╌", min(max(w-2, 40), 78)))
 	head := pathStyle.Render("docs/goclaw/security.md") + "\n" + rule
 	foot := lipgloss.NewStyle().
-		Foreground(colMuted).
+		Foreground(p.Muted).
 		Italic(true).
 		Render("↑ ↓ PgUp PgDn · scroll · wheel · Press Enter or Esc to continue")
 	return "\n" + head + "\n\n" + viewportText + "\n" + foot + "\n"

@@ -209,12 +209,12 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			return "", fmt.Errorf("tool call limit (%d) reached", maxToolCalls)
 		}
 
-		parallel := len(pendingTools) > 1 && o.allToolsAutoApprove(pendingTools)
+		parallel := len(pendingTools) > 1 && o.allToolsAutoApprove(pendingTools) && !pendingToolsIncludeSpawnAgent(pendingTools)
 		var results []llm.ToolResultRecord
 
 		if parallel {
 			var atomicCalls atomic.Int64
-			results = o.executeToolsParallel(ctx, pendingTools, &atomicCalls)
+			results = o.executeToolsParallel(ctx, pendingTools, &atomicCalls, sink)
 			toolCalls += int(atomicCalls.Load())
 			for i, r := range results {
 				input := ""
@@ -233,7 +233,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			for _, tu := range pendingTools {
 				toolCalls++
 				toolStart := time.Now()
-				out := o.executeTool(ctx, &tu)
+				out := o.executeTool(ctx, &tu, sink)
 				slog.Debug("tool done", "name", tu.Name, "elapsed", time.Since(toolStart), "bytes", len(out.Content), "isError", out.IsError)
 				if out.Err != nil {
 					return "", out.Err
@@ -302,11 +302,20 @@ func (o *Orchestrator) allToolsAutoApprove(pendingTools []llm.ToolUse) bool {
 	return true
 }
 
+func pendingToolsIncludeSpawnAgent(pendingTools []llm.ToolUse) bool {
+	for _, tu := range pendingTools {
+		if tu.Name == "spawn_agent" {
+			return true
+		}
+	}
+	return false
+}
+
 // executeToolsParallel runs all tools concurrently and returns results in the
 // same order as pendingTools. Each goroutine writes to its own index slot so no
 // mutex is needed on the result slice. atomicCalls is incremented for each tool
 // that is dispatched (used by the caller to update the tool-call budget).
-func (o *Orchestrator) executeToolsParallel(ctx context.Context, pendingTools []llm.ToolUse, atomicCalls *atomic.Int64) []llm.ToolResultRecord {
+func (o *Orchestrator) executeToolsParallel(ctx context.Context, pendingTools []llm.ToolUse, atomicCalls *atomic.Int64, sink StreamSink) []llm.ToolResultRecord {
 	results := make([]llm.ToolResultRecord, len(pendingTools))
 	var wg sync.WaitGroup
 	for i, tu := range pendingTools {
@@ -315,7 +324,7 @@ func (o *Orchestrator) executeToolsParallel(ctx context.Context, pendingTools []
 		go func(index int, toolUse llm.ToolUse) {
 			defer wg.Done()
 			toolStart := time.Now()
-			out := o.executeTool(ctx, &toolUse)
+			out := o.executeTool(ctx, &toolUse, sink)
 			slog.Debug("tool done (parallel)", "name", toolUse.Name, "elapsed", time.Since(toolStart), "bytes", len(out.Content), "isError", out.IsError)
 			content := out.Content
 			isError := out.IsError

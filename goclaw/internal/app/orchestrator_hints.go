@@ -34,6 +34,13 @@ func orchestratorFailureHints(provider, model string, err error) []string {
 		if strings.Contains(msg, "529") || strings.Contains(low, "overloaded") {
 			out = append(out, "hint: API temporarily overloaded — retry shortly or use provider=ollama with a local model.")
 		}
+	case "openai_compatible":
+		if strings.Contains(msg, "401") || (strings.Contains(low, "invalid") && strings.Contains(low, "key")) {
+			out = append(out, "hint: set OPENAI_API_KEY or \"openai_api_key\" in settings; confirm the key matches the chosen base URL.")
+		}
+		if strings.Contains(msg, "429") || strings.Contains(low, "rate") {
+			out = append(out, "hint: rate limited — wait and retry, pick another free model, or use provider=ollama locally.")
+		}
 	default:
 		if strings.Contains(low, "cannot reach ollama") || strings.Contains(low, "connection refused") {
 			out = append(out, "hint: start Ollama (desktop app or `ollama serve`) and ensure OLLAMA_HOST matches (default http://localhost:11434).")

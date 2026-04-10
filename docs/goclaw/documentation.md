@@ -12,7 +12,7 @@ Documentation follows [Diátaxis](https://diataxis.fr/): keep **tutorials** (fir
 |------|----------------|----------|
 | Tutorial | Short copy-paste on [README.md](../../goclaw/README.md) and in [usage.md](usage.md) (quick start) | `go run ./cmd/goclaw doctor` |
 | How-to | [usage.md](usage.md), topic files in this folder | Sessions, Anthropic, hooks, MCP |
-| Reference | [CLAUDE.md](../../goclaw/CLAUDE.md), [docs/reference/](../reference/) | Tool contract, env vars, D1–D22 |
+| Reference | [CLAUDE.md](../../goclaw/CLAUDE.md), [docs/reference/](../reference/) | Tool contract, env vars, D1–D22, [code-adjustment-map.md](../reference/code-adjustment-map.md) |
 | Explanation | [philosophy.md](philosophy.md), [architecture.md](../architecture.md), [coordinator-mode.md](../reference/coordinator-mode.md) | Scope, architecture, coordinator vs swarm |
 
 **House rules:** prefer **one main topic per file**; **kebab-case** names under `docs/`; **link** instead of duplicating long tables (e.g. usage summarizes tools, CLAUDE is canonical); when you add or rename a top-level doc, update **[docs-map.md](../docs-map.md)**.
@@ -35,7 +35,7 @@ Documentation follows [Diátaxis](https://diataxis.fr/): keep **tutorials** (fir
 | Agent skill prompts | [.claude/skills/](../../goclaw/.claude/skills/) | Reusable task prompts for Claude Code / Cursor (not a user manual) | AI workflows only |
 | Script runbooks | [scripts/*.md](../../goclaw/scripts/MOCK_PARITY_HARNESS.md) | How to run harnesses next to scripts | CI / maintainers |
 
-**Monorepo** (parent of `goclaw/`): cross-cutting specs live under **[docs/reference/](../reference/)** — e.g. [architecture.md](../architecture.md), [archive/architecture-legacy-es.md](../archive/architecture-legacy-es.md), [tool-contract.md](../reference/tool-contract.md), [mcp.md](../reference/mcp.md), [hooks.md](../reference/hooks.md), [agent-profiles.md](../reference/agent-profiles.md), [coordinator-mode.md](../reference/coordinator-mode.md). Product-level concepts in `docs/reference/`; goclaw’s **Go mapping** lives in **CLAUDE.md** and **docs/goclaw/**.
+**Monorepo** (parent of `goclaw/`): cross-cutting specs live under **[docs/reference/](../reference/)** — e.g. [architecture.md](../architecture.md), [code-adjustment-map.md](../reference/code-adjustment-map.md), [archive/architecture-legacy-es.md](../archive/architecture-legacy-es.md), [tool-contract.md](../reference/tool-contract.md), [mcp.md](../reference/mcp.md), [hooks.md](../reference/hooks.md), [agent-profiles.md](../reference/agent-profiles.md), [coordinator-mode.md](../reference/coordinator-mode.md). Product-level concepts in `docs/reference/`; goclaw’s **Go mapping** lives in **CLAUDE.md** and **docs/goclaw/**.
 
 ---
 
@@ -52,7 +52,7 @@ Scope: **`goclaw/`** and monorepo **`docs/`** Markdown for GoClaw (excludes `cla
 | Security copy (sync) | [`goclaw/internal/app/onboarding_security_full.md`](../../goclaw/internal/app/onboarding_security_full.md) must match [security.md](security.md) — edit **security.md** first, then mirror into the embed (see HTML comment at top of the embed file). |
 | Workflow skills | `.claude/skills/*.md`, `.cursor/skills/**/*.md` (not end-user manuals) |
 | Scripts | `scripts/MOCK_PARITY_HARNESS.md` |
-| Monorepo docs | See [docs-map.md](../docs-map.md) File Index — `docs/reference/`, `docs/openclaw/`, `docs/archive/` |
+| Monorepo docs | See [docs-map.md](../docs-map.md) File Index — `docs/reference/` (incl. [code-adjustment-map.md](../reference/code-adjustment-map.md)), `docs/openclaw/`, `docs/archive/` |
 | Archive folder | [docs/archive/README.md](../archive/README.md); [architecture-legacy-es.md](../archive/architecture-legacy-es.md) |
 
 ---
@@ -73,8 +73,10 @@ Scope: **`goclaw/`** and monorepo **`docs/`** Markdown for GoClaw (excludes `cla
 
 | Date | Change |
 |------|--------|
+| 2026-04-10 | Added [ollama-stack.md](ollama-stack.md) — optional local 7B/8B stack, `compaction_model`, project `.goclaw/agents/` templates. |
 | 2026-04-10 | Added DOCUMENTATION.md and topic layout; monorepo pointers to `docs/` hub + `docs/archive/`. |
 | 2026-04-10 | Topic docs consolidated under monorepo **`docs/goclaw/`** (no `goclaw/docs/`). |
 | 2026-04-10 | Added **Principles** (Diátaxis-style) and house rules for where tutorials / how-to / reference / explanation live. |
 | 2026-04-10 | **README cleanup:** removed `docs/README.md` and `docs/goclaw/README.md`; only [README.md](../../goclaw/README.md) (full) + repo-root [README.md](../../README.md) (pointer). Topic table stays in `goclaw/README.md`. |
 | 2026-04-10 | Documented **onboarding_security_full.md** ↔ **security.md** sync; first-run onboarding covered in [usage.md](usage.md). |
+| 2026-04-10 | Linked [code-adjustment-map.md](../reference/code-adjustment-map.md) from Principles, monorepo pointer, and Markdown inventory. |

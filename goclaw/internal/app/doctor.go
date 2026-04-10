@@ -74,6 +74,10 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 			mode = "auto"
 		}
 		lines = append(lines, fmt.Sprintf("token_count_mode: %s (auto uses count_tokens API near compaction threshold)", mode))
+	} else if cfg.Provider == "openai_compatible" {
+		lines = append(lines, checkLine("openai base url configured", strings.TrimSpace(cfg.OpenAICompatBaseURL) != ""))
+		lines = append(lines, checkLine("openai api key configured", strings.TrimSpace(cfg.OpenAICompatAPIKey) != ""))
+		lines = append(lines, checkLine("openai model configured", strings.TrimSpace(cfg.Model()) != ""))
 	} else {
 		ollamaHost := effectiveOllamaHost(cfg.OllamaHost)
 		ollamaOK = probeOllama(ctx, ollamaHost)
@@ -181,7 +185,7 @@ func dedupeDoctorHints(lines []string) []string {
 
 func hintLines(cfg config.Config, ollamaOK, toolsDisabled bool) []string {
 	var hints []string
-	if cfg.Provider != "anthropic" && !ollamaOK {
+	if cfg.Provider != "anthropic" && cfg.Provider != "openai_compatible" && !ollamaOK {
 		host := effectiveOllamaHost(cfg.OllamaHost)
 		hints = append(hints,
 			fmt.Sprintf("  Ollama did not respond at %s within the probe timeout.", host),
@@ -193,7 +197,7 @@ func hintLines(cfg config.Config, ollamaOK, toolsDisabled bool) []string {
 	if toolsDisabled {
 		hints = append(hints, "  Tools are disabled (--no-tools or GOCLAW_DISABLE_TOOLS=1); MCP servers were not started.")
 	}
-	if !toolsDisabled && cfg.Provider != "anthropic" && ollamaOK {
+	if !toolsDisabled && cfg.Provider != "anthropic" && cfg.Provider != "openai_compatible" && ollamaOK {
 		hints = append(hints,
 			"  Local Ollama models may still refuse to summarize news or pages even when web_search/web_fetch succeed.",
 			"  - Try a general instruct/chat model, or switch provider to anthropic for more reliable web summarization.",

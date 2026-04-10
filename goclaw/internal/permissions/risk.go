@@ -17,9 +17,9 @@ import (
 //	bash (write category: git commit, make, go build) → 40
 //	mcp__* tools                                   → 50
 //	bash (unrecognized command)                    → 50
-//	write_file, edit_file (workspace paths)        → 60
+//	write_file, edit_file, patch (workspace paths) → 60
 //	script                                         → 70
-//	write_file, edit_file (absolute/outside paths) → 90
+//	write_file, edit_file, patch (absolute/outside paths) → 90
 func RiskScore(toolName, toolInput string) int {
 	switch toolName {
 	case "read_file", "glob", "grep", "web_search", "todo_write":
@@ -37,7 +37,7 @@ func RiskScore(toolName, toolInput string) int {
 	case "stop_task":
 		return 5
 
-	case "write_file", "edit_file":
+	case "write_file", "edit_file", "patch":
 		return fileWriteRiskScore(toolInput)
 
 	case "script":

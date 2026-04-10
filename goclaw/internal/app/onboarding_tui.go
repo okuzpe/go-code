@@ -364,7 +364,7 @@ func (m *obModel) viewBody() string {
 			w = 80
 		}
 		if m.secDoc {
-			b.WriteString(renderOnboardingSecurityDocFrame(m.secVP.View(), w))
+			b.WriteString(renderOnboardingSecurityDocFrame(m.secVP.View(), w, m.base.UIAppearance))
 			break
 		}
 		s := renderOnboardingSecurityMarkdown(m.version, m.base.UIAppearance, m.width)
@@ -380,13 +380,13 @@ func (m *obModel) viewBody() string {
 		if absWd == "" {
 			absWd = m.workdir
 		}
-		b.WriteString(renderOnboardingTrustStepTUI(absWd, m.cursor, m.width))
+		b.WriteString(renderOnboardingTrustStepTUI(m.base.UIAppearance, absWd, m.cursor, m.width))
 	case obTheme:
 		b.WriteString("\n Choose TUI appearance (change later with /theme):\n\n")
 		for i, label := range m.themeChoices {
 			prefix := "   "
 			if i == m.cursor {
-				prefix = " ❯ "
+				prefix = "> "
 			}
 			b.WriteString(fmt.Sprintf("%s%d. %s\n", prefix, i+1, label))
 		}
@@ -396,7 +396,7 @@ func (m *obModel) viewBody() string {
 		for i, label := range m.connChoices {
 			prefix := "   "
 			if i == m.cursor {
-				prefix = " ❯ "
+				prefix = "> "
 			}
 			disabled := ""
 			if i == 2 {

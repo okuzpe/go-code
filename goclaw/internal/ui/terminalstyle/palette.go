@@ -1,0 +1,177 @@
+// Package terminalstyle holds shared Lip Gloss palette tokens for TTY output keyed by
+// config ui_appearance, so chat TUI, readline banner, and onboarding stay consistent.
+package terminalstyle
+
+import (
+	"github.com/charmbracelet/lipgloss"
+	"github.com/okuzpe/goclaw/internal/config"
+)
+
+// Palette is a complete set of terminal colors for one ui_appearance preset.
+type Palette struct {
+	Appearance string
+
+	// GlamourStyle is passed to glamour: "auto", "dark", "light", or "ascii".
+	GlamourStyle string
+
+	AccentUser    lipgloss.TerminalColor
+	AccentAI      lipgloss.TerminalColor
+	Muted         lipgloss.TerminalColor
+	DimFG         lipgloss.TerminalColor
+	ToolFG        lipgloss.TerminalColor
+	ModalBody     lipgloss.TerminalColor
+	ErrorFG       lipgloss.TerminalColor
+	SepFG         lipgloss.TerminalColor
+	ModalBorder   lipgloss.TerminalColor
+	InputBorder   lipgloss.TerminalColor
+	SlashPickName lipgloss.TerminalColor
+	SlashPickDesc lipgloss.TerminalColor
+
+	// Banner / onboarding chrome (readline and fallbacks).
+	BannerLogo    lipgloss.TerminalColor
+	BannerKey     lipgloss.TerminalColor
+	BannerValue   lipgloss.TerminalColor
+	BannerWarning lipgloss.TerminalColor
+	TrustAccent   lipgloss.TerminalColor
+	TrustAccent2  lipgloss.TerminalColor
+	PathEmphasis  lipgloss.TerminalColor
+}
+
+// PaletteForAppearance returns the palette for raw ui_appearance (empty = auto).
+func PaletteForAppearance(raw string) Palette {
+	app := config.NormalizeUIAppearance(raw)
+	switch app {
+	case config.UIAppearanceAuto:
+		return paletteAuto()
+	case config.UIAppearanceDark:
+		return paletteFixed(app, "dark",
+			lipgloss.Color("#34D399"), lipgloss.Color("#C4B5FD"),
+			lipgloss.Color("#9CA3AF"), lipgloss.Color("#6B7280"),
+			lipgloss.Color("#FBBF24"), lipgloss.Color("#D1D5DB"),
+			lipgloss.Color("#F87171"), lipgloss.Color("#374151"),
+			lipgloss.Color("#C4B5FD"), lipgloss.Color("#4B5563"),
+		)
+	case config.UIAppearanceLight:
+		return paletteFixed(app, "light",
+			lipgloss.Color("#059669"), lipgloss.Color("#7C3AED"),
+			lipgloss.Color("#6B7280"), lipgloss.Color("#9CA3AF"),
+			lipgloss.Color("#B45309"), lipgloss.Color("#374151"),
+			lipgloss.Color("#DC2626"), lipgloss.Color("#E5E7EB"),
+			lipgloss.Color("#7C3AED"), lipgloss.Color("#D1D5DB"),
+		)
+	case config.UIAppearanceDarkColorblind:
+		return paletteFixed(app, "dark",
+			lipgloss.Color("#60A5FA"), lipgloss.Color("#FBBF24"),
+			lipgloss.Color("#9CA3AF"), lipgloss.Color("#6B7280"),
+			lipgloss.Color("#FCD34D"), lipgloss.Color("#D1D5DB"),
+			lipgloss.Color("#F87171"), lipgloss.Color("#374151"),
+			lipgloss.Color("#60A5FA"), lipgloss.Color("#93C5FD"),
+		)
+	case config.UIAppearanceLightColorblind:
+		return paletteFixed(app, "light",
+			lipgloss.Color("#2563EB"), lipgloss.Color("#D97706"),
+			lipgloss.Color("#6B7280"), lipgloss.Color("#9CA3AF"),
+			lipgloss.Color("#B45309"), lipgloss.Color("#374151"),
+			lipgloss.Color("#DC2626"), lipgloss.Color("#E5E7EB"),
+			lipgloss.Color("#2563EB"), lipgloss.Color("#93C5FD"),
+		)
+	case config.UIAppearanceDarkANSI:
+		return paletteANSI(app, "ascii",
+			lipgloss.Color("2"), lipgloss.Color("5"),
+			lipgloss.Color("7"), lipgloss.Color("8"),
+			lipgloss.Color("3"), lipgloss.Color("7"),
+			lipgloss.Color("1"), lipgloss.Color("8"),
+			lipgloss.Color("5"), lipgloss.Color("8"),
+		)
+	case config.UIAppearanceLightANSI:
+		return paletteANSI(app, "ascii",
+			lipgloss.Color("2"), lipgloss.Color("5"),
+			lipgloss.Color("8"), lipgloss.Color("7"),
+			lipgloss.Color("3"), lipgloss.Color("0"),
+			lipgloss.Color("1"), lipgloss.Color("7"),
+			lipgloss.Color("5"), lipgloss.Color("7"),
+		)
+	default:
+		return paletteAuto()
+	}
+}
+
+func paletteAuto() Palette {
+	accentUser := lipgloss.AdaptiveColor{Light: "#059669", Dark: "#34D399"}
+	accentAI := lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#C4B5FD"}
+	muted := lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"}
+	dimFG := lipgloss.AdaptiveColor{Light: "#9CA3AF", Dark: "#6B7280"}
+	toolFG := lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FBBF24"}
+	modalBody := lipgloss.AdaptiveColor{Light: "#374151", Dark: "#D1D5DB"}
+	errorFG := lipgloss.AdaptiveColor{Light: "#DC2626", Dark: "#F87171"}
+	sepFG := lipgloss.AdaptiveColor{Light: "#E5E7EB", Dark: "#374151"}
+	slashPick := lipgloss.AdaptiveColor{Light: "#1D4ED8", Dark: "#60A5FA"}
+	slashDesc := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}
+	modalBorder := lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#C4B5FD"}
+	inputBorder := lipgloss.AdaptiveColor{Light: "#D1D5DB", Dark: "#4B5563"}
+	pathEmphasis := lipgloss.AdaptiveColor{Light: "#0F172A", Dark: "#E2E8F0"}
+	return Palette{
+		Appearance:    config.UIAppearanceAuto,
+		GlamourStyle:  "auto",
+		AccentUser:    accentUser,
+		AccentAI:      accentAI,
+		Muted:         muted,
+		DimFG:         dimFG,
+		ToolFG:        toolFG,
+		ModalBody:     modalBody,
+		ErrorFG:       errorFG,
+		SepFG:         sepFG,
+		ModalBorder:   modalBorder,
+		InputBorder:   inputBorder,
+		SlashPickName: slashPick,
+		SlashPickDesc: slashDesc,
+		BannerLogo:    accentAI,
+		BannerKey:     muted,
+		BannerValue:   lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#E5E7EB"},
+		BannerWarning: lipgloss.AdaptiveColor{Light: "#D97706", Dark: "#FBBF24"},
+		TrustAccent:   accentAI,
+		TrustAccent2:  lipgloss.AdaptiveColor{Light: "#0891B2", Dark: "#22D3EE"},
+		PathEmphasis:  pathEmphasis,
+	}
+}
+
+func paletteFixed(app, glam string,
+	accentUser, accentAI, muted, dimFG, toolFG, modalBody, errorFG, sepFG, modalBorder, inputBorder lipgloss.Color,
+) Palette {
+	slashPick := lipgloss.AdaptiveColor{Light: "#1D4ED8", Dark: "#60A5FA"}
+	slashDesc := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}
+	return Palette{
+		Appearance:    app,
+		GlamourStyle:  glam,
+		AccentUser:    accentUser,
+		AccentAI:      accentAI,
+		Muted:         muted,
+		DimFG:         dimFG,
+		ToolFG:        toolFG,
+		ModalBody:     modalBody,
+		ErrorFG:       errorFG,
+		SepFG:         sepFG,
+		ModalBorder:   modalBorder,
+		InputBorder:   inputBorder,
+		SlashPickName: slashPick,
+		SlashPickDesc: slashDesc,
+		BannerLogo:    accentAI,
+		BannerKey:     muted,
+		BannerValue:   lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#E5E7EB"},
+		BannerWarning: lipgloss.Color("#D97706"),
+		TrustAccent:   accentAI,
+		TrustAccent2:  lipgloss.Color("#0891B2"),
+		PathEmphasis:  lipgloss.AdaptiveColor{Light: "#0F172A", Dark: "#E2E8F0"},
+	}
+}
+
+func paletteANSI(app, glam string,
+	accentUser, accentAI, muted, dimFG, toolFG, modalBody, errorFG, sepFG, modalBorder, inputBorder lipgloss.Color,
+) Palette {
+	p := paletteFixed(app, glam,
+		accentUser, accentAI, muted, dimFG, toolFG, modalBody, errorFG, sepFG, modalBorder, inputBorder,
+	)
+	p.SlashPickName = lipgloss.Color("4")
+	p.SlashPickDesc = lipgloss.Color("8")
+	return p
+}

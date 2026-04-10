@@ -144,6 +144,22 @@ Set with `--profile <name>`, `agent_profile` in settings, or **`GOCLAW_AGENT_PRO
 
 Coordinator delegates work to workers; see [coordinator.md](./coordinator.md).
 
+### Coordinator vs direct coding (`general-purpose`)
+
+Use **`coordinator`** when you want the hub to delegate sub-tasks to isolated workers via `spawn_agent`. Use **`general-purpose`** when you want a single agent to edit the repository directly without that extra layer — fewer LLM rounds and usually faster for straightforward tasks (for example, a small desktop app or a single feature).
+
+### `spawn_agent`: time and visibility
+
+- Each **one-shot** `spawn_agent` runs a full worker loop (LLM + tools) until it finishes or hits **`timeout_sec`** (default **120**, maximum **600** seconds). The footer shows elapsed time while the tool runs.
+- Worker assistant output is **streamed to the same transcript** as the parent session when using the interactive TUI or readline REPL, so you can see tokens as the worker produces them (not only after the tool completes).
+- **`interactive: true`** returns immediately with a `task_id` and a `running` status; use **`/focus`** in the REPL to send more messages to that worker. The **first** worker turn is also streamed when the UI provides a sink.
+
+### Parallel tool runs and duplicate `spawn_agent`
+
+If the model requests **multiple tools** in one assistant message and they are auto-approved (allow mode or YOLO), goclaw may run those tools **in parallel**. **`spawn_agent` is never parallelized with other tools in the same batch** — it always runs sequentially to reduce duplicated work and resource contention (for example, two workers competing for the same local GPU).
+
+If you still see two completed spawn lines for the same task, the model may have issued **two `spawn_agent` calls across iterations**; narrow the request or switch to **`general-purpose`** to avoid unnecessary delegation.
+
 ### Interactive workers (`spawn_agent` + REPL focus)
 
 When the coordinator calls `spawn_agent` with **`"interactive": true`**, the tool returns immediately with `"status": "running"` and a `task_id`. The worker keeps running in the background. In the REPL:
@@ -160,12 +176,13 @@ In the TUI, tool approval for **ask** mode appears as a **single compact line ab
 |------|------|
 | `read_file`, `glob`, `grep` | Read/search workspace |
 | `bash` | One simple command; allowlist; timeout (default 30s, override `bash_timeout_sec`) |
-| `write_file`, `edit_file` | Writes (stripped on read-only profiles) |
+| `script` | Multi-line shell (opt-in `allow_script`); same timeout as `bash` |
+| `write_file`, `edit_file`, `patch` | Writes (stripped on read-only profiles) |
 | `web_fetch`, `web_search` | Network (SSRF rules on fetch) |
 | `todo_write` | Session task list |
 | `spawn_agent`, `stop_task` | Coordinator only — start / cancel isolated workers |
 
-Caps, SSRF, and MCP naming (`mcp__<id>__<name>`): [tool-contract.md](../reference/tool-contract.md). Workspace path rules: `internal/tools/workspace_paths.go`.
+Caps, SSRF, and MCP naming (`mcp__<id>__<name>`): [tool-contract.md](../reference/tool-contract.md). Visual tool flows (diagrams): [tool-flows.md](../reference/tool-flows.md). Workspace path rules: `internal/tools/workspace_paths.go`.
 
 **Web:** use `web_search` for discovery; `web_fetch` when you already have a URL.
 
@@ -238,4 +255,5 @@ Mock server: `testutil/mockserver/`. Windows: transient `*.exe` from tests are n
 | What lives where (module vs `docs/`) | [documentation.md](documentation.md) |
 | Master index (all `.md` paths) | [docs-map.md](../docs-map.md) |
 | Tool limits, SSRF, MCP naming | [tool-contract.md](../reference/tool-contract.md) |
+| Visual tool flows (diagrams) | [tool-flows.md](../reference/tool-flows.md) |
 | English architecture blurb + diagram | [architecture.md](../architecture.md) |

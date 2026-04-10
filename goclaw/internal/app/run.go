@@ -122,7 +122,7 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 
 	// Fullscreen TUI shows welcome panel + footer; skip ASCII banner to avoid scrollback flash and duplicate UX.
 	if !useTUI {
-		printStartupBanner(version, rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name, rt.Sess.ID, rt.Workdir, rt.DisableTools)
+		printStartupBanner(version, rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name, rt.Sess.ID, rt.Workdir, rt.DisableTools, rt.Cfg.UIAppearance)
 	}
 
 	if !useTUI && isTTY(os.Stdout) {

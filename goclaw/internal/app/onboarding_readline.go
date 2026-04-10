@@ -21,7 +21,7 @@ func runOnboardingReadline(version, workdir string, base config.Config) error {
 	if err != nil {
 		absWd = workdir
 	}
-	printOnboardingTrustStepReadline(absWd)
+	printOnboardingTrustStepReadline(base.UIAppearance, absWd)
 	choice, err := readLine()
 	if err != nil {
 		return err

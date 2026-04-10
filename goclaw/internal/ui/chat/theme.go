@@ -6,9 +6,9 @@ import (
 	"sync"
 
 	lipv2 "charm.land/lipgloss/v2"
-	"charm.land/lipgloss/v2/compat"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/okuzpe/goclaw/internal/ui/terminalstyle"
 )
 
 // Theme holds Lip Gloss styles and copy for the chat TUI. Centralize here so the
@@ -32,13 +32,21 @@ type Theme struct {
 	ModalTitle  lipgloss.Style
 	ModalBody   lipgloss.Style
 
-	// New: modern polish styles
 	ErrorStyle    lipgloss.Style
 	Separator     lipgloss.Style
 	ToolSpinner   lipgloss.Style
 	ToolResultOk  lipgloss.Style
 	ToolResultErr lipgloss.Style
-	InputBorder   lipgloss.Style // border around active input area
+	InputBorder   lipgloss.Style
+
+	// Tool card styles (claw-code inspired box-drawing panels).
+	ToolCardBorder lipgloss.Style
+	ToolCardHead   lipgloss.Style
+	ToolCardBody   lipgloss.Style
+
+	// Status bar between viewport and input area.
+	StatusBar      lipgloss.Style
+	StatusBarLabel lipgloss.Style
 
 	// SlashPickerName / SlashPickerDesc style the / command rows above the input (TUI).
 	SlashPickerName lipgloss.Style
@@ -55,54 +63,9 @@ type Theme struct {
 	appearance string
 }
 
-// DefaultTheme returns the standard in-terminal look: goclaw persona, clear 👤/🤖 lanes.
+// DefaultTheme returns the standard in-terminal look (ui_appearance auto).
 func DefaultTheme() *Theme {
-	// Modern palette — inspired by Claude Code / Cursor / Warp
-	accentUser := lipgloss.AdaptiveColor{Light: "#059669", Dark: "#34D399"} // emerald
-	accentAI := lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#C4B5FD"}   // purple (brand)
-	muted := lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"}
-	dimFG := lipgloss.AdaptiveColor{Light: "#9CA3AF", Dark: "#6B7280"}
-	toolFG := lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FBBF24"} // amber
-	modalBody := lipgloss.AdaptiveColor{Light: "#374151", Dark: "#D1D5DB"}
-	errorFG := lipgloss.AdaptiveColor{Light: "#DC2626", Dark: "#F87171"} // red
-	sepFG := lipgloss.AdaptiveColor{Light: "#E5E7EB", Dark: "#374151"}   // subtle border
-	slashPick := lipgloss.AdaptiveColor{Light: "#1D4ED8", Dark: "#60A5FA"} // blue command names
-	slashDesc := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}
-
-	return &Theme{
-		AssistantName:  "goclaw",
-		UserLabel:      "You",
-		UserEmoji:      "❯",
-		AssistantEmoji: "✦",
-		InputPrompt:    "› ",
-		mdGlamourStyle: "auto",
-		appearance:     "auto",
-
-		System:    lipgloss.NewStyle().Foreground(muted).Italic(true),
-		UserTag:   lipgloss.NewStyle().Bold(true).Foreground(accentUser),
-		Assistant: lipgloss.NewStyle().Bold(true).Foreground(accentAI),
-		Dim:       lipgloss.NewStyle().Foreground(dimFG),
-		Tool:      lipgloss.NewStyle().Foreground(toolFG).Bold(true),
-		ToolTag:   lipgloss.NewStyle().Foreground(toolFG),
-		FooterDim: lipgloss.NewStyle().Foreground(muted),
-		ModalBorder: lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#C4B5FD"}),
-		ModalTitle: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#C4B5FD"}),
-		ModalBody:  lipgloss.NewStyle().Foreground(modalBody),
-
-		// Modern polish
-		ErrorStyle:    lipgloss.NewStyle().Foreground(errorFG).Bold(true),
-		Separator:     lipgloss.NewStyle().Foreground(sepFG),
-		ToolSpinner:   lipgloss.NewStyle().Foreground(toolFG).Italic(true),
-		ToolResultOk:  lipgloss.NewStyle().Foreground(accentUser),
-		ToolResultErr: lipgloss.NewStyle().Foreground(errorFG),
-		InputBorder: lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.AdaptiveColor{Light: "#D1D5DB", Dark: "#4B5563"}),
-		SlashPickerName: lipgloss.NewStyle().Bold(true).Foreground(slashPick),
-		SlashPickerDesc: lipgloss.NewStyle().Foreground(slashDesc),
-	}
+	return newThemeFromPalette(terminalstyle.PaletteForAppearance(""))
 }
 
 // RenderMarkdown renders markdown text for terminal display using glamour.
@@ -156,8 +119,69 @@ func (t *Theme) RenderMarkdown(md string, termWidth int, prefixDisplayWidth int)
 	return strings.TrimRight(rendered, "\n")
 }
 
-// SeparatorLine renders a dim horizontal rule for turn separation.
+// SeparatorLine renders a dim horizontal rule between turns (kept shorter than full width
+// so the transcript matches Claude Code–style breathing room).
 func (t *Theme) SeparatorLine(width int) string {
+	if width <= 0 {
+		width = 56
+	}
+	w := width
+	const maxRule = 72
+	if w > maxRule {
+		w = maxRule
+	}
+	if w < 24 {
+		w = 24
+	}
+	return t.Separator.Render(strings.Repeat("─", w))
+}
+
+// RenderToolCard builds a compact card for a completed tool call (claw-code style).
+//
+//	╭─ read_file ──────────────
+//	│  src/main.go
+//	╰─ ✓
+func (t *Theme) RenderToolCard(toolLabel, summary string, isError bool, width int) string {
+	cardW := width - 4
+	if cardW < 36 {
+		cardW = 36
+	}
+	if cardW > 88 {
+		cardW = 88
+	}
+
+	nameRendered := t.ToolCardHead.Render(" " + toolLabel + " ")
+	nameW := lipgloss.Width(nameRendered)
+	dashCount := cardW - nameW - 2
+	if dashCount < 3 {
+		dashCount = 3
+	}
+	header := t.ToolCardBorder.Render("╭─") + nameRendered + t.ToolCardBorder.Render(strings.Repeat("─", dashCount))
+
+	var icon string
+	if isError {
+		icon = t.ToolResultErr.Render("✗")
+	} else {
+		icon = t.ToolResultOk.Render("✓")
+	}
+	footer := t.ToolCardBorder.Render("╰─") + " " + icon
+
+	var b strings.Builder
+	b.WriteString("  ")
+	b.WriteString(header)
+	if s := strings.TrimSpace(summary); s != "" {
+		b.WriteString("\n  ")
+		b.WriteString(t.ToolCardBorder.Render("│"))
+		b.WriteString("  ")
+		b.WriteString(t.ToolCardBody.Render(s))
+	}
+	b.WriteString("\n  ")
+	b.WriteString(footer)
+	return b.String()
+}
+
+// StatusBarRender renders a one-line status bar with separator and content.
+func (t *Theme) StatusBarRender(status string, width int) string {
 	if width <= 0 {
 		width = 60
 	}
@@ -165,21 +189,34 @@ func (t *Theme) SeparatorLine(width int) string {
 	if w > 100 {
 		w = 100
 	}
-	return t.Separator.Render(strings.Repeat("─", w))
+	bar := t.Separator.Render(strings.Repeat("─", w))
+	if strings.TrimSpace(status) == "" {
+		return bar
+	}
+	return bar + "\n" + t.StatusBar.Render(status)
 }
 
-// UserPrefix renders the left gutter for a user message (❯ You).
+// UserPrefix renders the left gutter for a user message (Claude Code style: ">").
 func (t *Theme) UserPrefix() string {
+	if strings.TrimSpace(t.UserLabel) == "" {
+		return t.UserEmoji
+	}
 	return fmt.Sprintf("%s %s", t.UserEmoji, t.UserTag.Render(t.UserLabel))
 }
 
-// AssistantPrefix renders the left gutter for assistant streaming (✦ goclaw).
+// AssistantPrefix renders the assistant gutter (Claude Code style: "●").
 func (t *Theme) AssistantPrefix() string {
+	if strings.TrimSpace(t.AssistantName) == "" {
+		return t.AssistantEmoji
+	}
 	return fmt.Sprintf("%s %s", t.AssistantEmoji, t.Assistant.Render(t.AssistantName))
 }
 
 // AssistantPlainPrefix is the visible prefix without ANSI (for strip/compare logic).
 func (t *Theme) AssistantPlainPrefix() string {
+	if strings.TrimSpace(t.AssistantName) == "" {
+		return t.AssistantEmoji
+	}
 	return fmt.Sprintf("%s %s", t.AssistantEmoji, t.AssistantName)
 }
 
@@ -191,25 +228,30 @@ func (t *Theme) FooterHint() string {
 // FooterHintForWidth returns footer hints; when width is small, uses a shorter line so it does not
 // hard-wrap mid-token in narrow terminals.
 func (t *Theme) FooterHintForWidth(termWidth int) string {
-	const full = "Enter send · Ctrl+J newline · ? /help · / Tab · Esc · stop reply while streaming, exit when idle · Ctrl+C · quit · Ctrl+L clear"
-	const mid = "Enter · Ctrl+J newline · ? /help · Tab · Esc / Ctrl+C · Ctrl+L clear"
-	const short = "Enter · /help · Esc · Ctrl+C quit · Ctrl+L clear"
+	const full = "Enter send  Ctrl+J newline  /help  Tab complete  Esc stop/quit  Ctrl+C quit  Ctrl+L clear"
+	const mid = "Enter  Ctrl+J newline  /help  Tab  Esc  Ctrl+C  Ctrl+L"
+	const short = "/help  Esc  Ctrl+C  Ctrl+L"
 	if termWidth <= 0 {
 		return full
 	}
-	if termWidth < 58 {
+	if termWidth < 50 {
 		return short
 	}
-	if termWidth < 96 {
+	if termWidth < 88 {
 		return mid
 	}
 	return full
 }
 
-// SpinnerAccentStyle is Lip Gloss v2 (required by bubbles/v2 spinner).
+// SpinnerAccentStyle is Lip Gloss v2 (required by bubbles/v2 spinner when theme is nil).
 func SpinnerAccentStyle() lipv2.Style {
-	return lipv2.NewStyle().Foreground(compat.AdaptiveColor{
-		Light: lipv2.Color("#7C3AED"),
-		Dark:  lipv2.Color("#C4B5FD"),
-	})
+	return terminalstyle.SpinnerAccentLipV2("")
+}
+
+// SpinnerAccentV2 returns the Bubbles v2 spinner style for this theme preset.
+func (t *Theme) SpinnerAccentV2() lipv2.Style {
+	if t == nil {
+		return SpinnerAccentStyle()
+	}
+	return terminalstyle.SpinnerAccentLipV2(t.appearance)
 }

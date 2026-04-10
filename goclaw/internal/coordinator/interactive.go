@@ -142,13 +142,14 @@ func runInteractiveWorkerLoop(
 	w *interactiveWorker,
 	orch *orchestrator.Orchestrator,
 	initialTask string,
+	initialSink orchestrator.StreamSink,
 ) {
 	defer cancel()
 	defer unregisterWorkerCancel(w.taskID)
 	defer deleteInteractive(w.taskID)
 
 	runTurn := func(userText string, sink orchestrator.StreamSink) error {
-		res, err := orch.RunStreaming(ctx, userText, sink)
+		res, err := orch.RunStreaming(ctx, userText, wrapNestedWorkerSink(sink))
 		if err != nil {
 			w.setState(fmt.Sprintf("error: %v", err), res, "failed")
 			return err
@@ -157,7 +158,7 @@ func runInteractiveWorkerLoop(
 		return nil
 	}
 
-	if err := runTurn(initialTask, nil); err != nil {
+	if err := runTurn(initialTask, initialSink); err != nil {
 		return
 	}
 

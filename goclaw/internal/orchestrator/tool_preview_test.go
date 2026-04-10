@@ -33,7 +33,7 @@ func TestFormatToolUsePreview_empty(t *testing.T) {
 }
 
 func TestToolWorkingPhrase(t *testing.T) {
-	for _, tool := range []string{"web_search", "web_fetch", "read_file", "write_file", "edit_file", "glob", "grep", "bash", "script", "todo_write"} {
+	for _, tool := range []string{"web_search", "web_fetch", "read_file", "write_file", "edit_file", "patch", "glob", "grep", "bash", "script", "todo_write"} {
 		require.NotEmpty(t, ToolWorkingPhrase(tool), "tool=%s", tool)
 	}
 	require.Equal(t, "Running MCP tool", ToolWorkingPhrase("mcp__srv__ping"))
@@ -41,7 +41,7 @@ func TestToolWorkingPhrase(t *testing.T) {
 }
 
 func TestToolFinishedPhrase(t *testing.T) {
-	for _, tool := range []string{"web_search", "web_fetch", "read_file", "write_file", "edit_file", "glob", "grep", "bash", "script", "todo_write"} {
+	for _, tool := range []string{"web_search", "web_fetch", "read_file", "write_file", "edit_file", "patch", "glob", "grep", "bash", "script", "todo_write"} {
 		require.NotEmpty(t, ToolFinishedPhrase(tool), "tool=%s", tool)
 	}
 	require.Equal(t, "Ran MCP tool", ToolFinishedPhrase("mcp__srv__ping"))
@@ -53,6 +53,7 @@ func TestFormatToolUsePreview_allKnownTools(t *testing.T) {
 		{"web_fetch", `{"url":"http://example.com"}`},
 		{"write_file", `{"path":"out.txt","content":"x"}`},
 		{"edit_file", `{"path":"f.go","old_string":"a","new_string":"b"}`},
+		{"patch", `{"path":"f.go","diff":"--- a/f.go\n+++ b/f.go\n"}`},
 		{"glob", `{"pattern":"*.go"}`},
 		{"grep", `{"pattern":"func","path":"."}`},
 		{"script", `{"script":"echo hi"}`},

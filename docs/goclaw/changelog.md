@@ -6,8 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Orchestrator: **runtime user-language hint** (Spanish / French / German / Portuguese) derived from the latest plain user message, appended to the system prompt to improve non-English replies with local models (`internal/orchestrator/user_language_hint.go`).
+- Config: optional **`compaction_model`** (and **`GOCLAW_COMPACTION_MODEL`**) so LLM-driven compaction (`llm_compaction`) can call a smaller/faster model than the main turn; see [`ollama-stack.md`](ollama-stack.md).
+- Project template under **`goclaw/.goclaw/`**: `settings.json` tuned for a local 7B/8B stack and custom agents `stack-base`, `stack-coder`, `stack-coordinator`, `stack-explore`.
+
 ### Changed
 
+- Base system prompt (`internal/orchestrator/base_system_prompt.md`): **RESPONSE LANGUAGE** block at the top—English instructions do not imply English replies; short greetings must match user language; see [i18n.md](i18n.md).
 - Documentation layout: goclaw topic files live under monorepo **`docs/goclaw/`** with **kebab-case** names (`coordinator.md`, `mcp-remote.md`, `swarm.md`, `manual-tui-checklist.md`). Cross-cutting specs: **`docs/reference/`**; OpenClaw notes: **`docs/openclaw/`**; Spanish long-form: **`docs/archive/architecture-legacy-es.md`**; English hub: [architecture.md](../architecture.md).
 - Operator / product docs moved to **`docs/goclaw/`**: [usage.md](usage.md), [documentation.md](documentation.md), [roadmap.md](roadmap.md), [philosophy.md](philosophy.md), [changelog.md](changelog.md). **`goclaw/`** keeps [README.md](../../goclaw/README.md) + [CLAUDE.md](../../goclaw/CLAUDE.md). Master index: [docs-map.md](../docs-map.md). No `docs/README.md` (removed); repo root [README.md](../../README.md) points here.
 

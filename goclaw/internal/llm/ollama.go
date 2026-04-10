@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -19,6 +22,9 @@ import (
 type OllamaClient struct {
 	host string
 	http *http.Client
+
+	// toolsUnsupportedOnce logs once when we fall back to chat-only after Ollama rejects tools.
+	toolsUnsupportedOnce sync.Once
 }
 
 // NewOllama creates a client. host defaults to http://localhost:11434.
@@ -90,6 +96,57 @@ type ollamaChunk struct {
 }
 
 func (c *OllamaClient) stream(ctx context.Context, req Request, out chan<- Event) error {
+	return c.streamWithWireTools(ctx, req, out, true)
+}
+
+// streamWithWireTools posts /api/chat. If Ollama returns 400 because the model does not support
+// the tools API (common for llama3:latest), retries once without tools so local chat still works.
+func (c *OllamaClient) streamWithWireTools(ctx context.Context, req Request, out chan<- Event, wireTools bool) error {
+	body := buildOllamaChatRequest(req, wireTools)
+
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	resp, err := doHTTPWithRetry(ctx, c.http, func() (*http.Request, error) {
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			c.host+"/api/chat", bytes.NewReader(raw))
+		if err != nil {
+			return nil, err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		return httpReq, nil
+	})
+	if err != nil {
+		return fmt.Errorf("ollama: %w", wrapOllamaDialErr(c.host, err))
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("ollama %d: read error body: %w", resp.StatusCode, readErr)
+		}
+		msg := parseOllamaErrorMessage(errBody)
+		if wireTools && len(req.Tools) > 0 && ollamaReportsToolsUnsupported(resp.StatusCode, msg) {
+			c.toolsUnsupportedOnce.Do(func() {
+				slog.Warn("ollama: model does not support tool calling; using chat-only requests (no agent tools). For read_file/bash/etc. use a tools-capable model such as qwen2.5-coder:7b")
+			})
+			return c.streamWithWireTools(ctx, req, out, false)
+		}
+		return fmt.Errorf("ollama %d: %s", resp.StatusCode, msg)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	toolsOnWire := wireTools && len(toolSpecsToOllama(req.Tools)) > 0
+	if !toolsOnWire {
+		return c.streamTextOnly(scanner, out)
+	}
+	return c.streamWithTools(scanner, out, req.Tools)
+}
+
+func buildOllamaChatRequest(req Request, wireTools bool) ollamaRequest {
 	body := ollamaRequest{
 		Model:  req.Model,
 		Stream: true,
@@ -97,8 +154,6 @@ func (c *OllamaClient) stream(ctx context.Context, req Request, out chan<- Event
 	if req.MaxTokens > 0 {
 		body.Options.NumPredict = req.MaxTokens
 	}
-
-	// Prepend system message if provided.
 	if req.System != "" {
 		body.Messages = append(body.Messages, ollamaMessage{
 			Role:    "system",
@@ -108,43 +163,32 @@ func (c *OllamaClient) stream(ctx context.Context, req Request, out chan<- Event
 	for _, m := range req.Messages {
 		body.Messages = append(body.Messages, messageToOllama(m)...)
 	}
-	if tls := toolSpecsToOllama(req.Tools); len(tls) > 0 {
-		body.Tools = tls
-	}
-
-	raw, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
-	}
-
-	resp, err := doHTTPWithRetry(ctx, c.http, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-			c.host+"/api/chat", bytes.NewReader(raw))
-		if err != nil {
-			return nil, err
+	if wireTools {
+		if tls := toolSpecsToOllama(req.Tools); len(tls) > 0 {
+			body.Tools = tls
 		}
-		req.Header.Set("Content-Type", "application/json")
-		return req, nil
-	})
-	if err != nil {
-		return fmt.Errorf("ollama: %w", wrapOllamaDialErr(c.host, err))
 	}
-	defer resp.Body.Close()
+	return body
+}
 
-	if resp.StatusCode != http.StatusOK {
-		var apiErr struct {
-			Error string `json:"error"`
-		}
-		json.NewDecoder(resp.Body).Decode(&apiErr) //nolint:errcheck
-		return fmt.Errorf("ollama %d: %s", resp.StatusCode, apiErr.Error)
+func parseOllamaErrorMessage(body []byte) string {
+	var apiErr struct {
+		Error string `json:"error"`
 	}
+	if err := json.Unmarshal(body, &apiErr); err == nil && strings.TrimSpace(apiErr.Error) != "" {
+		return apiErr.Error
+	}
+	return strings.TrimSpace(string(body))
+}
 
-	// Ollama streams NDJSON: one JSON object per line.
-	scanner := bufio.NewScanner(resp.Body)
-	if len(req.Tools) == 0 {
-		return c.streamTextOnly(scanner, out)
+func ollamaReportsToolsUnsupported(status int, msg string) bool {
+	if status != http.StatusBadRequest {
+		return false
 	}
-	return c.streamWithTools(scanner, out, req.Tools)
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "does not support tools") ||
+		strings.Contains(m, "doesn't support tools") ||
+		strings.Contains(m, "no support for tools")
 }
 
 // streamTextOnly emits TextDelta per chunk (no tool contract).

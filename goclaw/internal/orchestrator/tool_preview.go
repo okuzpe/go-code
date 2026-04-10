@@ -39,7 +39,7 @@ func formatKnownToolPreview(toolName, input string) string {
 		if json.Unmarshal([]byte(input), &v) == nil {
 			return strings.TrimSpace(v.URL)
 		}
-	case "read_file", "write_file", "edit_file":
+	case "read_file", "write_file", "edit_file", "patch":
 		var v struct {
 			Path string `json:"path"`
 		}
@@ -191,6 +191,8 @@ func ToolWorkingPhrase(toolName string) string {
 		return "Writing a file"
 	case "edit_file":
 		return "Editing a file"
+	case "patch":
+		return "Applying a patch"
 	case "glob":
 		return "Finding paths"
 	case "grep":
@@ -226,6 +228,8 @@ func ToolFinishedPhrase(toolName string) string {
 		return "Wrote file"
 	case "edit_file":
 		return "Edited file"
+	case "patch":
+		return "Applied patch"
 	case "glob":
 		return "Matched paths"
 	case "grep":

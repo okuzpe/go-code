@@ -40,7 +40,7 @@ Code & Development
 
 File & Project Management
   - Explore projects — structure, find files, search patterns (glob, grep)
-  - Edit files — targeted changes across the workspace (write_file, edit_file)
+  - Edit files — targeted changes across the workspace (write_file, edit_file, patch)
   - Create files — source, configs, docs (within workspace rules)
 
 Terminal & Commands

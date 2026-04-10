@@ -6,27 +6,38 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/okuzpe/goclaw/internal/ui/terminalstyle"
 )
 
-var (
-	trustTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(colAccent)
-	trustRuleStyle  = lipgloss.NewStyle().Foreground(colMuted)
-	trustPathStyle  = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#0F172A", Dark: "#E2E8F0"}).
-			Bold(true)
-	trustBodyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#374151", Dark: "#D1D5DB"})
-	trustHintStyle = lipgloss.NewStyle().Foreground(colMuted).Italic(true)
-	trustSelStyle  = lipgloss.NewStyle().Foreground(colAccent2).Bold(true)
-	trustNumStyle  = lipgloss.NewStyle().Foreground(colAccent).Bold(true)
-)
+func trustStyles(uiAppearance string) (
+	titleStyle lipgloss.Style,
+	ruleStyle lipgloss.Style,
+	pathStyle lipgloss.Style,
+	bodyStyle lipgloss.Style,
+	hintStyle lipgloss.Style,
+	selStyle lipgloss.Style,
+	numStyle lipgloss.Style,
+) {
+	p := terminalstyle.PaletteForAppearance(uiAppearance)
+	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(p.TrustAccent)
+	ruleStyle = lipgloss.NewStyle().Foreground(p.Muted)
+	pathStyle = lipgloss.NewStyle().
+		Foreground(p.PathEmphasis).
+		Bold(true)
+	bodyStyle = lipgloss.NewStyle().Foreground(p.ModalBody)
+	hintStyle = lipgloss.NewStyle().Foreground(p.Muted).Italic(true)
+	selStyle = lipgloss.NewStyle().Foreground(p.TrustAccent2).Bold(true)
+	numStyle = lipgloss.NewStyle().Foreground(p.TrustAccent).Bold(true)
+	return
+}
 
 // renderOnboardingTrustStepTUI returns the workspace trust screen for Bubble Tea onboarding.
-func renderOnboardingTrustStepTUI(absWd string, cursor, width int) string {
+func renderOnboardingTrustStepTUI(uiAppearance, absWd string, cursor, width int) string {
 	if width <= 0 {
 		width = 80
 	}
 	inner := width - 2
+	trustTitleStyle, trustRuleStyle, trustPathStyle, trustBodyStyle, trustHintStyle, trustSelStyle, _ := trustStyles(uiAppearance)
 	title := trustTitleStyle.Render("Accessing workspace")
 	rule := trustRuleStyle.Render(strings.Repeat("─", min(max(inner, 40), 76)))
 	pathLine := trustPathStyle.Render(absWd)
@@ -37,9 +48,9 @@ func renderOnboardingTrustStepTUI(absWd string, cursor, width int) string {
 	for i, label := range labels {
 		line := trustBodyStyle.Render(label)
 		if i == cursor {
-			opts.WriteString(trustSelStyle.Render("❯ ") + line + "\n")
+			opts.WriteString(trustSelStyle.Render("> ") + line + "\n")
 		} else {
-			opts.WriteString("   " + line + "\n")
+			opts.WriteString("  " + line + "\n")
 		}
 	}
 
@@ -63,11 +74,12 @@ func renderOnboardingTrustStepTUI(absWd string, cursor, width int) string {
 }
 
 // renderOnboardingTrustStepReadlineTTY is the Lip Gloss version for line-based onboarding.
-func renderOnboardingTrustStepReadlineTTY(absWd string, width int) string {
+func renderOnboardingTrustStepReadlineTTY(uiAppearance, absWd string, width int) string {
 	if width <= 0 {
 		width = 80
 	}
 	inner := max(width-2, 48)
+	trustTitleStyle, trustRuleStyle, trustPathStyle, trustBodyStyle, trustHintStyle, _, trustNumStyle := trustStyles(uiAppearance)
 	title := trustTitleStyle.Render("Accessing workspace")
 	rule := trustRuleStyle.Render(strings.Repeat("─", min(inner, 76)))
 	pathLine := trustPathStyle.Render(absWd)
@@ -118,10 +130,10 @@ func printOnboardingTrustStepReadlinePlain(absWd string) {
 }
 
 // printOnboardingTrustStepReadline prints the trust step with Lip Gloss on a TTY.
-func printOnboardingTrustStepReadline(absWd string) {
+func printOnboardingTrustStepReadline(uiAppearance, absWd string) {
 	if !isTTY(os.Stdout) {
 		printOnboardingTrustStepReadlinePlain(absWd)
 		return
 	}
-	fmt.Print(renderOnboardingTrustStepReadlineTTY(absWd, stdoutWrapWidth()))
+	fmt.Print(renderOnboardingTrustStepReadlineTTY(uiAppearance, absWd, stdoutWrapWidth()))
 }

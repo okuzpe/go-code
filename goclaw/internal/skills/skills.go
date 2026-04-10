@@ -48,16 +48,23 @@ func Collect(roots []string, maxRunes int) (string, error) {
 			if err != nil {
 				return nil
 			}
-			body := strings.TrimSpace(string(raw))
-			if body == "" {
+			meta, body, hasFM := ParseFrontmatter(raw)
+			if !hasFM {
+				body = strings.TrimSpace(string(raw))
+			}
+			if strings.TrimSpace(body) == "" && meta.Name == "" && meta.Description == "" {
 				return nil
 			}
-			rs := []rune(body)
-			if len(rs) > maxPerFileRunes {
-				body = string(rs[:maxPerFileRunes]) + "\n…(truncated)"
+			var chunk string
+			if hasFM {
+				chunk = formatSkillChunk(path, meta, body, maxPerFileRunes)
+			} else {
+				rs := []rune(body)
+				if len(rs) > maxPerFileRunes {
+					body = string(rs[:maxPerFileRunes]) + "\n…(truncated)"
+				}
+				chunk = "### " + path + "\n" + body + "\n\n"
 			}
-			heading := "### " + path + "\n"
-			chunk := heading + body + "\n\n"
 			add := utf8.RuneCountInString(chunk)
 			if total+add > maxRunes {
 				return fs.SkipAll

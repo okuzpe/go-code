@@ -71,6 +71,11 @@ func TestRiskScore_editFileWorkspace(t *testing.T) {
 	require.Equal(t, 60, RiskScore("edit_file", input))
 }
 
+func TestRiskScore_patchWorkspace(t *testing.T) {
+	input := marshalInput(t, map[string]string{"path": "internal/foo.go", "diff": "--- a/foo\n+++ b/foo\n"})
+	require.Equal(t, 60, RiskScore("patch", input))
+}
+
 func TestRiskScore_writeFileAbsPath(t *testing.T) {
 	input := marshalInput(t, map[string]string{"path": "/etc/passwd"})
 	require.Equal(t, 90, RiskScore("write_file", input))

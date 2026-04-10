@@ -121,6 +121,19 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 			return nil, fmt.Errorf("provider=anthropic requires an API key: set environment variable ANTHROPIC_API_KEY, or add \"api_key\" to ~/.goclaw/settings.json or your project .goclaw/settings.json (run \"goclaw doctor\" to verify)")
 		}
 		client = llm.NewAnthropic(apiKey, cfg.BaseURL)
+	case "openai_compatible":
+		baseURL := strings.TrimSpace(cfg.OpenAICompatBaseURL)
+		apiKey := strings.TrimSpace(cfg.OpenAICompatAPIKey)
+		if baseURL == "" {
+			return nil, fmt.Errorf("provider=openai_compatible requires a base URL: set OPENAI_BASE_URL or \"openai_base_url\" in settings (example: https://openrouter.ai/api/v1)")
+		}
+		if apiKey == "" {
+			return nil, fmt.Errorf("provider=openai_compatible requires an API key: set OPENAI_API_KEY or \"openai_api_key\" in settings")
+		}
+		if strings.TrimSpace(cfg.Model()) == "" {
+			return nil, fmt.Errorf("provider=openai_compatible requires a model id: set OPENAI_MODEL or \"openai_model\" in settings")
+		}
+		client = llm.NewOpenAICompat(apiKey, baseURL)
 	default:
 		client = llm.NewOllama(cfg.OllamaHost)
 	}
@@ -332,7 +345,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	}, nil
 }
 
-// registerBuiltInTools registers the 9 built-in tools into r.
+// registerBuiltInTools registers the 10 built-in tools into r (plus optional script when allow_script is true).
 // It does NOT register spawn_agent — callers that need it do so separately.
 // This is the single source of truth for built-in tool registration.
 func registerBuiltInTools(r *tools.Registry, workdir string, cfg config.Config, todoStore *todos.Store) {
@@ -345,6 +358,7 @@ func registerBuiltInTools(r *tools.Registry, workdir string, cfg config.Config, 
 	}
 	r.Register(tools.NewWriteFile(workdir))
 	r.Register(tools.NewEditFile(workdir))
+	r.Register(tools.NewPatch(workdir))
 	r.Register(tools.NewWebFetch())
 	webBackend, webBackendOK := config.NormalizeWebSearchBackend(cfg.WebSearchBackend)
 	if !webBackendOK && strings.TrimSpace(cfg.WebSearchBackend) != "" {

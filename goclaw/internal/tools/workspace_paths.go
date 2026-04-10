@@ -20,7 +20,7 @@ import (
 // This prevents common symlink-escape tricks where a path appears to be inside the workspace
 // before resolving symlinks but points outside after resolution.
 //
-// Used by read_file, grep, and edit_file for consistent boundary checks.
+// Used by read_file, grep, edit_file, and patch for consistent boundary checks.
 func resolveExistingPathUnderRoot(root, userPath string) (string, error) {
 	candidate := userPath
 	if !filepath.IsAbs(candidate) {
@@ -49,4 +49,39 @@ func resolveExistingPathUnderRoot(root, userPath string) (string, error) {
 		return "", fmt.Errorf("path escapes workspace")
 	}
 	return eval, nil
+}
+
+// resolveWriteTargetUnderRoot validates and resolves a path for creating or overwriting a file
+// (write_file and patch when creating a new file). The target file may not exist yet.
+// Symlinks are evaluated on the parent directory only.
+func resolveWriteTargetUnderRoot(root, userPath string) (string, error) {
+	candidate := userPath
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(root, userPath)
+	}
+	candidate = filepath.Clean(candidate)
+
+	parentDir := filepath.Dir(candidate)
+	evalParent, err := filepath.EvalSymlinks(parentDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("parent directory does not exist: %s", parentDir)
+		}
+		return "", fmt.Errorf("resolve parent directory: %w", err)
+	}
+
+	rootEval, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		rootEval = root
+	}
+
+	rel, err := filepath.Rel(rootEval, evalParent)
+	if err != nil {
+		return "", fmt.Errorf("path escapes workspace")
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes workspace")
+	}
+
+	return filepath.Join(evalParent, filepath.Base(candidate)), nil
 }

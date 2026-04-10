@@ -43,7 +43,7 @@ func replPrompt(s *session.Session, focus *coordinator.FocusRouter) string {
 	return id + "> "
 }
 
-func terminalToolApprover(rl *readline.Instance, getPrompt func() string) orchestrator.ToolApprover {
+func terminalToolApprover(rl *readline.Instance, getPrompt func() string, uiAppearance string) orchestrator.ToolApprover {
 	return func(ctx context.Context, toolName, toolInput string) (bool, error) {
 		_ = ctx
 		preview := orchestrator.FormatToolUsePreview(toolName, toolInput)
@@ -53,7 +53,7 @@ func terminalToolApprover(rl *readline.Instance, getPrompt func() string) orches
 				preview = preview[:400] + "…"
 			}
 		}
-		printToolApprovalPrompt(os.Stderr, toolName, preview)
+		printToolApprovalPrompt(os.Stderr, toolName, preview, uiAppearance)
 		rl.SetPrompt("Allow execution? [y/N]: ")
 		line, err := rl.Readline()
 		rl.SetPrompt(getPrompt())
@@ -240,7 +240,7 @@ func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrat
 	defer rl.Close()
 
 	getPrompt := func() string { return replPrompt(rt.Sess, focus) }
-	orchOpts = append(append([]orchestrator.Option(nil), orchOpts...), orchestrator.WithToolApprover(terminalToolApprover(rl, getPrompt)))
+	orchOpts = append(append([]orchestrator.Option(nil), orchOpts...), orchestrator.WithToolApprover(terminalToolApprover(rl, getPrompt, rt.Cfg.UIAppearance)))
 	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, orchOpts...)
 
 	go func() { <-ctx.Done(); _ = rl.Close() }()

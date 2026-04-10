@@ -16,4 +16,6 @@ const (
 	MaxGrepMatches      = 200
 	MaxGrepFileBytes    = 512 * 1024
 	MaxWriteFileBytes   = 1 * 1024 * 1024 // 1 MiB — write_file content cap and edit_file result cap
+	// MaxPatchDiffBytes caps unified-diff input for the patch tool (parsed + applied in memory).
+	MaxPatchDiffBytes = 1 * 1024 * 1024
 )

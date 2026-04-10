@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/okuzpe/goclaw/internal/ui/terminalstyle"
 	"golang.org/x/term"
 )
 
@@ -20,29 +21,15 @@ func isTTY(w io.Writer) bool {
 	return term.IsTerminal(fd)
 }
 
-var (
-	colAccent  = lipgloss.Color("#7C3AED")
-	colAccent2 = lipgloss.Color("#06B6D4")
-	colUser    = lipgloss.Color("#10B981")
-	colAI      = lipgloss.Color("#818CF8")
-	colWarning = lipgloss.Color("#F59E0B")
-	colMuted   = lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"}
-)
-
 var asciiLogo = `
-  ██████╗  ██████╗  ██████╗██╗      █████╗ ██╗    ██╗
- ██╔════╝ ██╔═══██╗██╔════╝██║     ██╔══██╗██║    ██║
- ██║  ███╗██║   ██║██║     ██║     ███████║██║ █╗ ██║
- ██║   ██║██║   ██║██║     ██║     ██╔══██║██║███╗██║
- ╚██████╔╝╚██████╔╝╚██████╗███████╗██║  ██║╚███╔███╔╝
-  ╚═════╝  ╚═════╝  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝`
+  ┏━╸┏━┓┏━╸┏  ┏━┓╻ ╻
+  ┃╺┓┃ ┃┃  ┃  ┣━┫┃╻┃
+  ┗━┛┗━┛┗━╸┗━╸╹ ╹┗┻┛`
 
 // printStartupBanner renders the ASCII header and session summary for the readline REPL path (and the
 // plain-text branch when stdout is not a TTY). Default fullscreen TUI does not call this — startup UX
 // lives in internal/ui/chat (welcome panel, footer).
-func printStartupBanner(version, provider, model, profileName, sessionID, workdir string, disableTools bool) {
-	uiMode := "readline REPL (use --readline or GOCLAW_USE_READLINE=1, or GOCLAW_USE_TUI=0)"
-
+func printStartupBanner(version, provider, model, profileName, sessionID, workdir string, disableTools bool, uiAppearance string) {
 	if !isTTY(os.Stdout) {
 		fmt.Printf("goclaw %s  provider=%s  model=%s  profile=%s  session=%s\n",
 			version, provider, model, profileName, sessionID)
@@ -52,90 +39,78 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 		} else {
 			fmt.Println("Tools in Ask mode — answer y/N. Ctrl+C to exit.")
 		}
-		fmt.Printf("UI: %s\n", uiMode)
 		fmt.Println()
 		return
 	}
 
-	logoStyle := lipgloss.NewStyle().
-		Foreground(colAccent).
-		Bold(true)
-	logo := logoStyle.Render(asciiLogo)
+	p := terminalstyle.PaletteForAppearance(uiAppearance)
+	keySt := lipgloss.NewStyle().Foreground(p.BannerKey)
+	valSt := lipgloss.NewStyle().Foreground(p.BannerValue)
+	dim := lipgloss.NewStyle().Foreground(p.Muted)
+	accent := lipgloss.NewStyle().Foreground(p.BannerLogo).Bold(true)
 
-	pill := func(label, value string, fg lipgloss.Color) string {
-		lStyle := lipgloss.NewStyle().
-			Background(fg).
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Bold(true).
-			Padding(0, 1).
-			Render(label)
-		vStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#E5E7EB"}).
-			Render(value)
-		return lStyle + " " + vStyle
+	logo := accent.Render(asciiLogo)
+	sep := dim.Render(strings.Repeat("─", 44))
+
+	kv := func(key, value string) string {
+		return keySt.Render(key) + dim.Render(": ") + valSt.Render(value)
 	}
 
-	dim := lipgloss.NewStyle().Foreground(colMuted)
-	sep := dim.Render(strings.Repeat("─", 58))
-
-	metaLine := strings.Join([]string{
-		pill("v", version, colAccent),
-		pill("provider", provider, colAccent2),
-		pill("model", model, colAI),
-	}, "  ")
-
-	sessionLine := strings.Join([]string{
-		pill("profile", profileName, colUser),
-		pill("session", truncate(sessionID, 12), lipgloss.Color("#6366F1")),
-	}, "  ")
-
-	workLine := dim.Render("📂 " + workdir)
+	info := lipgloss.JoinVertical(lipgloss.Left,
+		"  "+kv("provider", provider)+"  "+kv("model", model),
+		"  "+kv("profile", profileName)+"  "+kv("session", truncate(sessionID, 12)),
+		"  "+kv("workspace", workdir),
+	)
 
 	var toolsNote string
 	if disableTools {
-		toolsNote = lipgloss.NewStyle().Foreground(colWarning).Render("⚠  Tools disabled (--no-tools or GOCLAW_DISABLE_TOOLS=1)")
+		toolsNote = lipgloss.NewStyle().Foreground(p.BannerWarning).Render("  Tools disabled")
 	} else {
-		toolsNote = dim.Render("🔧 Tools active — ask mode prompts y/N before execution")
+		toolsNote = dim.Render("  Tools: ask mode (y/N before execution)")
 	}
 
-	var modeLine string
-	showCoordinatorHub := strings.EqualFold(strings.TrimSpace(profileName), "coordinator")
-	if showCoordinatorHub {
-		modeLine = dim.Render("🧭 Coordinator hub — ask for several spawn_agent calls in one message for parallel workers; /workers lists only interactive workers; /profile general-purpose to edit the repo yourself")
-	}
-
-	helpLine := dim.Render("/help · /capabilities · /workers · /focus · /detach · /edit multiline · Ctrl+C exit · claw-style REPL")
-	uiLine := dim.Render("🖥  UI: " + uiMode)
+	helpLine := dim.Render("  /help  /capabilities  /workers  Ctrl+C exit")
 
 	fmt.Println(logo)
 	fmt.Println(sep)
-	fmt.Println(" " + metaLine)
-	fmt.Println(" " + sessionLine)
-	fmt.Println(" " + workLine)
+	fmt.Println(info)
 	fmt.Println(sep)
-	fmt.Println(" " + toolsNote)
-	if showCoordinatorHub {
-		fmt.Println(" " + modeLine)
+	fmt.Println(toolsNote)
+
+	if strings.EqualFold(strings.TrimSpace(profileName), "coordinator") {
+		fmt.Println(dim.Render("  Coordinator hub — /workers, /focus, /detach, /profile general-purpose"))
 	}
-	fmt.Println(" " + helpLine)
-	fmt.Println(" " + uiLine)
+
+	fmt.Println(helpLine)
 	fmt.Println(sep)
 	fmt.Println()
 }
 
-func printToolApprovalPrompt(w io.Writer, toolName, preview string) {
+func printToolApprovalPrompt(w io.Writer, toolName, preview string, uiAppearance string) {
+	p := terminalstyle.PaletteForAppearance(uiAppearance)
 	if !isTTY(w) {
 		fmt.Fprintf(w, "\n[tool] %s\n%s\n", toolName, preview)
 		return
 	}
-	head := lipgloss.NewStyle().Bold(true).Foreground(colWarning).Render("⚡  Tool approval")
-	name := lipgloss.NewStyle().Bold(true).Foreground(colAccent2).Render(toolName)
-	body := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#374151", Dark: "#D1D5DB"}).
-		Render(wrapPlain(preview, 76))
-	foot := lipgloss.NewStyle().Foreground(colMuted).Italic(true).Render("y + Enter = allow · n = deny · readline prompt below →")
+	dim := lipgloss.NewStyle().Foreground(p.Muted)
+	head := lipgloss.NewStyle().Bold(true).Foreground(p.BannerWarning).Render("⚡ Tool approval")
+	name := lipgloss.NewStyle().Bold(true).Foreground(p.TrustAccent2).Render(toolName)
+	body := lipgloss.NewStyle().Foreground(p.ModalBody).Render(wrapPlain(preview, 76))
+	foot := dim.Italic(true).Render("y/Enter allow  n deny")
+
+	cardBorder := lipgloss.Border{
+		Top:         "─",
+		Bottom:      "─",
+		Left:        "│",
+		Right:       "│",
+		TopLeft:     "╭",
+		TopRight:    "╮",
+		BottomLeft:  "╰",
+		BottomRight: "╯",
+	}
 	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.AdaptiveColor{Light: "#D1D5DB", Dark: "#4B5563"}).
+		Border(cardBorder, true, true, true, true).
+		BorderForeground(p.InputBorder).
 		Padding(0, 1).
 		Width(78).
 		Render(name + "\n" + body)
@@ -192,8 +167,8 @@ func truncate(s string, max int) string {
 
 // FormatChatWindowTitle keeps the TUI header on one line for typical terminal widths.
 func FormatChatWindowTitle(provider, model, profile string) string {
-	if len(model) > 44 {
-		model = model[:43] + "…"
+	if len(model) > 40 {
+		model = model[:39] + "…"
 	}
-	return fmt.Sprintf("goclaw · %s · %s · %s", provider, model, profile)
+	return fmt.Sprintf("goclaw  %s/%s  %s", provider, model, profile)
 }

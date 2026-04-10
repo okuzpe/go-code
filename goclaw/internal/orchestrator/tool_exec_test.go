@@ -34,7 +34,7 @@ func TestExecuteToolReadOnlyBlocksMCPTool(t *testing.T) {
 		agents.Profile{Name: "ro", ReadOnly: true},
 	)
 
-	out := o.executeTool(context.Background(), &llm.ToolUse{Name: "mcp__demo__echo", Input: "{}"})
+	out := o.executeTool(context.Background(), &llm.ToolUse{Name: "mcp__demo__echo", Input: "{}"}, nil)
 	require.True(t, out.IsError)
 	require.Contains(t, out.Content, "mcp tools are disabled")
 	require.Nil(t, out.Err)
@@ -63,7 +63,7 @@ func TestExecuteToolPreToolUseExternalHookExit1Blocks(t *testing.T) {
 		agents.Explore,
 	)
 
-	out := o.executeTool(context.Background(), &llm.ToolUse{Name: "read_file", Input: "{}"})
+	out := o.executeTool(context.Background(), &llm.ToolUse{Name: "read_file", Input: "{}"}, nil)
 	require.True(t, out.IsError)
 	require.Contains(t, out.Content, "pre_tool_use hook")
 	require.Nil(t, out.Err)

@@ -5,12 +5,12 @@
 - **Go module**: `github.com/okuzpe/goclaw`
 - **Go version**: 1.26
 - **Default provider**: local Ollama (`qwen2.5-coder:14b`)
-- **Alternative provider**: Anthropic API (requires `ANTHROPIC_API_KEY`)
+- **Alternative providers**: Anthropic API (`ANTHROPIC_API_KEY`); **OpenAI-compatible** HTTP APIs (`provider: "openai_compatible"`, e.g. OpenRouter, Groq, LM Studio local server — `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`)
 - **Repo root**: clone path + `/goclaw` (module root for `go build` / `go test`)
 
 **Workspace note:** If the parent folder also contains `claw-code/`, treat it as **reference material only**. It is not part of this module, not covered by this roadmap, and must not be modified when implementing goclaw. All product code, tests, and phase work live under `goclaw/`.
 
-**Documentation map:** [documentation.md](../docs/goclaw/documentation.md) (what belongs in `goclaw/` vs monorepo `docs/`). **Canonical index:** [README.md](README.md); master file list: [docs-map.md](../docs/docs-map.md).
+**Documentation map:** [documentation.md](../docs/goclaw/documentation.md) (what belongs in `goclaw/` vs monorepo `docs/`). **Canonical index:** [README.md](README.md); master file list: [docs-map.md](../docs/docs-map.md). **Docs ↔ code layers:** [code-adjustment-map.md](../docs/reference/code-adjustment-map.md).
 
 ---
 
@@ -96,7 +96,7 @@ See the `audit` skill for the full checklist.
 
 | Layer | What goclaw does |
 |-------|------------------|
-| **Hub-and-spoke coordinator** | Implemented: default `agent_profile` is `coordinator` (hub); tools `spawn_agent`, `stop_task`, `todo_write` only on the parent; workers use `general-purpose`, `explore`, `plan`, or `verification` with isolated `session.Session`. Optional `spawn_agent` **`interactive: true`** plus REPL **`/focus`** / **`/detach`**. Code: [`internal/coordinator`](internal/coordinator/), wiring in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go). Design notes: [`coordinator.md`](../docs/goclaw/coordinator.md), product comparison [`coordinator-mode.md`](../docs/reference/coordinator-mode.md). |
+| **Hub-and-spoke coordinator** | Implemented: default `agent_profile` is `coordinator` (hub); tools `spawn_agent`, `stop_task`, `todo_write` only on the parent; workers use `general-purpose`, `explore`, `plan`, or `verification` with isolated `session.Session`. Optional `spawn_agent` **`interactive: true`** plus REPL **`/focus`** / **`/detach`**. Worker runs stream to the parent UI via [`ContextWithStreamSink`](internal/orchestrator/sink_context.go). If multiple tools are auto-approved in one message, **`spawn_agent` is not parallelized** with other tools ([`pendingToolsIncludeSpawnAgent`](internal/orchestrator/orchestrator.go)) to avoid duplicate workers and GPU contention. Prefer **`general-purpose`** for direct repo edits without delegation. End-user notes: [usage.md — Agent profiles](../docs/goclaw/usage.md) (`timeout_sec`, coordinator vs `general-purpose`). Code: [`internal/coordinator`](internal/coordinator/), wiring in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go). Design notes: [`coordinator.md`](../docs/goclaw/coordinator.md), product comparison [`coordinator-mode.md`](../docs/reference/coordinator-mode.md). |
 | **Team/Swarm (peer agents)** | **Minimal disk hub** — [`internal/swarm`](internal/swarm/): mailboxes under a user-chosen directory (tests + future tools). Not the same as `spawn_agent`; see [`swarm.md`](../docs/goclaw/swarm.md). |
 | **External orchestration** | Optional: wrap `goclaw` with your own scheduler/event bus (analogous in spirit to claw-code + clawhip + Discord). Not a goclaw dependency. |
 
@@ -123,23 +123,25 @@ goclaw/
 │   │   └── mock.go              ← canned assistant stream for `--mock` / UI wiring tests
 │   ├── slashcmd/                ← `/` slash handlers: `HandleSlash` (`slash.go`), `editor.go`, tests
 │   ├── ui/chat/                 ← Bubble Tea fullscreen TUI (`--tui` / `GOCLAW_USE_TUI`): `chat.go`, `sink.go`, `theme.go`
-│   ├── llm/                     ← Client interface + AnthropicClient + OllamaClient
+│   ├── llm/                     ← Client interface + AnthropicClient + OllamaClient + OpenAICompatClient
 │   │   ├── client.go            ← Client interface, Request, ToolSpec, Event types
 │   │   ├── message.go           ← Message (text + ToolCalls / ToolResults)
 │   │   ├── anthropic_wire.go    ← Maps messages to Anthropic content blocks
 │   │   ├── ollama_wire.go       ← Expands tool turns for Ollama /api/chat
 │   │   ├── anthropic.go         ← SSE streaming to /v1/messages
 │   │   ├── ollama.go            ← NDJSON streaming to /api/chat
-│   │   └── retry.go             ← HTTP retries / backoff (D22) for Anthropic and Ollama POSTs
+│   │   ├── openai_compat.go     ← SSE streaming to /v1/chat/completions (OpenAI-compatible)
+│   │   └── retry.go             ← HTTP retries / backoff (D22) for LLM POSTs
 │   ├── session/session.go       ← Session{ID, Messages[]}, Add / AddAssistant / AddToolResults
 │   ├── orchestrator/            ← main loop: user → LLM → tools → repeat (32 iter / 64 tool calls)
 │   │   ├── orchestrator.go      ← `Run` / `RunStreaming`, `Orchestrator`, options, session/profile helpers
 │   │   ├── compaction.go        ← token estimate, `maybeCompact`, `ForceCompact`
 │   │   ├── request.go           ← `buildRequest`, allowlist / ReadOnly tool filtering
+│   │   ├── user_language_hint.go ← runtime locale hint from latest user text (es/fr/de/pt)
 │   │   └── tool_exec.go         ← `executeTool`, permissions + hooks + registry dispatch
 │   ├── tools/
 │   │   ├── registry.go          ← interface Tool, Registry{Get/Register/Specs}
-│   │   ├── read_file.go, write_file.go, edit_file.go, glob.go, grep.go, bash.go, web_fetch.go, web_search.go, todo_write.go
+│   │   ├── read_file.go, write_file.go, edit_file.go, patch.go, glob.go, grep.go, bash.go, web_fetch.go, web_search.go, todo_write.go
 │   │   └── limits.go, ssrf.go   ← shared caps / SSRF checks for web_fetch
 │   ├── planfile/                ← workspace `.goclaw/plan.md` path, template, handoff message text
 │   ├── todos/                   ← session task list store (todo_write)
@@ -173,9 +175,13 @@ goclaw/
 |----------|---------|-------------|
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_MODEL` | `qwen2.5-coder:14b` | Local model name when `provider=ollama` |
+| `GOCLAW_COMPACTION_MODEL` | — | Optional model id for LLM-driven compaction only; applied in `config.Default()` before settings merge; a `compaction_model` key in merged `settings.json` overrides; empty keeps main model for compaction |
 | `ANTHROPIC_API_KEY` | — | Required when `provider=anthropic` |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Override for tests (mock server) |
 | `GOCLAW_MODEL` | `claude-sonnet-4-6` | Anthropic model when `provider=anthropic`; short aliases `opus`, `sonnet`, `haiku` resolve to full ids (see [`internal/config/config.go`](internal/config/config.go)) |
+| `OPENAI_BASE_URL` | — | Base URL including `/v1` when `provider=openai_compatible` (e.g. `https://openrouter.ai/api/v1`); or `openai_base_url` in settings |
+| `OPENAI_API_KEY` | — | API key for the OpenAI-compatible endpoint; or `openai_api_key` in settings |
+| `OPENAI_MODEL` | — | Model id for `provider=openai_compatible` (e.g. `openrouter/free`); or `openai_model` in settings |
 | `GOCLAW_DISABLE_TOOLS` | (empty) | Set to `1` to run without tools (same idea as `--no-tools`) |
 | `GOCLAW_MOCK_FAST` | (empty) | Set to `1` to remove pacing delays from `--mock` (CI / scripts) |
 | `BRAVE_SEARCH_API_KEY` | — | Brave Search API token when `web_search_backend` is `brave` (optional; can use `brave_search_api_key` in settings) |
@@ -192,6 +198,14 @@ goclaw/
 - Local files are machine-local; do not commit project `settings.local.json`.
 
 **Merge order:** `config.Default()` (includes env vars) → user `settings.json` → project `settings.json` → user `settings.local.json` → project `settings.local.json` (each step overrides overlapping keys). Then **`GOCLAW_AGENT_PROFILE`** if set. Then CLI: **`goclaw --profile <name>`** overrides `agent_profile` last.
+
+**Provider and model (summary):**
+
+| `provider` | Model source | Custom agents (`model` in YAML frontmatter) |
+|------------|--------------|-----------------------------------------------|
+| `ollama` (default) | `OLLAMA_MODEL` / `ollama_model` | Overrides global model when non-empty |
+| `anthropic` | `GOCLAW_MODEL` / aliases | Overrides global model when non-empty |
+| `openai_compatible` | `OPENAI_MODEL` / `openai_model` | Overrides global model when non-empty |
 
 **CLI (session / tools / UI):**
 - **`--session <id>`** — load history from `~/.goclaw/sessions/<id>.jsonl` (clear error if missing).
@@ -230,7 +244,21 @@ Example **`settings.json`:**
 }
 ```
 
-Optional keys: **`web_search_backend`** (`ddg` \| `brave` \| `serpapi`), **`brave_search_api_key`**, **`serpapi_api_key`**, **`web_search_fallback_ddg`** (default true when using a non-DDG backend), **`token_count_mode`** (`auto` \| `heuristic`) for Anthropic compaction (`auto` uses the [count_tokens API](https://docs.anthropic.com/en/api/messages-count-tokens) once the heuristic estimate crosses 70% of the compaction threshold).
+Optional keys: **`compaction_model`** — model id for LLM summarization when **`llm_compaction`** is true (smaller/faster model than the main turn); **`web_search_backend`** (`ddg` \| `brave` \| `serpapi`), **`brave_search_api_key`**, **`serpapi_api_key`**, **`web_search_fallback_ddg`** (default true when using a non-DDG backend), **`token_count_mode`** (`auto` \| `heuristic`) for Anthropic compaction (`auto` uses the [count_tokens API](https://docs.anthropic.com/en/api/messages-count-tokens) once the heuristic estimate crosses 70% of the compaction threshold).
+
+**Open-weight stack (Ollama):** see [`docs/goclaw/ollama-stack.md`](../docs/goclaw/ollama-stack.md) for project template agents under `goclaw/.goclaw/agents/` and `OLLAMA_MAX_LOADED_MODELS` notes.
+
+**OpenAI-compatible example** (e.g. [OpenRouter](https://openrouter.ai); base URL must include `/v1`):
+
+```json
+{
+  "provider": "openai_compatible",
+  "openai_base_url": "https://openrouter.ai/api/v1",
+  "openai_api_key": "sk-or-v1-…",
+  "openai_model": "openrouter/free",
+  "model_context_tokens": 128000
+}
+```
 
 Optional key **`bash_timeout_sec`** (positive integer, max 3600): overrides the default bash tool timeout ([`internal/tools/limits.go`](internal/tools/limits.go) `BashTimeoutSec` = 30). Omitted or zero keeps the default.
 
@@ -364,7 +392,7 @@ var _ llm.Client = (*AnthropicClient)(nil)
 
 ## Tool Contract MVP
 
-### Nine built-in tools (MVP)
+### Built-in tools (MVP)
 
 | Tool | Risk | Input | Output cap | Notes |
 |------|------|-------|------------|-------|
@@ -374,6 +402,7 @@ var _ llm.Client = (*AnthropicClient)(nil)
 | `bash` | shell | command, cwd? | 256 KiB truncated | Allowlist (D4); single simple command — `rejectShellMetacharacters` blocks pipes, `;`, `&&`, redirects, `$(...)`, unquoted `&`; timeout from `bash_timeout_sec` or default 30s |
 | `write_file` | write | path, content | 1 MiB content | Atomic (temp+rename); parent dir must exist; stripped from ReadOnly |
 | `edit_file` | write | path, old_string, new_string, replace_all? | 1 MiB result | str_replace; exact match unless replace_all:true; preserves file mode; stripped from ReadOnly |
+| `patch` | write | path, diff | 1 MiB diff; 1 MiB result | Git/unified diff, exactly one file; `path` must match `a/` / `b/` headers; binary rejected; stripped from ReadOnly |
 | `web_search` | network | query | Top 8 hits, 2 KiB/snippet | Backend from `web_search_backend` (DDG / Brave / SerpAPI; optional DDG fallback). DDG uses instant JSON first, then HTML SERP when JSON has no hits |
 | `web_fetch` | network | url, max_bytes? | 1 MiB text/HTML | SSRF guards; HTML responses reduced to plain text when extraction yields enough words |
 | `todo_write` | session_meta | merge, todos[] | 50 items; 500 runes/content | Session task list; snapshot in system prompt via `orchestrator.WithTodoStore`; cleared on `/new` |
@@ -404,7 +433,7 @@ var _ llm.Client = (*AnthropicClient)(nil)
 
 | Decision | Actionable rule |
 |----------|----------------|
-| D1: Providers | Ollama = default. Anthropic = opt-in with API key. Do not couple provider logic. |
+| D1: Providers | Ollama = default. Anthropic and `openai_compatible` (OpenAI Chat Completions–compatible) = opt-in with credentials. Keep provider-specific code behind `llm.Client`. |
 | D4: Bash security | Allowlist (expanded binaries + git subcommands), not denylist. Single simple command: `rejectShellMetacharacters` blocks shell chaining that would bypass the allowlist. User confirmation always required in Ask mode. |
 | D5: Permissions | Default = ModeAsk (fail-closed). `bypassPermissions` NOT implemented in MVP. |
 | D6: MCP | **stdio + Streamable HTTP** (`internal/mcp`, `http.go`): subprocess **or** `mcp_servers[].url` (optional `headers`, optional **`bearer_token_file`** → `Authorization: Bearer` if no header set); tools as `mcp__server__tool`. HTTP URLs must be **loopback** unless `mcp_allow_remote_urls` is set in settings. **Not done:** OAuth, WebSocket, legacy HTTP+SSE-only servers. See [`mcp-remote.md`](../docs/goclaw/mcp-remote.md). |
@@ -418,7 +447,7 @@ var _ llm.Client = (*AnthropicClient)(nil)
 | D19: Custom agents | **Implemented** — Markdown + YAML frontmatter in `~/.goclaw/agents/*.md` and `.goclaw/agents/*.md`; fields: `name`, `model`, `tool_allowlist`, `read_only`, `system_prompt`; body appended to system prompt; hot-reload on `/profile`; project overrides user overrides built-in. See [`internal/agents/profile.go`](internal/agents/profile.go). |
 | D20: Plugins | **MVP** — `internal/plugin`: each root contains `goclaw-plugin.json` (`name`, optional `hooks_file`); `plugin_dirs` in settings + `--plugin-dir` (repeatable); `plugin_allow` / `plugin_deny` (deny wins). Hooks load via same mechanism as `.goclaw/hooks.json`. Treat plugins as **executable config** (supply chain), like `trusted_workspace`. |
 | Skills (runtime) | **`internal/skills`** discovers `SKILL.md` under `.goclaw/skills/`, `.claude/skills/`, `~/.goclaw/skills/`, `~/.goclaw/.claude/skills/` (recursive under each root); content is injected under `## Loaded skills (SKILL.md)` in the system prompt (bounded size). |
-| D22: Retry | **Implemented** in [`internal/llm/retry.go`](internal/llm/retry.go): `doHTTPWithRetry` wraps Anthropic and Ollama POSTs — retries on **429**, **503**, **504** with `Retry-After` when present, else exponential backoff (base 500ms, ceiling 5min), up to **10** attempts; transient **network errors** retry with the same backoff. |
+| D22: Retry | **Implemented** in [`internal/llm/retry.go`](internal/llm/retry.go): `doHTTPWithRetry` wraps Anthropic, Ollama, and OpenAI-compat POSTs — retries on **429**, **503**, **504** with `Retry-After` when present, else exponential backoff (base 500ms, ceiling 5min), up to **10** attempts; transient **network errors** retry with the same backoff. |
 
 ---
 

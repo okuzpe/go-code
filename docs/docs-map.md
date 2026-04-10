@@ -14,10 +14,10 @@ Single entry point for humans and AI agents: which file covers which topic, and 
 |------|--------|
 | Entry point | Thin `goclaw/cmd/goclaw` (`main.go` + `version.go`): slog + [`internal/cli`](../goclaw/internal/cli/root.go) Cobra tree + [`internal/app/run.go`](../goclaw/internal/app/run.go); **default interactive UI on a TTY** = Bubble Tea fullscreen TUI; opt out with **`GOCLAW_USE_TUI=0`** or **`--readline`** / **`GOCLAW_USE_READLINE=1`** for line-at-a-time REPL; explicit **`--tui`** / **`GOCLAW_USE_TUI=1`** forces TUI; flags `--profile`/`--session`/`--list-sessions`/`--no-tools`; slash commands in [`internal/slashcmd`](../goclaw/internal/slashcmd/slash.go) |
 | Packages | `internal/llm`, `orchestrator`, `session`, `tools`, `permissions`, `config`, `hooks`, `agents`, `memory`, `planfile`, `todos`, `mcp`, `ide`, `plugin`, `skills`, `swarm`, `ui/chat` (BubbleTea TUI) |
-| Tools | Nine builtins: `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `bash`, `web_fetch`, `web_search`, `todo_write`; plus coordinator-only `spawn_agent`, `stop_task`; MCP tools as `mcp__<id>__<name>` |
+| Tools | Ten built-ins: `read_file`, `glob`, `grep`, `bash`, `write_file`, `edit_file`, `patch`, `web_fetch`, `web_search`, `todo_write`; optional `script` when `allow_script`; coordinator-only `spawn_agent`, `stop_task`; MCP tools as `mcp__<id>__<name>` |
 | Plan workflow | Workspace `.goclaw/plan.md` ([`internal/planfile`](../goclaw/internal/planfile/planfile.go)); `/apply-plan` switches to `general-purpose` and runs one execution turn |
 | Memory | `~/.goclaw/memory/` + `MEMORY.md` index; REPL `/memory list|add|delete`; opt-in auto-capture after `write_file`/`edit_file` (`memory_auto_extract`) |
-| Compaction | Token-estimate heuristic (char/4), 0.85 threshold, 24-turn tail preserved |
+| Compaction | Token-estimate heuristic (char/4), 0.85 threshold, 24-turn tail preserved; optional **`compaction_model`** + **`llm_compaction`** for LLM summaries ([`internal/orchestrator/compaction.go`](../goclaw/internal/orchestrator/compaction.go)) |
 | Hooks | Same five events; Go `hooks.Registry`, **`external_hooks`** (subprocess stdin JSON or HTTP POST in settings), and project **`.goclaw/hooks.json`** when `trusted_workspace` is true ([`internal/hooks`](../goclaw/internal/hooks)) |
 | MCP | stdio + streamable HTTP client — `mcp_servers` in merged settings ([`internal/mcp`](../goclaw/internal/mcp)); optional `bearer_token_file` per HTTP server; multi-server with per-server failure isolation |
 | IDE | **Partial** — lockfile MCP + best-effort POST to `GOCLAW_IDE_NOTIFY_URL` (localhost-only); extension contract §7 [ide-bridge.md](./reference/ide-bridge.md) |
@@ -33,9 +33,11 @@ Single entry point for humans and AI agents: which file covers which topic, and 
 2. [`docs/goclaw/documentation.md`](./goclaw/documentation.md) — doc layout and naming (optional)
 3. [`goclaw/CLAUDE.md`](../goclaw/CLAUDE.md) — module state, decisions D1–D22, conventions
 4. [`architecture.md`](./architecture.md) — short English hub (navigation only)
-5. [`tool-contract.md`](./reference/tool-contract.md) — tool limits, network policy, loop budget
-6. Deep dives: [`retry-logic.md`](./reference/retry-logic.md), [`hooks.md`](./reference/hooks.md), [`mcp.md`](./reference/mcp.md), [`agent-profiles.md`](./reference/agent-profiles.md)
-7. Optional historical draft (Spanish, preserved **§** anchors): [`architecture-legacy-es.md`](./archive/architecture-legacy-es.md) — product scope §1, orchestrator §3.1, doc phases §4.4, decisions §5
+5. [`code-adjustment-map.md`](./reference/code-adjustment-map.md) — which `docs/` files map to which `internal/*` packages when changing behavior
+6. [`tool-contract.md`](./reference/tool-contract.md) — tool limits, network policy, loop budget
+7. [`tool-flows.md`](./reference/tool-flows.md) — Mermaid diagrams: orchestrator loop, permissions, tool categories, coordinator, hooks
+8. Deep dives: [`retry-logic.md`](./reference/retry-logic.md), [`hooks.md`](./reference/hooks.md), [`mcp.md`](./reference/mcp.md), [`agent-profiles.md`](./reference/agent-profiles.md)
+9. Optional historical draft (Spanish, preserved **§** anchors): [`architecture-legacy-es.md`](./archive/architecture-legacy-es.md) — product scope §1, orchestrator §3.1, doc phases §4.4, decisions §5
 
 ---
 
@@ -47,6 +49,7 @@ Single entry point for humans and AI agents: which file covers which topic, and 
 | [`README.md`](../README.md) (repo root) | Redirect to [`goclaw/README.md`](../goclaw/README.md) | Pointer |
 | [`docs/goclaw/documentation.md`](./goclaw/documentation.md) | Doc taxonomy, goclaw vs monorepo `docs/` | Implemented |
 | [`docs/goclaw/usage.md`](./goclaw/usage.md) | CLI workflows: modes, sessions, prompt/JSON, config, profiles, tools summary, hooks/MCP pointers | Implemented |
+| [`docs/goclaw/ollama-stack.md`](./goclaw/ollama-stack.md) | Open-weight 7B/8B Ollama stack — project `.goclaw/` template, `compaction_model`, multi-model memory | Implemented |
 | [`docs/goclaw/roadmap.md`](./goclaw/roadmap.md) | Product checklist and CI notes | Implemented |
 | [`docs/goclaw/philosophy.md`](./goclaw/philosophy.md) | UX principles and scope boundaries | Implemented |
 | [`docs/goclaw/changelog.md`](./goclaw/changelog.md) | Version-to-version user-visible changes | Implemented |
@@ -63,6 +66,8 @@ Single entry point for humans and AI agents: which file covers which topic, and 
 | [`ide-bridge.md`](./reference/ide-bridge.md) | Full IDE integration design + goclaw §6–§7 contract | Partial in goclaw (notify + lockfile MCP + spec) |
 | [`retry-logic.md`](./reference/retry-logic.md) | HTTP retry behavior — parameters, conditions, per-call budget | Implemented |
 | [`tool-contract.md`](./reference/tool-contract.md) | Tool output limits, SSRF network policy, loop budgets | Implemented |
+| [`tool-flows.md`](./reference/tool-flows.md) | Visual flows: orchestrator loop, permissions, tool categories, coordinator workers, hooks | Implemented |
+| [`code-adjustment-map.md`](./reference/code-adjustment-map.md) | Maps `docs/` and `goclaw/internal/*` layers; post-change doc checklist | Maintainers |
 | [`architecture.md`](./architecture.md) | English navigation hub; links to `goclaw/CLAUDE.md` and `docs/reference/` | Current |
 | [`archive/README.md`](./archive/README.md) | Index of `docs/reference/` + archive layout from `docs/archive/` | Maintainers |
 | [`architecture-legacy-es.md`](./archive/architecture-legacy-es.md) | Archived Spanish long-form spec (§1–§8), design exercises; links use `../` | Historical reference |
@@ -114,3 +119,5 @@ Conceptual source used during design: [claude-code-explain (helmcode)](https://c
 | 2026-04-10 | Documentation UX: `docs/README.md` role-based entry; Diátaxis-style principles in `docs/goclaw/documentation.md`; `goclaw/README.md` order = requirements → quick start → full doc index. |
 | 2026-04-10 | Single canonical README: **`goclaw/README.md`**; repo root is a short redirect; **`docs/README.md`** and **`docs/goclaw/README.md`** removed; topic file table in `goclaw/README.md`. |
 | 2026-04-10 | Link audit: fixed `](goclaw/...)` → correct `../` / `../../` prefixes from `docs/`, `docs/reference/`, `docs/openclaw/`; fixed **`docs/archive/README.md`** and **`architecture-legacy-es.md`** (module vs `docs/goclaw/`). |
+| 2026-04-10 | Added [`reference/code-adjustment-map.md`](./reference/code-adjustment-map.md) — docs-to-code layer routes; reading order step 5; File Index row. |
+| 2026-04-10 | Added [`reference/tool-flows.md`](./reference/tool-flows.md); reading order after `tool-contract`; status table tools row (10 + optional `script`); File Index row. |

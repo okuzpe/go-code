@@ -26,7 +26,10 @@ type toolOutcome struct {
 	Err     error // fatal: abort the orchestrator Run entirely
 }
 
-func (o *Orchestrator) executeTool(ctx context.Context, tu *llm.ToolUse) toolOutcome {
+func (o *Orchestrator) executeTool(ctx context.Context, tu *llm.ToolUse, sink StreamSink) toolOutcome {
+	if sink != nil {
+		ctx = ContextWithStreamSink(ctx, sink)
+	}
 	if o.profile.ReadOnly {
 		if strings.HasPrefix(tu.Name, "mcp__") {
 			return toolOutcome{
@@ -35,7 +38,7 @@ func (o *Orchestrator) executeTool(ctx context.Context, tu *llm.ToolUse) toolOut
 			}
 		}
 		switch tu.Name {
-		case "bash", "write_file", "edit_file":
+		case "bash", "write_file", "edit_file", "patch":
 			return toolOutcome{
 				Content: fmt.Sprintf("%s is blocked for read-only profile", tu.Name),
 				IsError: true,

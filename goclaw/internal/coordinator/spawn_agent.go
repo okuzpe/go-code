@@ -124,6 +124,8 @@ func (t *SpawnAgentTool) InputSchema() any {
 }
 
 func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Result, error) {
+	workerSink := orchestrator.StreamSinkFromContext(ctx)
+
 	var in spawnInput
 	if err := json.Unmarshal([]byte(input), &in); err != nil {
 		return tools.Result{Content: fmt.Sprintf("invalid input: %v", err), IsError: true}, nil
@@ -207,7 +209,7 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 			summary: "starting…",
 		}
 		storeInteractive(iw)
-		go runInteractiveWorkerLoop(workerCtx, cancel, iw, orch, in.Task)
+		go runInteractiveWorkerLoop(workerCtx, cancel, iw, orch, in.Task, workerSink)
 		short := taskID
 		if len(short) > 12 {
 			short = short[:12] + "…"
@@ -230,8 +232,8 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 	registerWorkerCancel(taskID, cancel)
 	defer unregisterWorkerCancel(taskID)
 
-	// Run the worker with no streaming sink — results are captured and returned as JSON.
-	result, err := orch.RunStreaming(workerCtx, in.Task, nil)
+	// Stream worker output to the parent StreamSink when present (OnDone is not forwarded — see nested_sink.go).
+	result, err := orch.RunStreaming(workerCtx, in.Task, wrapNestedWorkerSink(workerSink))
 
 	notif := WorkerNotification{TaskID: taskID, Profile: profile.Name}
 	if err != nil {

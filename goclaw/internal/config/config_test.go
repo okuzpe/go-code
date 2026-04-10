@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -48,6 +50,65 @@ func TestConfigModel_OllamaIgnoresAnthropicAliasEnv(t *testing.T) {
 	cfg.OllamaModel = "qwen2.5-coder:14b"
 	if got := cfg.Model(); got != "qwen2.5-coder:14b" {
 		t.Fatalf("Model() = %q, want ollama model unchanged", got)
+	}
+}
+
+func TestConfigModel_OpenAICompat(t *testing.T) {
+	t.Setenv("OPENAI_MODEL", "")
+	cfg := Default()
+	cfg.Provider = "openai_compatible"
+	cfg.OpenAICompatModel = "openrouter/free"
+	if got := cfg.Model(); got != "openrouter/free" {
+		t.Fatalf("Model() = %q, want openrouter/free", got)
+	}
+}
+
+func TestConfigModel_OpenAICompatEnvFallback(t *testing.T) {
+	t.Setenv("OPENAI_MODEL", "meta/llama:free")
+	cfg := Default()
+	cfg.Provider = "openai_compatible"
+	cfg.OpenAICompatModel = ""
+	if got := cfg.Model(); got != "meta/llama:free" {
+		t.Fatalf("Model() = %q, want env fallback", got)
+	}
+}
+
+func TestConfigModelForCompaction(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Provider = "ollama"
+	cfg.OllamaModel = "llama3:latest"
+	cfg.CompactionModel = "qwen2.5-coder:7b"
+	if got := cfg.ModelForCompaction(); got != "qwen2.5-coder:7b" {
+		t.Fatalf("ModelForCompaction() = %q, want qwen2.5-coder:7b", got)
+	}
+	cfg.CompactionModel = ""
+	if got := cfg.ModelForCompaction(); got != "llama3:latest" {
+		t.Fatalf("ModelForCompaction() with empty CompactionModel = %q, want llama3:latest", got)
+	}
+}
+
+func TestLoadCompactionModelFromProjectSettings(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	projectGoclaw := filepath.Join(dir, ".goclaw")
+	if err := os.MkdirAll(projectGoclaw, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(projectGoclaw, "settings.json")
+	if err := os.WriteFile(path, []byte(`{"compaction_model":"phi3:latest"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Default()
+	cfg.UserConfigDir = filepath.Join(dir, "user-goclaw-missing")
+	cfg.ProjectConfigDir = ".goclaw"
+	var err error
+	cfg, err = Load(cfg, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.CompactionModel; got != "phi3:latest" {
+		t.Fatalf("CompactionModel = %q, want phi3:latest", got)
 	}
 }
 

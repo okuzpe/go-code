@@ -164,9 +164,9 @@ const inputMaxHeight = 6
 const maxSlashSuggestRows = 5
 
 func placeholderForWidth(termWidth int) string {
-	const full = "Message goclaw…  /help  Ctrl+J newline"
-	const narrow = "Message…  /help  Ctrl+J newline"
-	if termWidth > 0 && termWidth < 72 {
+	const full = "Ask anything…  /help for commands  Ctrl+J newline"
+	const narrow = "Ask anything…  /help"
+	if termWidth > 0 && termWidth < 60 {
 		return narrow
 	}
 	return full
@@ -223,16 +223,15 @@ func New(ctx context.Context, opts Options) Model {
 			m.welcomeBlockEnd = len(m.lines)
 		}
 	}
-	if strings.TrimSpace(opts.Title) != "" {
-		titleStyle := lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#C4B5FD"})
-		m.lines = append(m.lines, titleStyle.Render(opts.Title))
-		m.lines = append(m.lines, th.SeparatorLine(0))
+	if m.welcomeBlockEnd == 0 {
+		if strings.TrimSpace(opts.Title) != "" {
+			m.lines = append(m.lines, th.ModalTitle.Render(opts.Title))
+			m.lines = append(m.lines, th.SeparatorLine(0))
+		}
+		intro := SessionIntroSystemText(opts.Workdir)
+		m.appendSystem(intro)
+		m.appendSystem("Ready.")
 	}
-	intro := SessionIntroSystemText(opts.Workdir)
-	m.appendSystem(intro)
-	m.appendSystem("Ready. " + th.FooterHint())
 	return m
 }
 
@@ -527,17 +526,21 @@ func (m *Model) syncInputPlaceholder() {
 }
 
 func (m *Model) footerPrimaryStatus() string {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
 	status := strings.TrimSpace(m.statusLine)
 	if m.spinnerActive {
 		spin := strings.TrimSpace(m.spinner.View())
 		base := strings.TrimSpace(status)
 		if base == "" {
-			base = "Thinking…"
+			base = th.StatusBarLabel.Render("Thinking") + th.FooterDim.Render("…")
 		}
 		return strings.TrimSpace(spin + "  " + base)
 	}
 	if m.streaming && !m.spinnerActive && status == "" {
-		return "Responding…"
+		return th.StatusBarLabel.Render("Responding") + th.FooterDim.Render("…")
 	}
 	return status
 }
@@ -590,7 +593,7 @@ func (m *Model) reflowTitleSeparator() {
 	}
 	for idx := 0; idx < len(m.lines)-1; idx++ {
 		plain := strings.TrimSpace(stripANSI(m.lines[idx]))
-		if strings.HasPrefix(plain, "goclaw ·") {
+		if strings.HasPrefix(plain, "goclaw") {
 			m.lines[idx+1] = th.SeparatorLine(m.width)
 			return
 		}
@@ -647,32 +650,29 @@ func (m *Model) footerView() string {
 		th = DefaultTheme()
 	}
 	if m.helpOpen {
-		return th.FooterDim.Render("Esc close help · ↑↓ PgUp/PgDn or mouse wheel · Ctrl+C quit")
+		return th.FooterDim.Render("Esc close help  ↑↓ PgUp/PgDn scroll  Ctrl+C quit")
 	}
+
 	primary := strings.TrimSpace(m.footerPrimaryStatus())
 	hints := th.FooterHintForWidth(m.width)
-	second := footerline.HintsWithSession(hints, m.sessionID, m.width)
+	session := footerline.HintsWithSession(hints, m.sessionID, m.width)
 
-	var meta string
+	var b strings.Builder
+
+	// Show primary status (spinner/thinking) only when active; skip the extra line when idle.
 	if primary != "" {
-		meta = th.FooterDim.Render(primary) + "\n" + th.FooterDim.Render(second)
-	} else {
-		meta = th.FooterDim.Render(second)
+		b.WriteString(th.FooterDim.Render(primary))
+		b.WriteString("\n")
 	}
+	b.WriteString(th.FooterDim.Render(session))
+
 	if m.focusLine != nil {
 		if fh := strings.TrimSpace(m.focusLine()); fh != "" {
-			meta = meta + "\n" + th.FooterDim.Render(fh)
+			b.WriteString("\n")
+			b.WriteString(th.FooterDim.Render(fh))
 		}
 	}
 
-	// Input area with a subtle border
-	inputView := m.input.View()
-	if m.width > 4 {
-		inputView = th.InputBorder.Width(m.width - 4).Render(inputView)
-	}
-
-	var b strings.Builder
-	b.WriteString(meta)
 	if strip := m.slashSuggestStripView(); strip != "" {
 		b.WriteString("\n")
 		b.WriteString(strip)
@@ -680,6 +680,11 @@ func (m *Model) footerView() string {
 	if m.pending != nil {
 		b.WriteString("\n")
 		b.WriteString(m.approvalStripView())
+	}
+
+	inputView := m.input.View()
+	if m.width > 4 {
+		inputView = th.InputBorder.Width(m.width - 2).Render(inputView)
 	}
 	b.WriteString("\n")
 	b.WriteString(inputView)
@@ -738,13 +743,13 @@ func (m *Model) slashSuggestStripView() string {
 	return b.String()
 }
 
-// approvalStripView is a single compact line above the input (no modal below).
+// approvalStripView renders the tool approval request above the input with a card-style border.
 func (m *Model) approvalStripView() string {
 	th := m.theme
 	if th == nil {
 		th = DefaultTheme()
 	}
-	maxW := m.width - 4
+	maxW := m.width - 6
 	if maxW < 24 {
 		maxW = m.width
 	}
@@ -754,9 +759,9 @@ func (m *Model) approvalStripView() string {
 	toolPlain := m.pending.ToolName
 	previewPlain := m.pending.Preview
 
-	title := th.ModalTitle.Render("⚡ Allow:")
-	sep := th.ModalBody.Render(" · ")
-	hint := th.Dim.Render(" · y/n esc")
+	title := th.ModalTitle.Render("⚡ Allow")
+	sep := th.ToolCardBorder.Render(" │ ")
+	hint := th.Dim.Render("  y/n/esc")
 
 	try := func(toolShow, prevShow string) (string, bool) {
 		toolSt := th.Tool.Render(toolShow)
@@ -888,29 +893,19 @@ func (m *Model) popToolJob() (pendingTool, bool) {
 	return j, true
 }
 
-// appendToolDoneLine adds one compact Claude-style line after a tool finishes (no JSON).
+// appendToolDoneLine renders a completed tool call as a compact card (claw-code style).
 func (m *Model) appendToolDoneLine(toolName, summary string, isError bool) {
 	th := m.theme
 	if th == nil {
 		th = DefaultTheme()
 	}
 	label := orchestrator.ToolFinishedPhrase(toolName)
-	var line string
-	if isError {
-		line = fmt.Sprintf("  %s  %s",
-			th.ToolResultErr.Render("✗"),
-			label)
-	} else {
-		suffix := ""
-		if s := strings.TrimSpace(summary); s != "" {
-			suffix = "  " + th.Dim.Render(text.TruncateRunes(s, 96))
-		}
-		line = fmt.Sprintf("  %s  %s%s",
-			th.ToolResultOk.Render("✓"),
-			label,
-			suffix)
+	truncatedSummary := ""
+	if s := strings.TrimSpace(summary); s != "" {
+		truncatedSummary = text.TruncateRunes(s, 96)
 	}
-	m.lines = append(m.lines, line)
+	card := th.RenderToolCard(label, truncatedSummary, isError, m.width)
+	m.lines = append(m.lines, card)
 	m.setLinesContent(false)
 }
 

@@ -85,7 +85,7 @@ func (o *Orchestrator) compactToTailWithLLM(ctx context.Context, preserve int) {
 	}
 
 	req := llm.Request{
-		Model:  o.cfg.Model(),
+		Model:  o.cfg.ModelForCompaction(),
 		System: "You are a concise summarizer. Summarize the following conversation excerpt in 3-5 sentences. Focus on key decisions, file paths modified, and outcomes. Be brief.",
 		Messages: []llm.Message{
 			llm.PlainMessage("user", "Summarize this conversation:\n\n"+excerpt.String()),
@@ -164,6 +164,8 @@ func contextBudgetTokens(provider string, cfgTokens int) int {
 	switch provider {
 	case "anthropic":
 		return anthropicContextTokens
+	case "openai_compatible":
+		return ollamaContextTokens
 	default:
 		return ollamaContextTokens
 	}
@@ -175,6 +177,8 @@ func sessionTokenEstimate(msgs []llm.Message, provider string) int {
 	switch provider {
 	case "anthropic":
 		return (c + 2) / 3
+	case "openai_compatible":
+		return (c + 3) / 4
 	default:
 		return (c + 3) / 4
 	}

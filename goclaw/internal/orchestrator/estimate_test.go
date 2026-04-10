@@ -21,12 +21,14 @@ func TestSessionTokenEstimateByProvider(t *testing.T) {
 	msgs := []llm.Message{llm.PlainMessage("user", strings.Repeat("a", 120))}
 	require.Equal(t, 40, sessionTokenEstimate(msgs, "anthropic"))
 	require.Equal(t, 30, sessionTokenEstimate(msgs, "ollama"))
+	require.Equal(t, 30, sessionTokenEstimate(msgs, "openai_compatible"))
 }
 
 func TestContextBudgetTokens(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, anthropicContextTokens, contextBudgetTokens("anthropic", 0))
 	require.Equal(t, ollamaContextTokens, contextBudgetTokens("ollama", 0))
+	require.Equal(t, ollamaContextTokens, contextBudgetTokens("openai_compatible", 0))
 }
 
 func TestContextBudgetTokensOverride(t *testing.T) {

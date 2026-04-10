@@ -44,6 +44,18 @@ func TestWrapOllamaDialErr_preservesCancel(t *testing.T) {
 	require.ErrorIs(t, w, context.Canceled)
 }
 
+func TestOllamaReportsToolsUnsupported(t *testing.T) {
+	require.True(t, ollamaReportsToolsUnsupported(400, `registry.ollama.ai/library/llama3:latest does not support tools`))
+	require.True(t, ollamaReportsToolsUnsupported(400, `DOES NOT SUPPORT TOOLS`))
+	require.False(t, ollamaReportsToolsUnsupported(500, `does not support tools`))
+	require.False(t, ollamaReportsToolsUnsupported(400, `model not found`))
+}
+
+func TestParseOllamaErrorMessage(t *testing.T) {
+	require.Equal(t, "bad request", parseOllamaErrorMessage([]byte(`{"error":"bad request"}`)))
+	require.Contains(t, parseOllamaErrorMessage([]byte(`not json`)), "not json")
+}
+
 type timeoutStub struct{}
 
 func (timeoutStub) Error() string   { return "i/o timeout" }
