@@ -11,6 +11,21 @@ Each tier must be stable before starting the next.
 
 **Where this file lives:** Product checklist **[roadmap.md](roadmap.md)** under **`docs/goclaw/`**. Project entry: **[`README.md`](../../goclaw/README.md)**; master index: **[`docs-map.md`](../docs-map.md)**. It does not duplicate **`docs/reference/`** specs.
 
+**MVP scope (shippable CLI):** Treat **Tiers 0–8** below as the **MVP / daily-driver checklist**. Every `- [x]` item in those tiers is **in scope for MVP closure**; anything still open must be either **unchecked only under [Future transport and scale](#future-transport-and-scale) or [Future — UI localization](#future--ui-localization)** (explicitly *not* required for the current CLI), or called out as **Partial** in [`docs-map.md`](../docs-map.md) (IDE parity, MCP OAuth/WS, remote plugin marketplace, Team/Swarm peer topology vs shipped `coordinator`). When all Tier 0–8 boxes are checked, the product is **MVP-complete per this document**; remaining work is **post-MVP** unless you intentionally narrow MVP to an older tier range.
+
+---
+
+## Post-MVP waves (ordering)
+
+Use this table to pick the **next** engineering theme after MVP closure. **Default first slice:** **Wave A** (better IDE/editor story on top of lockfile MCP + `GOCLAW_IDE_NOTIFY_URL`) when the pain is editor integration; switch to **Wave B** if enterprise MCP (OAuth/WS, non-loopback policy) is the blocker.
+
+| Wave | Focus | Primary docs | First concrete steps |
+|------|--------|----------------|----------------------|
+| **A** | IDE extension / editor MCP parity | [ide-bridge.md](../reference/ide-bridge.md), [docs-map.md](../docs-map.md) IDE row | Ship or document one reference extension flow; tighten discovery + failure modes; align §6–§7 with `internal/ide`. |
+| **B** | MCP enterprise | [mcp-remote.md](mcp-remote.md), [mcp.md](../reference/mcp.md) | OAuth or token refresh story; optional WS transport; policy for non-loopback URLs with `mcp_allow_remote_urls`. |
+| **C** | Multi-client / platform | [Future transport and scale](#future-transport-and-scale) | Long-lived gateway; channel adapters; headless one-shot runs with cancelable `context`. |
+| **D** | Static UI i18n | [Future — UI localization](#future--ui-localization), [i18n.md](i18n.md) | `ui_locale` / env; `internal/locale` catalogs; keep docs in sync. |
+
 ---
 
 ## Tier 0 — Build + Tests Green (do this first)

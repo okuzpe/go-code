@@ -53,7 +53,7 @@ Typical merge order (lowest to highest priority; last writer wins on **server** 
 | # | Scope | Source (reference) | Notes |
 |---|--------|---------------------|-------|
 | 1 | org / cloud | Connectors from API | Closed product |
-| 2 | plugin | Installed plugins | See [PLUGINS.md](./plugins.md) |
+| 2 | plugin | Installed plugins | See [plugins.md](./plugins.md) |
 | 3 | user | `~/.claude/settings.json` | Global user |
 | 4 | project | `.mcp.json` (walk up to home) | **Explicit approval** before connect in reference |
 | 5 | local | `settings.local.json` | Not committed |

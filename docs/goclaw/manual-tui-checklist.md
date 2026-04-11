@@ -23,9 +23,20 @@ Use a **disposable user config** so you do not wipe your real `~/.goclaw/` (exam
 
 Run without `--tui`. Type a distinctive line, exit cleanly, restart `goclaw`: press ↑ — the line should appear in history (file under `~/.goclaw/history`).
 
+## Automated pre-release gate (maintainers)
+
+Tier 0 / Tier 5 parity is enforced in CI by [`.github/workflows/goclaw-ci.yml`](../../.github/workflows/goclaw-ci.yml): `go vet ./...`, mock parity harness (`TestMockParityHarness`), `go test` (with `-race` and coverage threshold on Linux), `golangci-lint`, `go run ./cmd/goclaw --version`, and stdin mock smoke on Ubuntu.
+
+| Date | Check | Result |
+|------|---------|--------|
+| 2026-04-11 | `go vet ./...` from `goclaw/` | Pass |
+| 2026-04-11 | `go test ./internal/orchestrator ./internal/coordinator -count=1 -run '^TestMockParityHarness$'` | Pass (same target as CI “Mock parity harness”) |
+| — | Steps in **First-run onboarding** + **Launch and input** above + `goclaw doctor` on a representative machine | Human sign-off before calling the release fully verified |
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
 | 2026-04-10 | Renamed from `MANUAL_TUI_CHECKLIST.md`; former filename remains a redirect stub. Slash autocomplete + `/help` overlay checklist steps. |
 | 2026-04-10 | Added **First-run onboarding (Tier 0)** — fresh config, TUI vs readline, decline trust, `GOCLAW_NO_ONBOARDING`, `doctor` vs wizard. |
+| 2026-04-11 | **Automated pre-release gate** table + CI pointer for MVP closure (`v1.3.0`). |

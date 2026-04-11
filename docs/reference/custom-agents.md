@@ -106,7 +106,7 @@ Campos conceptuales: `description`, `prompt`, `subagent_type`, `model`, `run_in_
 
 ## 7. Agentes en plugins (restricciones, referencia)
 
-Panorama del empaquetado: [PLUGINS.md](./plugins.md). En modo restrictivo del producto analizado, agentes definidos por plugin **no** pueden: escalar `permissionMode`, registrar **hooks** custom arbitrarios, declarar **mcpServers** propios. Nombre con namespace `plugin:agent`.
+Panorama del empaquetado: [plugins.md](./plugins.md). En modo restrictivo del producto analizado, agentes definidos por plugin **no** pueden: escalar `permissionMode`, registrar **hooks** custom arbitrarios, declarar **mcpServers** propios. Nombre con namespace `plugin:agent`.
 
 **Eco Go:** `TrustLevel` del plugin + validación en loader.
 

@@ -101,5 +101,6 @@ Edits to the documentation tree (index moves, link cleanups) are logged here so 
 
 | Date | Change |
 |------|--------|
+| 2026-04-11 | **MVP closure (doc):** [roadmap.md](./goclaw/roadmap.md) defines MVP = Tiers 0–8, Post-MVP waves A–D; [changelog.md](./goclaw/changelog.md) **1.3.0**; [manual-tui-checklist.md](./goclaw/manual-tui-checklist.md) automated gate log; git tag `v1.3.0`. |
 | 2026-04-11 | Unified docs pass: normalized `docs/reference/` link labels to kebab-case filenames; replaced stale “ARCHITECTURE §” callouts with [CLAUDE.md](../goclaw/CLAUDE.md) / [roadmap.md](./goclaw/roadmap.md); language policy in [documentation.md](./goclaw/documentation.md); [README.md](../goclaw/README.md) defers detail to this map; shortened [architecture.md](./architecture.md) product blurb and “Entry point” row above; fixed [prefix-input-modes.md](./goclaw/prefix-input-modes.md) index row (shipped); [mcp-remote.md](./goclaw/mcp-remote.md) CLAUDE path corrected. |
 | 2026-04-10 | [code-adjustment-map.md](./reference/code-adjustment-map.md) added; architecture hub delegates file index to this map. |

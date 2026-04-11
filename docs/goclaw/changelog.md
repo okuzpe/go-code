@@ -6,19 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-04-11
+
 ### Added
 
 - **Task model routing**: optional per-turn model selection via **`task_model_router`** (`off` \| `rules` \| `llm`), **`task_models`** role→model map, and optional **`task_model_router_model`** / env **`GOCLAW_TASK_MODEL_ROUTER`**, **`GOCLAW_TASK_MODEL_ROUTER_MODEL`**; CLI **`--task-model-router`**. See [model-routing.md](model-routing.md).
 - Orchestrator: **runtime user-language hints** — heuristic + **whatlanggo** when reliable + optional **`preferred_response_language`** (`auto` \| `from_os` \| `es` \| `en` \| `fr` \| `de` \| `pt`) and locale fallback (`internal/orchestrator/user_language_*.go`); see [i18n.md](i18n.md).
 - Config: optional **`compaction_model`** (and **`GOCLAW_COMPACTION_MODEL`**) so LLM-driven compaction (`llm_compaction`) can call a smaller/faster model than the main turn; see [`ollama-stack.md`](ollama-stack.md).
 - Project template under **`goclaw/.goclaw/`**: `settings.json` tuned for a local 7B/8B stack and custom agents `stack-base`, `stack-coder`, `stack-coordinator`, `stack-explore`.
+- **Documentation:** explicit **MVP closure** definition (Tiers 0–8 vs Future / Partial) and **Post-MVP waves** A–D in [roadmap.md](roadmap.md).
 
 ### Changed
 
 - **Documentation:** **[docs-map.md](../docs-map.md)** remains the master index (audience, reading order, **language policy** note, **Doc maintenance** log, corrected **prefix-input-modes** row); **`docs/reference/`** link text aligned to kebab-case filenames and stale “ARCHITECTURE §” callouts replaced with **CLAUDE.md** / **roadmap**; **[README.md](../../goclaw/README.md)** defers long lists to docs-map; **[architecture.md](../architecture.md)** hub shortened; per-file doc changelogs merged into docs-map. OpenClaw-derived ideas live in **[philosophy.md](philosophy.md#lessons-from-wider-agent-stacks)** and **[roadmap.md](roadmap.md#future-transport-and-scale)**; local OpenClaw markdown removed; **`docs/archive/`** removed (use git history if needed).
 - **Default `agent_profile`** is now **`general-purpose`** (direct file/bash tools on the main session). Hub-and-spoke remains available via **`coordinator`** (`/profile coordinator`, `agent_profile`, `GOCLAW_AGENT_PROFILE`, or `make run-hub`). See [usage.md — Agent profiles](usage.md#agent-profiles) and [coordinator.md](coordinator.md).
 - Base system prompt (`internal/orchestrator/base_system_prompt.md`): **RESPONSE LANGUAGE** block at the top—English instructions do not imply English replies; short greetings must match user language; see [i18n.md](i18n.md).
-- Operator / product docs moved to **`docs/goclaw/`**: [usage.md](usage.md), [documentation.md](documentation.md), [roadmap.md](roadmap.md), [philosophy.md](philosophy.md), [changelog.md](changelog.md). **`goclaw/`** keeps [README.md](../../goclaw/README.md) + [CLAUDE.md](../../goclaw/CLAUDE.md). Master index: [docs-map.md](../docs-map.md). No `docs/README.md` (removed); repo root [README.md](../../README.md) points here.
 
 ## [1.2.0] - 2026-04-09
 
