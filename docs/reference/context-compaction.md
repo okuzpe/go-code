@@ -86,13 +86,13 @@ Constantes orientativas del producto analizado (útiles al dimensionar `max_toke
 
 ---
 
-## 7. Roadmap sugerido (alineado con [roadmap.md](../goclaw/roadmap.md))
+## 7. goclaw hoy vs mejoras opcionales
 
-| Fase | Compactación |
+| Ámbito | Compactación |
 |------|----------------|
-| MVP | Techo simple de historial (p. ej. N mensajes o bytes); opcional poda naive de tool results |
-| v1 | Micro-compactación con reglas de edad + estimación de tokens; umbral proporcional al modelo |
-| v2+ | Auto-compact con sub-llamada + cortacircuitos + reinyección acotada + comando manual |
+| **goclaw (shipped)** | Heurística de tokens + umbral configurable, **tail** de turnos recientes preservado, fase 1 que limpia `tool_results` antiguos, `/compact`, opción **`llm_compaction`** + **`compaction_model`** — ver [`compaction.go`](../../goclaw/internal/orchestrator/compaction.go) y **D15** en [`CLAUDE.md`](../../goclaw/CLAUDE.md) |
+| **Referencia** | Micro-compact agresiva, presupuestos post-compact de decenas de miles de tokens, etc. — calibración, no exigencia |
+| **No implementado / más adelante** | Reinyección automática de ficheros bajo presupuesto como en algunos productos referencia; ver [roadmap.md](../goclaw/roadmap.md) si se prioriza |
 
 ---
 

@@ -1,6 +1,6 @@
 # Plugins (paquetes modulares) — referencia y eco Go
 
-**Status in goclaw:** **D20** local plugin MVP in [`goclaw/internal/plugin`](../../goclaw/internal/plugin); no remote marketplace. See [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md). Below describes broader **reference** scope.
+**Status in goclaw:** **D20** local plugins **shipped** in [`goclaw/internal/plugin`](../../goclaw/internal/plugin); remote marketplace **not implemented**. See [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md). Below mixes **reference-product** breadth with what goclaw actually loads today.
 
 Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D20 plugins). Referencia (terceros, análisis de Claude Code): [Plugins — claude-code-explain](https://claude-code-explain.helmcode.com/plugins).
 
@@ -60,7 +60,7 @@ Cache: `~/.claude/plugins/cache/...`; habilitados y `pluginConfigs` en `settings
 
 Formatos de fuente: path relativo, npm, pip, git URL, GitHub, subdirectorio git. **Anti-suplantación:** marketplaces conocidos; dependencias cross-marketplace tras flag explícito. `extraKnownMarketplaces` en settings.
 
-**Eco Go:** fase tardía; MVP sin red de marketplace si no es imprescindible.
+**Eco Go:** marketplace remoto **no está en el binario**; solo carga local / `--plugin-dir` y políticas allow/deny.
 
 ---
 
@@ -90,13 +90,13 @@ Instalar, gestionar, validar manifiesto, marketplaces. **Eco Go:** subcomandos `
 
 ---
 
-## 8. Roadmap propuesto
+## 8. Estado vs ampliaciones posibles
 
-| Fase | Plugins |
-|------|---------|
-| MVP–v2 | Sin marketplace; opcional **solo** `--plugin-dir` que registre skills+hooks+agents desde disco (si **D20** “dev path only”) |
-| **v3** | Manifiesto + auto-detect + merge MCP/agents/hooks con prioridad documentada; allowlist/denylist |
-| **v4+** | Marketplace remoto, actualizaciones, dependencias entre plugins |
+| Alcance | Plugins |
+|---------|---------|
+| **goclaw hoy** | Sin marketplace remoto; **`--plugin-dir`**, `plugin_dirs` / allow y deny lists, manifiesto `goclaw-plugin.json`, merge de skills / hooks / agents según **D20** |
+| **No implementado** | Marketplace npm/remoto, actualizaciones automáticas, dependencias entre plugins como en el producto de referencia |
+| **Futuro (si se prioriza)** | Más auto-detect + paridad de manifiesto con §2; ver [roadmap.md](../goclaw/roadmap.md) optional waves |
 
 ---
 

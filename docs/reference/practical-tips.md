@@ -84,7 +84,7 @@ Réplica de costes (referencia): [Costs — claude-code-explain](https://claude-
 
 **Tip:** Tras implementaciones, un agente **Verification** emite veredicto estructurado (**PASS** / **FAIL** / **PARTIAL**), visible en terminal (p. ej. en rojo) — útil como **quality gate** en CI.
 
-**Eco nosotros:** perfil opcional **v2+** ([agent-profiles.md](./agent-profiles.md)); invocación vía tool **Agent** o pipeline externo que llame al binario con perfil restringido; no es MVP.
+**Eco nosotros:** perfil **`coordinator`** y `spawn_agent` ya existen ([agent-profiles.md](./agent-profiles.md)); otras topologías “Team” de la referencia **no** están en goclaw — invocación vía binario con perfil restringido sigue siendo patrón válido.
 
 ---
 

@@ -8,7 +8,7 @@ Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (bash / permissions). E
 
 En el producto analizado hay **varias capas**: validadores de comando, pipeline de permisos, sandbox (p. ej. seatbelt/bubblewrap en Unix), validación de rutas, saneado de entorno, y reglas de categoría (prompt injection vía resultados de herramientas).
 
-**Nuestro MVP** no exige paridad con docenas de validadores: sí **defensa en profundidad mínima** alineada con **D4** (Windows), **D5** (modos) y [yolo-classifier.md](./yolo-classifier.md) cuando exista auto-modo.
+**goclaw hoy** no intenta paridad con docenas de validadores del producto de referencia: sí **defensa en profundidad mínima** alineada con **D4** (Windows), **D5** (modos) y [yolo-classifier.md](./yolo-classifier.md) cuando el auto-modo / **D17** están activos.
 
 ### 1.1 Implementación **goclaw** (hoy)
 
@@ -30,8 +30,8 @@ Detalle de contrato: [tool-contract.md](./tool-contract.md) fila `bash`.
 | Permisos | Siempre antes de `exec`; ver §2.3 |
 | Rutas | Trabajo dentro del workspace; denegar salidas si procede |
 | Entorno | Subprocess con env reducido (sin secretos heredados sin filtrar) |
-| Sandbox OS | Fase tardía; Windows es el caso duro |
-| Clasificador | v2+: patrón CC para `curl`/`ssh`/… en auto-modo |
+| Sandbox OS | No implementado (OS-level); Windows es el caso duro |
+| Clasificador | **D17** en goclaw: reglas de riesgo + umbral; patrón distinto al clasificador LLM del producto de referencia |
 
 ---
 

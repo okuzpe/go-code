@@ -175,11 +175,11 @@ Cada tool expone qué ve el clasificador: comando bash, ruta+contenido en edici�
 
 **Roadmap alineado [roadmap.md](../goclaw/roadmap.md):**
 
-| Fase | Clasificador |
+| Ámbito | Clasificador |
 |------|----------------|
-| **MVP** | Sin API lateral: confirmación humana / modos conservadores (**D5**) |
-| **v1** | Fast paths **locales** + patrones peligrosos + `ToClassifierInput` por tool; allowlist de tools de bajo riesgo |
-| **v2+** | Dos etapas XML + denegaciones + iron gate + integración auto-modo (**D17**) |
+| **goclaw (shipped)** | **D17** — reglas locales + puntuación 0–100 en `internal/permissions/risk.go`; `yolo_threshold` (por defecto off); auto-aprobación solo de lecturas en umbral 0; convive con **D5** (modos) y hooks **D18** |
+| **Referencia (producto analizado)** | Clasificador LLM en dos etapas XML, iron gate, cachés — distinto implementación |
+| **No implementado en goclaw** | Llamada lateral a un LLM dedicado “clasificador” como en la referencia |
 
 ---
 

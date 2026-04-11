@@ -8,7 +8,7 @@ Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D13 memory). Referenci
 
 ## 1. ¿Vale la pena incluirlo?
 
-**Sí**, como capacidad de producto **posterior al MVP**: el historial en RAM (`internal/session`) no sobrevive al cierre del proceso; la memoria en disco captura **hechos estables sobre usuario, proyecto y feedback** sin rellenar el prompt con git ni código duplicado.
+**Sí**, y **ya está en goclaw** (D13): el historial en RAM (`internal/session`) no sobrevive al cierre del proceso; la memoria en disco captura **hechos estables sobre usuario, proyecto y feedback** sin rellenar el prompt con git ni código duplicado. El resto del doc profundiza el patrón del **producto de referencia** para calibrar límites y UX.
 
 **No es lo mismo que**
 

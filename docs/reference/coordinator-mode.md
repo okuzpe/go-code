@@ -152,20 +152,22 @@ Inyección al contexto del compañero como XML, p. ej. `<teammate-message teamma
 | Workers aislados | Proceso hijo **o** goroutine + `session` fork por `agent_id`; **nunca** compartir slice de mensajes del coordinador |
 | SendMessage / TaskStop | `internal/tools` + `orchestrator` enrutando a registro de workers vivos |
 | Team/Swarm mailboxes | `internal/swarm` o `internal/team`: `Mailbox interface { Push, Poll }` con implementación **dir+lock** primero; luego opcional Redis/DB |
-| tmux/iTerm2 | **Opcional y tardío**: en Windows priorizar **headless** + logs; tmux no es MVP |
+| tmux/iTerm2 | **No hay paridad** con tmux/iTerm del producto de referencia; en Windows priorizar **headless** + logs |
 | Polling 1 s | `time.Ticker` o eventos con `fsnotify` donde tenga sentido |
 
 **Dependencias (alineado con [CLAUDE.md](../../goclaw/CLAUDE.md)):** `coordinator` / `swarm` no deben importar `tools` de forma circular; el **orquestador** mantiene el mapa `agentID → run context`.
 
 ---
 
-## 6. Roadmap alineado con el producto ([roadmap.md](../goclaw/roadmap.md), [CLAUDE.md](../../goclaw/CLAUDE.md))
+## 6. Fases del producto de referencia vs goclaw
 
-| Fase | Qué cubrir |
+| Fase (referencia) | Qué implicaba allí |
 |------|------------|
-| MVP–v1 | Sin multi-agente; un solo bucle (quizá sub-agentes simples más adelante) |
-| v2 | **Coordinator Mode mínimo** (opcional): env + tool allowlist + workers con sesión aislada; sin tmux obligatorio |
-| v3+ | **Team/Swarm**: mailboxes, tareas compartidas, UI opcional; ver **D16** |
+| Producto sin multi-agente | Un solo bucle REPL |
+| Coordinator introducido | Allowlist + workers aislados (sin tmux obligatorio) |
+| Team/Swarm | Mailboxes peer, tareas compartidas, UI opcional |
+
+**goclaw hoy:** **D16 hub-and-spoke** (`spawn_agent` / `stop_task`, perfil `coordinator`) está **implementado** — ver [coordinator.md](../goclaw/coordinator.md). **Team/Swarm** peer-style sigue siendo **diseño de referencia**; el hub en disco [`internal/swarm`](../../goclaw/internal/swarm) es experimental y distinto del coordinador.
 
 ---
 

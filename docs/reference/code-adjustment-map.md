@@ -225,9 +225,9 @@ flowchart LR
 
 | Primary doc | Secondary | Code |
 |-------------|-----------|------|
-| `CLAUDE.md` + Post-MVP table in [`docs-map.md`](../docs-map.md) | [`swarm.md`](../goclaw/swarm.md), [`plugins.md`](./plugins.md), [`skills.md`](./skills.md) | `internal/swarm`, `internal/plugin`, `internal/skills` |
+| `CLAUDE.md` + [`docs-map.md`](../docs-map.md) (coverage column) | [`swarm.md`](../goclaw/swarm.md), [`plugins.md`](./plugins.md), [`skills.md`](./skills.md) | `internal/swarm`, `internal/plugin`, `internal/skills` |
 
-**Adjustment:** When shipped scope catches up to docs, update the Post-MVP rows in [`docs-map.md`](../docs-map.md).
+**Adjustment:** If shipped behavior changes, update the **Coverage** column for those rows in [`docs-map.md`](../docs-map.md).
 
 ---
 

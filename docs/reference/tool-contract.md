@@ -1,6 +1,6 @@
-# Tool Contract — MVP
+# Tool contract (goclaw)
 
-**Status in goclaw:** Implemented — builtin tools and caps match this contract in [`goclaw/internal/tools/`](../../goclaw/internal/tools/); see also decision **D12** in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md).
+**Status in goclaw:** **Shipped** — builtin tools and caps match this contract in [`goclaw/internal/tools/`](../../goclaw/internal/tools/); see also decision **D12** in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md).
 
 **Purpose:** canonical reference for tool names, risk levels, input/output limits, and network policy as exposed to the LLM. Implemented in `internal/tools/`. Output limits are defined in [`goclaw/internal/tools/limits.go`](../../goclaw/internal/tools/limits.go).
 
@@ -73,10 +73,10 @@ Implementation: [`goclaw/internal/tools/ssrf.go`](../../goclaw/internal/tools/ss
 
 | Date | Change |
 |------|--------|
-| 2026-04-07 | Created: MVP table (read/bash/web_search/web_fetch), network policy, D2, loop budget. |
-| 2026-04-08 | v2: `glob`/`grep` added to MVP table; limits aligned to `limits.go`; pointer to `limits.go`; `web_search` operational details. |
+| 2026-04-07 | Created: initial tool table (read/bash/web_search/web_fetch), network policy, D2, loop budget. |
+| 2026-04-08 | `glob`/`grep` added; limits aligned to `limits.go`; `web_search` operational details. |
 | 2026-04-08 | Translated to English; SSRF implementation pointer added; Ollama `tool_name` note added. |
-| 2026-04-08 | `write_file` and `edit_file` added; `MaxWriteFileBytes` = 1 MiB; post-MVP note removed (now implemented). |
+| 2026-04-08 | `write_file` and `edit_file` added; `MaxWriteFileBytes` = 1 MiB. |
 | 2026-04-08 | `bash`: single-command shell syntax policy, `bash_timeout_sec`, expanded allowlist note. |
 | 2026-04-08 | `todo_write`: `session_meta` risk class; caps 50 items / 500 runes per content; pointer to `internal/todos`. |
 | 2026-04-07 | MCP tool naming, timeout, permissions, and profile rules. |

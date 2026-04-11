@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Documentation:** reference and roadmap wording now distinguish **shipped** behavior from **not implemented** / **Partial** (removed stale MVP/post-MVP labels where features already exist); see [documentation.md](documentation.md) terminology note and [roadmap.md](roadmap.md).
+
 ## [1.3.0] - 2026-04-11
 
 ### Added
@@ -14,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Orchestrator: **runtime user-language hints** — heuristic + **whatlanggo** when reliable + optional **`preferred_response_language`** (`auto` \| `from_os` \| `es` \| `en` \| `fr` \| `de` \| `pt`) and locale fallback (`internal/orchestrator/user_language_*.go`); see [i18n.md](i18n.md).
 - Config: optional **`compaction_model`** (and **`GOCLAW_COMPACTION_MODEL`**) so LLM-driven compaction (`llm_compaction`) can call a smaller/faster model than the main turn; see [`ollama-stack.md`](ollama-stack.md).
 - Project template under **`goclaw/.goclaw/`**: `settings.json` tuned for a local 7B/8B stack and custom agents `stack-base`, `stack-coder`, `stack-coordinator`, `stack-explore`.
-- **Documentation:** explicit **MVP closure** definition (Tiers 0–8 vs Future / Partial) and **Post-MVP waves** A–D in [roadmap.md](roadmap.md).
+- **Documentation:** [roadmap.md](roadmap.md) now states **shipped scope** (Tiers 0–8) vs **Future** / **Partial** gaps, plus **optional follow-up waves** A–D; reference docs updated to drop stale “MVP/post-MVP” wording where features are already implemented.
 
 ### Changed
 

@@ -39,4 +39,4 @@ Tier 0 / Tier 5 parity is enforced in CI by [`.github/workflows/goclaw-ci.yml`](
 |------|--------|
 | 2026-04-10 | Renamed from `MANUAL_TUI_CHECKLIST.md`; former filename remains a redirect stub. Slash autocomplete + `/help` overlay checklist steps. |
 | 2026-04-10 | Added **First-run onboarding (Tier 0)** — fresh config, TUI vs readline, decline trust, `GOCLAW_NO_ONBOARDING`, `doctor` vs wizard. |
-| 2026-04-11 | **Automated pre-release gate** table + CI pointer for MVP closure (`v1.3.0`). |
+| 2026-04-11 | **Automated pre-release gate** table + CI pointer for release `v1.3.0`. |

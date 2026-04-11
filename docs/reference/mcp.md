@@ -108,9 +108,9 @@ Config expansion: `${VAR}` and `${VAR:-default}`.
 
 | Phase | MCP scope |
 |-------|-----------|
-| **Early MVP (generic)** | Optional: stabilize loop + builtin tools only. |
-| **goclaw (shipped)** | `internal/mcp`: **stdio** client, dynamic `mcp__*` tools, output limits, **permissions**, `mcp_servers` config. |
-| **Future (goclaw v3+)** | WebSocket, OAuth, resources/list/read, prompts as commands, merge with **plugins** (**D20**) — per **D6** when scoped.
+| **Reference (early)** | Stabilize loop + builtin tools only — background for comparison. |
+| **goclaw (shipped)** | `internal/mcp`: **stdio** + **Streamable HTTP**, dynamic `mcp__*` tools, limits, **permissions**, `mcp_servers`, optional `bearer_token_file`, resilient reconnect — see **D6** in [`CLAUDE.md`](../../goclaw/CLAUDE.md). |
+| **Not implemented** | WebSocket transport, OAuth for MCP, resources/list/read as first-class commands — still **D6** future scope / [mcp-remote.md](../goclaw/mcp-remote.md). |
 
 **D6** should still fix: which transports ship when, `.mcp.json` compatibility, and enterprise policy parity if required from day one.
 
@@ -126,7 +126,7 @@ Merge the `mcp_servers` array from [`docs/goclaw/mcp-servers.example.json`](../g
 
 | Date | Change |
 |------|--------|
-| 2026-04-07 | Initial doc: naming, scopes, transports, auth, lifecycle, permissions, v2/v3 roadmap, **D6**. |
+| 2026-04-07 | Initial doc: naming, scopes, transports, auth, lifecycle, permissions, roadmap, **D6**. |
 | 2026-04-07 | Added pointer to `internal/mcp`, `mcp_servers`, stdio-only scope. |
 | 2026-04-08 | Full English rewrite; **Implemented in goclaw** section first; reference sections retained for future work. |
 | 2026-04-10 | Added `docs/goclaw/mcp-servers.example.json` pointer (stdio filesystem + loopback Streamable HTTP template). |

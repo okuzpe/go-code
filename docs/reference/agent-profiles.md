@@ -169,7 +169,7 @@ Permission modes (`ask`/`allow`/`deny`, configured in `tool_permissions`) are **
 ## Future / polish
 
 > **Still open (not specific to profile table):**
-> - **Team/Swarm** peer-agent topology (tmux-style, mailboxes) — out of scope for goclaw MVP; do not conflate with `coordinator`.
+> - **Team/Swarm** peer-agent topology (tmux-style, mailboxes) — **not implemented** in goclaw; do not conflate with shipped hub `coordinator` + `spawn_agent`.
 > - **Context attachment policy per profile:** optionally omit loading `CLAUDE.md` or `git status` in Explore/Plan to save tokens (today all profiles share the same system prefix pattern).
 > - **Reference-only docs:** [custom-agents.md](./custom-agents.md), [coordinator-mode.md](./coordinator-mode.md), [yolo-classifier.md](./yolo-classifier.md) may describe a larger product than the Go CLI; trust [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md) for shipped behavior.
 
@@ -182,7 +182,7 @@ Permission modes (`ask`/`allow`/`deny`, configured in `tool_permissions`) are **
 | 2026-04-07 | Created: 6-type table, token lesson, Go mapping, phase alignment. |
 | 2026-04-07 | Cross-links: memory extractor, coordinator-mode, yolo-classifier, custom-agents. |
 | 2026-04-08 | Updated goclaw section: real file paths; plan → execute workflow; D16 sketch link. |
-| 2026-04-09 | Seven built-in profiles (`coordinator`); D16 + custom `.md` agents documented; Post-MVP → future/polish. |
+| 2026-04-09 | Seven built-in profiles (`coordinator`); D16 + custom `.md` agents documented; Team/Swarm → future/polish. |
 | 2026-04-08 | Translated to English; restructured around `profile.go` facts; reference-product analysis removed; exact system prompts included. |
 | 2026-04-08 | Shared `baseSystemPrompt` (**D12**), verification/bash policy pointer to [tool-contract.md](./tool-contract.md) and `bash.go`. |
 | 2026-04-08 | `todo_write` on explore/plan/verification; plan → execute workflow (`.goclaw/plan.md`, `/apply-plan`); D16 sketch: [docs/goclaw/coordinator.md](../goclaw/coordinator.md). |

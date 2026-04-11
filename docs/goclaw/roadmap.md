@@ -11,13 +11,13 @@ Each tier must be stable before starting the next.
 
 **Where this file lives:** Product checklist **[roadmap.md](roadmap.md)** under **`docs/goclaw/`**. Project entry: **[`README.md`](../../goclaw/README.md)**; master index: **[`docs-map.md`](../docs-map.md)**. It does not duplicate **`docs/reference/`** specs.
 
-**MVP scope (shippable CLI):** Treat **Tiers 0–8** below as the **MVP / daily-driver checklist**. Every `- [x]` item in those tiers is **in scope for MVP closure**; anything still open must be either **unchecked only under [Future transport and scale](#future-transport-and-scale) or [Future — UI localization](#future--ui-localization)** (explicitly *not* required for the current CLI), or called out as **Partial** in [`docs-map.md`](../docs-map.md) (IDE parity, MCP OAuth/WS, remote plugin marketplace, Team/Swarm peer topology vs shipped `coordinator`). When all Tier 0–8 boxes are checked, the product is **MVP-complete per this document**; remaining work is **post-MVP** unless you intentionally narrow MVP to an older tier range.
+**Shipped scope:** **Tiers 0–8** are the **functional checklist for the current CLI** — every item is `[x]` **implemented** in this repo. Anything **not** shipped is either listed explicitly under **[Future transport and scale](#future-transport-and-scale)** or **[Future — UI localization](#future--ui-localization)** (unchecked), or described as **Partial** in [`docs-map.md`](../docs-map.md) (full IDE MCP parity, MCP OAuth/WebSocket, remote plugin marketplace, Team/Swarm peer topology as distinct from shipped hub `coordinator`).
 
 ---
 
-## Post-MVP waves (ordering)
+## Optional follow-ups (not in Tier 0–8 checklist)
 
-Use this table to pick the **next** engineering theme after MVP closure. **Default first slice:** **Wave A** (better IDE/editor story on top of lockfile MCP + `GOCLAW_IDE_NOTIFY_URL`) when the pain is editor integration; switch to **Wave B** if enterprise MCP (OAuth/WS, non-loopback policy) is the blocker.
+These themes are **not** required for the checklist above; pick one when prioritizing the next release. **Default first slice:** **Wave A** (deeper editor integration on top of lockfile MCP + `GOCLAW_IDE_NOTIFY_URL`). Use **Wave B** if enterprise MCP (OAuth/WS, remote URL policy) is the main gap.
 
 | Wave | Focus | Primary docs | First concrete steps |
 |------|--------|----------------|----------------------|
@@ -180,9 +180,9 @@ Use this table to pick the **next** engineering theme after MVP closure. **Defau
 
 ---
 
-## Tier 6 — Post-MVP: Coordinator + Custom Agents (v2+)
+## Tier 6 — Coordinator, custom agents, and auto-mode (shipped)
 
-> Only start after Tier 0–3 are solid. These are architectural changes.
+> Historical note: this tier was planned after core stability (Tiers 0–3); it is **done** in tree.
 
 - [x] **D16 Coordinator** — implemented `internal/coordinator` package
   - [x] `WorkerNotification` JSON type (`profile`, `status`, `summary`, `result`)
@@ -202,9 +202,9 @@ Use this table to pick the **next** engineering theme after MVP closure. **Defau
 
 ---
 
-## Tier 6b — Agent Power Features (v2)
+## Tier 6b — Agent power features (shipped)
 
-> Features that transform goclaw from a capable CLI into a daily-driver coding agent.
+> Shell script tool, parallel safe reads, LLM compaction — all implemented.
 
 - [x] **Shell power** — `script` tool for multi-line shell scripts (pipes, `&&`, redirections); opt-in via `allow_script: true` in settings.json; reuses bash timeout; separate tool name so permissions can differ (`bash: allow, script: ask`)
 - [x] **D17 YOLO Classifier** — see Tier 6 above
@@ -259,12 +259,12 @@ Use this table to pick the **next** engineering theme after MVP closure. **Defau
 
 ---
 
-## Tier 8 — V3+ slice (2026-04)
+## Tier 8 — Plugins, skills, swarm, and MCP/IDE extras (shipped)
 
-First-pass implementation of roadmap items that were still “post-MVP” on paper; **not** full enterprise parity (no MCP OAuth/WS here).
+Implemented slice: local plugins, runtime skills, disk swarm hub, MCP bearer file, IDE lockfile path — **without** full enterprise parity (no MCP OAuth/WebSocket in this tier).
 
 - [x] **MCP remote token file** — `mcp_servers[].bearer_token_file` merged into HTTP `Authorization` when headers omit it ([`internal/app/chat_wiring.go`](../../goclaw/internal/app/chat_wiring.go)); notes in [`mcp-remote.md`](./mcp-remote.md)
-- [x] **Local plugins (hooks MVP)** — [`internal/plugin`](../../goclaw/internal/plugin): `goclaw-plugin.json`, `plugin_dirs` / `plugin_allow` / `plugin_deny` in settings, `--plugin-dir` flag
+- [x] **Local plugins** — [`internal/plugin`](../../goclaw/internal/plugin): `goclaw-plugin.json`, `plugin_dirs` / `plugin_allow` / `plugin_deny` in settings, `--plugin-dir` flag
 - [x] **Memory auto-capture (opt-in)** — `memory_auto_extract` → short project line after successful `write_file` / `edit_file` ([`internal/memory/autocapture.go`](../../goclaw/internal/memory/autocapture.go))
 - [x] **Runtime skills** — [`internal/skills`](../../goclaw/internal/skills) + orchestrator `WithSkillsSnippet` (`.goclaw/skills`, `.claude/skills`, user mirrors)
 - [x] **Swarm disk hub** — [`internal/swarm`](../../goclaw/internal/swarm) + [`swarm.md`](./swarm.md) (vs coordinator)

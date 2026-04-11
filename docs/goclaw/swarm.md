@@ -1,4 +1,4 @@
-# Swarm (V3+) vs coordinator
+# Swarm disk hub vs coordinator
 
 ## Coordinator (existing)
 

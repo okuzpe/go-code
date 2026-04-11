@@ -2,7 +2,7 @@
 
 Single entry point for humans and AI agents: which file covers which topic, who it is for, and how it relates to shipped goclaw behavior.
 
-**Source of truth for the goclaw binary:** [`goclaw/CLAUDE.md`](../goclaw/CLAUDE.md) — architecture decisions D1–D22, coding conventions, roadmap.
+**Source of truth for the goclaw binary:** [`goclaw/CLAUDE.md`](../goclaw/CLAUDE.md) — architecture decisions D1–D22, coding conventions, roadmap. **Diagrams & module flow:** [`architecture.md`](./architecture.md).
 
 **Project README (only):** [`goclaw/README.md`](../goclaw/README.md) — requirements, quick start, short links into this map. Repo root [`README.md`](../README.md) redirects there. **Where to add new docs:** [`docs/goclaw/documentation.md`](./goclaw/documentation.md). **This file (`docs-map.md`)** is the master file index (there is no `docs/README.md`). **Languages:** `docs/goclaw/` = English product docs; `docs/reference/` = mostly Spanish design reference (see [documentation.md](./goclaw/documentation.md)).
 
@@ -31,7 +31,7 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 
 1. [`docs/goclaw/usage.md`](./goclaw/usage.md) — run and configure the CLI
 2. [`goclaw/CLAUDE.md`](../goclaw/CLAUDE.md) — module state, decisions D1–D22, conventions
-3. [`architecture.md`](./architecture.md) — short English hub (navigation only)
+3. [`architecture.md`](./architecture.md) — package map, boot flow, orchestrator loop, coordinator workers, tool order (English)
 4. [`docs/goclaw/documentation.md`](./goclaw/documentation.md) — **optional** — where to place new Markdown (contributors)
 5. [`code-adjustment-map.md`](./reference/code-adjustment-map.md) — which `docs/` topics map to which `internal/*` packages
 6. [`tool-contract.md`](./reference/tool-contract.md) — tool limits, network policy, loop budget
@@ -63,7 +63,7 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | [`docs/goclaw/i18n.md`](./goclaw/i18n.md) | LLM language vs English UI | Contributor | Policy / planned |
 | [`docs/goclaw/prefix-input-modes.md`](./goclaw/prefix-input-modes.md) | `!` / `@` / `&` / `/btw` prefix input (TUI + readline) | End-user | Shipped — see also [usage.md](./goclaw/usage.md#prefix-input----btw) |
 | [`goclaw/CLAUDE.md`](../goclaw/CLAUDE.md) | Rules, D1–D22, packages, env vars | Contributor | **Source of truth** |
-| [`architecture.md`](./architecture.md) | English navigation hub | End-user | Shipped |
+| [`architecture.md`](./architecture.md) | App/package diagrams, boot → `ChatRuntime` → orchestrator, coordinator vs workers | End-user · Contributor | Shipped |
 | [`agent-profiles.md`](./reference/agent-profiles.md) | Profiles, custom `.md` agents | Contributor | Shipped |
 | [`hooks.md`](./reference/hooks.md) | Hook events, external + project file | Contributor | Shipped |
 | [`mcp.md`](./reference/mcp.md) | MCP naming, transports, auth | Contributor | Partial (stdio + HTTP in goclaw; OAuth/WS future) |
@@ -75,12 +75,12 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | [`custom-agents.md`](./reference/custom-agents.md) | Markdown agents + frontmatter | Contributor | D19 shipped; doc may exceed YAML in goclaw |
 | [`coordinator-mode.md`](./reference/coordinator-mode.md) | Coordinator vs Team/Swarm | Contributor | D16 shipped; peer topology not shipped |
 | [`yolo-classifier.md`](./reference/yolo-classifier.md) | Auto-mode gate | Contributor | Rule-based risk in goclaw; LLM classifier not separate |
-| [`plugins.md`](./reference/plugins.md) | Plugin manifest, marketplace ideas | Contributor | Local plugin MVP; marketplace future |
+| [`plugins.md`](./reference/plugins.md) | Plugin manifest, marketplace ideas | Contributor | Local plugins **shipped**; remote marketplace **not implemented** |
 | [`local-models.md`](./reference/local-models.md) | Ollama / hardware notes | Contributor | Reference |
 | [`memory-system.md`](./reference/memory-system.md) | Memory subsystem detail | Contributor | FS memory shipped; extra extractors in doc |
 | [`context-compaction.md`](./reference/context-compaction.md) | Compaction detail | Contributor | Heuristic + LLM compaction shipped |
 | [`skills.md`](./reference/skills.md) | SKILL.md templates | Contributor | `internal/skills` injects SKILL.md |
-| [`bash-security.md`](./reference/bash-security.md) | Shell layers vs MVP | Contributor | Reference |
+| [`bash-security.md`](./reference/bash-security.md) | Shell layers vs current bash policy | Contributor | Reference |
 | [`costs.md`](./reference/costs.md) | Cloud pricing notes | Contributor | Reference |
 | [`practical-tips.md`](./reference/practical-tips.md) | UX/cost/product decisions (analyzed product) | Contributor | Reference |
 | [`references.md`](./reference/references.md) | External link index (incl. OpenClaw GitHub for comparison) | Contributor | Reference |
@@ -101,6 +101,7 @@ Edits to the documentation tree (index moves, link cleanups) are logged here so 
 
 | Date | Change |
 |------|--------|
-| 2026-04-11 | **MVP closure (doc):** [roadmap.md](./goclaw/roadmap.md) defines MVP = Tiers 0–8, Post-MVP waves A–D; [changelog.md](./goclaw/changelog.md) **1.3.0**; [manual-tui-checklist.md](./goclaw/manual-tui-checklist.md) automated gate log; git tag `v1.3.0`. |
+| 2026-04-11 | Expanded [architecture.md](./architecture.md) (Mermaid flows); linked from [documentation.md](./goclaw/documentation.md) and this map (intro, reading order row 3, index row). |
+| 2026-04-11 | **Release 1.3.0 (doc):** [roadmap.md](./goclaw/roadmap.md) shipped checklist Tiers 0–8 + optional follow-up waves; [changelog.md](./goclaw/changelog.md) **1.3.0**; [manual-tui-checklist.md](./goclaw/manual-tui-checklist.md) automated gate log; git tag `v1.3.0`. |
 | 2026-04-11 | Unified docs pass: normalized `docs/reference/` link labels to kebab-case filenames; replaced stale “ARCHITECTURE §” callouts with [CLAUDE.md](../goclaw/CLAUDE.md) / [roadmap.md](./goclaw/roadmap.md); language policy in [documentation.md](./goclaw/documentation.md); [README.md](../goclaw/README.md) defers detail to this map; shortened [architecture.md](./architecture.md) product blurb and “Entry point” row above; fixed [prefix-input-modes.md](./goclaw/prefix-input-modes.md) index row (shipped); [mcp-remote.md](./goclaw/mcp-remote.md) CLAUDE path corrected. |
 | 2026-04-10 | [code-adjustment-map.md](./reference/code-adjustment-map.md) added; architecture hub delegates file index to this map. |

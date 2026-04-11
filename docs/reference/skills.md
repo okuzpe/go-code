@@ -20,7 +20,7 @@ Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (skills runtime). Expla
 |-------|-----------|
 | Descubrimiento `**/SKILL.md` | `internal/skills` (v3 según [roadmap.md](../goclaw/roadmap.md)) |
 | Inyección en prompt | `internal/prompt` o orquestador al activar skill |
-| Comandos slash | Opcional: plugins [plugins.md](./plugins.md) o CLI propio; **no MVP** |
+| Comandos slash | Opcional: [plugins.md](./plugins.md) o CLI propio; no forma parte del núcleo mínimo |
 
 **Roadmap:** **v3** junto a `internal/skills` y plugins; contrato vigente: [CLAUDE.md](../../goclaw/CLAUDE.md) y las secciones de este archivo.
 

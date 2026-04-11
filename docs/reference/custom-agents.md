@@ -120,7 +120,7 @@ Los agentes **no** se declaran dentro del schema de settings; son ficheros o JSO
 
 ## 9. `/agents` (producto completo)
 
-UI interactiva: listar por fuente, ver detalle, crear asistente (wizard), editar/borrar user/project. **Eco Go:** CLI `assistant agents list|show` en fase tardía; MVP puede leer solo disco.
+UI interactiva: listar por fuente, ver detalle, crear asistente (wizard), editar/borrar user/project. **goclaw hoy:** carga agentes Markdown desde disco (`~/.goclaw/agents/`, `.goclaw/agents/`), `/profile`, hot-reload — **sin** UI tipo `/agents` del producto de referencia.
 
 ---
 
@@ -134,7 +134,7 @@ UI interactiva: listar por fuente, ver detalle, crear asistente (wizard), editar
 | Hooks por agente | Delegado en `internal/hooks` con scope `agentID` |
 | Worktree isolation | `internal/tools/git` o wrapper; flag **D19** |
 
-**Roadmap:** v1 `agentprofile` solo built-ins + 1 custom path opcional; **v3+** paridad con prioridades, plugin, MCP/hooks en frontmatter — [roadmap.md](../goclaw/roadmap.md).
+**Estado:** agentes custom + prioridades merge + hooks/MCP en frontmatter están **alineados** con lo descrito para D19 en [roadmap.md](../goclaw/roadmap.md) Tier 6 y [CLAUDE.md](../../goclaw/CLAUDE.md); la UI `/agents` interactiva de la referencia **no está implementada**.
 
 ---
 

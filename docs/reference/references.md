@@ -1,14 +1,14 @@
 # References (assistant / agentic CLI patterns)
 
-**Índice de cobertura ↔ [Claude Code Internals](https://claude-code-explain.helmcode.com/):** [docs-map.md](../docs-map.md) — tabla por tema, alcance MVP, orden de lectura para implementar.
+**Índice de cobertura ↔ [Claude Code Internals](https://claude-code-explain.helmcode.com/):** [docs-map.md](../docs-map.md) — tabla por tema, qué está **implementado** en goclaw vs referencia, orden de lectura.
 
 **Decisiones y arquitectura:** [architecture.md](../architecture.md) — hub corto en inglés (navegación). Comportamiento GoClaw: [goclaw/CLAUDE.md](../../goclaw/CLAUDE.md). **Docs ↔ código (mantenimiento):** [code-adjustment-map.md](./code-adjustment-map.md) — qué leer y qué paquetes `internal/*` tocar por capa.
 
 - [skills.md](./skills.md) — formato `SKILL.md`, hooks en sesión, roadmap v3.
-- [bash-security.md](./bash-security.md) — capas shell/sandbox (referencia vs MVP), **D4**.
+- [bash-security.md](./bash-security.md) — capas shell/sandbox (referencia vs implementación actual), **D4**.
 - [costs.md](./costs.md) — pricing cloud y modo “fast”; **D1**; N/A Ollama.
 - [local-models.md](./local-models.md) — Ollama, modelos 7B/14B, límites RTX 4050 / 32 GB, imagen/vídeo como herramientas opcionales.
-- [tool-contract.md](./tool-contract.md) — nombres/límites/riesgo de herramientas MVP, política red, presupuesto bucle (**antes de codificar** `internal/tools`).
+- [tool-contract.md](./tool-contract.md) — nombres/límites/riesgo de herramientas (contrato **implementado** en `internal/tools`), política red, presupuesto bucle.
 - [agent-profiles.md](./agent-profiles.md) — perfiles de agente (modelo + tools + permisos + contexto), eco Go.
 - [memory-system.md](./memory-system.md) — memoria entre sesiones (tipos, MEMORY.md, límites, extractor), eco Go.
 - [context-compaction.md](./context-compaction.md) — ventana de contexto, micro-compact, auto-compact, presupuestos de salida, eco Go (**D15**).

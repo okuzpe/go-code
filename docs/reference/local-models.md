@@ -94,7 +94,7 @@ En **Windows + NVIDIA**, ambos suelen apoyarse en **llama.cpp**: el rendimiento 
 
 **Recomendación para el asistente Go:** mantened **Ollama como backend principal** (**D10**) y la **misma familia de API** para todo lo local: ya soporta **varios nombres de modelo** en el mismo servidor (cambio según perfil). **LM Studio** puede ayudar como **laboratorio**: probar quant/tamaño/m modelo que aún no está en el registro de Ollama, o afinar en GUI; si algo queda fijo, **importarlo a Ollama** o fijarlo vía `Modelfile` y seguir con **una sola URL** en `internal/llm` para no multiplicar código y operación.
 
-Opcionalmente **D7** puede definir **dos URLs** (`OLLAMA_HOST` + `LLM_STUDIO_HOST`) solo si necesitáis un modelo **exclusivo** de un ecosistema; para MVP es **YAGNI**.
+Opcionalmente **D7** puede definir **dos URLs** (`OLLAMA_HOST` + `LLM_STUDIO_HOST`) solo si necesitáis un modelo **exclusivo** de un ecosistema; para la mayoría de despliegues es **YAGNI** (una URL base basta).
 
 ---
 
@@ -164,7 +164,7 @@ Documentad la política en **Permissions** + mensajes al usuario (“generación
 
 ## 4. Memoria entre sesiones
 
-- El diagrama tipo “goclaw” incluye **memoria**. En nuestra tabla §4.1 aún no hay paquete dedicado: puede ser **fase v2/v3** (ficheros `MEMORY.md`, SQLite, o MCP). Para **solo local**, empezar por **archivos en disco** bajo `.assistant/` evita servicios extra.
+- **goclaw:** memoria en disco bajo `~/.goclaw/memory/` + `MEMORY.md`, REPL `/memory`, auto-capture opcional — ver **D13** en [`CLAUDE.md`](../../goclaw/CLAUDE.md) y [memory-system.md](./memory-system.md). El párrafo anterior describía un estado **obsoleto** del diseño; hoy el paquete existe en `internal/memory`.
 
 ---
 
@@ -176,11 +176,11 @@ Documentad la política en **Permissions** + mensajes al usuario (“generación
               ↔ internal/llm     → HTTP → Ollama (Qwen Coder 7B/14B, …)
               ↔ internal/session
               → internal/permissions → internal/tools
-                   ├── read_file, bash, web_search, web_fetch  (MVP)
-                   ├── glob, grep  (v1 — regla §2.1 [CLAUDE.md](../../goclaw/CLAUDE.md))
-                   ├── write, edit  (v2)
-                   ├── image optional → A1111 API
-                   └── video optional → proceso externo (fase tardía)
+                   ├── read_file, glob, grep, bash, web_search, web_fetch, write_file, edit_file, patch, todo_write  (**shipped**)
+                   ├── coordinator: spawn_agent, stop_task  (**shipped** perfil `coordinator`)
+                   ├── script (opcional `allow_script`), MCP `mcp__*`, plugins/skills  (**shipped** según config)
+                   ├── image/video  (**no** hay tools built-in; §3 describe integración opcional externa)
+                   └── generate_image / video  (**no implementado** en el binario; patrón §3 si se añade)
 ```
 
 El **system prompt** debe reforzar herramientas dedicadas antes que bash ([CLAUDE.md](../../goclaw/CLAUDE.md) D12); los modelos locales suelen beneficiarse **más** de esa regla explícita.
@@ -194,7 +194,7 @@ El **system prompt** debe reforzar herramientas dedicadas antes que bash ([CLAUD
 3. Añadir **una** herramienta trivial (`read_file`) y medir si el modelo obedece el formato acordado (D2); incluir en prompt la **regla de herramientas dedicadas** (D12).
 4. Añadir `glob`/`grep` antes de alentar búsquedas vía `bash` (§2.1 del archivo principal).
 5. Sólo después: `web_fetch` con política de red (§8.2 del archivo principal).
-6. Imagen: tras MVP estable — §3.6; `.env.example` con `IMAGE_GEN_BASE_URL`; medir **contención GPU** §3.5 con Ollama.
+6. Imagen: cuando el chat local sea estable — §3.6; `.env.example` con `IMAGE_GEN_BASE_URL`; medir **contención GPU** §3.5 con Ollama (**herramienta no incluida** en goclaw por defecto).
 7. Vídeo: después de imagen estable; cola y expectativas §3.3.
 
 ---
@@ -204,7 +204,7 @@ El **system prompt** debe reforzar herramientas dedicadas antes que bash ([CLAUD
 | Fecha | Cambio |
 |-------|--------|
 | 2026-04-07 | Creación: Ollama, modelos, límites hardware, herramientas media como tools opcionales, mapa a paquetes Go. |
-| 2026-04-07 | Mapa y checklist alineados con **§2.1** herramientas dedicadas (glob/grep v1, write/edit v2, D12). |
+| 2026-04-07 | Mapa y checklist alineados con **§2.1** herramientas dedicadas (glob/grep, write/edit, D12). |
 | 2026-04-07 | §2.3: perfiles de agente y modelo barato vs principal (Ollama). |
 | 2026-04-07 | §2.5–§2.7: VRAM 4050 (~6 GB), cuántos modelos, tabla perfil→modelo, Ollama vs LM Studio y una sola URL por defecto. |
 | 2026-04-07 | **§1.1** panorama open-weights 2026 (privacidad, coste, especialización) filtrado por VRAM, coder+tools y §3 para imagen/vídeo. |

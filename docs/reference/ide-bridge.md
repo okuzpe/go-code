@@ -81,9 +81,9 @@ Orden de resolución orientativa: variable de entorno (solo dev) → cadena de c
 | Cliente MCP → IDE | `internal/ide/mcpclient.go` (o subpaquete) | SSE/WS + auth; timeouts; **solo localhost** por defecto |
 | Contrato con orquestador | Interfaz inyectada desde `main` | p. ej. `IDENotifier`, `IDEContextProvider`; **evitar** `ide` → `orchestrator` |
 | Herramientas Write/Edit | Tras éxito lógico | Llamar notificación para diff en editor cuando **D21** y sesión IDE activa |
-| Bridge remoto | Fuera del MVP / v1 IDE | Si se hace: paquete separado; mismo orquestador; distinto “channel” de entrada |
+| Bridge remoto | **No implementado** en goclaw; sería paquete separado y otro canal de entrada |
 
-**Roadmap sugerido:** **MVP** — solo REPL y permisos; **v1** — `glob`/`grep`/memoria etc. según [CLAUDE.md](../../goclaw/CLAUDE.md); **v1+ (prioridad producto)** — `internal/ide` con descubrimiento + cliente MCP mínimo + una extensión o adaptador documentado (**D21**). Bridge estilo claude.ai **sin compromiso**.
+**goclaw (shipped) vs referencia:** El CLI ya incluye **REPL/TUI**, permisos, tools, memoria, MCP, etc. ([`CLAUDE.md`](../../goclaw/CLAUDE.md)). **D21 / `internal/ide`:** notificación POST loopback + descubrimiento de lockfile MCP — ver §6–§7 abajo. **Parcial:** paridad UI/extension con el IDE del producto de referencia. **Bridge** estilo claude.ai: **sin compromiso** de implementación.
 
 ---
 

@@ -53,9 +53,9 @@ The retry counter resets for each `doHTTPWithRetry` invocation. A session with t
 
 ---
 
-## Post-MVP
+## Not implemented (optional hardening)
 
-> **Post-MVP (v2+):** Jitter on the backoff (to reduce thundering herds in multi-instance setups). Configurable attempt limits and delay ceiling via environment variables (D22). Separate retry policy per provider — Ollama and Anthropic have different transient failure patterns. Time-bounded retry for daemon/CI mode instead of count-bounded.
+> Possible future work **not** in [`retry.go`](../../goclaw/internal/llm/retry.go) today: jitter on the backoff (multi-instance thundering herds), finer-grained env knobs on top of **D22**, separate retry policies per provider, or time-bounded retry for long-running daemons instead of count-bounded loops.
 
 ---
 
