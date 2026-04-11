@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,7 +30,7 @@ var _ Tool = (*ReadFileTool)(nil)
 func (ReadFileTool) Name() string { return "read_file" }
 
 func (ReadFileTool) Description() string {
-	return "Read a UTF-8 text file from the workspace. Symlinks are resolved; paths outside the workspace are rejected."
+	return "Read a UTF-8 text file from the workspace, or list the contents of a directory. Symlinks are resolved; paths outside the workspace are rejected."
 }
 
 func (ReadFileTool) InputSchema() any {
@@ -87,6 +88,13 @@ func (t *ReadFileTool) Execute(ctx context.Context, input string) (Result, error
 		return Result{Content: fmt.Sprintf("open file: %v", err), IsError: true}, nil
 	}
 	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return Result{Content: fmt.Sprintf("stat file: %v", err), IsError: true}, nil
+	}
+	if st.IsDir() {
+		return listDirectory(resolved, in.Path), nil
+	}
 
 	limitLines := in.LimitLines
 	if limitLines <= 0 || limitLines > MaxReadFileLines {
@@ -141,4 +149,49 @@ func (t *ReadFileTool) Execute(ctx context.Context, input string) (Result, error
 		out += fmt.Sprintf("\n\n[output truncated: max %d lines or %d bytes]", limitLines, MaxReadFileBytes)
 	}
 	return Result{Content: out, IsError: false}, nil
+}
+
+// dirSkip lists subdirectory names that are never walked when listing a directory reference.
+var dirSkip = map[string]bool{
+	".git":         true,
+	"node_modules": true,
+	"vendor":       true,
+}
+
+// listDirectory walks resolved (an absolute directory path) and returns a Result with one
+// workspace-relative slash path per line. Directories end with "/". Capped at MaxReadFileLines entries.
+func listDirectory(resolved, displayPath string) Result {
+	var entries []string
+	truncated := false
+	_ = filepath.WalkDir(resolved, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if p == resolved {
+			return nil
+		}
+		if d.IsDir() && dirSkip[d.Name()] {
+			return filepath.SkipDir
+		}
+		rel, err := filepath.Rel(resolved, p)
+		if err != nil {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		if d.IsDir() {
+			relSlash += "/"
+		}
+		entries = append(entries, relSlash)
+		if len(entries) >= MaxReadFileLines {
+			truncated = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	header := fmt.Sprintf("(directory: %s, %d entries)\n", displayPath, len(entries))
+	body := strings.Join(entries, "\n")
+	if truncated {
+		body += fmt.Sprintf("\n[truncated at %d entries]", MaxReadFileLines)
+	}
+	return Result{Content: header + body}
 }

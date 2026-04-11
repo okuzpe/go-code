@@ -52,6 +52,16 @@ func TestAnalyzeAmpSpawn(t *testing.T) {
 func TestAnalyzeMultilineRejected(t *testing.T) {
 	_, err := Analyze("! ls\nmore")
 	require.Error(t, err)
+	_, err = Analyze("& task\nmore")
+	require.Error(t, err)
+}
+
+func TestAnalyzeAtMultilinePassthrough(t *testing.T) {
+	// Multi-line @ message: "@go.mod\nexplain this" should now be KindPassthrough
+	// so inline expansion can read the file and include the instruction together.
+	a, err := Analyze("@go.mod\nexplain this")
+	require.NoError(t, err)
+	require.Equal(t, KindPassthrough, a.Kind)
 }
 
 func TestBtwRewrite(t *testing.T) {

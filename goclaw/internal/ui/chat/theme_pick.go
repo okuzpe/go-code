@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/okuzpe/goclaw/internal/config"
 )
@@ -54,6 +55,7 @@ func (m *Model) refreshThemePickOverlay() {
 }
 
 func (m *Model) openThemePicker() {
+	m.exitConfirmDeadline = time.Time{}
 	m.agentPickOpen = false
 	m.agentPickFullText = ""
 	items := m.themePickPresetNames()

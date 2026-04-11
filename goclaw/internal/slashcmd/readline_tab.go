@@ -1,6 +1,9 @@
 package slashcmd
 
-import "github.com/chzyer/readline"
+import (
+	"github.com/chzyer/readline"
+	"github.com/okuzpe/goclaw/internal/inputprefix"
+)
 
 // ReadlineSlashPrefixes returns top-level REPL slash commands for readline Tab completion.
 func ReadlineSlashPrefixes() []string {
@@ -18,4 +21,13 @@ func ReadlinePrefixCompleter() *readline.PrefixCompleter {
 		items = append(items, readline.PcItem(e.Name))
 	}
 	return readline.NewPrefixCompleter(items...)
+}
+
+// NewReadlineSlashAtCompleter returns an AutoCompleter that completes @workspace paths
+// and delegates /slash commands to ReadlinePrefixCompleter.
+func NewReadlineSlashAtCompleter(workdir string) readline.AutoCompleter {
+	return &inputprefix.ReadlineAtCompletions{
+		Workdir: workdir,
+		Slash:   ReadlinePrefixCompleter(),
+	}
 }

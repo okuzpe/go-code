@@ -54,10 +54,9 @@ func Analyze(raw string) (Analysis, error) {
 		switch {
 		case strings.HasPrefix(first, "!"):
 			return Analysis{}, fmt.Errorf("prefix ! must be a single line (extra text after newline)")
-		case strings.HasPrefix(first, "@"):
-			return Analysis{}, fmt.Errorf("prefix @ must be a single line (extra text after newline)")
 		case strings.HasPrefix(first, "&"):
 			return Analysis{}, fmt.Errorf("prefix & must be a single line (extra text after newline)")
+		// @ with extra lines falls through to KindPassthrough — inline expansion handles it.
 		}
 	}
 
@@ -80,6 +79,12 @@ func Analyze(raw string) (Analysis, error) {
 		}, nil
 
 	case strings.HasPrefix(first, "@"):
+		// Multi-line @ messages (e.g. "@go.mod\nexplain this") fall through to
+		// KindPassthrough so inline expansion can inject the file content alongside
+		// the user's instruction. Only pure single-line @path is a local tool.
+		if extra != "" {
+			break
+		}
 		path := strings.TrimSpace(strings.TrimPrefix(first, "@"))
 		if path == "" {
 			return Analysis{}, fmt.Errorf("prefix @ requires a path")

@@ -26,83 +26,93 @@ type toolOutcome struct {
 	Err     error // fatal: abort the orchestrator Run entirely
 }
 
+// rejectTool returns a non-fatal error outcome shown to the LLM as a tool_result with is_error=true.
+func rejectTool(msg string) toolOutcome {
+	return toolOutcome{Content: msg, IsError: true}
+}
+
 func (o *Orchestrator) executeTool(ctx context.Context, tu *llm.ToolUse, sink StreamSink) toolOutcome {
 	if sink != nil {
 		ctx = ContextWithStreamSink(ctx, sink)
 	}
-	if o.profile.ReadOnly {
-		if strings.HasPrefix(tu.Name, "mcp__") {
-			return toolOutcome{
-				Content: "mcp tools are disabled for read-only profiles",
-				IsError: true,
-			}
-		}
-		switch tu.Name {
-		case "bash", "write_file", "edit_file", "patch":
-			return toolOutcome{
-				Content: fmt.Sprintf("%s is blocked for read-only profile", tu.Name),
-				IsError: true,
-			}
-		}
+	if outcome, blocked := o.checkReadOnly(tu.Name); blocked {
+		return outcome
 	}
-
-	switch o.perms.Evaluate(tu.Name) {
-	case permissions.DecisionDeny:
-		return toolOutcome{
-			Content: fmt.Sprintf("permission denied for tool %q (policy mode deny)", tu.Name),
-			IsError: true,
-		}
-	case permissions.DecisionAsk:
-		// YOLO: auto-approve if the tool's risk score is within the configured threshold.
-		if o.cfg.YoloThreshold >= 0 {
-			score := permissions.RiskScore(tu.Name, tu.Input)
-			if score <= o.cfg.YoloThreshold {
-				slog.Debug("yolo: auto-approved", "tool", tu.Name, "score", score, "threshold", o.cfg.YoloThreshold)
-				break
-			}
-		}
-		if o.approver == nil {
-			return toolOutcome{Err: fmt.Errorf("tool %q requires user approval; no approver configured", tu.Name)}
-		}
-		ok, err := o.approver(ctx, tu.Name, tu.Input)
-		if err != nil {
-			return toolOutcome{Err: fmt.Errorf("tool approval: %w", err)}
-		}
-		if !ok {
-			return toolOutcome{
-				Content: fmt.Sprintf("user declined execution of tool %q", tu.Name),
-				IsError: true,
-			}
-		}
+	if outcome, blocked := o.checkApproval(ctx, tu); blocked {
+		return outcome
 	}
-
 	if err := o.hooks.Fire(ctx, hooks.Event{
 		Type:     hooks.PreToolUse,
 		ToolName: tu.Name,
 		Input:    tu.Input,
 	}); err != nil {
-		return toolOutcome{Content: fmt.Sprintf("pre_tool_use hook blocked: %v", err), IsError: true}
+		return rejectTool(fmt.Sprintf("pre_tool_use hook blocked: %v", err))
 	}
-
 	t, ok := o.tools.Get(tu.Name)
 	if !ok {
-		return toolOutcome{Content: fmt.Sprintf("unknown tool %q", tu.Name), IsError: true}
+		return rejectTool(fmt.Sprintf("unknown tool %q", tu.Name))
 	}
+	res, execErr := t.Execute(ctx, tu.Input)
+	return o.finishToolExecution(ctx, tu.Name, tu.Input, res.Content, res.IsError, execErr)
+}
 
-	res, err := t.Execute(ctx, tu.Input)
-
-	hookEvent := hooks.Event{ToolName: tu.Name, Input: tu.Input, Output: res.Content}
-	if err != nil {
-		hookEvent.Type = hooks.PostToolUseFailure
-		_ = o.hooks.Fire(ctx, hookEvent)
-		return toolOutcome{Content: err.Error(), IsError: true}
+// finishToolExecution runs post-tool hooks and maps execution result to a toolOutcome.
+func (o *Orchestrator) finishToolExecution(ctx context.Context, toolName, input, content string, resultIsError bool, execErr error) toolOutcome {
+	ev := hooks.Event{ToolName: toolName, Input: input, Output: content}
+	if execErr != nil {
+		ev.Type = hooks.PostToolUseFailure
+		_ = o.hooks.Fire(ctx, ev)
+		return rejectTool(execErr.Error())
 	}
-	if res.IsError {
-		hookEvent.Type = hooks.PostToolUseFailure
+	if resultIsError {
+		ev.Type = hooks.PostToolUseFailure
 	} else {
-		hookEvent.Type = hooks.PostToolUse
+		ev.Type = hooks.PostToolUse
 	}
-	_ = o.hooks.Fire(ctx, hookEvent)
+	_ = o.hooks.Fire(ctx, ev)
+	return toolOutcome{Content: content, IsError: resultIsError}
+}
 
-	return toolOutcome{Content: res.Content, IsError: res.IsError}
+// checkReadOnly returns a rejection outcome if the tool is blocked by the active read-only profile.
+// Returns (zero, false) when the tool may proceed.
+func (o *Orchestrator) checkReadOnly(toolName string) (toolOutcome, bool) {
+	if !o.profile.ReadOnly {
+		return toolOutcome{}, false
+	}
+	if strings.HasPrefix(toolName, "mcp__") {
+		return rejectTool("mcp tools are disabled for read-only profiles"), true
+	}
+	switch toolName {
+	case "bash", "write_file", "edit_file", "patch":
+		return rejectTool(fmt.Sprintf("%s is blocked for read-only profile", toolName)), true
+	}
+	return toolOutcome{}, false
+}
+
+// checkApproval enforces permission policy, YOLO auto-approval, and interactive user approval.
+// Returns (outcome, true) if the tool should be blocked; (zero, false) if it may proceed.
+func (o *Orchestrator) checkApproval(ctx context.Context, tu *llm.ToolUse) (toolOutcome, bool) {
+	switch o.perms.Evaluate(tu.Name) {
+	case permissions.DecisionDeny:
+		return rejectTool(fmt.Sprintf("permission denied for tool %q (policy mode deny)", tu.Name)), true
+	case permissions.DecisionAsk:
+		if o.cfg.YoloThreshold >= 0 {
+			score := permissions.RiskScore(tu.Name, tu.Input)
+			if score <= o.cfg.YoloThreshold {
+				slog.Debug("yolo: auto-approved", "tool", tu.Name, "score", score, "threshold", o.cfg.YoloThreshold)
+				return toolOutcome{}, false
+			}
+		}
+		if o.approver == nil {
+			return toolOutcome{Err: fmt.Errorf("tool %q requires user approval; no approver configured", tu.Name)}, true
+		}
+		approved, err := o.approver(ctx, tu.Name, tu.Input)
+		if err != nil {
+			return toolOutcome{Err: fmt.Errorf("tool approval: %w", err)}, true
+		}
+		if !approved {
+			return rejectTool(fmt.Sprintf("user declined execution of tool %q", tu.Name)), true
+		}
+	}
+	return toolOutcome{}, false
 }

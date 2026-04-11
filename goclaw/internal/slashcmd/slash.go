@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/coordinator"
 	"github.com/okuzpe/goclaw/internal/inputprefix"
@@ -166,6 +168,51 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string) (handled bo
 
 	case "capabilities":
 		return true, UserCapabilitiesGuide(), false, "", nil
+
+	case "copy":
+		const maxClipBytes = 768 * 1024
+		if sess == nil || *sess == nil {
+			return true, "", false, "", fmt.Errorf("/copy: no active session")
+		}
+		body := (*sess).PlainTranscript()
+		if strings.TrimSpace(body) == "" {
+			return true, "(nothing to copy — session transcript is empty)", false, "", nil
+		}
+		clipBody := body
+		note := ""
+		if len(clipBody) > maxClipBytes {
+			clipBody = clipBody[:maxClipBytes]
+			note = fmt.Sprintf(" (truncated to %d bytes for clipboard)", maxClipBytes)
+		}
+		if err := clipboard.WriteAll(clipBody); err != nil {
+			return true, "", false, "", fmt.Errorf("/copy: clipboard: %w — try /export path.txt", err)
+		}
+		return true, fmt.Sprintf("(copied %d bytes to clipboard)%s", len(clipBody), note), false, "", nil
+
+	case "export":
+		if sess == nil || *sess == nil {
+			return true, "", false, "", fmt.Errorf("/export: no active session")
+		}
+		if len(fields) < 2 {
+			return true, "", false, "", fmt.Errorf(`usage: /export <path>  (plain session text; relative paths are under the workspace when set)`)
+		}
+		path := strings.TrimSpace(strings.Join(fields[1:], " "))
+		if path == "" || strings.Contains(path, "..") {
+			return true, "", false, "", fmt.Errorf("/export: invalid path")
+		}
+		body := (*sess).PlainTranscript()
+		if strings.TrimSpace(body) == "" {
+			return true, "(session is empty — nothing written)", false, "", nil
+		}
+		outPath := path
+		if !filepath.IsAbs(path) && strings.TrimSpace(env.Workdir) != "" {
+			outPath = filepath.Join(env.Workdir, path)
+		}
+		outPath = filepath.Clean(outPath)
+		if err := os.WriteFile(outPath, []byte(body), 0o600); err != nil {
+			return true, "", false, "", fmt.Errorf("/export: write %s: %w", outPath, err)
+		}
+		return true, fmt.Sprintf("(wrote %d bytes to %s)", len(body), outPath), false, "", nil
 
 	case "compact":
 		if orch == nil {
@@ -443,7 +490,7 @@ use /workers to list interactive worker ids`)
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /btw   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /quit\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /btw   /copy   /export   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /quit\n")
 	b.WriteString("Prefix input (see docs/goclaw/prefix-input-modes.md):  !cmd   @path   &task\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
@@ -463,7 +510,7 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("  /apply-plan [path] — load plan, switch to general-purpose, stream execution\n")
 	b.WriteString("  /memory list | add | delete — durable memory under ~/.goclaw/memory/\n")
 	b.WriteString("  /workers, /focus or /in <id>, /back or /detach — interactive spawn_agent workers\n")
-	b.WriteString("  /compact, /edit, /agents, /profile, /theme, /new, /save, /session, /sessions, /quit, /btw\n")
+	b.WriteString("  /compact, /copy, /export, /edit, /agents, /profile, /theme, /new, /save, /session, /sessions, /quit, /btw\n")
 	b.WriteString("Prefix: ! (bash), @ (read_file), & (spawn_agent) — single line; docs/goclaw/prefix-input-modes.md\n")
 	b.WriteString("Flags: --readline (line REPL), --no-tools, --session <id>, --profile <name>\n")
 	if strings.TrimSpace(workdir) != "" {
@@ -490,6 +537,8 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /new             — save current session to disk, start a fresh empty session\n")
 	b.WriteString("  /save            — write current session JSONL without exiting\n")
 	b.WriteString("  /compact         — force context compaction (keep recent tail)\n")
+	b.WriteString("  /copy            — copy plain session transcript to the system clipboard (truncates if very large)\n")
+	b.WriteString("  /export <path>   — write plain session transcript to a file (relative paths use workspace when set)\n")
 	b.WriteString("  /edit            — compose a multiline message in $EDITOR (vi, notepad, …)\n")
 	b.WriteString("  /memory list     — list memory files under ~/.goclaw/memory/\n")
 	b.WriteString("  /memory add <type> <name> <text...>  — types: user | feedback | project | reference\n")

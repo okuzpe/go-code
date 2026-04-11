@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/slashcmd"
 	"github.com/okuzpe/goclaw/internal/text"
@@ -92,6 +93,11 @@ type Model struct {
 	footerRendered string
 	// lastTranscript avoids redundant viewport.SetContent when only the footer/spinner changed (reduces flicker).
 	lastTranscript string
+
+	// exitConfirmDeadline is the wall-clock instant until which a second Ctrl+C quits the TUI (double Ctrl+C).
+	exitConfirmDeadline time.Time
+	// ctrlCMsgRendered holds the rendered "Press Ctrl+C again…" line so it can be removed when the deadline expires.
+	ctrlCMsgRendered string
 }
 
 type toolTickMsg struct{}
@@ -207,7 +213,7 @@ func New(ctx context.Context, opts Options) Model {
 	}
 
 	vp := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
-	vp.MouseWheelEnabled = true
+	vp.MouseWheelEnabled = false // mouse mode is off; scroll via keyboard (PgUp/PgDn, j/k, Ctrl+U/D)
 	vp.SoftWrap = true
 
 	// Use textarea for multi-line input support (modern CLI standard).
@@ -278,6 +284,12 @@ func (m *Model) Init() tea.Cmd {
 
 func tickToolWait() tea.Cmd {
 	return tea.Tick(time.Second, func(time.Time) tea.Msg { return toolTickMsg{} })
+}
+
+// ctrlCExitArmExpiredMsg clears the exit-confirm window when the scheduled deadline passes.
+// expected must match m.exitConfirmDeadline so restarts of the 3s window ignore stale ticks.
+type ctrlCExitArmExpiredMsg struct {
+	expected time.Time
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -392,7 +404,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Drop stray deltas after completion (e.g. race with batching); avoids a second assistant row.
 			return m, nil
 		}
-		m.spinnerActive = false
 		if m.assistantPlaceholder {
 			m.stripAssistantPlaceholderLine()
 			m.assistantPlaceholder = false
@@ -419,6 +430,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.toolWaitQueue) == 1 {
 			m.toolWaitStartedAt = time.Now()
 		}
+		m.spinnerActive = true
 		m.statusLine = m.toolQueueStatusLine()
 		return m, tickToolWait()
 	case toolTickMsg:
@@ -428,6 +440,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.statusLine = m.toolQueueStatusLine()
 		return m, tickToolWait()
+	case ctrlCExitArmExpiredMsg:
+		if m.exitConfirmDeadline != msg.expected || m.exitConfirmDeadline.IsZero() {
+			return m, nil
+		}
+		m.exitConfirmDeadline = time.Time{}
+		if m.ctrlCMsgRendered != "" {
+			for i := len(m.lines) - 1; i >= 0; i-- {
+				if m.lines[i] == m.ctrlCMsgRendered {
+					m.lines = append(m.lines[:i], m.lines[i+1:]...)
+					break
+				}
+			}
+			m.ctrlCMsgRendered = ""
+			m.setLinesContent(false)
+		}
+		m.layout()
+		return m, nil
 	case toolResultMsg:
 		job, ok := m.popToolJob()
 		if !ok {
@@ -457,6 +486,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Drag-and-drop interception: convert file/dir paths pasted from the OS into @relpath tokens.
+	if paste, isPaste := msg.(tea.PasteMsg); isPaste &&
+		!m.streaming && m.pending == nil &&
+		!m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
+		if tokens, ok := inputprefix.TryPasteAsAtPaths(m.workdir, paste.Content); ok {
+			// Insert a space before the token if cursor is right after non-space text.
+			row := m.input.Line()
+			col := m.input.Column()
+			allLines := strings.Split(m.input.Value(), "\n")
+			prefix := ""
+			if row < len(allLines) {
+				lineRunes := []rune(allLines[row])
+				if col > 0 && col <= len(lineRunes) && lineRunes[col-1] != ' ' && lineRunes[col-1] != '\t' {
+					prefix = " "
+				}
+			}
+			m.input.InsertString(prefix + tokens + " ")
+			m.resizeInput()
+			m.layout()
+			return m, nil
+		}
+	}
+
 	var (
 		cmds []tea.Cmd
 		cmd  tea.Cmd
@@ -475,21 +527,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
-	// Ctrl+C always exits the TUI (Unix-style). Cancel any in-flight model request first.
-	if k == "ctrl+c" {
-		if m.streaming {
-			m.submitter.cancel()
-		}
-		return m, tea.Quit, true
-	}
-	if m.pending == nil && k == "esc" {
-		// Match common agent UIs: Esc stops an in-flight reply; Esc again exits when idle.
-		if m.streaming {
-			m.submitter.cancel()
-			return m, nil, true
-		}
-		return m, tea.Quit, true
-	}
 	if m.pending != nil {
 		switch k {
 		case "y", "Y":
@@ -499,7 +536,7 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 			}
 			m.pending = nil
 			return m, waitForApproval(m.approval.Requests), true
-		case "n", "N", "esc":
+		case "n", "N", "esc", "ctrl+c":
 			select {
 			case m.pending.Resp <- false:
 			default:
@@ -510,6 +547,17 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 			// Modal approval: ignore other keys (including Enter) so they are not treated as a new chat message.
 			return m, nil, true
 		}
+	}
+	if k == "ctrl+c" {
+		return m.handleCtrlCExitConfirm()
+	}
+	if k == "esc" {
+		// Match common agent UIs: Esc stops an in-flight reply; Esc again exits when idle.
+		if m.streaming {
+			m.submitter.cancel()
+			return m, nil, true
+		}
+		return m, tea.Quit, true
 	}
 	switch k {
 	case "ctrl+l":
@@ -524,7 +572,39 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 		if m.streaming || m.pending != nil {
 			return m, nil, false
 		}
-		if repl, ok := slashcmd.SlashTabExpand(m.input.Value()); ok {
+		// @ completion: find the @token at cursor and replace only that token.
+		{
+			row := m.input.Line()
+			col := m.input.Column()
+			allLines := strings.Split(m.input.Value(), "\n")
+			var curLine string
+			if row < len(allLines) {
+				curLine = allLines[row]
+			}
+			if frag, startCol, fragOK := inputprefix.AtFragmentAtCursor(curLine, col); fragOK {
+				if repl, ok := inputprefix.AtTabExpand(strings.TrimSpace(m.workdir), frag); ok {
+					replRunes := []rune(repl)
+					lineRunes := []rune(curLine)
+					newLine := string(lineRunes[:startCol]) + repl + string(lineRunes[col:])
+					allLines[row] = newLine
+					newValue := strings.Join(allLines, "\n")
+					newCursorCol := startCol + len(replRunes)
+					lastRow := len(allLines) - 1
+					m.input.SetValue(newValue)
+					// SetValue leaves cursor at end of last line; navigate back if needed.
+					for i := 0; i < lastRow-row; i++ {
+						m.input.CursorUp()
+					}
+					m.input.SetCursorColumn(newCursorCol)
+					m.resizeInput()
+					m.layout()
+					return m, nil, true
+				}
+			}
+		}
+		// Slash command Tab expand operates on the full single-line input.
+		raw := m.input.Value()
+		if repl, ok := slashcmd.SlashTabExpand(raw); ok {
 			m.input.SetValue(repl)
 			m.input.CursorEnd()
 			m.resizeInput()
@@ -584,6 +664,31 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 	return m, nil, false
 }
 
+func (m *Model) handleCtrlCExitConfirm() (tea.Model, tea.Cmd, bool) {
+	if m.streaming {
+		m.submitter.cancel()
+	}
+	now := time.Now()
+	if !m.exitConfirmDeadline.IsZero() && now.Before(m.exitConfirmDeadline) {
+		m.exitConfirmDeadline = time.Time{}
+		m.ctrlCMsgRendered = ""
+		return m, tea.Quit, true
+	}
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	expected := now.Add(3 * time.Second)
+	m.exitConfirmDeadline = expected
+	m.ctrlCMsgRendered = th.System.Render("Press Ctrl+C again within 3 seconds to quit.")
+	m.lines = append(m.lines, m.ctrlCMsgRendered)
+	m.setLinesContent(true)
+	m.layout()
+	return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg {
+		return ctrlCExitArmExpiredMsg{expected: expected}
+	}), true
+}
+
 func (m *Model) runModelSubmit(userText string) {
 	m.streaming = true
 	m.statusLine = ""
@@ -639,12 +744,13 @@ func (m *Model) footerPrimaryStatus() string {
 		spin := strings.TrimSpace(m.spinner.View())
 		base := strings.TrimSpace(status)
 		if base == "" {
-			base = th.StatusBarLabel.Render("Thinking") + th.FooterDim.Render("…")
+			if m.assistantPlaceholder {
+				base = th.StatusBarLabel.Render("Thinking") + th.FooterDim.Render("…")
+			} else {
+				base = th.StatusBarLabel.Render("Responding") + th.FooterDim.Render("…")
+			}
 		}
 		return strings.TrimSpace(spin + "  " + base)
-	}
-	if m.streaming && !m.spinnerActive && status == "" {
-		return th.StatusBarLabel.Render("Responding") + th.FooterDim.Render("…")
 	}
 	return status
 }
@@ -660,7 +766,9 @@ func (m *Model) View() tea.View {
 	)
 	v := tea.NewView(content)
 	v.AltScreen = true
-	// AllMotion emits SGR mouse sequences; on Windows/Git Bash they can leak into the shell after exit.
+	// MouseModeNone lets the terminal handle mouse events natively so the user can select and copy text
+	// without holding Shift. Scroll with PgUp/PgDn, j/k, Ctrl+U/Ctrl+D (or the wheel on terminals that
+	// deliver wheel events without mouse-reporting active, e.g. Windows Terminal in some configurations).
 	v.MouseMode = tea.MouseModeNone
 	return v
 }
@@ -745,6 +853,7 @@ func (m *Model) layout() {
 }
 
 func (m *Model) openHelpOverlay(replBody string) {
+	m.exitConfirmDeadline = time.Time{}
 	m.themePickOpen = false
 	m.themePickFullText = ""
 	m.agentPickOpen = false
@@ -802,7 +911,8 @@ func (m *Model) footerView() string {
 
 	fw := m.width
 	primary := strings.TrimSpace(m.footerPrimaryStatus())
-	session := footerline.HintsWithSession(m.footerBrand(), m.sessionID, m.width)
+	hints := m.footerBrand() + " · Esc · double Ctrl+C to quit · PgUp/PgDn scroll"
+	session := footerline.HintsWithSession(hints, m.sessionID, m.width)
 
 	var b strings.Builder
 
@@ -832,7 +942,7 @@ func (m *Model) footerView() string {
 		}
 	}
 
-	if strip := m.slashSuggestStripView(); strip != "" {
+	if strip := m.prefixSuggestStripView(); strip != "" {
 		b.WriteString("\n")
 		b.WriteString(strip)
 	}
@@ -850,11 +960,97 @@ func (m *Model) footerView() string {
 	return b.String()
 }
 
-// slashSuggestStripView renders filtered /commands above the input (single-line buffer only).
-func (m *Model) slashSuggestStripView() string {
+// prefixSuggestStripView shows @ path picks, / slash picks, or short ! / & hints above the input.
+func (m *Model) prefixSuggestStripView() string {
 	if m.helpOpen || m.themePickOpen || m.agentPickOpen || m.streaming || m.pending != nil {
 		return ""
 	}
+	if s := m.atSuggestStripView(); s != "" {
+		return s
+	}
+	if s := m.slashSuggestStripView(); s != "" {
+		return s
+	}
+	return m.bangAmpHintStripView()
+}
+
+// atSuggestStripView lists workspace paths matching the @token at the current cursor position.
+// Works regardless of where in the input the @ appears.
+func (m *Model) atSuggestStripView() string {
+	if strings.TrimSpace(m.workdir) == "" {
+		return ""
+	}
+	row := m.input.Line()
+	col := m.input.Column()
+	lines := strings.Split(m.input.Value(), "\n")
+	var currentLine string
+	if row < len(lines) {
+		currentLine = lines[row]
+	}
+	frag, _, ok := inputprefix.AtFragmentAtCursor(currentLine, col)
+	if !ok {
+		return ""
+	}
+	sugs := inputprefix.TUIAtPathSuggestions(m.workdir, frag)
+	if len(sugs) == 0 {
+		return ""
+	}
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	ruleW := m.width
+	const maxPickRule = 52
+	if ruleW > maxPickRule {
+		ruleW = maxPickRule
+	}
+	maxW := m.width - 4
+	if maxW < 40 {
+		maxW = m.width
+	}
+	if maxW < 24 {
+		maxW = 72
+	}
+	more := 0
+	if len(sugs) > maxSlashSuggestRows {
+		more = len(sugs) - maxSlashSuggestRows
+		sugs = sugs[:maxSlashSuggestRows]
+	}
+	var b strings.Builder
+	b.WriteString(th.SeparatorLine(ruleW))
+	b.WriteString("\n")
+	b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("@ paths · max %d · Tab completes · workspace", maxSlashSuggestRows)))
+	for _, s := range sugs {
+		name := "@" + s.RelPath
+		if s.IsDir {
+			name += "/"
+		}
+		snippet := "dir"
+		if !s.IsDir {
+			snippet = "file"
+		}
+		nameW := lipgloss.Width(th.SlashPickerName.Render(name))
+		budget := maxW - nameW - 2
+		if budget < 8 {
+			budget = 8
+		}
+		snippet = text.TruncateRunes(snippet, budget)
+		line := lipgloss.JoinHorizontal(lipgloss.Top, th.SlashPickerName.Render(name), th.SlashPickerDesc.Render("  "+snippet))
+		if lipgloss.Width(line) > maxW {
+			line = th.SlashPickerName.Render(name)
+		}
+		b.WriteString("\n")
+		b.WriteString(line)
+	}
+	if more > 0 {
+		b.WriteString("\n")
+		b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("… +%d more — keep typing", more)))
+	}
+	return b.String()
+}
+
+// slashSuggestStripView renders filtered /commands above the input (single-line buffer only).
+func (m *Model) slashSuggestStripView() string {
 	raw := m.input.Value()
 	sugs := slashcmd.TUISlashSuggestions(raw)
 	if len(sugs) == 0 {
@@ -904,6 +1100,38 @@ func (m *Model) slashSuggestStripView() string {
 		b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("… +%d more — keep typing", more)))
 	}
 	return b.String()
+}
+
+// bangAmpHintStripView shows one-line hints for ! and & prefix modes.
+func (m *Model) bangAmpHintStripView() string {
+	raw := strings.TrimSpace(m.input.Value())
+	if strings.Contains(raw, "\n") || raw == "" {
+		return ""
+	}
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	ruleW := m.width
+	const maxPickRule = 52
+	if ruleW > maxPickRule {
+		ruleW = maxPickRule
+	}
+	var b strings.Builder
+	switch {
+	case raw == "!":
+		b.WriteString(th.SeparatorLine(ruleW))
+		b.WriteString("\n")
+		b.WriteString(th.SlashPickerDesc.Render("! — bash tool (allowlisted) · type command · Enter runs · @ shows path picks"))
+		return b.String()
+	case raw == "&":
+		b.WriteString(th.SeparatorLine(ruleW))
+		b.WriteString("\n")
+		b.WriteString(th.SlashPickerDesc.Render("& — spawn_agent (general-purpose) · one line · coordinator profile"))
+		return b.String()
+	default:
+		return ""
+	}
 }
 
 // approvalStripView renders the tool approval request above the input with a card-style border.
@@ -993,8 +1221,39 @@ func (m *Model) appendUser(s string) {
 	if th == nil {
 		th = DefaultTheme()
 	}
-	m.lines = append(m.lines, fmt.Sprintf("%s %s", th.UserPrefix(), s))
+	m.lines = append(m.lines, fmt.Sprintf("%s %s", th.UserPrefix(), renderAtRefChips(s, th)))
 	m.setLinesContent(true)
+}
+
+// renderAtRefChips styles @path tokens inside a user message with the AtRefChip theme style.
+// Only @ tokens that are preceded by start-of-string or whitespace are styled,
+// which avoids false-positives like email addresses.
+func renderAtRefChips(s string, th *Theme) string {
+	if !strings.Contains(s, "@") {
+		return s
+	}
+	runes := []rune(s)
+	var b strings.Builder
+	i := 0
+	for i < len(runes) {
+		r := runes[i]
+		// Only treat @ as a chip anchor when it's at the start or after whitespace.
+		if r == '@' && (i == 0 || runes[i-1] == ' ' || runes[i-1] == '\t') {
+			j := i + 1
+			for j < len(runes) && runes[j] != ' ' && runes[j] != '\t' && runes[j] != '\n' {
+				j++
+			}
+			if j > i+1 { // at least one char after @
+				token := string(runes[i:j])
+				b.WriteString(th.AtRefChip.Render(token))
+				i = j
+				continue
+			}
+		}
+		b.WriteRune(r)
+		i++
+	}
+	return b.String()
 }
 
 func (m *Model) appendAssistant(s string) {

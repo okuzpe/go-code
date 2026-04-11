@@ -37,7 +37,7 @@
 ## Readline vs TUI
 
 - **Parity:** The same [`inputprefix.Analyze`](../../goclaw/internal/inputprefix/analyze.go) helper is used in both frontends.
-- **Completion:** There is no `@` file picker in readline yet; users type paths explicitly. The TUI may later add a picker similar to `/theme` / `/agents`.
+- **`@` completion:** The fullscreen TUI shows a **strip of matching workspace paths** under the footer (like `/` command hints) and **Tab** completes the longest shared prefix. Readline uses **Tab** with [`NewReadlineSlashAtCompleter`](../../goclaw/internal/slashcmd/readline_tab.go) (`@` paths + `/` slash commands).
 
 ## Related
 

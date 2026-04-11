@@ -35,10 +35,15 @@ Shortcuts
   Ctrl+C             quit the TUI (session saves on exit)
   Ctrl+L             clear transcript
   /edit              compose a multiline message in $EDITOR
+  /copy              copy plain session text to the system clipboard
+  /export path.txt   save plain session text to a file
+
+Mouse: mouse reporting is off — select text normally with the mouse. Scroll with
+  PgUp/PgDn, j/k, Ctrl+U/Ctrl+D. Use /copy or /export for the full session.
 
 Prefix input (single line; same permissions as tools — see docs/goclaw/prefix-input-modes.md)
   !cmd               run bash tool (allowlisted shell)
-  @path               read_file in the workspace
+  @path               read_file in the workspace (TUI: path list + Tab; readline: Tab)
   &task               spawn_agent (general-purpose; hub profile)
   /btw text           side question — one wrapped message to the model
 

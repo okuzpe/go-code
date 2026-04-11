@@ -13,10 +13,15 @@ func TestReadlineSlashPrefixes_sortedAndComplete(t *testing.T) {
 	require.Contains(t, p, "/doctor")
 	require.Contains(t, p, "/new")
 	require.Contains(t, p, "/sessions")
-	require.Len(t, p, len(slashCommandTable))
+	require.Len(t, p, len(slashCommandTable), "ReadlineSlashPrefixes must match slashCommandTable length")
 }
 
 func TestReadlinePrefixCompleter_builds(t *testing.T) {
 	c := ReadlinePrefixCompleter()
+	require.NotNil(t, c)
+}
+
+func TestNewReadlineSlashAtCompleter_builds(t *testing.T) {
+	c := NewReadlineSlashAtCompleter(t.TempDir())
 	require.NotNil(t, c)
 }

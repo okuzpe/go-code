@@ -159,6 +159,31 @@ func TestHandleSlashBtwRequiresOrchestrator(t *testing.T) {
 	require.Contains(t, err.Error(), "/btw")
 }
 
+func TestHandleSlashExportWritesFile(t *testing.T) {
+	s := session.New()
+	s.Add("user", "hello")
+	sp := &s
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out.txt")
+	env := testSlashEnv(t)
+	env.Workdir = dir
+	handled, msg, quit, ms, err := HandleSlash(context.Background(), SlashContext{
+		SlashEnv: env,
+		Mem:      memory.New(t.TempDir()),
+		Orch:     nil,
+		Sess:     sp,
+		Store:    nil,
+	}, "/export "+out)
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.False(t, quit)
+	require.Equal(t, "", ms)
+	require.Contains(t, msg, "wrote")
+	b, err := os.ReadFile(out)
+	require.NoError(t, err)
+	require.Contains(t, string(b), "hello")
+}
+
 func TestHandleSlashCompactRequiresOrchestrator(t *testing.T) {
 	var sp *session.Session
 	_, _, _, _, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/compact")

@@ -238,7 +238,7 @@ func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrat
 		Prompt:          replPrompt(rt.Sess, focus),
 		HistoryFile:     historyFile,
 		HistoryLimit:    500,
-		AutoComplete:    slashcmd.ReadlinePrefixCompleter(),
+		AutoComplete:    slashcmd.NewReadlineSlashAtCompleter(rt.Workdir),
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",
 	})

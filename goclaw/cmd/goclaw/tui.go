@@ -62,6 +62,7 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 			if handled, err := app.RunLocalPrefixToolIfAny(ctx, rt.Mock, orch, rt.Sess, userText, sink); handled {
 				return "", err
 			}
+			userText = app.ExpandInlineAtRefs(ctx, orch, userText)
 			reply, err := orch.RunStreaming(ctx, userText, sink)
 			return reply, app.AugmentOrchestratorErr(rt.Cfg.Provider, rt.Cfg.Model(), err)
 		}

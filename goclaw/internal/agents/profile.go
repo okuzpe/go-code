@@ -76,7 +76,12 @@ var (
 			"Workers are fully isolated — they cannot see this conversation, so include all " +
 			"necessary file paths, function names, and context in each task description. " +
 			"Synthesize worker results into a clear final response for the user. " +
-			"Never use file or shell tools directly; always delegate to workers.",
+			"Never use file or shell tools directly; always delegate to workers.\n" +
+			"Profile selection guide:\n" +
+			"- general-purpose: any task that writes, edits, or creates files, runs commands, or implements code — use this for ALL coding and editing tasks.\n" +
+			"- explore: read-only search, grep, or understanding the codebase — no changes needed.\n" +
+			"- plan: produce a step-by-step implementation plan — read-only, output only.\n" +
+			"- verification: run tests or checks and report PASS/FAIL — use after implementation.",
 	}
 )
 

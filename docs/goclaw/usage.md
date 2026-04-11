@@ -55,7 +55,7 @@ Interpreted **after** slash commands and **before** the model (TUI and readline)
 | Prefix | Meaning |
 |--------|---------|
 | `!` + command | Run the **`bash`** tool with that command (allowlist and metacharacter rules apply). |
-| `@` + path | Run **`read_file`** for a path inside the workspace. |
+| `@` + path | Run **`read_file`** for a path inside the workspace. **TUI:** matching paths appear under the input (like `/`); **Tab** completes. **Readline:** **Tab** completes `@` paths or `/` commands. |
 | `&` + task | Run **`spawn_agent`** with profile `general-purpose` (requires **`spawn_agent`** on the active profile, typically **coordinator**). |
 | `/btw` + text | Slash command: submit **one** user message wrapped as a short “side question” to the model. |
 
@@ -64,6 +64,13 @@ Full grammar and security notes: [prefix-input-modes.md](./prefix-input-modes.md
 ## Sessions and memory
 
 Sessions save as JSONL under `~/.goclaw/sessions/<id>.jsonl` on exit or `/save`.
+
+**Copy / export chat (plain text from the session, not the styled TUI):**
+
+- **`/copy`** — copies the in-memory transcript (roles, text, tool calls/results) to the **system clipboard**. Very long sessions are truncated (see `/help`). If the clipboard fails (headless SSH, etc.), use **`/export`**.
+- **`/export path.txt`** — writes the same plain text to **`path.txt`**. If the path is relative and a workspace is set, it is resolved under that workspace; use an absolute path to write elsewhere.
+
+The fullscreen TUI turns **mouse reporting off** so many terminals still allow **normal click–drag selection** (sometimes with **Shift**). For “everything in the session”, prefer `/copy` or `/export` over selecting the screen.
 
 ```bash
 go run ./cmd/goclaw --list-sessions

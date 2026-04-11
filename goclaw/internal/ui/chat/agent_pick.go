@@ -3,6 +3,7 @@ package chat
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/okuzpe/goclaw/internal/agents"
 )
@@ -71,6 +72,7 @@ func agentProfileByName(m *Model, name string) (agents.Profile, bool) {
 }
 
 func (m *Model) openAgentPicker() {
+	m.exitConfirmDeadline = time.Time{}
 	m.themePickOpen = false
 	m.themePickFullText = ""
 	items := m.agentPickNames()

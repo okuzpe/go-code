@@ -91,8 +91,10 @@ func (t *SpawnAgentTool) Description() string {
 		"Provide a fully self-contained task description — include all relevant file paths, " +
 		"function names, and context the worker will need. " +
 		"Set interactive: true to keep the worker running after this call; the user can send more input via /focus <task_id> in the REPL until /detach or stop_task. " +
-		"Available profiles: explore (read-only search), plan (architecture planning), " +
-		"verification (run tests and report PASS/FAIL), general-purpose (full tool access)."
+		"Profile guide: general-purpose — write/edit/create files or run commands (use for ALL coding tasks); " +
+		"explore — read-only search and codebase understanding; " +
+		"plan — produce a step-by-step plan (read-only output); " +
+		"verification — run tests and report PASS/FAIL."
 }
 
 func (t *SpawnAgentTool) InputSchema() any {

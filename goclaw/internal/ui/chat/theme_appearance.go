@@ -19,7 +19,7 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 		UserLabel:      "",
 		UserEmoji:      ">",
 		AssistantEmoji: "●",
-		InputPrompt:    "> ",
+		InputPrompt:    "",
 		mdGlamourStyle: p.GlamourStyle,
 		appearance:     p.Appearance,
 
@@ -44,7 +44,7 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 		InputBorder: lipgloss.NewStyle().
 			Border(topRule, true, false, false, false).
 			BorderForeground(p.InputBorder).
-			Padding(0, 0, 0, 1),
+			Padding(0, 0, 0, 2),
 
 		ToolCardBorder: lipgloss.NewStyle().Foreground(p.SepFG),
 		ToolCardHead:   lipgloss.NewStyle().Bold(true).Foreground(p.ToolFG),
@@ -55,5 +55,7 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 
 		SlashPickerName: lipgloss.NewStyle().Bold(true).Foreground(p.SlashPickName),
 		SlashPickerDesc: lipgloss.NewStyle().Foreground(p.SlashPickDesc),
+
+		AtRefChip: lipgloss.NewStyle().Bold(true).Foreground(p.SlashPickName),
 	}
 }

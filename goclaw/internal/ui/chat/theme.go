@@ -52,6 +52,9 @@ type Theme struct {
 	SlashPickerName lipgloss.Style
 	SlashPickerDesc lipgloss.Style
 
+	// AtRefChip styles @path tokens inside user messages in the transcript.
+	AtRefChip lipgloss.Style
+
 	// Markdown renderer (glamour), recreated when terminal width or mdGlamourStyle changes.
 	mdMu           sync.Mutex
 	mdWrap         int
