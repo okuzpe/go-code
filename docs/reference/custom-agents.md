@@ -2,7 +2,7 @@
 
 **Status in goclaw:** **D19 implemented** — Markdown + YAML frontmatter in `~/.goclaw/agents/*.md` and `.goclaw/agents/*.md`; see [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md) and [`agent-profiles.md`](./agent-profiles.md).
 
-Profundidad ligada a [architecture-legacy-es.md §2.13](../archive/architecture-legacy-es.md) y [agent-profiles.md](./agent-profiles.md). Referencia (terceros, análisis de Claude Code): [Custom Agents — claude-code-explain](https://claude-code-explain.helmcode.com/custom-agents).
+Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D19 custom agents) y [agent-profiles.md](./agent-profiles.md). Referencia (terceros, análisis de Claude Code): [Custom Agents — claude-code-explain](https://claude-code-explain.helmcode.com/custom-agents).
 
 **Idea:** un **.md por agente** con **YAML frontmatter** que fija identidad operativa (tools, modelo, permisos, MCP, hooks, memoria, color); el **cuerpo Markdown** es el system prompt. Sin código extra para “registrar” el agente más allá de colocarlo en una ruta de descubrimiento.
 
@@ -13,12 +13,12 @@ Profundidad ligada a [architecture-legacy-es.md §2.13](../archive/architecture-
 | Documento | Relación |
 |-----------|----------|
 | [agent-profiles.md](./agent-profiles.md) §2 | Los **7 perfiles integrados** (incl. `coordinator`) son el set **built-in**; un custom con el **mismo nombre** puede **sustituir** al built-in en referencia (prioridad). |
-| [COORDINATOR_MODE.md](./coordinator-mode.md) | La tool **Agent** elige `subagent_type` → resuelve definición custom o built-in. |
-| [HOOKS.md](./hooks.md) | Frontmatter **`hooks`**: registra hooks de **sesión** al spawn del sub-agente; se limpian al terminar; `Stop` → `SubagentStop` en referencia. |
-| [MEMORY_SYSTEM.md](./memory-system.md) | Memoria de **proyecto** §2.10 (`MEMORY.md`) ≠ memoria **por agente** (`memory: user|project|local` + directorio dedicado); ver §5 de este doc. |
+| [coordinator-mode.md](./coordinator-mode.md) | La tool **Agent** elige `subagent_type` → resuelve definición custom o built-in. |
+| [hooks.md](./hooks.md) | Frontmatter **`hooks`**: registra hooks de **sesión** al spawn del sub-agente; se limpian al terminar; `Stop` → `SubagentStop` en referencia. |
+| [memory-system.md](./memory-system.md) | Memoria de **proyecto** (`MEMORY.md`) ≠ memoria **por agente** (`memory: user|project|local` + directorio dedicado); ver §5 de este doc. |
 | §2.8 **MCP** | `mcpServers` en frontmatter: referencias con nombre o definición inline; limpieza al finalizar agente si aplica. |
 | §2.9 **Skills** | Campo `skills` para precargar contenido antes del primer turno. |
-| [YOLO_CLASSIFIER.md](./yolo-classifier.md) | `permissionMode` del agente limita o expande riesgo; sigue pasando por **D17** en auto-modo. |
+| [yolo-classifier.md](./yolo-classifier.md) | `permissionMode` del agente limita o expande riesgo; sigue pasando por **D17** en auto-modo. |
 
 ---
 
@@ -55,7 +55,7 @@ Profundidad ligada a [architecture-legacy-es.md §2.13](../archive/architecture-
 | `maxTurns`, `background` | Límites y ejecución en segundo plano |
 | `memory` | `user` \| `project` \| `local` — ver §5 |
 | `isolation` | p. ej. `worktree` (git aislado, limpieza auto) |
-| `hooks` | Mismo esquema que [HOOKS.md](./hooks.md); alcance sesión del agente |
+| `hooks` | Mismo esquema que [hooks.md](./hooks.md); alcance sesión del agente |
 | `mcpServers` | Referencias o inline HTTP/stdio |
 | `skills` | Nombres a precargar |
 
@@ -134,7 +134,7 @@ UI interactiva: listar por fuente, ver detalle, crear asistente (wizard), editar
 | Hooks por agente | Delegado en `internal/hooks` con scope `agentID` |
 | Worktree isolation | `internal/tools/git` o wrapper; flag **D19** |
 
-**Roadmap:** v1 `agentprofile` solo built-ins + 1 custom path opcional; **v3+** paridad con prioridades, plugin, MCP/hooks en frontmatter — [ARCHITECTURE_LEGACY_ES.md §4.4](../archive/architecture-legacy-es.md).
+**Roadmap:** v1 `agentprofile` solo built-ins + 1 custom path opcional; **v3+** paridad con prioridades, plugin, MCP/hooks en frontmatter — [roadmap.md](../goclaw/roadmap.md).
 
 ---
 

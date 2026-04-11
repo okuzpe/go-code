@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -12,7 +14,9 @@ import (
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/mcp"
 	"github.com/okuzpe/goclaw/internal/permissions"
+	"github.com/okuzpe/goclaw/internal/plugin"
 	"github.com/okuzpe/goclaw/internal/session"
+	"github.com/okuzpe/goclaw/internal/skills"
 	"github.com/spf13/cobra"
 )
 
@@ -114,7 +118,100 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 	lines = append(lines, "")
 	lines = append(lines, toolPermissionSection(rt)...)
 
+	lines = append(lines, "")
+	lines = append(lines, pluginSkillMemorySection(rt)...)
+
 	return strings.Join(lines, "\n")
+}
+
+func pluginSkillMemorySection(rt *ChatRuntime) []string {
+	out := []string{"plugins / skills / memory:"}
+	out = append(out, fmt.Sprintf("  plugin_dirs configured: %d", len(rt.Cfg.PluginDirs)))
+	out = append(out, fmt.Sprintf("  plugin manifests (allowed): %d", countPluginManifests(rt)))
+	roots := skillRootsForDoctor(rt)
+	out = append(out, fmt.Sprintf("  skill search roots: %d", len(roots)))
+	// Only aggregate SKILL.md from workspace roots here — user home skill trees can be large;
+	// snippet size matches what startup injects from the repo, not the full merged prompt.
+	wsSkillRoots := workspaceSkillRootsOnly(rt)
+	snippet, _ := skills.Collect(wsSkillRoots, 24000)
+	out = append(out, fmt.Sprintf("  workspace skills snippet (approx): %d bytes", len(strings.TrimSpace(snippet))))
+	memCount := 0
+	memIndex := false
+	if rt.MemStore != nil {
+		if list, err := rt.MemStore.List(); err == nil {
+			memCount = len(list)
+		}
+		memDir := filepath.Join(rt.Cfg.UserConfigDir, "memory")
+		if st, err := os.Stat(filepath.Join(memDir, "MEMORY.md")); err == nil && !st.IsDir() {
+			memIndex = true
+		}
+	}
+	out = append(out, fmt.Sprintf("  memory entries (.md): %d", memCount))
+	out = append(out, checkLine("memory index MEMORY.md present", memIndex))
+	return out
+}
+
+func skillRootsForDoctor(rt *ChatRuntime) []string {
+	cfg := rt.Cfg
+	var roots []string
+	roots = append(roots, workspaceSkillRootsOnly(rt)...)
+	ud := strings.TrimSpace(cfg.UserConfigDir)
+	if ud != "" {
+		roots = append(roots,
+			filepath.Join(ud, "skills"),
+			filepath.Join(ud, ".claude", "skills"),
+		)
+	}
+	return roots
+}
+
+func workspaceSkillRootsOnly(rt *ChatRuntime) []string {
+	wd := strings.TrimSpace(rt.Workdir)
+	if wd == "" {
+		return nil
+	}
+	cfg := rt.Cfg
+	return []string{
+		filepath.Join(wd, cfg.ProjectConfigDir, "skills"),
+		filepath.Join(wd, ".claude", "skills"),
+	}
+}
+
+func countPluginManifests(rt *ChatRuntime) int {
+	wd := strings.TrimSpace(rt.Workdir)
+	n := 0
+	for _, d := range rt.Cfg.PluginDirs {
+		abs := pluginResolveDir(wd, d)
+		if abs == "" {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(abs, "goclaw-plugin.json"))
+		if err != nil {
+			continue
+		}
+		var man plugin.Manifest
+		if json.Unmarshal(raw, &man) != nil || strings.TrimSpace(man.Name) == "" {
+			continue
+		}
+		if plugin.Allowed(man.Name, rt.Cfg.PluginAllow, rt.Cfg.PluginDeny) {
+			n++
+		}
+	}
+	return n
+}
+
+func pluginResolveDir(workdir, d string) string {
+	d = strings.TrimSpace(d)
+	if d == "" {
+		return ""
+	}
+	if filepath.IsAbs(d) {
+		return filepath.Clean(d)
+	}
+	if strings.TrimSpace(workdir) == "" {
+		return ""
+	}
+	return filepath.Clean(filepath.Join(workdir, d))
 }
 
 func mcpSummaryLines(rt *ChatRuntime) []string {

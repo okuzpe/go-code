@@ -1,6 +1,8 @@
 # Coordinator mode (D16) — implementation reference
 
-This document ties [COORDINATOR_MODE.md](../reference/coordinator-mode.md) to the **implemented** hub-and-spoke coordinator in goclaw. It complements the plan → execute workflow ([`internal/planfile`](../internal/planfile/), `/apply-plan`) and stays separate from future **Team/Swarm** designs.
+**Product note:** Hub-and-spoke is **opt-in**. The global default `agent_profile` is **`general-purpose`** (direct coding on the main session). Switch with **`/profile coordinator`**, **`agent_profile`** in settings, **`GOCLAW_AGENT_PROFILE=coordinator`**, or **`make run-hub`** in this repo.
+
+This document ties [coordinator-mode.md](../reference/coordinator-mode.md) (design reference) to the **implemented** hub-and-spoke coordinator in goclaw. It complements the plan → execute workflow ([`internal/planfile`](../internal/planfile/), `/apply-plan`) and stays separate from future **Team/Swarm** designs.
 
 ## Implementation map
 
@@ -15,7 +17,7 @@ This document ties [COORDINATOR_MODE.md](../reference/coordinator-mode.md) to th
 
 ## Design constraints (from product docs)
 
-- **Coordinator** does not use `read_file`, `write_file`, `edit_file`, or `bash` directly — only delegation tools ([COORDINATOR_MODE.md](../reference/coordinator-mode.md) §2.1–2.2).
+- **Coordinator** does not use `read_file`, `write_file`, `edit_file`, or `bash` directly — only delegation tools ([coordinator-mode.md](../reference/coordinator-mode.md) §2.1–2.2).
 - **Workers** use a normal (or narrowed) profile and **do not** see the full user ↔ coordinator transcript; each `task` string must be self-contained (§2.7).
 - Do **not** merge Coordinator routing with Team/Swarm mailboxes in the same abstraction (§1).
 
@@ -48,6 +50,10 @@ When **`interactive`** is `true` on `spawn_agent`, the tool returns immediately 
 
 Workers are started with a registry **without** `spawn_agent` to prevent coordinator nesting.
 
+### Worker context (workspace parity)
+
+Each worker orchestrator receives the same **workspace root**, **project context** (manifest + README + `CLAUDE.md` excerpt via `buildProjectContext`), **shared memory store** (`~/.goclaw/memory/`), and **skills snippet** as the parent chat session (`PrepareChatRuntime` wires `WithWorkdir`, `WithProjectContext`, `WithMemoryStore`, `WithSkillsSnippet` on `SpawnAgentTool`). Workers still **do not** inherit the coordinator’s MCP-registered tools or the hub transcript — only built-ins on the worker registry — by design (nesting safety and predictable tool surface).
+
 ## Phases (reference mapping)
 
 | Phase | Owner | goclaw |
@@ -71,3 +77,4 @@ Workers are started with a registry **without** `spawn_agent` to prevent coordin
 | 2026-04-09 | Updated to reflect implemented `internal/coordinator`, links to code and parity harness. |
 | 2026-04-10 | Renamed file to `coordinator.md` (see [documentation.md](./documentation.md)); former name `D16_COORDINATOR_SKETCH.md` remains a redirect stub. |
 | 2026-04-10 | Documented interactive `spawn_agent`, `running` status, `/focus` / `/detach`, and default hub profile. |
+| 2026-04-11 | Documented worker project context, memory, skills injection; MCP not inherited on workers. |

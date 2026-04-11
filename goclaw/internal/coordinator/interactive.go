@@ -128,6 +128,23 @@ func DeliverWorkerMessage(ctx context.Context, taskID, text string, sink orchest
 	}
 }
 
+// Snapshot returns the accumulated result text from the most recent worker turn.
+func (w *interactiveWorker) Snapshot() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.result
+}
+
+// SnapshotInteractiveWorker returns the most recent result text for the interactive worker
+// identified by taskID, or ("", false) if the worker is not found.
+func SnapshotInteractiveWorker(taskID string) (string, bool) {
+	w, ok := loadInteractive(strings.TrimSpace(taskID))
+	if !ok {
+		return "", false
+	}
+	return w.Snapshot(), true
+}
+
 func (w *interactiveWorker) setState(summary, result, status string) {
 	w.mu.Lock()
 	w.summary = summary

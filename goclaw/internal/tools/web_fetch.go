@@ -36,7 +36,9 @@ func (WebFetchTool) Name() string { return "web_fetch" }
 
 func (WebFetchTool) Description() string {
 	return "Fetch public http(s) content. HTML responses are reduced to plain text when possible. " +
-		"Private IPs and metadata endpoints are blocked."
+		"Responses are capped at 1 MiB of text; optional max_bytes is clamped to that cap. " +
+		"Up to 5 redirects are followed; each hop is re-checked against SSRF rules (RFC1918 loopback, link-local, metadata IPs blocked). " +
+		"Private IPs and metadata endpoints are blocked on the initial URL and after redirects."
 }
 
 func (WebFetchTool) InputSchema() any {
@@ -45,11 +47,11 @@ func (WebFetchTool) InputSchema() any {
 		"properties": map[string]any{
 			"url": map[string]any{
 				"type":        "string",
-				"description": "http or https URL",
+				"description": "http or https URL (public hosts only; SSRF-protected; redirects re-validated)",
 			},
 			"max_bytes": map[string]any{
 				"type":        "integer",
-				"description": "Maximum response bytes to return (optional, capped at 1 MiB)",
+				"description": "Maximum response bytes to read (optional; capped at 1 MiB including HTML-to-text extraction)",
 			},
 		},
 		"required": []string{"url"},

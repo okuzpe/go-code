@@ -1,6 +1,6 @@
 # Remote MCP tokens and threat notes
 
-This document complements [MCP.md](../reference/mcp.md) and [CLAUDE.md](../CLAUDE.md) D6 for **enterprise-style** remote MCP usage.
+This document complements [mcp.md](../reference/mcp.md) and [CLAUDE.md](../../goclaw/CLAUDE.md) D6 for **enterprise-style** remote MCP usage.
 
 ## Implemented (goclaw)
 

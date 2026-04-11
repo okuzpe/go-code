@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -54,7 +55,9 @@ func (st *Store) Save(e Entry) (string, error) {
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		return "", fmt.Errorf("memory store: write %s: %w", base, err)
 	}
-	_ = WriteIndex(st) // best-effort
+	if err := WriteIndex(st); err != nil {
+		slog.Warn("memory: index write failed", "err", err)
+	}
 	return base, nil
 }
 
@@ -128,7 +131,9 @@ func (st *Store) Delete(basename string) error {
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("memory store: delete %s: %w", basename, err)
 	}
-	_ = WriteIndex(st)
+	if err := WriteIndex(st); err != nil {
+		slog.Warn("memory: index write failed", "err", err)
+	}
 	return nil
 }
 

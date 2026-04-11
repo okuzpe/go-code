@@ -2,7 +2,7 @@
 
 **Status in goclaw:** Stdio and streamable HTTP client, `mcp_servers` in merged settings — full detail under **Implemented in goclaw** below and **D6** in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md).
 
-Depth ties to [ARCHITECTURE_LEGACY_ES.md §2.8](../archive/architecture-legacy-es.md). Official spec: [Model Context Protocol](https://modelcontextprotocol.io/specification/2025-11-25). Third-party reference write-up: [MCP — claude-code-explain](https://claude-code-explain.helmcode.com/mcp).
+Depth ties to [CLAUDE.md](../../goclaw/CLAUDE.md) (D6 MCP). Official spec: [Model Context Protocol](https://modelcontextprotocol.io/specification/2025-11-25). Third-party reference write-up: [MCP — claude-code-explain](https://claude-code-explain.helmcode.com/mcp).
 
 For a coding agent in 2025–2026, built-in tools alone often fall short of user and integrator expectations (GitHub, Slack, browser, databases, etc.). MCP is the **standard adapter** for connecting the model to external processes and services under a shared contract.
 

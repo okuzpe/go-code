@@ -12,7 +12,7 @@ func TestWelcomeDashboardLines_fitsNarrowTerminal(t *testing.T) {
 	th := DefaultTheme()
 	opt := WelcomeOptions{
 		Version:  "dev",
-		Subtitle: "goclaw · ollama · qwen2.5-coder:14b · coordinator",
+		Subtitle: "goclaw · ollama · qwen2.5-coder:14b · general-purpose",
 		Workdir:  "C:\\Users\\Example\\Desktop\\go-code\\goclaw",
 	}
 	termW := 52
@@ -53,7 +53,7 @@ func TestWelcomeDashboardLines_wideTwoColumn(t *testing.T) {
 	th := DefaultTheme()
 	opt := WelcomeOptions{
 		Version:  "dev",
-		Subtitle: "goclaw  ollama/llama3:latest  coordinator",
+		Subtitle: "goclaw  ollama/llama3:latest  general-purpose",
 		Workdir:  "C:\\Users\\Example\\Desktop\\go-code\\goclaw",
 	}
 	lines := WelcomeDashboardLines(th, opt, 100)
@@ -64,7 +64,7 @@ func TestWelcomeDashboardLines_wideTwoColumn(t *testing.T) {
 }
 
 func TestWrapSubtitle_prefersBulletBreaks(t *testing.T) {
-	sub := "goclaw · ollama · qwen2.5-coder:14b · coordinator"
+	sub := "goclaw · ollama · qwen2.5-coder:14b · general-purpose"
 	lines := wrapSubtitle(sub, 36)
 	require.NotEmpty(t, lines)
 	for _, ln := range lines {

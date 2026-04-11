@@ -19,12 +19,52 @@ func switchOrchestratorProfile(orch *orchestrator.Orchestrator, env SlashEnv, ra
 	if key == "" {
 		return "", fmt.Errorf("empty agent name")
 	}
-	p, ok := profs[key]
+	next, ok := profs[key]
 	if !ok {
 		return "", fmt.Errorf("unknown agent %q; valid: %s", rawName, sortedProfileNames(profs))
 	}
-	orch.SetProfile(p)
-	return fmt.Sprintf("active profile: %s", p.Name), nil
+	prev := profs[strings.ToLower(orch.ProfileName())]
+	if prev.Name == "" {
+		prev = agents.Profile{Name: orch.ProfileName()}
+	}
+	orch.SetProfile(next)
+	return formatProfileSwitchSummary(prev, next), nil
+}
+
+func formatProfileSwitchSummary(prev, next agents.Profile) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("active profile: %s (was %s)\n", next.Name, prev.Name))
+	b.WriteString(fmt.Sprintf("  read_only: %v → %v\n", prev.ReadOnly, next.ReadOnly))
+	b.WriteString(fmt.Sprintf("  tool_allowlist: %s → %s\n", toolAllowlistSummary(prev.ToolAllowlist), toolAllowlistSummary(next.ToolAllowlist)))
+	if strings.TrimSpace(next.Description) != "" {
+		if sp := strings.TrimSpace(firstLine(next.SystemPrompt)); sp != "" {
+			b.WriteString("  system_prompt (first line): ")
+			b.WriteString(sp)
+			b.WriteByte('\n')
+		}
+	}
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+func toolAllowlistSummary(list []string) string {
+	if len(list) == 0 {
+		return "all tools"
+	}
+	return fmt.Sprintf("%d tools", len(list))
+}
+
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		return strings.TrimSpace(s[:i])
+	}
+	if len(s) > 120 {
+		return s[:120] + "…"
+	}
+	return s
 }
 
 func formatAgentsList(profs map[string]agents.Profile, active string) string {
@@ -48,7 +88,7 @@ func formatAgentsList(profs map[string]agents.Profile, active string) string {
 	return b.String()
 }
 
-func tryInteractiveAgentsPick(env SlashEnv, orch *orchestrator.Orchestrator) (out string, used bool, err error) {
+func tryInteractiveAgentsPick(env SlashEnv, orch *orchestrator.Orchestrator, hintsOut *UIHints) (out string, used bool, err error) {
 	if env.DisableInteractiveAgentPick || orch == nil {
 		return "", false, nil
 	}
@@ -80,6 +120,11 @@ func tryInteractiveAgentsPick(env SlashEnv, orch *orchestrator.Orchestrator) (ou
 		if serr != nil {
 			return "", true, serr
 		}
+		sub := ""
+		if env.ChatSubtitle != nil {
+			sub = env.ChatSubtitle()
+		}
+		setWelcomeHints(hintsOut, orch.ProfileName(), sub)
 		return msg, true, nil
 	default:
 		return "", false, nil

@@ -270,7 +270,7 @@ func TestOrchestratorForceCompact(t *testing.T) {
 	require.Less(t, sess.Len(), 30)
 	var found bool
 	for _, m := range sess.Messages {
-		if strings.Contains(m.Content, "[compaction]") {
+		if strings.Contains(m.Content, "[session compacted]") {
 			found = true
 			break
 		}
@@ -312,7 +312,7 @@ func TestOrchestratorCompactionTrimsHead(t *testing.T) {
 	require.NoError(t, err)
 	var found bool
 	for _, m := range sess.Messages {
-		if strings.Contains(m.Content, "[compaction]") {
+		if strings.Contains(m.Content, "[session compacted]") {
 			found = true
 			break
 		}

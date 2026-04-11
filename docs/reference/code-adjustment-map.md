@@ -16,8 +16,6 @@ This reference maps **monorepo documentation** to **goclaw Go packages**. Use it
 | [`docs/architecture.md`](../architecture.md) | Short English hub + diagram; links to CLAUDE.md and docs-map |
 | [`docs/goclaw/`](../goclaw/) | Operators, product topics (usage, roadmap, coordinator, security, …) |
 | [`docs/reference/`](./) | Cross-cutting contracts (tools, hooks, MCP, profiles, retry, IDE, …) |
-| [`docs/openclaw/`](../openclaw/) | Reference product notes; **not** the source of truth for the goclaw binary |
-| [`docs/archive/`](../archive/) | Historical specs; [`architecture-legacy-es.md`](../archive/architecture-legacy-es.md) keeps legacy § anchors |
 
 **Cursor rules (workflow):** [`goclaw/.cursor/rules/`](../../goclaw/.cursor/rules/) — e.g. [`architecture.mdc`](../../goclaw/.cursor/rules/architecture.mdc), [`workflow.mdc`](../../goclaw/.cursor/rules/workflow.mdc).
 
@@ -243,11 +241,12 @@ flowchart LR
 
 ---
 
-### 18. i18n and deferred input modes
+### 18. i18n and prefix input modes
 
-| Doc | Code |
-|-----|------|
-| [`i18n.md`](../goclaw/i18n.md), [`prefix-input-modes.md`](../goclaw/prefix-input-modes.md) | Future-facing specs; UI and prompts today follow the English-only rule in `CLAUDE.md` |
+| Primary doc | Secondary | Code |
+|-------------|-----------|------|
+| [`i18n.md`](../goclaw/i18n.md) | [`usage.md`](../goclaw/usage.md), [`CLAUDE.md`](../../goclaw/CLAUDE.md) | Planned `internal/locale`; orchestrator language hints today |
+| [`prefix-input-modes.md`](../goclaw/prefix-input-modes.md) | [`usage.md`](../goclaw/usage.md#prefix-input----btw) | [`internal/inputprefix`](../../goclaw/internal/inputprefix), slash + orchestrator wiring |
 
 ---
 
@@ -263,13 +262,10 @@ flowchart LR
 
 ## Do not use as a direct adjustment source
 
-- **[`docs/openclaw/`](../openclaw/)** — different product context; not a 1:1 map to the goclaw Go tree.
-- **[`docs/archive/architecture-legacy-es.md`](../archive/architecture-legacy-es.md)** — historical; cross-check every decision with `CLAUDE.md`.
+- **Upstream comparison (OpenClaw)** — [references.md](./references.md) (GitHub link) and [philosophy.md](../goclaw/philosophy.md#lessons-from-wider-agent-stacks); not a map to the goclaw Go tree.
 
 ---
 
 ## Changelog
 
-| Date | Change |
-|------|--------|
-| 2026-04-10 | Added: docs-to-code layer map and maintenance checklist. |
+Merged into **[Doc maintenance changelog](../docs-map.md#doc-maintenance-changelog)**.

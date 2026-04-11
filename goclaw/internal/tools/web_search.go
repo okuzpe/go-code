@@ -83,9 +83,10 @@ func (WebSearchTool) Name() string { return "web_search" }
 func (WebSearchTool) Description() string {
 	return "Search the web using the configured backend (DuckDuckGo, Brave Search API, or SerpAPI; see web_search_backend in settings). " +
 		"For DuckDuckGo, the instant-answer JSON API is tried first; when it returns no hits, an HTML result list is fetched so titles and URLs are available. " +
+		"Output is capped (top hits with short snippets; see tool contract in project docs). " +
 		"Do not use for tasks you can solve with a structured plan from general knowledge alone. " +
 		"Prefer this tool for external documentation, version facts, or APIs you cannot recall reliably. " +
-		"If the response is thin, use a more specific query, try web_fetch on a known URL, or follow the suggested search link in the tool output."
+		"If the response is thin, use a more specific query (site:domain.com, quoted phrases), try web_fetch on a known URL, or follow the suggested search link in the tool output."
 }
 
 func (WebSearchTool) InputSchema() any {
@@ -94,7 +95,7 @@ func (WebSearchTool) InputSchema() any {
 		"properties": map[string]any{
 			"query": map[string]any{
 				"type":        "string",
-				"description": "Search query",
+				"description": "Search query (be specific: product + version + keyword; use site: or quotes to narrow; avoid vague one-word queries)",
 			},
 		},
 		"required": []string{"query"},

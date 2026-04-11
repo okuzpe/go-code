@@ -1,15 +1,14 @@
 # References (assistant / agentic CLI patterns)
 
-**Índice de cobertura ↔ [Claude Code Internals](https://claude-code-explain.helmcode.com/):** [docs-map.md](../docs-map.md) — tabla por tema, alcance MVP, orden de lectura para implementar. **Auditoría histórica del corpus `.md` (español, §8):** [architecture-legacy-es.md §8.0](../archive/architecture-legacy-es.md).
+**Índice de cobertura ↔ [Claude Code Internals](https://claude-code-explain.helmcode.com/):** [docs-map.md](../docs-map.md) — tabla por tema, alcance MVP, orden de lectura para implementar.
 
-**Decisiones y arquitectura:** [architecture.md](../architecture.md) — hub corto en inglés; borrador largo y anclas **§** en [architecture-legacy-es.md](../archive/architecture-legacy-es.md). Comportamiento GoClaw: [goclaw/CLAUDE.md](../../goclaw/CLAUDE.md). **Docs ↔ código (mantenimiento):** [code-adjustment-map.md](./code-adjustment-map.md) — qué leer y qué paquetes `internal/*` tocar por capa.
+**Decisiones y arquitectura:** [architecture.md](../architecture.md) — hub corto en inglés (navegación). Comportamiento GoClaw: [goclaw/CLAUDE.md](../../goclaw/CLAUDE.md). **Docs ↔ código (mantenimiento):** [code-adjustment-map.md](./code-adjustment-map.md) — qué leer y qué paquetes `internal/*` tocar por capa.
 
 - [skills.md](./skills.md) — formato `SKILL.md`, hooks en sesión, roadmap v3.
 - [bash-security.md](./bash-security.md) — capas shell/sandbox (referencia vs MVP), **D4**.
 - [costs.md](./costs.md) — pricing cloud y modo “fast”; **D1**; N/A Ollama.
 - [local-models.md](./local-models.md) — Ollama, modelos 7B/14B, límites RTX 4050 / 32 GB, imagen/vídeo como herramientas opcionales.
 - [tool-contract.md](./tool-contract.md) — nombres/límites/riesgo de herramientas MVP, política red, presupuesto bucle (**antes de codificar** `internal/tools`).
-- [go-vs-rust-assistant.md](./go-vs-rust-assistant.md) — Go vs Rust para asistente/agente CLI (resumen + enlaces).
 - [agent-profiles.md](./agent-profiles.md) — perfiles de agente (modelo + tools + permisos + contexto), eco Go.
 - [memory-system.md](./memory-system.md) — memoria entre sesiones (tipos, MEMORY.md, límites, extractor), eco Go.
 - [context-compaction.md](./context-compaction.md) — ventana de contexto, micro-compact, auto-compact, presupuestos de salida, eco Go (**D15**).
@@ -23,20 +22,16 @@
 - [practical-tips.md](./practical-tips.md) — diez decisiones de producto visibles (memoria, compact, permisos, perfiles, costes `/fast`); eco Go.
 - [retry-logic.md](./retry-logic.md) — backoff exponencial, 429/529/5xx, reintentos por invocación, modo unattended (referencia); **D22**.
 
-**OpenClaw** (producto upstream **Node/TS**; en este workspace **solo** estos resúmenes — el código está en [github.com/openclaw/openclaw](https://github.com/openclaw/openclaw)):
+**OpenClaw** (upstream **Node/TS** multi-channel agent product — useful for comparison only): [github.com/openclaw/openclaw](https://github.com/openclaw/openclaw), [docs.openclaw.ai](https://docs.openclaw.ai). Design lessons absorbed into goclaw docs: [philosophy.md — Lessons from wider agent stacks](../goclaw/philosophy.md#lessons-from-wider-agent-stacks), [roadmap.md — Future transport and scale](../goclaw/roadmap.md#future-transport-and-scale).
 
-- [openclaw-reference.md](../openclaw/openclaw-reference.md) — mapa del monorepo y tabla `src/` → eco Go
-- [openclaw-gateway-channels.md](../openclaw/openclaw-gateway-channels.md) — gateway, daemon, canales
-- [openclaw-agents-tools.md](../openclaw/openclaw-agents-tools.md) — agentes, web, tubería
-
-**Otro código en local:** [claw-code/](../../claw-code/) (parity / Rust / TUI — ver [architecture-legacy-es.md §8.0](../archive/architecture-legacy-es.md) Tier 2).
+**Otro código en local:** [claw-code/](../../claw-code/) (parity / Rust / TUI — ver [roadmap.md — Future transport and scale](../goclaw/roadmap.md#future-transport-and-scale) y [CLAUDE.md](../../goclaw/CLAUDE.md)).
 
 - [Anthropic API documentation](https://docs.anthropic.com/en/api/getting-started)
 - [How Claude Code works](https://code.claude.com/docs/en/how-claude-code-works) (official product docs)
 - [Model Context Protocol specification](https://modelcontextprotocol.io/specification/2025-11-25)
 - [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk)
 - [Ollama](https://ollama.com/) (ejecución local de modelos, API HTTP)
-- [Open-source image generation models (2026 overview)](https://www.bentoml.com/blog/a-guide-to-open-source-image-generation-models) — FLUX, SD, Z-Image, Qwen-Image, ComfyUI vs A1111; profundidad en [LOCAL_MODELS.md §3](./local-models.md)
+- [Open-source image generation models (2026 overview)](https://www.bentoml.com/blog/a-guide-to-open-source-image-generation-models) — FLUX, SD, Z-Image, Qwen-Image, ComfyUI vs A1111; profundidad en [local-models.md §3](./local-models.md)
 - [Claude Code architecture deep dive (third-party)](https://wavespeed.ai/blog/posts/claude-code-architecture-leaked-source-deep-dive/)
 - [Claude Code internals (third-party explainer)](https://claude-code-explain.helmcode.com/)
 - [Claude Code internals — System Prompt (third-party)](https://claude-code-explain.helmcode.com/system-prompt)

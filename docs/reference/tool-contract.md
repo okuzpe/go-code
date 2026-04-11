@@ -65,7 +65,7 @@ Implementation: [`goclaw/internal/tools/ssrf.go`](../../goclaw/internal/tools/ss
 |----------|-------|-------|
 | Max LLM iterations per user message | **32** | Includes turns with `tool_results` |
 | Max tool calls per user message | **64** | |
-| Retries per LLM HTTP call | up to **10** | See [RETRY_LOGIC.md](./retry-logic.md) (D22) |
+| Retries per LLM HTTP call | up to **10** | See [retry-logic.md](./retry-logic.md) (D22) |
 
 ---
 

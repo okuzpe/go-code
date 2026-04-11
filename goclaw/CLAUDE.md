@@ -10,7 +10,7 @@
 
 **Workspace note:** If the parent folder also contains `claw-code/`, treat it as **reference material only**. It is not part of this module, not covered by this roadmap, and must not be modified when implementing goclaw. All product code, tests, and phase work live under `goclaw/`.
 
-**Documentation map:** [documentation.md](../docs/goclaw/documentation.md) (what belongs in `goclaw/` vs monorepo `docs/`). **Canonical index:** [README.md](README.md); master file list: [docs-map.md](../docs/docs-map.md). **Docs ↔ code layers:** [code-adjustment-map.md](../docs/reference/code-adjustment-map.md).
+**Documentation placement:** [documentation.md](../docs/goclaw/documentation.md) (where new Markdown belongs under `docs/`). **Canonical index:** [README.md](README.md); **master file list:** [docs-map.md](../docs/docs-map.md). **Docs ↔ code layers:** [code-adjustment-map.md](../docs/reference/code-adjustment-map.md).
 
 ---
 
@@ -96,7 +96,7 @@ See the `audit` skill for the full checklist.
 
 | Layer | What goclaw does |
 |-------|------------------|
-| **Hub-and-spoke coordinator** | Implemented: default `agent_profile` is `coordinator` (hub); tools `spawn_agent`, `stop_task`, `todo_write` only on the parent; workers use `general-purpose`, `explore`, `plan`, or `verification` with isolated `session.Session`. Optional `spawn_agent` **`interactive: true`** plus REPL **`/focus`** / **`/detach`**. Worker runs stream to the parent UI via [`ContextWithStreamSink`](internal/orchestrator/sink_context.go). If multiple tools are auto-approved in one message, **`spawn_agent` is not parallelized** with other tools ([`pendingToolsIncludeSpawnAgent`](internal/orchestrator/orchestrator.go)) to avoid duplicate workers and GPU contention. Prefer **`general-purpose`** for direct repo edits without delegation. End-user notes: [usage.md — Agent profiles](../docs/goclaw/usage.md) (`timeout_sec`, coordinator vs `general-purpose`). Code: [`internal/coordinator`](internal/coordinator/), wiring in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go). Design notes: [`coordinator.md`](../docs/goclaw/coordinator.md), product comparison [`coordinator-mode.md`](../docs/reference/coordinator-mode.md). |
+| **Hub-and-spoke coordinator** | Implemented: default `agent_profile` is **`general-purpose`** (direct coding); **`coordinator`** is opt-in hub mode — tools `spawn_agent`, `stop_task`, `todo_write` only on the parent; workers use `general-purpose`, `explore`, `plan`, or `verification` with isolated `session.Session`. Optional `spawn_agent` **`interactive: true`** plus REPL **`/focus`** / **`/detach`**. Worker runs stream to the parent UI via [`ContextWithStreamSink`](internal/orchestrator/sink_context.go). If multiple tools are auto-approved in one message, **`spawn_agent` is not parallelized** with other tools ([`pendingToolsIncludeSpawnAgent`](internal/orchestrator/orchestrator.go)) to avoid duplicate workers and GPU contention. End-user notes: [usage.md — Agent profiles](../docs/goclaw/usage.md) (`timeout_sec`, coordinator vs `general-purpose`). Code: [`internal/coordinator`](internal/coordinator/), wiring in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go). Design notes: [`coordinator.md`](../docs/goclaw/coordinator.md), product comparison [`coordinator-mode.md`](../docs/reference/coordinator-mode.md). |
 | **Team/Swarm (peer agents)** | **Minimal disk hub** — [`internal/swarm`](internal/swarm/): mailboxes under a user-chosen directory (tests + future tools). Not the same as `spawn_agent`; see [`swarm.md`](../docs/goclaw/swarm.md). |
 | **External orchestration** | Optional: wrap `goclaw` with your own scheduler/event bus (analogous in spirit to claw-code + clawhip + Discord). Not a goclaw dependency. |
 
@@ -226,7 +226,7 @@ goclaw/
 
 **REPL slash commands** (do not go to the LLM): `/help` or `help` or `?`; `/session`; `/sessions` (list saved ids); `/quit` or `/exit` (save and exit); `/new` (save current JSONL, start empty session); `/save` (persist without exit); `/compact` (force compaction); `/profile <name>` (switch profile without restart); `/workers` (interactive `spawn_agent` workers); `/focus <task_id_prefix>` or `/focus parent`; `/detach` (back to coordinator); `/plan path|init|save|template`; `/apply-plan [path]` (load plan file, switch to `general-purpose`, stream one execution turn via modelSubmit); `/memory list|add|delete`. **Sends to the LLM via modelSubmit:** `/btw <text>` (side question — rewrites one user message with a brief-aside preamble). Hooks `SessionStart` / `SessionEnd` fire when the REPL starts and exits.
 
-**Default `agent_profile`:** `coordinator` (hub). Use `agent_profile`, `GOCLAW_AGENT_PROFILE`, or `--profile general-purpose` for direct coding with file tools on the main session.
+**Default `agent_profile`:** `general-purpose` (full tools on the main session). Use `agent_profile`, `GOCLAW_AGENT_PROFILE`, or `--profile coordinator` for hub-and-spoke delegation.
 
 **Plan → execute:** `/profile plan` → ask for a plan → `/plan save` (saves last assistant message to `.goclaw/plan.md`) → `/apply-plan` (streams execution via the normal REPL turn; switches to `general-purpose`). See [`internal/planfile/planfile.go`](internal/planfile/planfile.go). D16 coordinator sketch: [`coordinator.md`](../docs/goclaw/coordinator.md).
 

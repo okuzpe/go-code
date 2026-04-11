@@ -2,7 +2,7 @@
 
 **Status in goclaw:** **Coordinator (hub-and-spoke)** is implemented — [`docs/goclaw/coordinator.md`](../goclaw/coordinator.md), `internal/coordinator`, `--profile coordinator`. **Team/Swarm** peer topology here remains reference-only.
 
-Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.11](../archive/architecture-legacy-es.md). Referencia conceptual (terceros, análisis del código de Claude Code): [Coordinator Mode — claude-code-explain](https://claude-code-explain.helmcode.com/coordinator-mode).
+Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D16 coordinator). Referencia conceptual (terceros, análisis del código de Claude Code): [Coordinator Mode — claude-code-explain](https://claude-code-explain.helmcode.com/coordinator-mode).
 
 **Mensaje central:** en el producto analizado hay **dos sistemas multi-agente distintos**, no uno solo con dos nombres. Mezclarlos en diseño propio produce permisos incoherentes (p. ej. un “coordinador” que aún puede `Write`).
 
@@ -155,11 +155,11 @@ Inyección al contexto del compañero como XML, p. ej. `<teammate-message teamma
 | tmux/iTerm2 | **Opcional y tardío**: en Windows priorizar **headless** + logs; tmux no es MVP |
 | Polling 1 s | `time.Ticker` o eventos con `fsnotify` donde tenga sentido |
 
-**Dependencias (alineado con [ARCHITECTURE_LEGACY_ES.md §4.3](../archive/architecture-legacy-es.md)):** `coordinator` / `swarm` no deben importar `tools` de forma circular; el **orquestador** mantiene el mapa `agentID → run context`.
+**Dependencias (alineado con [CLAUDE.md](../../goclaw/CLAUDE.md)):** `coordinator` / `swarm` no deben importar `tools` de forma circular; el **orquestador** mantiene el mapa `agentID → run context`.
 
 ---
 
-## 6. Roadmap alineado con ARCHITECTURE §4.4
+## 6. Roadmap alineado con el producto ([roadmap.md](../goclaw/roadmap.md), [CLAUDE.md](../../goclaw/CLAUDE.md))
 
 | Fase | Qué cubrir |
 |------|------------|
@@ -171,10 +171,10 @@ Inyección al contexto del compañero como XML, p. ej. `<teammate-message teamma
 
 ## 7. Relación con otros docs
 
-- **[CONTEXT_COMPACTION.md](./context-compaction.md):** cada worker tiene su propio presupuesto de contexto; el coordinador compacta **su** hilo, no el interno del worker.  
-- **[MEMORY_SYSTEM.md](./memory-system.md):** decisiones estables tras una sesión multi-agente pueden merecer `project` / `feedback`; no sustituyen specs en XML.  
+- **[context-compaction.md](./context-compaction.md):** cada worker tiene su propio presupuesto de contexto; el coordinador compacta **su** hilo, no el interno del worker.  
+- **[memory-system.md](./memory-system.md):** decisiones estables tras una sesión multi-agente pueden merecer `project` / `feedback`; no sustituyen specs en XML.  
 - **§2.1 herramientas dedicadas:** los workers siguen D12; el coordinador no usa Bash para leer repo.
-- **[YOLO_CLASSIFIER.md](./yolo-classifier.md):** en auto-modo, los workers con toolbox completo deben pasar el mismo **gate** de seguridad que una sesión simple; la delegación no sustituye al clasificador.
+- **[yolo-classifier.md](./yolo-classifier.md):** en auto-modo, los workers con toolbox completo deben pasar el mismo **gate** de seguridad que una sesión simple; la delegación no sustituye al clasificador.
 
 ---
 

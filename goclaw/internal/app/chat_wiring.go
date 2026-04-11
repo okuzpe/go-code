@@ -193,6 +193,16 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	}
 	_ = hookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionStart})
 
+	// Build project context and skills early so they can be shared with workers.
+	projectCtx := buildProjectContext(workdir)
+	skillRoots := []string{
+		filepath.Join(workdir, cfg.ProjectConfigDir, "skills"),
+		filepath.Join(workdir, ".claude", "skills"),
+		filepath.Join(cfg.UserConfigDir, "skills"),
+		filepath.Join(cfg.UserConfigDir, ".claude", "skills"),
+	}
+	skillSnippet, _ := skills.Collect(skillRoots, 24000)
+
 	reg := tools.New()
 	disableTools := noToolsFlag || strings.TrimSpace(os.Getenv("GOCLAW_DISABLE_TOOLS")) == "1"
 	if cfg.IDEBridgeMCP && !disableTools {
@@ -230,7 +240,12 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 		// spawn_agent: worker registry excludes spawn_agent itself to prevent infinite nesting.
 		workerReg := tools.New()
 		registerBuiltInTools(workerReg, workdir, cfg, todos.NewStore())
-		reg.Register(coordinator.New(cfg, client, workerReg, policy, hookReg).WithProfiles(profs))
+		reg.Register(coordinator.New(cfg, client, workerReg, policy, hookReg).
+			WithProfiles(profs).
+			WithWorkdir(workdir).
+			WithProjectContext(projectCtx).
+			WithMemoryStore(memStore).
+			WithSkillsSnippet(skillSnippet))
 		reg.Register(coordinator.NewStopTask())
 
 		for _, srv := range cfg.MCPServers {
@@ -301,18 +316,11 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	}
 
 	ideNotifier := ide.FromEnv()
-	skillRoots := []string{
-		filepath.Join(workdir, cfg.ProjectConfigDir, "skills"),
-		filepath.Join(workdir, ".claude", "skills"),
-		filepath.Join(cfg.UserConfigDir, "skills"),
-		filepath.Join(cfg.UserConfigDir, ".claude", "skills"),
-	}
-	skillSnippet, _ := skills.Collect(skillRoots, 24000)
 	orchOpts := []orchestrator.Option{orchestrator.WithMemoryStore(memStore)}
 	if workdir != "" {
 		orchOpts = append(orchOpts, orchestrator.WithWorkdir(workdir))
-		if pctx := buildProjectContext(workdir); pctx != "" {
-			orchOpts = append(orchOpts, orchestrator.WithProjectContext(pctx))
+		if projectCtx != "" {
+			orchOpts = append(orchOpts, orchestrator.WithProjectContext(projectCtx))
 		}
 	}
 	if skillSnippet != "" {
@@ -429,6 +437,15 @@ func buildProjectContext(workdir string) string {
 		}
 		parts = append(parts, name+":\n  "+strings.Join(lines, "\n  "))
 		break
+	}
+
+	// Append CLAUDE.md project rules — this is the primary source of agent instructions.
+	if data, err := os.ReadFile(filepath.Join(workdir, "CLAUDE.md")); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		if len(lines) > 60 {
+			lines = lines[:60]
+		}
+		parts = append(parts, "CLAUDE.md (project rules):\n  "+strings.Join(lines, "\n  "))
 	}
 
 	return strings.Join(parts, "\n\n")

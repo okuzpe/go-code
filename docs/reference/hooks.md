@@ -109,7 +109,7 @@ Subprocess hooks run with the **user’s OS permissions** — there is no sandbo
 | Date | Change |
 |------|--------|
 | 2026-04-07 | Created: event list, transport types, source priority, permissions integration, async, security, Go design. |
-| 2026-04-07 | Cross-links to CUSTOM_AGENTS.md hooks frontmatter. |
+| 2026-04-07 | Cross-links to custom-agents.md hooks frontmatter. |
 | 2026-04-08 | Added goclaw implementation status (`internal/hooks`); MVP roadmap row aligned. |
 | 2026-04-08 | Translated to English; restructured around implemented vs. roadmap; reference-product analysis condensed. |
 | 2026-04-07 | §0 / §9: `external_hooks`, `.goclaw/hooks.json` + `trusted_workspace`, subprocess exit 2, HTTP SSRF, REPL wiring in `internal/app/run.go`. |

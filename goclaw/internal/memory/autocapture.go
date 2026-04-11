@@ -2,6 +2,7 @@ package memory
 
 import (
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -9,7 +10,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/config"
 )
 
-const maxAutoEntriesPerSession = 32
+const maxAutoEntriesPerSession = 128
 
 var autoCountPerSession sync.Map // session id -> *int32
 
@@ -31,6 +32,7 @@ func MaybeAutoCaptureFromTool(cfg config.Config, store *Store, sessionID, toolNa
 	v, _ := autoCountPerSession.LoadOrStore(sessionID, new(int32))
 	cnt := v.(*int32)
 	if atomic.LoadInt32(cnt) >= maxAutoEntriesPerSession {
+		slog.Info("memory: auto-capture quota reached", "session", sessionID)
 		return
 	}
 	atomic.AddInt32(cnt, 1)

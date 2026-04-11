@@ -2,7 +2,7 @@
 
 **Status in goclaw:** **Rule-based risk scoring** (0–100) and optional `yolo_threshold` auto-approval live in [`goclaw/internal/permissions/risk.go`](../../goclaw/internal/permissions/risk.go) — not a separate lateral LLM call as in the reference product. See **D17** in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md).
 
-Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.3](../archive/architecture-legacy-es.md) y **§2.4**. Referencia (terceros, análisis de Claude Code): [YOLO Classifier — claude-code-explain](https://claude-code-explain.helmcode.com/yolo-classifier).
+Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D17 risk) y **§2.4**. Referencia (terceros, análisis de Claude Code): [YOLO Classifier — claude-code-explain](https://claude-code-explain.helmcode.com/yolo-classifier).
 
 **Por qué es capa esencial:** en modo automático el modelo puede encadenar muchas herramientas sin pausa humana. Un **monitor que no es el mismo razonamiento del agente** reduce **daño accidental, scope creep, inyección de prompt vía herramientas** y **acciones irreversibles** (deploy a prod, `rm -rf`, exfiltración, etc.).
 
@@ -173,7 +173,7 @@ Cada tool expone qué ve el clasificador: comando bash, ruta+contenido en edici�
 
 **Dependencias:** `classifier` → `llm`; `orchestrator` → `permissions` → opcionalmente `classifier`; evitar `classifier` → `orchestrator`.
 
-**Roadmap alineado [ARCHITECTURE_LEGACY_ES.md §4.4](../archive/architecture-legacy-es.md):**
+**Roadmap alineado [roadmap.md](../goclaw/roadmap.md):**
 
 | Fase | Clasificador |
 |------|----------------|
@@ -185,11 +185,11 @@ Cada tool expone qué ve el clasificador: comando bash, ruta+contenido en edici�
 
 ## 13. Relación con otros docs
 
-- **[RETRY_LOGIC.md](./retry-logic.md):** las llamadas al modelo del clasificador deben usar política de reintentos **acotada**; en fallos repetidos aplica el **iron gate** (§9), no un backoff ilimitado.
-- **[COORDINATOR_MODE.md](./coordinator-mode.md):** delegar a sub-agentes debe pasar por evaluación de intención (reglas de sub-agent en referencia).
+- **[retry-logic.md](./retry-logic.md):** las llamadas al modelo del clasificador deben usar política de reintentos **acotada**; en fallos repetidos aplica el **iron gate** (§9), no un backoff ilimitado.
+- **[coordinator-mode.md](./coordinator-mode.md):** delegar a sub-agentes debe pasar por evaluación de intención (reglas de sub-agent en referencia).
 - **[agent-profiles.md](./agent-profiles.md):** modo `dontAsk` sin clasificador sólido es **peligroso**; alinear con Auto.
 - **§2.4 shell:** el clasificador es **complemento** de validación sintáctica/sandbox, no sustituto.
-- **[HOOKS.md](./hooks.md):** `PreToolUse` / `PermissionRequest` pueden bloquear o mutar antes del pipeline YOLO; el **orden** hooks vs fast paths vs API lateral se fija en **D17 + D18** y en el pseudocódigo de permisos.
+- **[hooks.md](./hooks.md):** `PreToolUse` / `PermissionRequest` pueden bloquear o mutar antes del pipeline YOLO; el **orden** hooks vs fast paths vs API lateral se fija en **D17 + D18** y en el pseudocódigo de permisos.
 
 ---
 
@@ -198,5 +198,5 @@ Cada tool expone qué ve el clasificador: comando bash, ruta+contenido en edici�
 | Fecha | Cambio |
 |-------|--------|
 | 2026-04-07 | Creación: flujo, XML dos etapas, fast paths, transcript, fail-closed, eco Go, enlace helmcode §17 |
-| 2026-04-07 | §13: interacción con [HOOKS.md](./hooks.md) y D18 (orden de pipeline). |
-| 2026-04-07 | §13: [RETRY_LOGIC.md](./retry-logic.md) y reintentos del clasificador. |
+| 2026-04-07 | §13: interacción con [hooks.md](./hooks.md) y D18 (orden de pipeline). |
+| 2026-04-07 | §13: [retry-logic.md](./retry-logic.md) y reintentos del clasificador. |

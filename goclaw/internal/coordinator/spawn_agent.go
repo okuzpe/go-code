@@ -14,6 +14,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/hooks"
 	"github.com/okuzpe/goclaw/internal/llm"
+	"github.com/okuzpe/goclaw/internal/memory"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/session"
@@ -54,6 +55,13 @@ type SpawnAgentTool struct {
 	policy  *permissions.Policy
 	hookReg *hooks.Registry
 	profs   map[string]agents.Profile // nil = use agents.All()
+
+	// Context injected into every worker orchestrator so workers have the same
+	// workspace awareness as the parent agent.
+	workdir       string
+	projectCtx    string
+	mem           *memory.Store
+	skillsSnippet string
 }
 
 var _ tools.Tool = (*SpawnAgentTool)(nil)
@@ -83,13 +91,38 @@ func (t *SpawnAgentTool) WithProfiles(profs map[string]agents.Profile) *SpawnAge
 	return t
 }
 
+// WithWorkdir passes the workspace root to every spawned worker.
+func (t *SpawnAgentTool) WithWorkdir(dir string) *SpawnAgentTool {
+	t.workdir = strings.TrimSpace(dir)
+	return t
+}
+
+// WithProjectContext passes the project summary to every spawned worker.
+func (t *SpawnAgentTool) WithProjectContext(ctx string) *SpawnAgentTool {
+	t.projectCtx = strings.TrimSpace(ctx)
+	return t
+}
+
+// WithMemoryStore passes the persistent memory store to every spawned worker.
+func (t *SpawnAgentTool) WithMemoryStore(mem *memory.Store) *SpawnAgentTool {
+	t.mem = mem
+	return t
+}
+
+// WithSkillsSnippet passes the loaded SKILL.md content to every spawned worker.
+func (t *SpawnAgentTool) WithSkillsSnippet(snippet string) *SpawnAgentTool {
+	t.skillsSnippet = strings.TrimSpace(snippet)
+	return t
+}
+
 func (t *SpawnAgentTool) Name() string { return "spawn_agent" }
 
 func (t *SpawnAgentTool) Description() string {
 	return "Spawn an isolated sub-agent to complete a self-contained task. " +
 		"The worker runs with its own context and tool access; its session is not visible to you. " +
-		"Provide a fully self-contained task description — include all relevant file paths, " +
-		"function names, and context the worker will need. " +
+		"Write the task field as 100–300 words: include file paths, function names, relevant code " +
+		"snippets, and a clear success criterion. The worker cannot see this conversation — every " +
+		"detail it needs must be in the task description. " +
 		"Set interactive: true to keep the worker running after this call; the user can send more input via /focus <task_id> in the REPL until /detach or stop_task. " +
 		"Profile guide: general-purpose — write/edit/create files or run commands (use for ALL coding tasks); " +
 		"explore — read-only search and codebase understanding; " +
@@ -108,7 +141,7 @@ func (t *SpawnAgentTool) InputSchema() any {
 			},
 			"task": map[string]any{
 				"type":        "string",
-				"description": "Self-contained task description for the worker. Include all context needed; the worker cannot see the current conversation.",
+				"description": "Fully self-contained task (100–300 words). Include file paths, function names, relevant code snippets, and a clear success criterion. The worker cannot see this conversation — every detail it needs must be here.",
 			},
 			"timeout_sec": map[string]any{
 				"type":        "integer",
@@ -188,6 +221,19 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 	workerOpts := []orchestrator.Option{
 		orchestrator.WithTodoStore(workerTodoStore),
 	}
+	// Inject workspace context so workers have the same project awareness as the parent agent.
+	if t.workdir != "" {
+		workerOpts = append(workerOpts, orchestrator.WithWorkdir(t.workdir))
+	}
+	if t.projectCtx != "" {
+		workerOpts = append(workerOpts, orchestrator.WithProjectContext(t.projectCtx))
+	}
+	if t.mem != nil {
+		workerOpts = append(workerOpts, orchestrator.WithMemoryStore(t.mem))
+	}
+	if t.skillsSnippet != "" {
+		workerOpts = append(workerOpts, orchestrator.WithSkillsSnippet(t.skillsSnippet))
+	}
 
 	orch := orchestrator.New(
 		t.cfg,
@@ -211,6 +257,10 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 			summary: "starting…",
 		}
 		storeInteractive(iw)
+		if workerSink != nil {
+			workerSink.OnTextDelta("\n▶ Worker [" + shortID(taskID) + "] · " + in.Profile + " (interactive)\n")
+			workerSink.OnTextDelta("  " + firstNonEmptyLine(in.Task) + "\n\n")
+		}
 		go runInteractiveWorkerLoop(workerCtx, cancel, iw, orch, in.Task, workerSink)
 		short := taskID
 		if len(short) > 12 {
@@ -234,6 +284,12 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 	registerWorkerCancel(taskID, cancel)
 	defer unregisterWorkerCancel(taskID)
 
+	// Emit worker start header to parent TUI.
+	if workerSink != nil {
+		workerSink.OnTextDelta("\n▶ Worker [" + shortID(taskID) + "] · " + in.Profile + "\n")
+		workerSink.OnTextDelta("  " + firstNonEmptyLine(in.Task) + "\n\n")
+	}
+
 	// Stream worker output to the parent StreamSink when present (OnDone is not forwarded — see nested_sink.go).
 	result, err := orch.RunStreaming(workerCtx, in.Task, wrapNestedWorkerSink(workerSink))
 
@@ -249,11 +305,23 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 		notif.Summary = firstNonEmptyLine(result)
 	}
 
+	// Emit worker end footer to parent TUI.
+	if workerSink != nil {
+		workerSink.OnTextDelta("\n◀ Worker [" + shortID(taskID) + "] " + notif.Status + " — " + notif.Summary + "\n")
+	}
+
 	out, marshalErr := json.Marshal(notif)
 	if marshalErr != nil {
 		return tools.Result{Content: fmt.Sprintf("failed to encode result: %v", marshalErr), IsError: true}, nil
 	}
 	return tools.Result{Content: string(out)}, nil
+}
+
+func shortID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
 }
 
 func firstNonEmptyLine(s string) string {

@@ -9,7 +9,7 @@ A **profile** controls how the orchestrator behaves for a given task. Each profi
 
 Select a profile with `-profile <name>` or set `agent_profile` in `settings.json`. Implementation: [`goclaw/internal/agents/profile.go`](../../goclaw/internal/agents/profile.go).
 
-**Shared prefix (all profiles):** [`internal/orchestrator/orchestrator.go`](../../goclaw/internal/orchestrator/orchestrator.go) `baseSystemPrompt` instructs the model to prefer dedicated tools (**D12** / [ARCHITECTURE_LEGACY_ES.md §2.1](../archive/architecture-legacy-es.md)) — `read_file`, `glob`, `grep`, `write_file`, `edit_file`, `web_fetch`, `web_search`, `todo_write` — and use `bash` only when no dedicated tool fits.
+**Shared prefix (all profiles):** [`internal/orchestrator/orchestrator.go`](../../goclaw/internal/orchestrator/orchestrator.go) `baseSystemPrompt` instructs the model to prefer dedicated tools (**D12** / [CLAUDE.md](../../goclaw/CLAUDE.md) (D12)) — `read_file`, `glob`, `grep`, `write_file`, `edit_file`, `web_fetch`, `web_search`, `todo_write` — and use `bash` only when no dedicated tool fits.
 
 ### Plan → execute workflow (v1)
 
@@ -23,17 +23,17 @@ Select a profile with `-profile <name>` or set `agent_profile` in `settings.json
 
 ## Built-in Profiles
 
-Seven built-ins in [`goclaw/internal/agents/profile.go`](../../goclaw/internal/agents/profile.go). Custom Markdown agents can override names; see **Custom agents** below. **Default** `agent_profile` when unset in settings is **`coordinator`** ([`config.Default()`](../../goclaw/internal/config/config.go)); use **`general-purpose`** when you want a single agent with full tools.
+Seven built-ins in [`goclaw/internal/agents/profile.go`](../../goclaw/internal/agents/profile.go). Custom Markdown agents can override names; see **Custom agents** below. **Default** `agent_profile` when unset in settings is **`general-purpose`** ([`config.Default()`](../../goclaw/internal/config/config.go)); use **`coordinator`** for hub-and-spoke delegation (`spawn_agent` on the parent only).
 
 | Profile | `-profile` value | Tool allowlist | Read-only | Default? |
 |---------|-----------------|----------------|-----------|----------|
-| General-Purpose | `general-purpose` | All tools | No | — |
+| General-Purpose | `general-purpose` | All tools | No | Yes |
 | Explore | `explore` | read_file, glob, grep, web_fetch, web_search, todo_write | Yes | — |
 | Plan | `plan` | read_file, glob, grep, web_search, todo_write | Yes | — |
 | Verification | `verification` | read_file, bash, todo_write | No | — |
 | Guide | `guide` | (none) | Yes | — |
 | StatusLine | `statusline` | (none) | Yes | — |
-| Coordinator | `coordinator` | spawn_agent, stop_task, todo_write | Yes | Yes |
+| Coordinator | `coordinator` | spawn_agent, stop_task, todo_write | Yes | — |
 
 ---
 
@@ -171,7 +171,7 @@ Permission modes (`ask`/`allow`/`deny`, configured in `tool_permissions`) are **
 > **Still open (not specific to profile table):**
 > - **Team/Swarm** peer-agent topology (tmux-style, mailboxes) — out of scope for goclaw MVP; do not conflate with `coordinator`.
 > - **Context attachment policy per profile:** optionally omit loading `CLAUDE.md` or `git status` in Explore/Plan to save tokens (today all profiles share the same system prefix pattern).
-> - **Reference-only docs:** [CUSTOM_AGENTS.md](./custom-agents.md), [COORDINATOR_MODE.md](./coordinator-mode.md), [YOLO_CLASSIFIER.md](./yolo-classifier.md) may describe a larger product than the Go CLI; trust [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md) for shipped behavior.
+> - **Reference-only docs:** [custom-agents.md](./custom-agents.md), [coordinator-mode.md](./coordinator-mode.md), [yolo-classifier.md](./yolo-classifier.md) may describe a larger product than the Go CLI; trust [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md) for shipped behavior.
 
 ---
 
@@ -180,9 +180,9 @@ Permission modes (`ask`/`allow`/`deny`, configured in `tool_permissions`) are **
 | Date | Change |
 |------|--------|
 | 2026-04-07 | Created: 6-type table, token lesson, Go mapping, phase alignment. |
-| 2026-04-07 | Cross-links: memory extractor, COORDINATOR_MODE, YOLO_CLASSIFIER, CUSTOM_AGENTS. |
+| 2026-04-07 | Cross-links: memory extractor, coordinator-mode, yolo-classifier, custom-agents. |
 | 2026-04-08 | Updated goclaw section: real file paths; plan → execute workflow; D16 sketch link. |
 | 2026-04-09 | Seven built-in profiles (`coordinator`); D16 + custom `.md` agents documented; Post-MVP → future/polish. |
 | 2026-04-08 | Translated to English; restructured around `profile.go` facts; reference-product analysis removed; exact system prompts included. |
-| 2026-04-08 | Shared `baseSystemPrompt` (**D12**), verification/bash policy pointer to TOOL_CONTRACT and `bash.go`. |
+| 2026-04-08 | Shared `baseSystemPrompt` (**D12**), verification/bash policy pointer to [tool-contract.md](./tool-contract.md) and `bash.go`. |
 | 2026-04-08 | `todo_write` on explore/plan/verification; plan → execute workflow (`.goclaw/plan.md`, `/apply-plan`); D16 sketch: [docs/goclaw/coordinator.md](../goclaw/coordinator.md). |

@@ -2,11 +2,11 @@
 
 **Status in goclaw:** **Partial** — lockfile MCP discovery, `GOCLAW_IDE_NOTIFY_URL`; see **D21** / §6–§7 in this file and [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md).
 
-Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.15](../archive/architecture-legacy-es.md). Referencia (terceros, análisis de Claude Code): [Bridge & IDE — claude-code-explain](https://claude-code-explain.helmcode.com/bridge-ide).
+Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (IDE / D21). Referencia (terceros, análisis de Claude Code): [Bridge & IDE — claude-code-explain](https://claude-code-explain.helmcode.com/bridge-ide).
 
 Son **dos sistemas distintos**. Mezclarlos en diseño lleva a confusiones de seguridad (localhost de confianza vs túnel a Internet y OAuth).
 
-**Relación con [MCP.md](./mcp.md):** el IDE integra al CLI como **cliente MCP hacia el editor** (localhost). Los **servidores MCP de integración** (GitHub, Slack, …) son otro eje: el CLI como **cliente** hacia procesos/URLs configurados en `mcpServers` — ver §2.8 y **D6** en [ARCHITECTURE_LEGACY_ES.md](../archive/architecture-legacy-es.md).
+**Relación con [mcp.md](./mcp.md):** el IDE integra al CLI como **cliente MCP hacia el editor** (localhost). Los **servidores MCP de integración** (GitHub, Slack, …) son otro eje: el CLI como **cliente** hacia procesos/URLs configurados en `mcpServers` — ver **D6** en [CLAUDE.md](../../goclaw/CLAUDE.md) y transportes en [mcp.md](./mcp.md).
 
 ---
 
@@ -44,7 +44,7 @@ Son **dos sistemas distintos**. Mezclarlos en diseño lleva a confusiones de seg
 ### 2.3 Superficie de amenaza (local)
 
 - **Localhost no es “gratis”:** otros procesos en la misma máquina pueden intentar conectar al puerto del IDE; por eso **token en `ws-ide`** y binds acotados importan.
-- Los **diffs y aceptación de cambios** deben enlazarse con la capa de **permisos** del CLI ([ARCHITECTURE_LEGACY_ES.md §2.3](../archive/architecture-legacy-es.md)): una edición “desde el agente” puede seguir pasando por **Ask** / políticas según modo.
+- Los **diffs y aceptación de cambios** deben enlazarse con la capa de **permisos** del CLI ([CLAUDE.md](../../goclaw/CLAUDE.md)): una edición “desde el agente” puede seguir pasando por **Ask** / políticas según modo.
 
 ---
 
@@ -83,7 +83,7 @@ Orden de resolución orientativa: variable de entorno (solo dev) → cadena de c
 | Herramientas Write/Edit | Tras éxito lógico | Llamar notificación para diff en editor cuando **D21** y sesión IDE activa |
 | Bridge remoto | Fuera del MVP / v1 IDE | Si se hace: paquete separado; mismo orquestador; distinto “channel” de entrada |
 
-**Roadmap sugerido:** **MVP** — solo REPL y permisos; **v1** — `glob`/`grep`/memoria etc. según [ARCHITECTURE_LEGACY_ES.md §4.4](../archive/architecture-legacy-es.md); **v1+ (prioridad producto)** — `internal/ide` con descubrimiento + cliente MCP mínimo + una extensión o adaptador documentado (**D21**). Bridge estilo claude.ai **sin compromiso**.
+**Roadmap sugerido:** **MVP** — solo REPL y permisos; **v1** — `glob`/`grep`/memoria etc. según [CLAUDE.md](../../goclaw/CLAUDE.md); **v1+ (prioridad producto)** — `internal/ide` con descubrimiento + cliente MCP mínimo + una extensión o adaptador documentado (**D21**). Bridge estilo claude.ai **sin compromiso**.
 
 ---
 

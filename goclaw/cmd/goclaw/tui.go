@@ -34,14 +34,18 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		},
 	}
 	sess := rt.Sess
-	slash := func(input string) (handled bool, out string, quit bool, modelSubmit string, err error) {
+	slashEnv.ChatSubtitle = func() string {
+		return app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName())
+	}
+	slash := func(input string) (handled bool, out string, quit bool, modelSubmit string, err error, hints slashcmd.UIHints) {
 		sc := slashcmd.SlashContext{SlashEnv: slashEnv, Mem: rt.MemStore, Orch: orch, Sess: &sess, Store: rt.Store}
-		h, o, q, ms, e := slashcmd.HandleSlash(ctx, sc, input)
+		var hi slashcmd.UIHints
+		h, o, q, ms, e := slashcmd.HandleSlash(ctx, sc, input, &hi)
 		rt.Sess = sess
 		if q && errors.Is(e, slashcmd.ErrReplQuit) {
-			return h, o, q, ms, nil
+			return h, o, q, ms, nil, hi
 		}
-		return h, o, q, ms, e
+		return h, o, q, ms, e, hi
 	}
 	var submit chat.Submitter
 	if rt.Mock {

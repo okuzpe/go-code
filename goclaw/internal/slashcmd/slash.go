@@ -18,6 +18,8 @@ import (
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/planfile"
 	"github.com/okuzpe/goclaw/internal/session"
+
+	"golang.org/x/term"
 )
 
 // SlashEnv carries workspace paths and profile lookup for slash commands.
@@ -34,6 +36,8 @@ type SlashEnv struct {
 	Doctor                      func(ctx context.Context) (string, error)
 	// Focus is optional; when set, /focus (/in) and /detach (/back, /hub) route input to interactive workers.
 	Focus *coordinator.FocusRouter
+	// ChatSubtitle optional; after profile switches returns window subtitle (e.g. provider · model · profile).
+	ChatSubtitle func() string
 }
 
 // SlashContext carries dependencies for HandleSlash (memory, orchestrator, session pointer, disk store).
@@ -51,12 +55,14 @@ var ErrReplQuit = errors.New("repl quit")
 // HandleSlash processes REPL slash commands. Returns handled=true if input was consumed.
 // modelSubmit is non-empty when the caller should send that text to the model (e.g. /edit).
 // quit with ErrReplQuit means the REPL should exit after printing out.
-func HandleSlash(ctx context.Context, sc SlashContext, input string) (handled bool, out string, quit bool, modelSubmit string, err error) {
+// hintsOut when non-nil receives TUI refresh hints (welcome bar, transcript rebuild); readline callers may pass nil.
+func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *UIHints) (handled bool, out string, quit bool, modelSubmit string, err error) {
 	mem := sc.Mem
 	orch := sc.Orch
 	sess := sc.Sess
 	store := sc.Store
 	env := sc.SlashEnv
+	clearHints(hintsOut)
 
 	s := strings.TrimSpace(input)
 	if s == "" {
@@ -120,13 +126,54 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string) (handled bo
 		}
 		var b strings.Builder
 		for _, e := range entries {
-			ts := e.ModTime.UTC().Format(time.RFC3339)
+			age := formatSessionModAge(e.ModTime)
 			b.WriteString(e.ID)
 			b.WriteString("  ")
-			b.WriteString(ts)
-			b.WriteByte('\n')
+			b.WriteString(age)
+			b.WriteString("  (")
+			b.WriteString(e.ModTime.UTC().Format(time.RFC3339))
+			b.WriteString(")\n")
 		}
 		return true, strings.TrimSuffix(b.String(), "\n"), false, "", nil
+
+	case "clear":
+		if term.IsTerminal(int(os.Stdout.Fd())) {
+			_, _ = fmt.Fprint(os.Stdout, "\x1b[2J\x1b[H")
+			return true, "(screen cleared)", false, "", nil
+		}
+		return true, "(screen clear skipped — stdout is not a terminal)", false, "", nil
+
+	case "resume":
+		if store == nil {
+			return true, "", false, "", fmt.Errorf("/resume: no session store configured")
+		}
+		if orch == nil {
+			return true, "", false, "", fmt.Errorf("/resume requires a running agent")
+		}
+		if sess == nil {
+			return true, "", false, "", fmt.Errorf("/resume: session pointer missing")
+		}
+		if len(fields) < 2 {
+			return true, "", false, "", fmt.Errorf(`usage: /resume <session_id_or_prefix>
+use /sessions to list saved ids; current session is auto-saved before switching`)
+		}
+		arg := strings.TrimSpace(strings.Join(fields[1:], " "))
+		if *sess != nil {
+			if err := store.Save(*sess); err != nil {
+				return true, "", false, "", fmt.Errorf("/resume: save current session: %w", err)
+			}
+		}
+		loaded, rerr := resolveSessionForResume(store, arg)
+		if rerr != nil {
+			return true, "", false, "", fmt.Errorf("/resume: %w", rerr)
+		}
+		if loaded == nil {
+			return true, "", false, "", fmt.Errorf("/resume: session not found for %q", arg)
+		}
+		*sess = loaded
+		orch.ReplaceSession(loaded)
+		setReloadTranscript(hintsOut, loaded)
+		return true, fmt.Sprintf("resumed session %s (%d messages).", loaded.ID, loaded.Len()), false, "", nil
 
 	case "new":
 		if orch == nil {
@@ -338,6 +385,11 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		if err != nil {
 			return true, "", false, "", err
 		}
+		sub := ""
+		if env.ChatSubtitle != nil {
+			sub = env.ChatSubtitle()
+		}
+		setWelcomeHints(hintsOut, orch.ProfileName(), sub)
 		return true, msg, false, "", nil
 
 	case "agents":
@@ -346,7 +398,7 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		}
 		profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
 		if len(fields) < 2 {
-			if out, used, ierr := tryInteractiveAgentsPick(env, orch); ierr != nil {
+			if out, used, ierr := tryInteractiveAgentsPick(env, orch, hintsOut); ierr != nil {
 				return true, "", false, "", ierr
 			} else if used {
 				return true, out, false, "", nil
@@ -357,6 +409,11 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		if err != nil {
 			return true, "", false, "", err
 		}
+		sub := ""
+		if env.ChatSubtitle != nil {
+			sub = env.ChatSubtitle()
+		}
+		setWelcomeHints(hintsOut, orch.ProfileName(), sub)
 		return true, msg, false, "", nil
 
 	case "plan":
@@ -460,7 +517,11 @@ use /workers to list interactive worker ids`)
 			return true, "", false, "", fmt.Errorf("no unique interactive worker matches prefix %q (try /workers)", prefix)
 		}
 		env.Focus.FocusTaskID(full)
-		return true, fmt.Sprintf("focus: worker %s (input goes here until /back or /detach)", full), false, "", nil
+		out := fmt.Sprintf("focus: worker %s (input goes here until /back or /detach)", full)
+		if snap, ok := coordinator.SnapshotInteractiveWorker(full); ok && strings.TrimSpace(snap) != "" {
+			out = "[worker history]\n" + snap + "\n" + out
+		}
+		return true, out, false, "", nil
 
 	case "apply-plan":
 		if orch == nil {
@@ -486,6 +547,11 @@ use /workers to list interactive worker ids`)
 		orch.SetProfile(gp)
 		msg := planfile.HandoffUserMessage(p, body)
 		notice := fmt.Sprintf("switched to profile general-purpose; executing plan: %s", p)
+		sub := ""
+		if env.ChatSubtitle != nil {
+			sub = env.ChatSubtitle()
+		}
+		setWelcomeHints(hintsOut, orch.ProfileName(), sub)
 		return true, notice, false, msg, nil
 
 	default:
@@ -497,7 +563,7 @@ use /workers to list interactive worker ids`)
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /btw   /copy   /export   /init   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /quit\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /btw   /copy   /export   /init   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /resume   /clear   /quit\n")
 	b.WriteString("Prefix input (see docs/goclaw/prefix-input-modes.md):  !cmd   @path   &task\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
@@ -518,7 +584,7 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("  /apply-plan [path] — load plan, switch to general-purpose, stream execution\n")
 	b.WriteString("  /memory list | add | delete — durable memory under ~/.goclaw/memory/\n")
 	b.WriteString("  /workers, /focus or /in <id>, /back or /detach — interactive spawn_agent workers\n")
-	b.WriteString("  /compact, /copy, /export, /edit, /init, /agents, /profile, /theme, /new, /save, /session, /sessions, /quit, /btw\n")
+	b.WriteString("  /compact, /copy, /export, /edit, /init, /agents, /profile, /theme, /new, /save, /session, /sessions, /resume, /clear, /quit, /btw\n")
 	b.WriteString("Prefix: ! (bash), @ (read_file), & (spawn_agent) — single line; docs/goclaw/prefix-input-modes.md\n")
 	b.WriteString("Flags: --readline (line REPL), --no-tools, --session <id>, --profile <name>\n")
 	if strings.TrimSpace(workdir) != "" {
@@ -541,6 +607,8 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /doctor          — health check (config, provider reachability, session paths)\n")
 	b.WriteString("  /session         — show full session id and message count\n")
 	b.WriteString("  /sessions        — list saved session ids (same as --list-sessions, without restart)\n")
+	b.WriteString("  /resume <id>     — load a saved session (auto-saves current session first; use /sessions for ids)\n")
+	b.WriteString("  /clear           — clear the terminal screen (readline; TUI uses Ctrl+L)\n")
 	b.WriteString("  /quit, /exit     — save session and exit (same shutdown path as Ctrl+C)\n")
 	b.WriteString("  /new             — save current session to disk, start a fresh empty session\n")
 	b.WriteString("  /save            — write current session JSONL without exiting\n")

@@ -10,7 +10,7 @@ Resumen de **diez comportamientos** que en Claude Code están **acoplados al có
 
 **Tip:** En referencia, `CLAUDE.md` en la raíz es de las **primeras** piezas que entran en contexto y orienta toda la sesión.
 
-**Eco nosotros:** equivalente conceptual **`AGENTS.md`** / `CLAUDE.md` en la raíz del proyecto (convención ya citada en [memory-system.md](./memory-system.md) §1 y [architecture-legacy-es.md §2.6](../archive/architecture-legacy-es.md)). Conviene **una sola fuente de verdad** para reglas de equipo: no duplicar en memoria lo que pertenece al repo.
+**Eco nosotros:** equivalente conceptual **`AGENTS.md`** / `CLAUDE.md` en la raíz del proyecto (convención ya citada en [memory-system.md](./memory-system.md) §1 y [CLAUDE.md](../../goclaw/CLAUDE.md)). Conviene **una sola fuente de verdad** para reglas de equipo: no duplicar en memoria lo que pertenece al repo.
 
 ---
 
@@ -26,7 +26,7 @@ Resumen de **diez comportamientos** que en Claude Code están **acoplados al có
 
 **Tip:** **Explore** usa **Haiku** (rápido y barato) para búsquedas en código; delegar ahí ahorra tokens frente a usar el modelo principal para lo mismo.
 
-**Eco nosotros:** [agent-profiles.md](./agent-profiles.md) + §2.7 en [architecture-legacy-es.md](../archive/architecture-legacy-es.md); con **Ollama**, asignar un modelo **7B** al perfil Explore y reservar el grande para el bucle principal ([local-models.md](./local-models.md)).
+**Eco nosotros:** [agent-profiles.md](./agent-profiles.md) + [CLAUDE.md](../../goclaw/CLAUDE.md); con **Ollama**, asignar un modelo **7B** al perfil Explore y reservar el grande para el bucle principal ([local-models.md](./local-models.md)).
 
 ---
 
@@ -52,7 +52,7 @@ Réplica de costes (referencia): [Costs — claude-code-explain](https://claude-
 
 **Tip:** Modo que **auto-aprueba** todas las herramientas, incluidas destructivas (`rm`, `git push --force`, etc.). Solo en entornos **totalmente confiables** y aislados.
 
-**Eco nosotros:** [architecture-legacy-es.md §2.3](../archive/architecture-legacy-es.md), **D5**; equivalencia en nuestro CLI debe estar **oculta tras flags** claros y advertencias; nunca por defecto.
+**Eco nosotros:** [CLAUDE.md](../../goclaw/CLAUDE.md) (permissions), **D5**; equivalencia en nuestro CLI debe estar **oculta tras flags** claros y advertencias; nunca por defecto.
 
 ---
 
@@ -76,7 +76,7 @@ Réplica de costes (referencia): [Costs — claude-code-explain](https://claude-
 
 **Tip:** Ficheros `.md` con **YAML** (tools, modelo, `permissionMode`, …); el cuerpo es el system prompt; carga automática.
 
-**Eco nosotros:** [custom-agents.md](./custom-agents.md), **D19**, §2.13 en [architecture-legacy-es.md](../archive/architecture-legacy-es.md).
+**Eco nosotros:** [custom-agents.md](./custom-agents.md), **D19**, [CLAUDE.md](../../goclaw/CLAUDE.md).
 
 ---
 

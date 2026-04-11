@@ -2,7 +2,7 @@
 
 **Status in goclaw:** [`goclaw/internal/skills`](../../goclaw/internal/skills) discovers and injects `SKILL.md` content; see [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md). Below is **reference-product** detail.
 
-Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.9](../archive/architecture-legacy-es.md). Explainer tercero: [Skills — claude-code-explain](https://claude-code-explain.helmcode.com/skills). Mapa global: [docs-map.md](../docs-map.md) (fila 12).
+Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (skills runtime). Explainer tercero: [Skills — claude-code-explain](https://claude-code-explain.helmcode.com/skills). Mapa global: [docs-map.md](../docs-map.md) (fila 12).
 
 ---
 
@@ -10,7 +10,7 @@ Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.9](../archive/architecture-l
 
 - Directorio o fichero con **`SKILL.md`**: frontmatter (nombre, descripción “use when…”, herramientas permitidas, opcionalmente hooks en sesión).
 - El **cuerpo** Markdown instruye el flujo; invocación tipo **`/comando`** en productos con muchos slash commands.
-- Encaja con [HOOKS.md](./hooks.md) cuando el frontmatter declara hooks de sesión (`PostToolUse`, etc.).
+- Encaja con [hooks.md](./hooks.md) cuando el frontmatter declara hooks de sesión (`PostToolUse`, etc.).
 
 ---
 
@@ -18,11 +18,11 @@ Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.9](../archive/architecture-l
 
 | Pieza | Ubicación |
 |-------|-----------|
-| Descubrimiento `**/SKILL.md` | `internal/skills` (v3 según [ARCHITECTURE_LEGACY_ES.md §4.4](../archive/architecture-legacy-es.md)) |
+| Descubrimiento `**/SKILL.md` | `internal/skills` (v3 según [roadmap.md](../goclaw/roadmap.md)) |
 | Inyección en prompt | `internal/prompt` o orquestador al activar skill |
 | Comandos slash | Opcional: plugins [PLUGINS.md](./plugins.md) o CLI propio; **no MVP** |
 
-**Roadmap:** **v3** en §4.4 junto a `skills/` en el árbol; hasta entonces §2.9 en ARCHITECTURE basta como contrato.
+**Roadmap:** **v3** junto a `internal/skills` y plugins; contrato vigente: [CLAUDE.md](../../goclaw/CLAUDE.md) y las secciones de este archivo.
 
 ---
 

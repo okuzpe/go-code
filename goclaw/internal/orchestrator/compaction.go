@@ -11,7 +11,7 @@ import (
 
 const (
 	compactPreserveTail    = 24
-	compactionSnippetRunes = 120 // max runes per removed message line in the compaction summary
+	compactionSnippetRunes = 280 // max runes per removed message line in the compaction summary
 
 	// Per-provider context window estimates in tokens.
 	// Anthropic claude-sonnet-4-6 / claude-opus-4: 200k token context.
@@ -108,7 +108,7 @@ func (o *Orchestrator) compactToTailWithLLM(ctx context.Context, preserve int) {
 
 	tail := msgs[len(msgs)-preserve:]
 	o.session.ReplaceMessages(tail)
-	o.session.PrependMessage(llm.PlainMessage("user", "[compaction summary] "+strings.TrimSpace(summary.String())))
+	o.session.PrependMessage(llm.PlainMessage("user", "[session compacted] "+strings.TrimSpace(summary.String())))
 }
 
 // clearOldToolResults replaces the Content of ToolResults in messages outside the preserved tail
@@ -206,7 +206,7 @@ func (o *Orchestrator) compactToTail(preserve int) {
 	head := msgs[:len(msgs)-preserve]
 	tail := msgs[len(msgs)-preserve:]
 	var sb strings.Builder
-	sb.WriteString("[compaction] Summarized ")
+	sb.WriteString("[session compacted] Summarized ")
 	sb.WriteString(fmt.Sprintf("%d", len(head)))
 	sb.WriteString(" earlier message(s); tail of ")
 	sb.WriteString(fmt.Sprintf("%d", len(tail)))

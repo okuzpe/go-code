@@ -196,7 +196,7 @@ func Default() Config {
 		AutoCompactThreshold:      0.85,
 		UserConfigDir:             filepath.Join(home, ".goclaw"),
 		ProjectConfigDir:          ".goclaw",
-		AgentProfile:              "coordinator",
+		AgentProfile:              "general-purpose",
 		PermissionModes:           nil,
 		YoloThreshold:             -1,
 		WebSearchBackend:          "ddg",

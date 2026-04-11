@@ -61,7 +61,8 @@ How to use me:
   - Just describe what you want in plain language
   - Paste code, errors, or file paths directly
   - Use /help to see available commands
-  - Project setup: /init creates .goclaw/settings.json with coding defaults when the file is missing
+  - Project setup: /init creates .goclaw/settings.json with coding defaults when the file is missing (optional starter CLAUDE.md and .gitignore hint for settings.local.json)
+  - Sessions: /sessions lists saved ids; /resume <id> loads one without restarting the binary (current session is saved first); /clear clears the terminal in readline mode
 
 What are you working on?
 `)

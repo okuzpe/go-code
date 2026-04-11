@@ -2,7 +2,7 @@
 
 **Status in goclaw:** Filesystem store under `~/.goclaw/memory/` with `MEMORY.md` index; REPL `/memory` — see **D13** in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md). This doc adds **reference-product** depth.
 
-Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.10](../archive/architecture-legacy-es.md). Referencia conceptual (terceros): [Memory — claude-code-explain](https://claude-code-explain.helmcode.com/memory).
+Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D13 memory). Referencia conceptual (terceros): [Memory — claude-code-explain](https://claude-code-explain.helmcode.com/memory).
 
 ---
 
@@ -14,10 +14,10 @@ Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.10](../archive/architecture-
 
 | Concepto | Rol |
 |----------|-----|
-| `session` | Turnos de la conversación **actual**; compactación §2.5 / [CONTEXT_COMPACTION.md](./context-compaction.md) |
+| `session` | Turnos de la conversación **actual**; compactación / [context-compaction.md](./context-compaction.md) |
 | `AGENTS.md` / `CLAUDE.md` | Convenciones del repo, versionadas con el código |
 | **Memory** (este doc) | Hechos **opacos** al código: rol del usuario, correcciones validadas, plazos, punteros a Linear/Slack, etc. |
-| Memoria **por agente** (`memory: user/project/local` en frontmatter) | Directorios dedicados por agente + índice tipo `MEMORY.md`; distinto alcance que el índice global §2.10 — [CUSTOM_AGENTS.md §5](./custom-agents.md). |
+| Memoria **por agente** (`memory: user/project/local` en frontmatter) | Directorios dedicados por agente + índice tipo `MEMORY.md`; distinto alcance que el índice global — [custom-agents.md §5](./custom-agents.md). |
 
 ---
 
@@ -41,7 +41,7 @@ En el producto de referencia el índice:
 - Va siempre cargado en contexto (capa dinámica del system prompt).
 - Tiene **tope ~200 líneas** y **~25 KB**; si se supera, se **trunca** (en referencia, sin aviso explícito al usuario).
 
-**Tip de producto (referencia):** [PRACTICAL_TIPS.md §8](./practical-tips.md) — reforzar que el índice sea **solo punteros** y valorar **avisar** antes del truncado.
+**Tip de producto (referencia):** [practical-tips.md §8](./practical-tips.md) — reforzar que el índice sea **solo punteros** y valorar **avisar** antes del truncado.
 
 **Eco diseño**
 
@@ -114,6 +114,6 @@ Dependencias: `orchestrator` → `memory`; `memory` **no** importa `orchestrator
 | Fecha | Cambio |
 |-------|--------|
 | 2026-04-07 | Creación a partir del modelo Claude Code (explicador tercero); límites, 4 tipos, anti-patrones, extractor, rutas propias. |
-| 2026-04-07 | Enlace explícito a [CONTEXT_COMPACTION.md](./context-compaction.md) en la tabla §1 (`session`). |
-| 2026-04-07 | §1: memoria por agente vs índice global → [CUSTOM_AGENTS.md](./custom-agents.md) §5. |
-| 2026-04-07 | §3: enlace [PRACTICAL_TIPS.md §8](./practical-tips.md) (truncado índice). |
+| 2026-04-07 | Enlace explícito a [context-compaction.md](./context-compaction.md) en la tabla §1 (`session`). |
+| 2026-04-07 | §1: memoria por agente vs índice global → [custom-agents.md](./custom-agents.md) §5. |
+| 2026-04-07 | §3: enlace [practical-tips.md §8](./practical-tips.md) (truncado índice). |

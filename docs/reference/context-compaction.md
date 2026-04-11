@@ -2,22 +2,22 @@
 
 **Status in goclaw:** Session compaction uses a **token heuristic** and configurable threshold — [`goclaw/internal/orchestrator/compaction.go`](../../goclaw/internal/orchestrator/compaction.go), **D15** in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md). Numbers below still calibrate against the **reference product**, not hard limits in Go.
 
-Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.5](../archive/architecture-legacy-es.md). Referencia conceptual (terceros, análisis del código de Claude Code): [Context & Compaction — claude-code-explain](https://claude-code-explain.helmcode.com/context-compaction).
+Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D15 compaction). Referencia conceptual (terceros, análisis del código de Claude Code): [Context & Compaction — claude-code-explain](https://claude-code-explain.helmcode.com/context-compaction).
 
-Los números concretos de esta página son **del producto analizado**, no compromisos de nuestro binario: sirven para **calibrar** implementación y flags de configuración (ver [ARCHITECTURE_LEGACY_ES.md §5 D15](../archive/architecture-legacy-es.md)).
+Los números concretos de esta página son **del producto analizado**, no compromisos de nuestro binario: sirven para **calibrar** implementación y flags de configuración (ver [CLAUDE.md](../../goclaw/CLAUDE.md) (D15)).
 
 ---
 
 ## 1. Por qué encaja en nuestros documentos
 
-| Pieza ya en ARCHITECTURE | Relación |
-|--------------------------|----------|
-| §2.2 “límites de contexto” en el cliente LLM | La compactación es política **alrededor** de ese cliente + el historial en `session`. |
-| §2.5 (este tema) | Micro-compactación vs compactación fuerte; reinyección opcional. |
-| §2.7 perfiles | Menos contexto inyectado ⇒ menos presión sobre la ventana; no sustituye podar **tool results**. |
-| §2.10 memoria | Tras un resumen agresivo, `MEMORY.md` y ficheros de memoria siguen siendo la capa **estable** fuera del hilo. |
-| §4.3 `session` → `llm` evitar | Quien compacta con **otra llamada al modelo** suele ser `orchestrator` o un worker, no el paquete de estado puro. |
-| §2.17 / [RETRY_LOGIC.md](./retry-logic.md) | Esa llamada extra hereda la misma política de **reintentos/backoff** (**D22**), con cancelación acotada. |
+| Tema (ver [CLAUDE.md](../../goclaw/CLAUDE.md)) | Relación |
+|-----------------------------------------------|----------|
+| Límites de contexto / cliente LLM (**D15**) | La compactación es política **alrededor** de ese cliente + el historial en `session`. |
+| Micro vs compactación fuerte (este doc §3–§4) | Micro-compactación vs compactación fuerte; reinyección opcional. |
+| Perfiles de agente | Menos contexto inyectado ⇒ menos presión sobre la ventana; no sustituye podar **tool results**. |
+| Memoria en disco (**D13**) | Tras un resumen agresivo, `MEMORY.md` y ficheros de memoria siguen siendo la capa **estable** fuera del hilo. |
+| `session` vs `llm` | Quien compacta con **otra llamada al modelo** suele ser `orchestrator` o un worker, no el paquete de estado puro. |
+| Reintentos / [retry-logic.md](./retry-logic.md) (**D22**) | Esa llamada extra hereda la misma política de **reintentos/backoff**, con cancelación acotada. |
 
 ---
 
@@ -29,7 +29,7 @@ Los números concretos de esta página son **del producto analizado**, no compro
 | Modelos “1M” | ~1 000 000 | Ej.: familias Sonnet 4.x / Opus 4.6 con modo ampliado |
 | Anulación | Personalizado | En referencia: p. ej. variable tipo `CLAUDE_CODE_MAX_CONTEXT_TOKENS` |
 
-**Eco Go:** leer límite efectivo del proveedor (API) o del runtime local (Ollama: contexto del modelo cargado, mucho menor que 200K en práctica — ver [LOCAL_MODELS.md](./local-models.md)) y expon optionally override en config.
+**Eco Go:** leer límite efectivo del proveedor (API) o del runtime local (Ollama: contexto del modelo cargado, mucho menor que 200K en práctica — ver [local-models.md](./local-models.md)) y expon optionally override en config.
 
 ---
 
@@ -79,14 +79,14 @@ Constantes orientativas del producto analizado (útiles al dimensionar `max_toke
 
 ## 6. Qué no mezclar
 
-- **Compactación** ≠ **memoria persistente** ([MEMORY_SYSTEM.md](./memory-system.md)): el resumen vive en el hilo; la memoria en disco evita perder hechos estables cuando el hilo se resume.
+- **Compactación** ≠ **memoria persistente** ([memory-system.md](./memory-system.md)): el resumen vive en el hilo; la memoria en disco evita perder hechos estables cuando el hilo se resume.
 - **Micro-compactación** ≠ **truncar logs en disco**: solo el **mensaje en vuelo** hacia el API.
 - Números 13K / 50K / 32K son **referencia**: con Ollama 7B el techo real puede ser 8K–32K según modelo; los umbrales deben ser **fracción del límite configurado** o tablas por proveedor (D15).
-- **Multi-agente:** el hilo del **coordinador** y el de cada **worker** son independientes; compactar uno no reemplaza el historial de los demás — ver [COORDINATOR_MODE.md §7](./coordinator-mode.md).
+- **Multi-agente:** el hilo del **coordinador** y el de cada **worker** son independientes; compactar uno no reemplaza el historial de los demás — ver [coordinator-mode.md §2.7](./coordinator-mode.md) (aislamiento del worker).
 
 ---
 
-## 7. Roadmap sugerido (alineado con ARCHITECTURE §4.4)
+## 7. Roadmap sugerido (alineado con [roadmap.md](../goclaw/roadmap.md))
 
 | Fase | Compactación |
 |------|----------------|
@@ -101,5 +101,5 @@ Constantes orientativas del producto analizado (útiles al dimensionar `max_toke
 | Fecha | Cambio |
 |-------|--------|
 | 2026-04-07 | Creación: ventana, auto/micro-compact, límites de salida, eco Go, enlace helmcode §06 |
-| 2026-04-07 | §6: multi-agente (hilos separados) → [COORDINATOR_MODE.md](./coordinator-mode.md). |
-| 2026-04-07 | §1: tabla + [RETRY_LOGIC.md](./retry-logic.md) (sub-llamada compactación). |
+| 2026-04-07 | §6: multi-agente (hilos separados) → [coordinator-mode.md](./coordinator-mode.md). |
+| 2026-04-07 | §1: tabla + [retry-logic.md](./retry-logic.md) (sub-llamada compactación). |

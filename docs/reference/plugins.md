@@ -2,7 +2,7 @@
 
 **Status in goclaw:** **D20** local plugin MVP in [`goclaw/internal/plugin`](../../goclaw/internal/plugin); no remote marketplace. See [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md). Below describes broader **reference** scope.
 
-Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.14](../archive/architecture-legacy-es.md). Referencia (terceros, análisis de Claude Code): [Plugins — claude-code-explain](https://claude-code-explain.helmcode.com/plugins).
+Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D20 plugins). Referencia (terceros, análisis de Claude Code): [Plugins — claude-code-explain](https://claude-code-explain.helmcode.com/plugins).
 
 Un **plugin** es un **paquete** con manifiesto obligatorio (en referencia `.claude-plugin/plugin.json`) que puede aportar, de forma combinada: **comandos** (/slash), **skills**, **agentes** `.md`, **output styles**, **hooks**, **MCP**, **LSP**, **canales** (modos asistente avanzados), **ajustes** y **`userConfig`** (opciones al habilitar). El resto se **auto-detecta** por convención de carpetas.
 
@@ -12,11 +12,11 @@ Un **plugin** es un **paquete** con manifiesto obligatorio (en referencia `.clau
 
 | Capa existente | Cómo se relaciona |
 |----------------|-------------------|
-| [CUSTOM_AGENTS.md](./custom-agents.md) | Carpeta `agents/` del plugin → mismos `.md` + frontmatter; prioridad **plugin** en la cascada; restricciones de seguridad en agentes de plugin (CUSTOM_AGENTS §7). |
-| [HOOKS.md](./hooks.md) | `hooks/hooks.json` o inline en manifiesto; fuente prioritaria en la tabla de §3 de HOOKS. |
+| [custom-agents.md](./custom-agents.md) | Carpeta `agents/` del plugin → mismos `.md` + frontmatter; prioridad **plugin** en la cascada; restricciones de seguridad en agentes de plugin (ver §7 en ese doc). |
+| [hooks.md](./hooks.md) | `hooks/hooks.json` o inline en manifiesto; fuente prioritaria en la tabla de §3 de hooks. |
 | §2.9 **Skills** | `skills/*/SKILL.md` dentro del plugin. |
-| §2.8 **MCP** | `.mcp.json` o clave `mcpServers`; prefijos tipo `plugin:nombre:servidor`; deduplicación: **config manual gana** en referencia. Detalle de cliente/naming/scopes: [MCP.md](./mcp.md). |
-| [openclaw-agents-tools.md](../openclaw/openclaw-agents-tools.md) | OpenClaw tiene **ClawHub** / extensiones npm — mismo problema de **supply chain** que un marketplace. |
+| **MCP** (D6) | `.mcp.json` o clave `mcpServers`; prefijos tipo `plugin:nombre:servidor`; deduplicación: **config manual gana** en referencia. Detalle de cliente/naming/scopes: [mcp.md](./mcp.md). |
+| [philosophy.md](../goclaw/philosophy.md#lessons-from-wider-agent-stacks) | Productos con hubs npm tipo **ClawHub** (p. ej. OpenClaw) comparten el riesgo de **supply chain** de un marketplace; goclaw prioriza MCP + plugins locales. |
 | **Permisos / empresa** | `allowedPlugins`, `deniedPlugins` (deny gana); `strictPluginOnlyCustomization` bloquea MCP “manual” si solo plugins — política **D20**. |
 
 **Valor para implementar:** un solo formato de empaquetado para equipos que quieren distribuir **flujo completo** (skill + hook + agente + MCP) sin pedir al usuario que copie cinco rutas. **Coste:** descarga de terceros, resolución de dependencias entre plugins, y superficie de ataque (**supply chain**).
@@ -80,7 +80,7 @@ Formatos de fuente: path relativo, npm, pip, git URL, GitHub, subdirectorio git.
 
 Opciones declaradas en manifiesto → prompt al habilitar → valores en `pluginConfigs` (no sensibles) o almacén de secretos (sensibles). Sustitución `${user_config.KEY}` y env `CLAUDE_PLUGIN_OPTION_*` para hooks/comandos.
 
-**Eco Go:** `plugin.ConfigSchema` + validación; alineado con secretos §4.5 ARCHITECTURE.
+**Eco Go:** `plugin.ConfigSchema` + validación; alineado con manejo de secretos en [CLAUDE.md](../../goclaw/CLAUDE.md) y [security.md](../goclaw/security.md).
 
 ---
 

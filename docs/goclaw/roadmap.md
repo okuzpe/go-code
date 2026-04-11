@@ -26,21 +26,25 @@ Each tier must be stable before starting the next.
 ## Tier 1 — Core Quality (makes the tool actually usable today)
 
 ### 1a. TUI polish
+
 - [x] Manual checklist: [`manual-tui-checklist.md`](./manual-tui-checklist.md) — RunApp, stream, modal `y`/`n`, `Ctrl+L`, `Ctrl+C` + save
 - [x] **Session id visible in the TUI** — footer uses a two-line layout in `internal/ui/chat/chat.go`: primary row for spinner / tool / “Responding…”, second row for `Theme.FooterHint()` plus `sess·…` via `footerline.HintsWithSession` (wraps session to the next line when narrow). **Title bar** stays compact (`goclaw · provider · model · profile` only). Tests live in `internal/ui/footerline` (no Bubble Tea init).
 
 ### 1b. Non-TTY / readline path
+
 - [x] Readline history file: `replHistoryFile` → `<UserConfigDir>/history` (`internal/app/repl_readline.go`); `MkdirAll` on config dir before `readline.NewEx` so the file can always be created; chzyer/readline persists on `Close`
 - [x] History path test (`repl_readline_test.go`); persistence: manual step in [`manual-tui-checklist.md`](./manual-tui-checklist.md)
 - [x] `rl.Close()` / signal goroutine: documented benign pattern in `repl_readline.go` (Issue #3/#7); no shared `sess` mutation from signal path
   - Notes (Issue #3/#7): `internal/app/repl_readline.go` keeps `sess` as a local pointer that slash commands may replace (e.g. `/new`), then **syncs back** to `rt.Sess` after each `HandleSlash` call. The signal goroutine only cancels the in-flight request (via `reqCancelFn`) and closes readline; it never mutates the session. This is intentionally structured so any apparent race is **benign**: once `RunStreaming` returns, no goroutine is still writing to the session before the REPL touches it again.
 
 ### 1c. Error messages — user-facing clarity
+
 - [x] Ollama dial / timeout / DNS / TLS / generic dial errors: actionable hints in `wrapOllamaDialErr` (`internal/llm/ollama.go`); tests in `ollama_err_test.go`
 - [x] Missing `ANTHROPIC_API_KEY` / `api_key`: clearer startup error in `PrepareChatRuntime` (env + user + project `settings.json` + `goclaw doctor`)
 - [x] Unknown profile: dynamic list via `agents.ProfileListHint()` in `chat_wiring.go`, `/profile` slash usage, and `--profile` flag help (`internal/cli/root.go`)
 
 ### 1d. Session persistence
+
 - [x] `/new` — old transcript is saved before switching (assertions in `TestHandleSlashNewAndSave`: load previous id, `Len()==1`, new session empty)
 - [x] Resume / tool turns — `TestStoreRoundtripWithToolTurn` encodes assistant `tool_calls` + user `tool_results` + follow-up user text through JSONL (`internal/session/store_test.go`)
 - [x] Session JSONL rotation — `Save` rotates when current file ≥ 256 KiB (`rotateAfterBytes`, max 3 numbered tails); `TestStoreListIDsIgnoresRotationFiles` ensures `sessions list` does not surface `.N.jsonl` shards
@@ -51,28 +55,33 @@ Each tier must be stable before starting the next.
 ## Tier 2 — Tool Robustness (quality for coding tasks)
 
 ### 2a. `edit_file` edge cases
+
 - [x] Test: `old_string` matching 0 times → clear error with match count (`edit_file_test.go`)
 - [x] Test: 2+ matches without `replace_all: true` → clear error
 - [x] Test: Windows line endings (`\r\n`) round-trip
 - [x] Test: read-only file (Unix) → graceful error
 
 ### 2b. `write_file` edge cases
+
 - [x] Test: parent directory missing → clear error (`write_file_test.go`)
 - [x] Test: content exactly `MaxWriteFileBytes` succeeds
 - [x] Test: 1 byte over cap → size error
 
 ### 2c. `bash` tool robustness
+
 - [x] Timeout path: `sleep 60` killed under short timeout (non-Windows; `bash_test.go`)
 - [x] `bash_timeout_sec` in settings → loader + `BashTimeoutSeconds()` (`config/loader_test.go`)
 - [x] Single-quoted string containing `&&` allowed (`bash_test.go`)
 - [x] `git.exe` first token normalizes like `git` on Windows (`allowlistBinaryName` in `bash.go`)
 
 ### 2d. `web_fetch` / `web_search`
+
 - [x] SSRF on redirect targets: `validateRedirectURL` / metadata / RFC1918 (`ssrf_test.go`; same checks as `CheckRedirect`)
 - [x] `web_search` empty `Results` / thin DDG JSON → fallback message with duckduckgo link (`web_search_test.go`)
 - [x] Redirect to private IP blocked (validator tests; no live HTTP redirect needed)
 
 ### 2e. `todo_write` tool
+
 - [x] Session task list in system prompt (`build_request_test.go` `TestBuildRequestInjectsTodoBlock`)
 - [x] `todos.Store.Clear()` on `/new` via `ReplaceSession` (`orchestrator_test.go`)
 - [x] Test: 51 items → rejected (`todo_write_test.go`)
@@ -83,6 +92,7 @@ Each tier must be stable before starting the next.
 ## Tier 3 — Configuration + Hooks (production settings)
 
 ### 3a. Config loader
+
 - [x] Project `settings.json` overrides user for same key (`loader_test.go`)
 - [x] `settings.local.json` precedence (user + project) (`loader_test.go`)
 - [x] Invalid JSON reports file path (`loader_test.go`)
@@ -91,12 +101,14 @@ Each tier must be stable before starting the next.
 - [x] `bash_timeout_sec: 3601` clamped to 3600 (`loader_test.go`)
 
 ### 3b. External hooks
+
 - [x] `OnCommand` + `PreToolUse`: JSON on stdin includes `tool_name` / `tool_input` (`hooks_test.go`)
 - [x] `OnHTTP` POST body matches event schema (`hooks_test.go`, transport to `example.com`)
 - [x] Project `hooks.json` only when `trusted_workspace: true` (`chat_wiring_test.go`)
 - [x] `PreToolUse` external hook exit 1 blocks (`hooks_test.go`); exit 2 message already covered
 
 ### 3c. MCP integration
+
 - [x] Failed MCP server does not abort startup (`chat_wiring_test.go`)
 - [x] `mcp__<server_id>__<tool_name>` after `RegisterSessionTools` (`adapter_register_test.go`)
 - [x] Read-only profile blocks `mcp__` in `executeTool` (`tool_exec_test.go`); specs strip already in `build_request_test.go`
@@ -108,6 +120,7 @@ Each tier must be stable before starting the next.
 ## Tier 4 — UX & Polish (daily driver quality)
 
 ### 4a. TUI visual improvements
+
 - [x] Status line shows current profile name (now in compact title bar: `goclaw · provider · model · profile`)
 - [x] Tool approval modal shows a truncated path/content preview, not raw JSON
 - [x] Footer shows elapsed seconds while a tool is running (`internal/ui/chat/chat.go` + tick)
@@ -115,12 +128,14 @@ Each tier must be stable before starting the next.
 - [x] Markdown rendering in assistant responses (uses `glamour`; wrap follows terminal width)
 
 ### 4b. REPL improvements
+
 - [x] `Tab` completion for **top-level** slash commands (`slashcmd.ReadlinePrefixCompleter` wired in `runReadlineREPL`; list in `readline_tab.go` — extend when adding `/` roots)
 - [x] `/sessions` lists id + file mtime (RFC3339) via `Store.ListSessionEntries`
 - [x] `/compact` shows message counts before → after
 - [x] `/memory list` body preview (80 runes)
 
 ### 4c. Startup experience
+
 - [x] Readline / non-TTY startup: `printStartupBanner` shows workspace (TTY: work line in banner; non-TTY: `Workspace:` line). Default TUI skips the banner (welcome panel instead).
 - [x] Ollama unreachable: `slog.Warn` after `PrepareChatRuntime`, non-blocking (`ollama_probe.go`)
 - [x] **`doctor` preflight** — `goclaw doctor` and slash `/doctor`: workspace, provider, paths, Ollama probe + hints, MCP server list vs connections, effective `tool_permissions` per registered tool (`internal/app/doctor.go`)
@@ -197,35 +212,35 @@ Each tier must be stable before starting the next.
 
 ## Quick reference — what is already done
 
-| Area | Status |
-|------|--------|
-| Core agent loop (32 iter / 64 tools) | Done |
-| Ollama + Anthropic clients with retry | Done |
-| Session JSONL store + resume | Done |
-| `read_file`, `glob`, `grep`, `bash`, `write_file`, `edit_file` | Done |
-| `web_fetch` (SSRF guards), `web_search` (DDG) | Done |
-| `todo_write` + session task list in prompt | Done |
-| Permissions (ask/allow/deny) + tool approver | Done |
-| Memory filesystem (`~/.goclaw/memory/`) | Done |
-| Context compaction (threshold + force) | Done |
-| Readline REPL (history, arrow keys) | Done |
-| BubbleTea TUI (TTY mode) | Done |
-| Cobra CLI + `sessions list` subcommand | Done |
-| `doctor` / `/doctor` health report (Ollama, MCP, permissions) | Done |
-| All slash commands (`/help` … `/apply-plan`) | Done |
-| External hooks (subprocess + HTTP) + project hooks file | Done |
-| MCP stdio + Streamable HTTP client (multi-server) | Done |
-| IDE lockfile MCP discovery (`ide_bridge_mcp`, `~/.goclaw/ide/*.json`) | Done |
-| IDE localhost notifier (`GOCLAW_IDE_NOTIFY_URL`) | Done |
-| CI: `go vet` + tests on Linux and Windows; `-race` on Linux only | Done |
-| CI: `golangci-lint` + 61% coverage threshold (`-coverpkg=./...`) | Done |
-| 7 built-in agent profiles (incl. `coordinator`) | Done |
-| Custom agent profiles (`~/.goclaw/agents/*.md`, `.goclaw/agents/*.md`) | Done |
-| `script` tool (multi-line shell, opt-in via `allow_script: true`) | Done |
-| YOLO risk classifier (`yolo_threshold` in settings, default -1/off) | Done |
-| Parallel read-tool execution (auto-approve turns only) | Done |
-| LLM-driven compaction (`llm_compaction: true`, opt-in) | Done |
-| `slog.Debug` timing for LLM stream and MCP tool calls | Done |
+| Area                                                                   | Status |
+| ---------------------------------------------------------------------- | ------ |
+| Core agent loop (32 iter / 64 tools)                                   | Done   |
+| Ollama + Anthropic clients with retry                                  | Done   |
+| Session JSONL store + resume                                           | Done   |
+| `read_file`, `glob`, `grep`, `bash`, `write_file`, `edit_file`         | Done   |
+| `web_fetch` (SSRF guards), `web_search` (DDG)                          | Done   |
+| `todo_write` + session task list in prompt                             | Done   |
+| Permissions (ask/allow/deny) + tool approver                           | Done   |
+| Memory filesystem (`~/.goclaw/memory/`)                                | Done   |
+| Context compaction (threshold + force)                                 | Done   |
+| Readline REPL (history, arrow keys)                                    | Done   |
+| BubbleTea TUI (TTY mode)                                               | Done   |
+| Cobra CLI + `sessions list` subcommand                                 | Done   |
+| `doctor` / `/doctor` health report (Ollama, MCP, permissions)          | Done   |
+| All slash commands (`/help` … `/apply-plan`)                           | Done   |
+| External hooks (subprocess + HTTP) + project hooks file                | Done   |
+| MCP stdio + Streamable HTTP client (multi-server)                      | Done   |
+| IDE lockfile MCP discovery (`ide_bridge_mcp`, `~/.goclaw/ide/*.json`)  | Done   |
+| IDE localhost notifier (`GOCLAW_IDE_NOTIFY_URL`)                       | Done   |
+| CI: `go vet` + tests on Linux and Windows; `-race` on Linux only       | Done   |
+| CI: `golangci-lint` + 61% coverage threshold (`-coverpkg=./...`)       | Done   |
+| 7 built-in agent profiles (incl. `coordinator`)                        | Done   |
+| Custom agent profiles (`~/.goclaw/agents/*.md`, `.goclaw/agents/*.md`) | Done   |
+| `script` tool (multi-line shell, opt-in via `allow_script: true`)      | Done   |
+| YOLO risk classifier (`yolo_threshold` in settings, default -1/off)    | Done   |
+| Parallel read-tool execution (auto-approve turns only)                 | Done   |
+| LLM-driven compaction (`llm_compaction: true`, opt-in)                 | Done   |
+| `slog.Debug` timing for LLM stream and MCP tool calls                  | Done   |
 
 ---
 
@@ -240,6 +255,16 @@ First-pass implementation of roadmap items that were still “post-MVP” on pap
 - [x] **Swarm disk hub** — [`internal/swarm`](../../goclaw/internal/swarm) + [`swarm.md`](./swarm.md) (vs coordinator)
 - [x] **IDE extension contract** — [ide-bridge.md](../reference/ide-bridge.md) §7
 - [x] **Docs sync** — [`CLAUDE.md`](../../goclaw/CLAUDE.md), [`docs-map.md`](../docs-map.md), this tier
+
+---
+
+## Future transport and scale
+
+Optional product directions **not** required for the current CLI. Captures design ideas from comparing goclaw to larger multi-channel agent products (see [philosophy.md — Lessons from wider agent stacks](philosophy.md#lessons-from-wider-agent-stacks)).
+
+- [ ] **Long-lived gateway process** — single control plane for sessions + routing when multiple clients attach (contrast with today’s one-process REPL/TUI).
+- [ ] **Channel adapters** — Discord/Telegram/Slack-style transports behind a **queue + per-channel allowlist**, without pushing transport code into the orchestrator core.
+- [ ] **Scheduled / isolated runs** — cron-style or headless “run this prompt once” using the same orchestrator with a **cancelable** `context` (no new agent model required).
 
 ---
 

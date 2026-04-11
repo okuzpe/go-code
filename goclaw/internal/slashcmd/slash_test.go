@@ -37,18 +37,22 @@ func testSlashCtx(t *testing.T, mem *memory.Store, orch *orchestrator.Orchestrat
 	return SlashContext{SlashEnv: testSlashEnv(t), Mem: mem, Orch: orch, Sess: sp, Store: store}
 }
 
+func handleSlashTest(ctx context.Context, sc SlashContext, input string) (handled bool, out string, quit bool, modelSubmit string, err error) {
+	return HandleSlash(ctx, sc, input, nil)
+}
+
 func TestHandleSlashTheme(t *testing.T) {
 	env := testSlashEnv(t)
 	require.NoError(t, os.MkdirAll(env.Workdir, 0o700))
 	require.NoError(t, os.MkdirAll(env.UserConfigDir, 0o700))
 	ctx := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: nil, Sess: nil, Store: nil}
 
-	handled, out, _, _, err := HandleSlash(context.Background(), ctx, "/theme")
+	handled, out, _, _, err := handleSlashTest(context.Background(), ctx, "/theme")
 	require.NoError(t, err)
 	require.True(t, handled)
 	require.Contains(t, out, "ui_appearance")
 
-	handled, out, _, _, err = HandleSlash(context.Background(), ctx, "/theme dark")
+	handled, out, _, _, err = handleSlashTest(context.Background(), ctx, "/theme dark")
 	require.NoError(t, err)
 	require.True(t, handled)
 	require.Contains(t, out, "dark")
@@ -61,7 +65,7 @@ func TestHandleSlashTheme(t *testing.T) {
 func TestHandleSlashHelp(t *testing.T) {
 	s := &session.Session{ID: "abc123"}
 	sp := &s
-	handled, out, _, _, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, sp, nil), "/help")
+	handled, out, _, _, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, sp, nil), "/help")
 	if err != nil || !handled {
 		t.Fatalf("handled=%v err=%v", handled, err)
 	}
@@ -72,9 +76,28 @@ func TestHandleSlashHelp(t *testing.T) {
 		!strings.Contains(out, "/apply-plan") || !strings.Contains(out, "/plan path") ||
 		!strings.Contains(out, "/capabilities") ||
 		!strings.Contains(out, "/init") ||
+		!strings.Contains(out, "/resume") ||
+		!strings.Contains(out, "/clear") ||
 		!strings.Contains(out, "sessions list") {
 		t.Fatalf("unexpected help: %s", out)
 	}
+}
+
+func TestHandleSlashInitAppendsGitignoreBlock(t *testing.T) {
+	env := testSlashEnv(t)
+	require.NoError(t, os.MkdirAll(env.Workdir, 0o700))
+	gi := filepath.Join(env.Workdir, ".gitignore")
+	require.NoError(t, os.WriteFile(gi, []byte("node_modules/\n"), 0o600))
+	ctx := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: nil, Sess: nil, Store: nil}
+	handled, out, quit, ms, err := handleSlashTest(context.Background(), ctx, "/init")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.False(t, quit)
+	require.Empty(t, ms)
+	require.Contains(t, out, ".gitignore")
+	raw, err := os.ReadFile(gi)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), ".goclaw/settings.local.json")
 }
 
 func TestHandleSlashInit(t *testing.T) {
@@ -82,20 +105,22 @@ func TestHandleSlashInit(t *testing.T) {
 	require.NoError(t, os.MkdirAll(env.Workdir, 0o700))
 	ctx := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: nil, Sess: nil, Store: nil}
 
-	handled, out, quit, ms, err := HandleSlash(context.Background(), ctx, "/init")
+	handled, out, quit, ms, err := handleSlashTest(context.Background(), ctx, "/init")
 	require.NoError(t, err)
 	require.True(t, handled)
 	require.False(t, quit)
 	require.Empty(t, ms)
 	require.Contains(t, out, "created")
 	require.Contains(t, out, "general-purpose")
+	require.Contains(t, out, "CLAUDE.md")
 	settingsPath := filepath.Join(env.Workdir, ".goclaw", "settings.json")
 	require.FileExists(t, settingsPath)
+	require.FileExists(t, filepath.Join(env.Workdir, "CLAUDE.md"))
 	raw, err := os.ReadFile(settingsPath)
 	require.NoError(t, err)
 	require.Contains(t, string(raw), `"agent_profile": "general-purpose"`)
 
-	handled, out, quit, ms, err = HandleSlash(context.Background(), ctx, "/init")
+	handled, out, quit, ms, err = handleSlashTest(context.Background(), ctx, "/init")
 	require.NoError(t, err)
 	require.True(t, handled)
 	require.False(t, quit)
@@ -106,7 +131,7 @@ func TestHandleSlashInit(t *testing.T) {
 
 func TestHandleSlashCapabilities(t *testing.T) {
 	var sp *session.Session
-	handled, out, quit, ms, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/capabilities")
+	handled, out, quit, ms, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/capabilities")
 	require.NoError(t, err)
 	require.True(t, handled)
 	require.False(t, quit)
@@ -117,7 +142,7 @@ func TestHandleSlashCapabilities(t *testing.T) {
 
 func TestHandleSlashQuit(t *testing.T) {
 	var sp *session.Session
-	handled, out, quit, ms, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/quit")
+	handled, out, quit, ms, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/quit")
 	if !handled || !quit || !errors.Is(err, ErrReplQuit) || out != "bye" || ms != "" {
 		t.Fatalf("quit: handled=%v quit=%v err=%v out=%q ms=%q", handled, quit, err, out, ms)
 	}
@@ -134,22 +159,49 @@ func TestHandleSlashSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	var sp *session.Session
-	handled, out, _, _, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, store), "/sessions")
+	handled, out, _, _, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, store), "/sessions")
 	if err != nil || !handled || !strings.Contains(out, s.ID) {
 		t.Fatalf("sessions: handled=%v err=%v out=%q", handled, err, out)
 	}
+	if !strings.Contains(out, "(") || !strings.Contains(out, ")") {
+		t.Fatalf("expected RFC3339 timestamp in parentheses: %q", out)
+	}
+	if !strings.Contains(out, "just now") && !strings.Contains(out, "ago") {
+		t.Fatalf("expected relative age in listing: %q", out)
+	}
+}
+
+func TestHandleSlashResume(t *testing.T) {
+	sessDir := t.TempDir()
+	store, err := session.NewStore(sessDir)
+	require.NoError(t, err)
+	saved := session.New()
+	saved.Add("user", "stored line")
+	require.NoError(t, store.Save(saved))
+
+	cur := session.New()
+	cur.Add("user", "ephemeral")
+	sp := &cur
+	orch := orchestrator.New(config.Default(), nil, cur, tools.New(), permissions.NewPolicy(), hooks.New(), agents.All()["general-purpose"])
+
+	handled, out, _, _, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), orch, sp, store), "/resume "+saved.ID)
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Contains(t, out, "resumed session")
+	require.Equal(t, saved.ID, (*sp).ID)
+	require.Contains(t, (*sp).PlainTranscript(), "stored line")
 }
 
 func TestHandleSlashMemoryAddListDelete(t *testing.T) {
 	dir := t.TempDir()
 	mem := memory.New(dir)
 	var sp *session.Session
-	handled, out, _, _, err := HandleSlash(context.Background(), testSlashCtx(t, mem, nil, &sp, nil),
+	handled, out, _, _, err := handleSlashTest(context.Background(), testSlashCtx(t, mem, nil, &sp, nil),
 		"/memory add user mynote this is the stored body")
 	if err != nil || !handled || !strings.Contains(out, "saved memory") {
 		t.Fatalf("add: handled=%v err=%v out=%q", handled, err, out)
 	}
-	handled, out, _, _, err = HandleSlash(context.Background(), testSlashCtx(t, mem, nil, &sp, nil), "/memory list")
+	handled, out, _, _, err = handleSlashTest(context.Background(), testSlashCtx(t, mem, nil, &sp, nil), "/memory list")
 	if err != nil || !handled || !strings.Contains(out, "mynote") {
 		t.Fatalf("list: out=%q err=%v", out, err)
 	}
@@ -158,7 +210,7 @@ func TestHandleSlashMemoryAddListDelete(t *testing.T) {
 		t.Fatalf("mem.List: err=%v n=%d", err, len(listed))
 	}
 	base := listed[0].Filename
-	handled, out, _, _, err = HandleSlash(context.Background(), testSlashCtx(t, mem, nil, &sp, nil), "/memory delete "+base)
+	handled, out, _, _, err = handleSlashTest(context.Background(), testSlashCtx(t, mem, nil, &sp, nil), "/memory delete "+base)
 	if err != nil || !handled || !strings.Contains(out, "deleted") {
 		t.Fatalf("delete: handled=%v err=%v out=%q", handled, err, out)
 	}
@@ -171,7 +223,7 @@ func TestHandleSlashBtwModelSubmit(t *testing.T) {
 	s := session.New()
 	sp := &s
 	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), agents.Explore)
-	handled, out, quit, ms, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), orch, sp, nil), "/btw is this ok?")
+	handled, out, quit, ms, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), orch, sp, nil), "/btw is this ok?")
 	require.NoError(t, err)
 	require.True(t, handled)
 	require.False(t, quit)
@@ -182,7 +234,7 @@ func TestHandleSlashBtwModelSubmit(t *testing.T) {
 
 func TestHandleSlashBtwRequiresOrchestrator(t *testing.T) {
 	var sp *session.Session
-	_, _, _, _, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/btw hello")
+	_, _, _, _, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/btw hello")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "/btw")
 }
@@ -195,7 +247,7 @@ func TestHandleSlashExportWritesFile(t *testing.T) {
 	out := filepath.Join(dir, "out.txt")
 	env := testSlashEnv(t)
 	env.Workdir = dir
-	handled, msg, quit, ms, err := HandleSlash(context.Background(), SlashContext{
+	handled, msg, quit, ms, err := handleSlashTest(context.Background(), SlashContext{
 		SlashEnv: env,
 		Mem:      memory.New(t.TempDir()),
 		Orch:     nil,
@@ -214,7 +266,7 @@ func TestHandleSlashExportWritesFile(t *testing.T) {
 
 func TestHandleSlashCompactRequiresOrchestrator(t *testing.T) {
 	var sp *session.Session
-	_, _, _, _, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/compact")
+	_, _, _, _, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/compact")
 	if err == nil {
 		t.Fatal("expected error when orchestrator is nil")
 	}
@@ -222,7 +274,7 @@ func TestHandleSlashCompactRequiresOrchestrator(t *testing.T) {
 
 func TestHandleSlashEditRequiresOrchestrator(t *testing.T) {
 	var sp *session.Session
-	_, _, _, _, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/edit")
+	_, _, _, _, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/edit")
 	if err == nil || !strings.Contains(err.Error(), "requires a running agent") {
 		t.Fatalf("expected /edit orchestrator error, got %v", err)
 	}
@@ -244,7 +296,7 @@ func TestHandleSlashEditModelSubmit(t *testing.T) {
 	sp := &s
 	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), agents.All()["guide"])
 	env := SlashEnv{Workdir: wd, Profs: agents.All()}
-	handled, out, quit, ms, err := HandleSlash(context.Background(), SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}, "/edit")
+	handled, out, quit, ms, err := handleSlashTest(context.Background(), SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}, "/edit")
 	if err != nil || !handled || quit {
 		t.Fatalf("edit: handled=%v quit=%v err=%v out=%q", handled, quit, err, out)
 	}
@@ -257,7 +309,7 @@ func TestHandleSlashPlanPath(t *testing.T) {
 	wd := t.TempDir()
 	env := SlashEnv{Workdir: wd, Profs: agents.All()}
 	var sp *session.Session
-	handled, out, _, _, err := HandleSlash(context.Background(), SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: nil, Sess: &sp, Store: nil}, "/plan path")
+	handled, out, _, _, err := handleSlashTest(context.Background(), SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: nil, Sess: &sp, Store: nil}, "/plan path")
 	if err != nil || !handled || !strings.Contains(out, ".goclaw") || !strings.Contains(out, "plan.md") {
 		t.Fatalf("plan path: handled=%v err=%v out=%q", handled, err, out)
 	}
@@ -276,7 +328,7 @@ func TestHandleSlashApplyPlanModelSubmit(t *testing.T) {
 	env := SlashEnv{Workdir: wd, Profs: agents.All()}
 	sc := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}
 
-	handled, out, quit, modelSubmit, err := HandleSlash(context.Background(), sc, "/apply-plan")
+	handled, out, quit, modelSubmit, err := handleSlashTest(context.Background(), sc, "/apply-plan")
 	require.NoError(t, err)
 	require.True(t, handled)
 	require.False(t, quit)
@@ -295,7 +347,7 @@ func TestHandleSlashApplyPlanMissingFile(t *testing.T) {
 	env := SlashEnv{Workdir: wd, Profs: agents.All()}
 	sc := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}
 
-	handled, _, _, _, err := HandleSlash(context.Background(), sc, "/apply-plan")
+	handled, _, _, _, err := handleSlashTest(context.Background(), sc, "/apply-plan")
 	require.True(t, handled)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "plan file")
@@ -310,7 +362,7 @@ func TestHandleSlashPlanSave(t *testing.T) {
 	env := SlashEnv{Workdir: wd, Profs: agents.All()}
 	sc := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: nil, Sess: sp, Store: nil}
 
-	handled, out, _, _, err := HandleSlash(context.Background(), sc, "/plan save")
+	handled, out, _, _, err := handleSlashTest(context.Background(), sc, "/plan save")
 	require.NoError(t, err)
 	require.True(t, handled)
 	require.Contains(t, out, "plan saved")
@@ -328,7 +380,7 @@ func TestHandleSlashPlanSaveNoMessage(t *testing.T) {
 	env := SlashEnv{Workdir: wd, Profs: agents.All()}
 	sc := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: nil, Sess: sp, Store: nil}
 
-	handled, _, _, _, err := HandleSlash(context.Background(), sc, "/plan save")
+	handled, _, _, _, err := handleSlashTest(context.Background(), sc, "/plan save")
 	require.True(t, handled)
 	require.Error(t, err)
 }
@@ -340,13 +392,13 @@ func TestHandleSlashAgents(t *testing.T) {
 	env := SlashEnv{Workdir: t.TempDir(), Profs: agents.All(), UserAgentsDir: t.TempDir(), ProjectAgentsDir: t.TempDir()}
 	ctx := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}
 
-	handled, out, _, _, err := HandleSlash(context.Background(), ctx, "/agents")
+	handled, out, _, _, err := handleSlashTest(context.Background(), ctx, "/agents")
 	require.NoError(t, err)
 	require.True(t, handled)
 	require.Contains(t, out, "coordinator")
 	require.Contains(t, out, "explore")
 
-	handled, out, _, _, err = HandleSlash(context.Background(), ctx, "/agents explore")
+	handled, out, _, _, err = handleSlashTest(context.Background(), ctx, "/agents explore")
 	require.NoError(t, err)
 	require.True(t, handled)
 	require.Contains(t, out, "explore")
@@ -358,8 +410,8 @@ func TestHandleSlashProfile(t *testing.T) {
 	sp := &s
 	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), agents.All()["plan"])
 	env := SlashEnv{Workdir: t.TempDir(), Profs: agents.All()}
-	handled, out, _, _, err := HandleSlash(context.Background(), SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}, "/profile explore")
-	if err != nil || !handled || !strings.Contains(out, "explore") {
+	handled, out, _, _, err := handleSlashTest(context.Background(), SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}, "/profile explore")
+	if err != nil || !handled || !strings.Contains(out, "explore") || !strings.Contains(out, "read_only") {
 		t.Fatalf("profile: handled=%v err=%v out=%q", handled, err, out)
 	}
 	if orch.ProfileName() != "explore" {
@@ -388,7 +440,7 @@ func TestHandleSlashNewAndSave(t *testing.T) {
 	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), profile,
 		orchestrator.WithTodoStore(td))
 
-	handled, out, _, _, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), orch, sp, store), "/new")
+	handled, out, _, _, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), orch, sp, store), "/new")
 	if err != nil || !handled {
 		t.Fatalf("/new: handled=%v err=%v out=%q", handled, err, out)
 	}
@@ -416,7 +468,7 @@ func TestHandleSlashNewAndSave(t *testing.T) {
 		t.Fatalf("new session should start empty, got len=%d", (*sp).Len())
 	}
 
-	handled, out, _, _, err = HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), orch, sp, store), "/save")
+	handled, out, _, _, err = handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), orch, sp, store), "/save")
 	if err != nil || !handled {
 		t.Fatalf("/save: handled=%v err=%v", handled, err)
 	}

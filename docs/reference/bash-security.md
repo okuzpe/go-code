@@ -1,6 +1,6 @@
 # Seguridad del shell (Bash) — referencia y eco Go
 
-Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.4](../archive/architecture-legacy-es.md). Explainer tercero: [Bash Security — claude-code-explain](https://claude-code-explain.helmcode.com/bash-security). Mapa: [docs-map.md](../docs-map.md) (fila 21).
+Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (bash / permissions). Explainer tercero: [Bash Security — claude-code-explain](https://claude-code-explain.helmcode.com/bash-security). Mapa: [docs-map.md](../docs-map.md) (fila 21).
 
 ---
 
@@ -8,7 +8,7 @@ Profundidad ligada a [ARCHITECTURE_LEGACY_ES.md §2.4](../archive/architecture-l
 
 En el producto analizado hay **varias capas**: validadores de comando, pipeline de permisos, sandbox (p. ej. seatbelt/bubblewrap en Unix), validación de rutas, saneado de entorno, y reglas de categoría (prompt injection vía resultados de herramientas).
 
-**Nuestro MVP** no exige paridad con docenas de validadores: sí **defensa en profundidad mínima** alineada con **D4** (Windows), **D5** (modos) y [YOLO_CLASSIFIER.md](./yolo-classifier.md) cuando exista auto-modo.
+**Nuestro MVP** no exige paridad con docenas de validadores: sí **defensa en profundidad mínima** alineada con **D4** (Windows), **D5** (modos) y [yolo-classifier.md](./yolo-classifier.md) cuando exista auto-modo.
 
 ### 1.1 Implementación **goclaw** (hoy)
 
@@ -40,4 +40,4 @@ Detalle de contrato: [tool-contract.md](./tool-contract.md) fila `bash`.
 | Fecha | Cambio |
 |-------|--------|
 | 2026-04-07 | Creación stub: capas, D4/D5, enlace helmcode; DOCS_MAP |
-| 2026-04-08 | §1.1 goclaw: allowlist + metacaracteres, enlace a `bash.go` y TOOL_CONTRACT |
+| 2026-04-08 | §1.1 goclaw: allowlist + metacaracteres, enlace a `bash.go` y [tool-contract.md](./tool-contract.md) |

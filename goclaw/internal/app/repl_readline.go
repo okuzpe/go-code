@@ -165,7 +165,7 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 		}
 
 		sc := slashcmd.SlashContext{SlashEnv: r.slashEnv, Mem: r.rt.MemStore, Orch: r.orch, Sess: &sess, Store: r.rt.Store}
-		handled, slashOut, quit, modelSubmit, sErr := slashcmd.HandleSlash(r.baseCtx, sc, input)
+		handled, slashOut, quit, modelSubmit, sErr := slashcmd.HandleSlash(r.baseCtx, sc, input, nil)
 		r.rt.Sess = sess
 		if quit && errors.Is(sErr, slashcmd.ErrReplQuit) {
 			if slashOut != "" {
@@ -270,6 +270,9 @@ func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrat
 		},
 		orch:  orch,
 		focus: focus,
+	}
+	repl.slashEnv.ChatSubtitle = func() string {
+		return FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName())
 	}
 	repl.run(rl, intCh)
 

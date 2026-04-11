@@ -5,5 +5,5 @@
   "compaction_model": "qwen2.5-coder:7b",
   "llm_compaction": true,
   "model_context_tokens": 32768,
-  "agent_profile": "coordinator"
+  "agent_profile": "general-purpose"
 }

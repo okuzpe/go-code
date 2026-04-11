@@ -49,5 +49,5 @@ func securityDocURL() string {
 
 // onboardingCompletionProfileHint is shown after successful first-run setup (readline + TUI).
 func onboardingCompletionProfileHint() string {
-	return "Tip: default profile is coordinator (hub). For direct repo editing, use /profile general-purpose or set GOCLAW_AGENT_PROFILE."
+	return "Tip: default profile is general-purpose (direct file tools). For hub-and-spoke delegation, use /profile coordinator or set agent_profile in settings."
 }

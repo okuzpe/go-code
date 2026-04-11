@@ -41,7 +41,7 @@ func (GlobTool) InputSchema() any {
 		"properties": map[string]any{
 			"pattern": map[string]any{
 				"type":        "string",
-				"description": "Glob pattern relative to workspace (see tool description)",
+				"description": `Glob pattern relative to workspace. Examples: "*.go" matches any Go file at any depth; "internal/*.go" matches only paths under internal/; path-aware patterns use / as separator (see tool description).`,
 			},
 		},
 		"required": []string{"pattern"},

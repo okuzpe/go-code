@@ -27,9 +27,10 @@ func TestTUISlashSuggestions_filtersByPrefix(t *testing.T) {
 	require.GreaterOrEqual(t, len(all), 10)
 
 	two := TUISlashSuggestions("/c")
-	require.GreaterOrEqual(t, len(two), 2)
+	require.GreaterOrEqual(t, len(two), 3)
 	require.Equal(t, "/capabilities", two[0].Name)
-	require.Equal(t, "/compact", two[1].Name)
+	require.Equal(t, "/clear", two[1].Name)
+	require.Equal(t, "/compact", two[2].Name)
 
 	cap := TUISlashSuggestions("/cap")
 	require.Len(t, cap, 1)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
+	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/slashcmd"
 	"github.com/okuzpe/goclaw/internal/text"
 	"github.com/okuzpe/goclaw/internal/ui/footerline"
@@ -63,6 +65,10 @@ type Model struct {
 	sessionID string
 
 	focusLine func() string
+
+	// preambleEnd is the exclusive line index after the static startup block (welcome dashboard
+	// including its trailing blank, or title+intro+ready when no welcome). Session transcript updates preserve lines[:preambleEnd].
+	preambleEnd int
 
 	// Welcome panel (optional): reflow when terminal width is first known or on resize.
 	welcomeOpts     WelcomeOptions
@@ -150,7 +156,8 @@ type Options struct {
 
 // SlashHandler: if modelSubmit is non-empty, send that text to the model after displaying out (e.g. /edit).
 // When quit is true, err may be nil (caller normalizes /quit before the TUI).
-type SlashHandler func(input string) (handled bool, out string, quit bool, modelSubmit string, err error)
+// hints describe optional UI updates (welcome bar, transcript reload); ignored by callers that do not render a transcript.
+type SlashHandler func(input string) (handled bool, out string, quit bool, modelSubmit string, err error, hints slashcmd.UIHints)
 
 type ApprovalRequest struct {
 	ToolName string
@@ -271,6 +278,11 @@ func New(ctx context.Context, opts Options) Model {
 		intro := SessionIntroSystemText(opts.Workdir)
 		m.appendSystem(intro)
 		m.appendSystem("Ready.")
+	}
+	if m.welcomeBlockEnd > 0 {
+		m.preambleEnd = m.welcomeBlockEnd
+	} else {
+		m.preambleEnd = len(m.lines)
 	}
 	return m
 }
@@ -634,7 +646,7 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 		if m.slashHandle != nil {
-			handled, out, quit, modelSubmit, err := m.slashHandle(txt)
+			handled, out, quit, modelSubmit, err, hints := m.slashHandle(txt)
 			if handled {
 				if err != nil {
 					m.appendError(fmt.Sprintf("error: %v", err))
@@ -645,6 +657,7 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 						m.appendSystem(out)
 					}
 				}
+				m.applySlashHints(hints)
 				if strings.TrimSpace(modelSubmit) != "" && m.submitter != nil && m.submitter.fn != nil {
 					m.runModelSubmit(modelSubmit)
 				}
@@ -771,6 +784,47 @@ func (m *Model) View() tea.View {
 	// deliver wheel events without mouse-reporting active, e.g. Windows Terminal in some configurations).
 	v.MouseMode = tea.MouseModeNone
 	return v
+}
+
+func (m *Model) applySlashHints(hints slashcmd.UIHints) {
+	if hints.RefreshWelcome {
+		if hints.WelcomeProfile != "" {
+			m.welcomeOpts.Profile = hints.WelcomeProfile
+			m.activeAgentProfile = hints.WelcomeProfile
+		}
+		if hints.WelcomeSubtitle != "" {
+			m.welcomeOpts.Subtitle = hints.WelcomeSubtitle
+		}
+		if m.welcomeBlockEnd > 0 {
+			m.rebuildWelcomeForWidth()
+			m.preambleEnd = m.welcomeBlockEnd
+		}
+	}
+	if hints.ReloadTranscript != nil {
+		m.rebuildTranscriptForSession(hints.ReloadTranscript)
+	}
+}
+
+func (m *Model) rebuildTranscriptForSession(s *session.Session) {
+	if s == nil {
+		return
+	}
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	var head []string
+	if m.preambleEnd > 0 && m.preambleEnd <= len(m.lines) {
+		head = append([]string(nil), m.lines[:m.preambleEnd]...)
+	}
+	body := strings.TrimSpace(s.PlainTranscript())
+	if body == "" {
+		body = "(no messages in this session)"
+	}
+	msg := "Resumed session " + s.ID + " (" + strconv.Itoa(s.Len()) + " messages)\n" + body
+	m.sessionID = s.ID
+	m.lines = append(head, th.System.Render(msg))
+	m.setLinesContent(true)
 }
 
 // rebuildWelcomeForWidth rebuilds the top welcome panel using the real terminal width so layout

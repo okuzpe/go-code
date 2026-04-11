@@ -1,6 +1,6 @@
 # Modelos locales y media — encaje con la arquitectura Go
 
-Documento de profundidad ligado al borrador [ARCHITECTURE_LEGACY_ES.md](../archive/architecture-legacy-es.md) (**§2 ter**). Resume una estrategia **realista para 2025–2026** en PC tipo **RTX 4050 + 32 GB RAM** y cómo encaja en **nuestro** diseño (CLI/orquestador en **Go**, no Python). Hub actual: [architecture.md](../architecture.md); comportamiento GoClaw: [goclaw/CLAUDE.md](../../goclaw/CLAUDE.md).
+Documento de profundidad ligado al borrador [CLAUDE.md](../../goclaw/CLAUDE.md) (**§2 ter**). Resume una estrategia **realista para 2025–2026** en PC tipo **RTX 4050 + 32 GB RAM** y cómo encaja en **nuestro** diseño (CLI/orquestador en **Go**, no Python). Hub actual: [architecture.md](../architecture.md); comportamiento GoClaw: [goclaw/CLAUDE.md](../../goclaw/CLAUDE.md).
 
 ---
 
@@ -43,14 +43,14 @@ Los nombres concretos cambian cada mes; **D11** debe cerrar **un** identificador
 
 ### 2.3 Implicaciones para diseño (importantes)
 
-- Los **perfiles de agente** ([architecture-legacy-es.md §2.7](../archive/architecture-legacy-es.md), [agent-profiles.md](./agent-profiles.md)) permiten asignar un modelo **más pequeño** al explorador o al “guide” y reservar el modelo grande para el bucle principal; en Ollama son distintos `model` en la misma API.
+- Los **perfiles de agente** ([agent-profiles.md](./agent-profiles.md), [agent-profiles.md](./agent-profiles.md)) permiten asignar un modelo **más pequeño** al explorador o al “guide” y reservar el modelo grande para el bucle principal; en Ollama son distintos `model` en la misma API.
 - Los modelos locales suelen ir **por detrás** de los cloud en **seguimiento de formato JSON** para herramientas. Refuerza la decisión **D2**:
   - Probar **function / tool calling** nativo si el backend lo expone de forma usable.
   - Tener **plan B**: esquema de herramientas en texto + JSON estricto en el prompt y reintentos ante parseo fallido (el §8 ya pide límite de turnos para evitar bucles infinitos).
 
 ### 2.4 Límites honestos con RTX 4050 + 32 GB RAM
 
-- **Sí:** desarrollo con IA local, automatización, código + herramientas acotadas, sesiones razonables con compactación ([ARCHITECTURE_LEGACY_ES.md §2.5](../archive/architecture-legacy-es.md), [CONTEXT_COMPACTION.md](./context-compaction.md)).
+- **Sí:** desarrollo con IA local, automatización, código + herramientas acotadas, sesiones razonables con compactación ([context-compaction.md](./context-compaction.md)).
 - **No o con expectativas bajas:** varios modelos gigantes en paralelo, “multi-agente” con muchas instancias, contextos enormes sin poda agresiva.
 
 ### 2.5 VRAM real (RTX 4050) y cuántos modelos conviene cargar
@@ -109,7 +109,7 @@ El **LLM** (Ollama, §2) no genera píxeles: imagen y vídeo son **procesos apar
 | `generate_image` | Cliente HTTP hacia un **servidor de difusión** (A1111, ComfyUI+API, BentoML, u otro) o comando acotado | `network`, GPU, tiempo de generación |
 | `generate_video_clip` | Mismo patrón: **API o workflow** (p. ej. Stable Video Diffusion, AnimateDiff en ComfyUI); casi siempre **más lento** y más VRAM que imagen | Cola obligatoria; **contención** con Ollama §3.5 |
 
-**Reglas transversales:** políticas **Permissions** ([ARCHITECTURE_LEGACY_ES.md §2.3](../archive/architecture-legacy-es.md)) y encaje en el bucle §3, timeouts agresivos, y **no** bloquear el REPL: job en **background** + notificación o path a fichero cuando termine. **Copyright:** uso comercial de salidas y datasets de entrenamiento es zona gris; el propio artículo enlazado insiste en **riesgo legal** y “mantenerse informado”.
+**Reglas transversales:** políticas **Permissions** ([CLAUDE.md](../../goclaw/CLAUDE.md) (permissions)) y encaje en el bucle §3, timeouts agresivos, y **no** bloquear el REPL: job en **background** + notificación o path a fichero cuando termine. **Copyright:** uso comercial de salidas y datasets de entrenamiento es zona gris; el propio artículo enlazado insiste en **riesgo legal** y “mantenerse informado”.
 
 ### 3.2 Familias de modelos (qué encaja con GPU **pequeña** vs “estado del arte”)
 
@@ -177,13 +177,13 @@ Documentad la política en **Permissions** + mensajes al usuario (“generación
               ↔ internal/session
               → internal/permissions → internal/tools
                    ├── read_file, bash, web_search, web_fetch  (MVP)
-                   ├── glob, grep  (v1 — regla §2.1 [ARCHITECTURE_LEGACY_ES.md](../archive/architecture-legacy-es.md))
+                   ├── glob, grep  (v1 — regla §2.1 [CLAUDE.md](../../goclaw/CLAUDE.md))
                    ├── write, edit  (v2)
                    ├── image optional → A1111 API
                    └── video optional → proceso externo (fase tardía)
 ```
 
-El **system prompt** debe reforzar [§2.1](../archive/architecture-legacy-es.md) (herramientas dedicadas); los modelos locales suelen beneficiarse **más** de esa regla explícita.
+El **system prompt** debe reforzar herramientas dedicadas antes que bash ([CLAUDE.md](../../goclaw/CLAUDE.md) D12); los modelos locales suelen beneficiarse **más** de esa regla explícita.
 
 ---
 

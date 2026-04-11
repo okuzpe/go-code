@@ -2,12 +2,15 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/mcp"
 	"github.com/okuzpe/goclaw/internal/permissions"
+	"github.com/okuzpe/goclaw/internal/memory"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/tools"
 	"github.com/stretchr/testify/require"
@@ -124,6 +127,37 @@ func TestMcpConnectionHintLinesNonLoopbackURL(t *testing.T) {
 	h := mcpConnectionHintLines(rt.Cfg, rt)
 	require.NotEmpty(t, h)
 	require.Contains(t, strings.Join(h, "\n"), "mcp_allow_remote_urls")
+}
+
+func TestDoctorReportPluginSkillMemoryLines(t *testing.T) {
+	wd := t.TempDir()
+	ud := t.TempDir()
+	memDir := filepath.Join(ud, "memory")
+	require.NoError(t, os.MkdirAll(memDir, 0o700))
+	mem := memory.New(memDir)
+	_, err := mem.Save(memory.Entry{Name: "n", Type: memory.TypeUser, Body: "x"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(memDir, "MEMORY.md"), []byte("# index\n"), 0o600))
+
+	rt := &ChatRuntime{
+		Cfg: config.Config{
+			Provider:         "ollama",
+			OllamaHost:       "http://127.0.0.1:9",
+			UserConfigDir:    ud,
+			PluginDirs:       []string{filepath.Join(wd, "plugins")},
+			ProjectConfigDir: ".goclaw",
+		},
+		Workdir:     wd,
+		Sess:        session.New(),
+		MemStore:    mem,
+		DisableTools: true,
+	}
+	report := DoctorReportFromRuntime(context.Background(), rt)
+	require.Contains(t, report, "plugins / skills / memory:")
+	require.Contains(t, report, "skill search roots:")
+	require.Contains(t, report, "workspace skills snippet")
+	require.Contains(t, report, "memory entries")
+	require.Contains(t, report, "MEMORY.md present")
 }
 
 func TestMcpSummaryEligibleURLServers(t *testing.T) {

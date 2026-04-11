@@ -127,16 +127,16 @@ func (m *Model) applyAgentPick() {
 		m.appendError("slash handler not configured")
 		return
 	}
-	handled, out, quit, modelSubmit, err := m.slashHandle("/agents " + name)
+	handled, out, quit, modelSubmit, err, hints := m.slashHandle("/agents " + name)
 	if err != nil {
 		m.appendError(fmt.Sprintf("%v", err))
 		return
 	}
 	if handled {
-		m.activeAgentProfile = name
 		if strings.TrimSpace(out) != "" {
 			m.appendSystem(out)
 		}
+		m.applySlashHints(hints)
 		if strings.TrimSpace(modelSubmit) != "" && m.submitter != nil && m.submitter.fn != nil {
 			m.runModelSubmit(modelSubmit)
 		}

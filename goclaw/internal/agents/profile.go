@@ -22,7 +22,8 @@ type Profile struct {
 // inherit the global config; set ModelOverride to pin a specific model.
 var (
 	GeneralPurpose = Profile{
-		Name: "general-purpose",
+		Name:         "general-purpose",
+		SystemPrompt: "Act first. No preambles (\"I'll now…\", \"Let me…\"). Read → change → verify with tools. When done: one line.",
 	}
 
 	Explore = Profile{
@@ -75,7 +76,7 @@ var (
 			"Each spawn_agent result includes task_id; use stop_task with that id to cancel a worker that is still running. " +
 			"Workers are fully isolated — they cannot see this conversation, so include all " +
 			"necessary file paths, function names, and context in each task description. " +
-			"Synthesize worker results into a clear final response for the user. " +
+			"Report worker results in 1-3 lines maximum. Do not re-describe what workers did — the tool cards show it. Only add context the cards don't capture. " +
 			"Never use file or shell tools directly; always delegate to workers.\n" +
 			"Profile selection guide:\n" +
 			"- general-purpose: any task that writes, edits, or creates files, runs commands, or implements code — use this for ALL coding and editing tasks.\n" +

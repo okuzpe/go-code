@@ -16,6 +16,17 @@ goclaw is a local-first CLI coding agent. The goal is daily-driver usability: pr
 - Not a **Team/Swarm** product (tmux-style peer agents or external job grids). In-process **coordinator** delegation (`spawn_agent`) is intentional and bounded; see [coordinator.md](./coordinator.md) and [coordinator-mode.md](../reference/coordinator-mode.md). The minimal disk mailbox hub (`internal/swarm`) is separate; see [swarm.md](./swarm.md).
 - Not a plugin marketplace.
 - Not a “cloud-first” agent that requires external services to be usable (Anthropic is optional).
+- Not a **multi-channel gateway** (Discord, Telegram, mobile pairing, long-lived daemon as the primary UX). goclaw is REPL/TUI-first; a control-plane gateway would be a different product shape. See [roadmap.md — Future transport and scale](roadmap.md#future-transport-and-scale).
+
+## Lessons from wider agent stacks
+
+These patterns were distilled from comparing goclaw to larger **Node/TS** agent repos (multi-channel products such as [openclaw/openclaw](https://github.com/openclaw/openclaw)). They inform **how we extend goclaw**, not code to port.
+
+- **Web tools:** Treat SSRF, redirect chains, response size, timeouts, and search-provider fallbacks as **first-class test targets**—same discipline as dedicated fetch/search test suites upstream. Implemented direction: [tool-contract.md](../reference/tool-contract.md), `internal/tools` tests.
+- **MCP at the edge:** Prefer **stdio / HTTP MCP** and local plugins for new capability instead of growing the core loop. See [mcp.md](../reference/mcp.md), [mcp-remote.md](./mcp-remote.md), D6 in [CLAUDE.md](../../goclaw/CLAUDE.md).
+- **Declarative surface area:** Custom agents and SKILL.md keep prompts and bundles **out of the hot path** of the orchestrator. See [custom-agents.md](../reference/custom-agents.md), [skills.md](../reference/skills.md).
+- **Routing stays thin:** Session + tool policy should stay a **small mapping** (which tools, which memory, which profile)—even when there is only one interactive channel today.
+- **If multi-transport ever matters:** Prefer **one adapter per channel** (queue + allowlist) rather than mixing socket/UI logic into `internal/orchestrator`.
 
 ## Documentation (monorepo)
 

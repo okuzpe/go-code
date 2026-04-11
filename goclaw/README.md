@@ -32,52 +32,11 @@ Details (modes, sessions, JSON output, troubleshooting): **[usage.md](../docs/go
 
 ## Documentation
 
-**Master file list and reading order:** **[docs-map.md](../docs/docs-map.md)**.
+**Master index** (every path, audience, reading order, `docs/reference/` contracts): **[docs-map.md](../docs/docs-map.md)**.
 
-| Doc | Role |
-|-----|------|
-| [**documentation.md**](../docs/goclaw/documentation.md) | Where each doc belongs; naming; Diátaxis-style principles |
-| [**code-adjustment-map.md**](../docs/reference/code-adjustment-map.md) | Maps `docs/` topics to `internal/*` packages when changing behavior |
-| [**usage.md**](../docs/goclaw/usage.md) | Day-to-day: run modes, sessions, `prompt`/JSON, flags, slash commands, Anthropic, troubleshooting |
-| [**model-routing.md**](../docs/goclaw/model-routing.md) | Optional per-turn model selection (`task_models`, `--task-model-router`) |
-| [**CLAUDE.md**](CLAUDE.md) | Architecture, tool contract, env vars, packages (source of truth for agents) |
-| [**roadmap.md**](../docs/goclaw/roadmap.md) | Product checklist and CI notes |
-| [**philosophy.md**](../docs/goclaw/philosophy.md) | UX principles |
-| [**changelog.md**](../docs/goclaw/changelog.md) | Version-to-version user-visible changes |
-| [**scripts/MOCK_PARITY_HARNESS.md**](scripts/MOCK_PARITY_HARNESS.md) | Mock Anthropic regression bundle (`make parity`) |
+**Core links:** [CLAUDE.md](CLAUDE.md) (implementation) · [usage.md](../docs/goclaw/usage.md) (operators) · [documentation.md](../docs/goclaw/documentation.md) (where to add docs) · [code-adjustment-map.md](../docs/reference/code-adjustment-map.md) (docs ↔ `internal/*`). **Mock Anthropic harness:** [scripts/MOCK_PARITY_HARNESS.md](scripts/MOCK_PARITY_HARNESS.md) (`make parity`).
 
-**Cross-cutting specs (under `docs/`):** [architecture.md](../docs/architecture.md), [code-adjustment-map.md](../docs/reference/code-adjustment-map.md), [tool-contract.md](../docs/reference/tool-contract.md), [mcp.md](../docs/reference/mcp.md), [hooks.md](../docs/reference/hooks.md), [agent-profiles.md](../docs/reference/agent-profiles.md), [coordinator-mode.md](../docs/reference/coordinator-mode.md), [archive index](../docs/archive/README.md).
-
-### Markdown folders (next to the module)
-
-| Folder | Contents |
-|--------|----------|
-| [docs/reference/](../docs/reference/) | Shared contracts (tools, MCP, hooks, …) |
-| [docs/goclaw/](../docs/goclaw/) | Topic files — table below |
-| [docs/openclaw/](../docs/openclaw/) | Product notes (not the Go tree) |
-| [docs/archive/](../docs/archive/) | Long-form / archived drafts |
-
-### Topic files (`docs/goclaw/`)
-
-| File | Topic |
-|------|--------|
-| [usage.md](../docs/goclaw/usage.md) | Run modes, sessions, config, CLI, troubleshooting |
-| [documentation.md](../docs/goclaw/documentation.md) | Doc layout and principles |
-| [roadmap.md](../docs/goclaw/roadmap.md) | Product checklist |
-| [philosophy.md](../docs/goclaw/philosophy.md) | UX and scope |
-| [changelog.md](../docs/goclaw/changelog.md) | Release history |
-| [coordinator.md](../docs/goclaw/coordinator.md) | D16: `spawn_agent`, workers |
-| [swarm.md](../docs/goclaw/swarm.md) | Disk mailbox hub vs coordinator |
-| [mcp-remote.md](../docs/goclaw/mcp-remote.md) | MCP bearer, threats, future OAuth/WS |
-| [mcp-servers.example.json](../docs/goclaw/mcp-servers.example.json) | Example `mcp_servers` entries |
-| [manual-tui-checklist.md](../docs/goclaw/manual-tui-checklist.md) | Manual Bubble Tea / readline QA |
-| [ollama-stack.md](../docs/goclaw/ollama-stack.md) | Optional local 7B/8B stack, `compaction_model`, Ollama multi-load |
-| [model-routing.md](../docs/goclaw/model-routing.md) | Per-turn `task_models` map, `rules` / `llm` router |
-| [i18n.md](../docs/goclaw/i18n.md) | LLM language vs English UI |
-| [security.md](../docs/goclaw/security.md) | Security notes |
-| [prefix-input-modes.md](../docs/goclaw/prefix-input-modes.md) | Deferred input modes |
-
-From the **goclaw** directory, link to topic files as `../docs/goclaw/<name>.md`.
+Everything else (roadmap, changelog, architecture hub, tool/MCP/hooks reference): use the tables in **docs-map.md** — from this directory, topic files live under `../docs/goclaw/<name>.md` or `../docs/reference/<name>.md`.
 
 ## Why goclaw
 
@@ -94,6 +53,6 @@ From the **goclaw** directory, link to topic files as `../docs/goclaw/<name>.md`
 
 ## Multi-agent (brief)
 
-- **Shipped:** `--profile coordinator` uses `spawn_agent` / `stop_task`; workers have isolated sessions. See [coordinator.md](../docs/goclaw/coordinator.md) and [coordinator-mode.md](../docs/reference/coordinator-mode.md).
+- **Default session:** `general-purpose` (file/bash tools on the main agent). **`make run-hub`** or **`--profile coordinator`** for hub-and-spoke (`spawn_agent` / `stop_task`; workers have isolated sessions). See [coordinator.md](../docs/goclaw/coordinator.md) and [coordinator-mode.md](../docs/reference/coordinator-mode.md).
 - **Not in scope:** Team/Swarm (tmux-style peer agents).
 - **External stacks** (Discord, clawhip, etc.) are optional wrappers around the CLI — not bundled here.

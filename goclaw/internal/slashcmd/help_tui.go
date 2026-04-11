@@ -33,7 +33,8 @@ Shortcuts
   Tab                complete /command
   Esc                close this help panel (when open)
   Ctrl+C             quit the TUI (session saves on exit)
-  Ctrl+L             clear transcript
+  Ctrl+L             clear transcript (TUI)
+  /clear             clear the terminal screen (readline; same idea as Ctrl+L)
   /edit              compose a multiline message in $EDITOR
   /copy              copy plain session text to the system clipboard
   /export path.txt   save plain session text to a file
