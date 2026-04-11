@@ -71,9 +71,37 @@ func TestHandleSlashHelp(t *testing.T) {
 		!strings.Contains(out, "/theme") ||
 		!strings.Contains(out, "/apply-plan") || !strings.Contains(out, "/plan path") ||
 		!strings.Contains(out, "/capabilities") ||
+		!strings.Contains(out, "/init") ||
 		!strings.Contains(out, "sessions list") {
 		t.Fatalf("unexpected help: %s", out)
 	}
+}
+
+func TestHandleSlashInit(t *testing.T) {
+	env := testSlashEnv(t)
+	require.NoError(t, os.MkdirAll(env.Workdir, 0o700))
+	ctx := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: nil, Sess: nil, Store: nil}
+
+	handled, out, quit, ms, err := HandleSlash(context.Background(), ctx, "/init")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.False(t, quit)
+	require.Empty(t, ms)
+	require.Contains(t, out, "created")
+	require.Contains(t, out, "general-purpose")
+	settingsPath := filepath.Join(env.Workdir, ".goclaw", "settings.json")
+	require.FileExists(t, settingsPath)
+	raw, err := os.ReadFile(settingsPath)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"agent_profile": "general-purpose"`)
+
+	handled, out, quit, ms, err = HandleSlash(context.Background(), ctx, "/init")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.False(t, quit)
+	require.Empty(t, ms)
+	require.Contains(t, out, "already exists")
+	require.Contains(t, out, settingsPath)
 }
 
 func TestHandleSlashCapabilities(t *testing.T) {

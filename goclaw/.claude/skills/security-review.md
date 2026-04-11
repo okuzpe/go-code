@@ -10,7 +10,7 @@ description: Use when reviewing code for security, before merging a tool, or whe
 #### read_file
 - [ ] Path canonicalized before comparing to workspace root
 - [ ] Symlinks resolved and checked against workspace boundary
-- [ ] Max read size enforced (512 KiB or 200 lines)
+- [ ] Max read size enforced (512 KiB or 400 lines)
 - [ ] Errors do not leak raw host paths unnecessarily to the model
 
 #### bash

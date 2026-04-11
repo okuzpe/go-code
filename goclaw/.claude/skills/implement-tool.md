@@ -55,7 +55,7 @@ Use constructor pattern if the tool needs dependencies (e.g. `NewReadFile(root s
 - Tool **name**: `snake_case` (`read_file`, `web_fetch`)
 - **User errors**: `Result{IsError: true, Content: msg}`, `error == nil`
 - **System errors**: return non-nil `error`
-- **Output caps**: read_file 512 KiB / 200 lines; glob 500 paths; grep 200 matches / 512 KiB per file; bash 256 KiB; web_fetch 1 MiB; web_search per `limits.go`
+- **Output caps**: read_file 512 KiB / 400 lines; glob 500 paths; grep 200 matches / 512 KiB per file; bash 256 KiB; web_fetch 1 MiB; web_search per `limits.go`
 - **Security**: workspace paths for read_file, glob, grep; bash allowlist; web_fetch SSRF checks
 
 ### 4. Register in `internal/app/run.go`

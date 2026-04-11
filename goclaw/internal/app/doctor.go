@@ -100,6 +100,7 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 	lines = append(lines, mcpSummaryLines(rt)...)
 
 	hintLines := hintLines(cfg, ollamaOK, rt.DisableTools)
+	hintLines = append(hintLines, profileHintLines(rt.Profile.Name)...)
 	hintLines = append(hintLines, mcpConnectionHintLines(cfg, rt)...)
 	if len(hintLines) > 0 {
 		lines = append(lines, "")
@@ -187,6 +188,17 @@ func dedupeDoctorHints(lines []string) []string {
 		out = append(out, line)
 	}
 	return out
+}
+
+func profileHintLines(profileName string) []string {
+	if profileName == "coordinator" {
+		return []string{
+			"  Profile is 'coordinator' (hub mode — delegates tasks via spawn_agent).",
+			"  - For direct file editing and coding, switch to: /profile general-purpose",
+			"  - Or set \"agent_profile\": \"general-purpose\" in .goclaw/settings.json",
+		}
+	}
+	return nil
 }
 
 func hintLines(cfg config.Config, ollamaOK, toolsDisabled bool) []string {

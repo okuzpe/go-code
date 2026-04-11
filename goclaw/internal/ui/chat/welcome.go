@@ -13,6 +13,7 @@ type WelcomeOptions struct {
 	Version  string
 	Subtitle string // e.g. provider · model · profile
 	Workdir  string
+	Profile  string // active profile name; used to show profile-specific tips
 }
 
 // defaultWelcomeWrap is used when terminal width is not known yet (before first WindowSizeMsg).
@@ -147,6 +148,12 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	for _, ln := range wrapPlainWords("CLAUDE.md and .goclaw/ carry project context.", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
+	if opt.Profile == "coordinator" {
+		rightLines = append(rightLines, "")
+		for _, ln := range wrapPlainWords("Coordinator mode: use /profile general-purpose to edit files directly.", rightW-1) {
+			rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+		}
+	}
 	rightLines = append(rightLines, "")
 
 	n := len(leftLines)
@@ -214,6 +221,10 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, _ int
 	body.WriteString(accent.Render("Tips"))
 	body.WriteString("\n")
 	body.WriteString(dim.Render("/help  /capabilities  ·  CLAUDE.md  ·  .goclaw/"))
+	if opt.Profile == "coordinator" {
+		body.WriteString("\n")
+		body.WriteString(dim.Render("Coordinator mode — use /profile general-purpose to edit files directly."))
+	}
 
 	frame := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).

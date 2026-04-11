@@ -30,7 +30,9 @@ var _ Tool = (*ReadFileTool)(nil)
 func (ReadFileTool) Name() string { return "read_file" }
 
 func (ReadFileTool) Description() string {
-	return "Read a UTF-8 text file from the workspace, or list the contents of a directory. Symlinks are resolved; paths outside the workspace are rejected."
+	return "Read a UTF-8 text file from the workspace, or list the contents of a directory. " +
+		"Output includes line numbers (N⇥content) for reference — the numbers are not part of the file content. " +
+		"Symlinks are resolved; paths outside the workspace are rejected."
 }
 
 func (ReadFileTool) InputSchema() any {
@@ -47,7 +49,7 @@ func (ReadFileTool) InputSchema() any {
 			},
 			"limit_lines": map[string]any{
 				"type":        "integer",
-				"description": "Maximum lines to return (optional, capped at 200)",
+				"description": "Maximum lines to return (optional, capped at 400)",
 			},
 		},
 		"required": []string{"path"},
@@ -144,7 +146,15 @@ func (t *ReadFileTool) Execute(ctx context.Context, input string) (Result, error
 		return Result{Content: fmt.Sprintf("read file: %v", err), IsError: true}, nil
 	}
 
-	out := strings.Join(lines, "\n")
+	startLine := in.OffsetLines + 1
+	if startLine < 1 {
+		startLine = 1
+	}
+	numbered := make([]string, len(lines))
+	for i, l := range lines {
+		numbered[i] = fmt.Sprintf("%4d\t%s", startLine+i, l)
+	}
+	out := strings.Join(numbered, "\n")
 	if truncated {
 		out += fmt.Sprintf("\n\n[output truncated: max %d lines or %d bytes]", limitLines, MaxReadFileBytes)
 	}

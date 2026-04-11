@@ -80,7 +80,7 @@ grep -n "return err$" --include="*.go" -r .
 **read_file / glob / grep:**
 - [ ] Path canonicalized and workspace boundary checked (before AND after `EvalSymlinks`)
 - [ ] Symlinks resolved and re-validated against workspace root
-- [ ] Output capped: 512 KiB or 200 lines (read_file); 500 matches (glob); 200 matches (grep)
+- [ ] Output capped: 512 KiB or 400 lines (read_file); 500 matches (glob); 200 matches (grep)
 
 **bash:**
 - [ ] Command validated against binary allowlist (`allowedBinaries` / `allowedGitSub`) — not denylist

@@ -3,7 +3,7 @@ package tools
 // Output and execution limits for MVP tools (see CLAUDE.md Tool Contract).
 const (
 	MaxReadFileBytes = 512 * 1024
-	MaxReadFileLines = 200
+	MaxReadFileLines = 400
 	MaxBashOutput    = 256 * 1024
 	BashTimeoutSec   = 30
 	WebFetchTimeoutSec = 30

@@ -29,6 +29,8 @@ func (EditFileTool) Name() string { return "edit_file" }
 
 func (EditFileTool) Description() string {
 	return "Replace an exact string in a file (str_replace). " +
+		"old_string and new_string must match the file's raw on-disk text. " +
+		"If read_file showed lines as N<TAB>content, do not include the line number or that tab in old_string — only the real file lines. " +
 		"By default old_string must appear exactly once; set replace_all:true to replace every occurrence. " +
 		"The edit is written atomically and the file's original permissions are preserved. " +
 		"Use write_file for new files or full rewrites."
@@ -43,8 +45,9 @@ func (EditFileTool) InputSchema() any {
 				"description": "Path relative to workspace root, or absolute path inside the workspace",
 			},
 			"old_string": map[string]any{
-				"type":        "string",
-				"description": "Exact string to find in the file (must be non-empty)",
+				"type": "string",
+				"description": "Exact substring to find in the file as stored on disk (must be non-empty). " +
+					"Do not paste read_file line-number prefixes (leading digits + tab); copy only the file text.",
 			},
 			"new_string": map[string]any{
 				"type":        "string",

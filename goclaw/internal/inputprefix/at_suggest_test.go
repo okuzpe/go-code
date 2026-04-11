@@ -40,6 +40,18 @@ func TestAtFragmentAtCursor(t *testing.T) {
 	require.Equal(t, 7, start)
 }
 
+func TestExtractAtTokens(t *testing.T) {
+	require.Equal(t, []string{"@go.mod"}, ExtractAtTokens("@go.mod"))
+	require.Equal(t, []string{"@go.mod"}, ExtractAtTokens("check @go.mod for issues"))
+	require.Equal(t, []string{"@go.mod", "@README.md"}, ExtractAtTokens("compare @go.mod and @README.md"))
+	require.Equal(t, []string{"@internal/"}, ExtractAtTokens("list @internal/ please"))
+	require.Empty(t, ExtractAtTokens("john@example.com"))
+	require.Empty(t, ExtractAtTokens("hello world"))
+	require.Empty(t, ExtractAtTokens("@../secret"))
+	require.Empty(t, ExtractAtTokens("@/etc/passwd"))
+	require.Equal(t, []string{"@go.mod"}, ExtractAtTokens("@go.mod and again @go.mod"))
+}
+
 func TestParseAtPathBuffer(t *testing.T) {
 	q, ok := ParseAtPathBuffer("@internal/foo")
 	require.True(t, ok)

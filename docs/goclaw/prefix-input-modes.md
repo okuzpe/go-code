@@ -16,7 +16,8 @@
 
 ## Multiline input (TUI)
 
-- For **`!`**, **`@`**, and **`&`**, only the **first line** of the buffer is used; any following lines must be empty after trim, or the parser returns an error (avoids silent truncation of pasted blocks).
+- For **`!`** and **`&`**, only the **first line** of the buffer is used; any following lines must be empty after trim, or the parser returns an error (avoids silent truncation of pasted blocks).
+- **`@` mixed with extra text** — when `@path` is followed by additional text on the same or subsequent lines (e.g. `@go.mod explain this`), the message is treated as **KindPassthrough**: sent to the model with the file contents silently pre-loaded via `ExpandInlineAtRefs`. Pure standalone `@path` (no extra text) still runs `read_file` locally as before.
 - Normal messages may still use **Shift+Enter** / **Alt+Enter** for newlines without these prefixes.
 
 ## Per-prefix behavior
@@ -24,7 +25,7 @@
 | Prefix | Syntax | Effect |
 |--------|--------|--------|
 | `!` | `!` + shell command (first line) | Runs the **`bash`** tool with JSON `{"command":"…"}`. Same allowlist, metacharacter rules, timeout, and permissions as a model-requested bash call. Output is shown in the UI and recorded in the session as a user line plus a short assistant summary (no fake `tool_use` blocks in history). |
-| `@` | `@` + path (first line) | Runs **`read_file`** with JSON `{"path":"…"}`. Path resolution matches the workspace-scoped `read_file` tool (relative to workspace or absolute inside it). |
+| `@` | `@` + path (standalone line) | Runs **`read_file`** with JSON `{"path":"…"}`. Path resolution matches the workspace-scoped `read_file` tool (relative to workspace or absolute inside it). When `@tokens` appear inside a larger message, `ExpandInlineAtRefs` silently reads each one and prepends the file content as context before the model call. |
 | `&` | `&` + task description (first line) | Runs **`spawn_agent`** with `profile: general-purpose`, `task` set to the text after `&`, default `timeout_sec`, `interactive: false`. Requires **`spawn_agent`** on the active profile’s tool registry (typically **coordinator** hub). If the tool is unavailable, the user sees a clear error. |
 | `/btw` | `/btw` + text (slash command) | Handled in [`slash.go`](../../goclaw/internal/slashcmd/slash.go): rewrites to a **single user message** with an explicit “side question” preamble so the model answers briefly without abandoning the main thread. **Session:** the rewritten text is what is stored as the user turn (the `/btw` prefix is not preserved verbatim). |
 

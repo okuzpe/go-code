@@ -201,6 +201,7 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 			continue
 		}
 
+		input = ExpandInlineAtRefs(r.baseCtx, r.orch, input)
 		runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, input, &terminalSink{}, setReqCancel)
 	}
 }

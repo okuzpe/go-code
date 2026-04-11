@@ -402,7 +402,7 @@ var _ llm.Client = (*AnthropicClient)(nil)
 
 | Tool | Risk | Input | Output cap | Notes |
 |------|------|-------|------------|-------|
-| `read_file` | read_only | path, offset?, limit? | 512 KiB or 200 lines | Rejects symlinks outside workspace |
+| `read_file` | read_only | path, offset?, limit? | 512 KiB or 400 lines | Rejects symlinks outside workspace |
 | `glob` | read_only | pattern | 500 paths | Workspace-scoped; no `..` |
 | `grep` | read_only | pattern, path? | 200 matches, 512 KiB/file | RE2 regex; skips binaries |
 | `bash` | shell | command, cwd? | 256 KiB truncated | Allowlist (D4); single simple command — `rejectShellMetacharacters` blocks pipes, `;`, `&&`, redirects, `$(...)`, unquoted `&`; timeout from `bash_timeout_sec` or default 30s |

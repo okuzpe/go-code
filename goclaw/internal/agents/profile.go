@@ -81,7 +81,9 @@ var (
 			"- general-purpose: any task that writes, edits, or creates files, runs commands, or implements code — use this for ALL coding and editing tasks.\n" +
 			"- explore: read-only search, grep, or understanding the codebase — no changes needed.\n" +
 			"- plan: produce a step-by-step implementation plan — read-only, output only.\n" +
-			"- verification: run tests or checks and report PASS/FAIL — use after implementation.",
+			"- verification: run tests or checks and report PASS/FAIL — use after implementation.\n" +
+			"When the user asks to read, edit, write, create, or modify files — always spawn a general-purpose worker to do it. " +
+			"Never tell the user you cannot do something because you lack tools; you can always delegate via spawn_agent.",
 	}
 )
 

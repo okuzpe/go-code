@@ -26,6 +26,7 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/help", "List slash commands and usage"},
 	{"/hub", "Return to coordinator (alias of /detach)"},
 	{"/in", "Focus a worker by task id prefix (same as /focus)"},
+	{"/init", "Create .goclaw/settings.json with coding defaults if missing"},
 	{"/memory", "list | add | delete durable memory entries"},
 	{"/new", "Start a new session (saves current)"},
 	{"/parent", "Return to coordinator (same as /detach)"},

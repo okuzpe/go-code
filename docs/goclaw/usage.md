@@ -50,12 +50,13 @@ Exit: `Esc` (TUI) or `Ctrl+C`. Clear: `Ctrl+L` (TUI).
 
 ### Prefix input (`!`, `@`, `&`, `/btw`)
 
-Interpreted **after** slash commands and **before** the model (TUI and readline). Same **permission policy, approval, and hooks** as normal tool calls. **Single line** for `!`, `@`, and `&` (extra lines after a newline are rejected). **`--mock`** disables prefix handling.
+Interpreted **after** slash commands and **before** the model (TUI and readline). Same **permission policy, approval, and hooks** as normal tool calls. **Single line** for `!` and `&` (extra lines are rejected). **`--mock`** disables prefix handling.
 
 | Prefix | Meaning |
 |--------|---------|
 | `!` + command | Run the **`bash`** tool with that command (allowlist and metacharacter rules apply). |
-| `@` + path | Run **`read_file`** for a path inside the workspace. **TUI:** matching paths appear under the input (like `/`); **Tab** completes. **Readline:** **Tab** completes `@` paths or `/` commands. |
+| `@` + path (standalone) | Run **`read_file`** for a path inside the workspace. **TUI:** matching paths appear under the input as you type; **Tab** completes anywhere in the line. **Readline:** **Tab** completes `@` paths or `/` commands. Drag-and-drop a file/folder onto the terminal to insert `@relpath` automatically. |
+| `@token` inline | When `@path` tokens appear inside a larger message (e.g. `explain @go.mod`), the file is silently pre-loaded before the model call — no separate read step needed. |
 | `&` + task | Run **`spawn_agent`** with profile `general-purpose` (requires **`spawn_agent`** on the active profile, typically **coordinator**). |
 | `/btw` + text | Slash command: submit **one** user message wrapped as a short “side question” to the model. |
 

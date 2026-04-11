@@ -90,6 +90,22 @@ func WithInputTokenCounter(c llm.InputTokenCounter) Option {
 	}
 }
 
+// WithWorkdir injects the workspace root path into the system prompt so the agent
+// knows which directory it is operating in and uses correct relative paths.
+func WithWorkdir(dir string) Option {
+	return func(o *Orchestrator) {
+		o.workdir = strings.TrimSpace(dir)
+	}
+}
+
+// WithProjectContext injects a brief project summary (e.g. from go.mod / README)
+// into the system prompt so the agent understands the project without a warm-up tool call.
+func WithProjectContext(ctx string) Option {
+	return func(o *Orchestrator) {
+		o.projectContext = strings.TrimSpace(ctx)
+	}
+}
+
 // Orchestrator wires all subsystems and drives the agent loop.
 type Orchestrator struct {
 	cfg               config.Config
@@ -105,6 +121,12 @@ type Orchestrator struct {
 	skillsPrompt      string
 	todoStore         *todos.Store
 	inputTokenCounter llm.InputTokenCounter
+
+	// workdir is the workspace root path injected into the system prompt (optional).
+	workdir string
+
+	// projectContext is a brief project summary injected into the system prompt (optional).
+	projectContext string
 
 	// turnModel is the resolved model id for the current user turn (tool iterations reuse it).
 	// Empty means use cfg.Model() in buildRequest. Cleared after runUserTurn completes.

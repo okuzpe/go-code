@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 
+	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 )
 
@@ -19,7 +19,7 @@ import (
 //
 // If no @path tokens are found, or all reads fail, the original text is returned unchanged.
 func ExpandInlineAtRefs(ctx context.Context, orch *orchestrator.Orchestrator, userText string) string {
-	tokens := extractAtTokens(userText)
+	tokens := inputprefix.ExtractAtTokens(userText)
 	if len(tokens) == 0 {
 		return userText
 	}
@@ -50,44 +50,4 @@ func ExpandInlineAtRefs(ctx context.Context, orch *orchestrator.Orchestrator, us
 	b.WriteString("\n\n[End of @ context]\n\n")
 	b.WriteString(userText)
 	return b.String()
-}
-
-// extractAtTokens returns all @path tokens found in s where @ is at the start
-// or preceded by whitespace. Tokens with ".." are skipped for safety.
-func extractAtTokens(s string) []string {
-	runes := []rune(s)
-	var tokens []string
-	seen := map[string]bool{}
-	i := 0
-	for i < len(runes) {
-		if runes[i] == '@' && (i == 0 || runes[i-1] == ' ' || runes[i-1] == '\t' || runes[i-1] == '\n') {
-			j := i + 1
-			for j < len(runes) && runes[j] != ' ' && runes[j] != '\t' && runes[j] != '\n' {
-				j++
-			}
-			if j > i+1 {
-				tok := string(runes[i:j])
-				path := strings.TrimPrefix(tok, "@")
-				path = strings.TrimSuffix(path, "/")
-				// Safety: reject path traversal
-				if strings.Contains(path, "..") {
-					i = j
-					continue
-				}
-				// Reject absolute paths (workspace-relative only)
-				if filepath.IsAbs(path) {
-					i = j
-					continue
-				}
-				if !seen[tok] {
-					tokens = append(tokens, tok)
-					seen[tok] = true
-				}
-			}
-			i = j
-			continue
-		}
-		i++
-	}
-	return tokens
 }

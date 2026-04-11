@@ -21,7 +21,7 @@ func TestReadFileHappyPath(t *testing.T) {
 	res, err := tool.Execute(ctx, `{"path":"a.txt"}`)
 	require.NoError(t, err)
 	require.False(t, res.IsError, "content=%s", res.Content)
-	require.Equal(t, "hello\nworld", res.Content)
+	require.Equal(t, "   1\thello\n   2\tworld", res.Content)
 }
 
 func TestReadFileListsDirectory(t *testing.T) {
@@ -53,6 +53,20 @@ func TestReadFileListsDirectorySkipsGit(t *testing.T) {
 	require.False(t, res.IsError, "content=%s", res.Content)
 	require.Contains(t, res.Content, "go.mod")
 	require.NotContains(t, res.Content, "HEAD") // .git skipped
+}
+
+func TestReadFileOffsetLines(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "nums.txt")
+	require.NoError(t, os.WriteFile(p, []byte("a\nb\nc\nd\ne"), 0o600))
+
+	tool := NewReadFile(dir)
+	// offset 2 → skip first 2 lines; result starts at line 3
+	res, err := tool.Execute(ctx, `{"path":"nums.txt","offset_lines":2}`)
+	require.NoError(t, err)
+	require.False(t, res.IsError)
+	require.Equal(t, "   3\tc\n   4\td\n   5\te", res.Content)
 }
 
 func TestReadFileRejectsEscape(t *testing.T) {

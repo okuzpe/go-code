@@ -21,6 +21,7 @@ func TestUserCapabilitiesGuide_nonEmpty(t *testing.T) {
 	g := UserCapabilitiesGuide()
 	require.NotEmpty(t, strings.TrimSpace(g))
 	require.Contains(t, g, "/help")
+	require.Contains(t, g, "/init")
 	require.Contains(t, g, "Research & Q&A")
 	require.Contains(t, g, "Code & Development")
 	require.Contains(t, g, "File & Project Management")

@@ -80,6 +80,7 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 			Version:  Version,
 			Subtitle: app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
 			Workdir:  rt.Workdir,
+			Profile:  rt.Profile.Name,
 		},
 		FocusLine: focus.Hint,
 	}, approval, submit, slash)

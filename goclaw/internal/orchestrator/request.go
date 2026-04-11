@@ -57,6 +57,12 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	}
 
 	sys := baseSystemPrompt + o.profile.SystemPrompt
+	if o.workdir != "" {
+		sys = sys + "\n\n## Workspace\n" + o.workdir + "\nUse relative paths in tool calls (e.g. go.mod, internal/tools/read_file.go)."
+	}
+	if o.projectContext != "" {
+		sys = sys + "\n\n## Project context\n" + o.projectContext
+	}
 	if o.skillsPrompt != "" {
 		sys = sys + "\n\n## Loaded skills (SKILL.md)\n" + o.skillsPrompt
 	}

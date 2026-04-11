@@ -239,6 +239,13 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string) (handled bo
 		}
 		return true, "(sending message from editor…)", false, body, nil
 
+	case "init":
+		msg, ierr := handleSlashProjectInit(env)
+		if ierr != nil {
+			return true, "", false, "", ierr
+		}
+		return true, msg, false, "", nil
+
 	case "memory":
 		if len(fields) < 2 {
 			return true, "", false, "", fmt.Errorf(`usage: /memory list | /memory add <user|feedback|project|reference> <name> <words...>
@@ -490,7 +497,7 @@ use /workers to list interactive worker ids`)
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /btw   /copy   /export   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /quit\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /btw   /copy   /export   /init   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /quit\n")
 	b.WriteString("Prefix input (see docs/goclaw/prefix-input-modes.md):  !cmd   @path   &task\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
@@ -507,10 +514,11 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("  /help, help, ? — full list with session id and profile\n")
 	b.WriteString("  /capabilities — structured overview (what the agent can do; not sent to the model)\n")
 	b.WriteString("  /plan path|init|save|template — workspace plan under .goclaw/plan.md\n")
+	b.WriteString("  /init — create .goclaw/settings.json with coding defaults if missing\n")
 	b.WriteString("  /apply-plan [path] — load plan, switch to general-purpose, stream execution\n")
 	b.WriteString("  /memory list | add | delete — durable memory under ~/.goclaw/memory/\n")
 	b.WriteString("  /workers, /focus or /in <id>, /back or /detach — interactive spawn_agent workers\n")
-	b.WriteString("  /compact, /copy, /export, /edit, /agents, /profile, /theme, /new, /save, /session, /sessions, /quit, /btw\n")
+	b.WriteString("  /compact, /copy, /export, /edit, /init, /agents, /profile, /theme, /new, /save, /session, /sessions, /quit, /btw\n")
 	b.WriteString("Prefix: ! (bash), @ (read_file), & (spawn_agent) — single line; docs/goclaw/prefix-input-modes.md\n")
 	b.WriteString("Flags: --readline (line REPL), --no-tools, --session <id>, --profile <name>\n")
 	if strings.TrimSpace(workdir) != "" {
@@ -540,6 +548,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /copy            — copy plain session transcript to the system clipboard (truncates if very large)\n")
 	b.WriteString("  /export <path>   — write plain session transcript to a file (relative paths use workspace when set)\n")
 	b.WriteString("  /edit            — compose a multiline message in $EDITOR (vi, notepad, …)\n")
+	b.WriteString("  /init            — create .goclaw/settings.json with coding defaults if missing\n")
 	b.WriteString("  /memory list     — list memory files under ~/.goclaw/memory/\n")
 	b.WriteString("  /memory add <type> <name> <text...>  — types: user | feedback | project | reference\n")
 	b.WriteString("  /memory delete <file.md> — remove one file (see list for basename)\n")

@@ -309,6 +309,12 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	}
 	skillSnippet, _ := skills.Collect(skillRoots, 24000)
 	orchOpts := []orchestrator.Option{orchestrator.WithMemoryStore(memStore)}
+	if workdir != "" {
+		orchOpts = append(orchOpts, orchestrator.WithWorkdir(workdir))
+		if pctx := buildProjectContext(workdir); pctx != "" {
+			orchOpts = append(orchOpts, orchestrator.WithProjectContext(pctx))
+		}
+	}
 	if skillSnippet != "" {
 		orchOpts = append(orchOpts, orchestrator.WithSkillsSnippet(skillSnippet))
 	}
@@ -378,4 +384,52 @@ func registerBuiltInTools(r *tools.Registry, workdir string, cfg config.Config, 
 	} else {
 		r.Register(todoTool)
 	}
+}
+
+// buildProjectContext reads key project files from workdir and returns a compact
+// summary for injection into the system prompt. Returns "" when nothing useful is found.
+// Reads at most two small files; fast enough to call at startup.
+func buildProjectContext(workdir string) string {
+	var parts []string
+
+	// Detect project type from manifest files.
+	type candidate struct {
+		file    string
+		maxLine int
+		label   string
+	}
+	manifests := []candidate{
+		{"go.mod", 8, "go.mod"},
+		{"package.json", 6, "package.json"},
+		{"Cargo.toml", 8, "Cargo.toml"},
+		{"pyproject.toml", 8, "pyproject.toml"},
+	}
+	for _, c := range manifests {
+		data, err := os.ReadFile(filepath.Join(workdir, c.file))
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		if len(lines) > c.maxLine {
+			lines = lines[:c.maxLine]
+		}
+		parts = append(parts, c.label+":\n  "+strings.Join(lines, "\n  "))
+		break // one manifest is enough
+	}
+
+	// Append first 20 lines of README if present.
+	for _, name := range []string{"README.md", "README.txt", "README"} {
+		data, err := os.ReadFile(filepath.Join(workdir, name))
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		if len(lines) > 20 {
+			lines = lines[:20]
+		}
+		parts = append(parts, name+":\n  "+strings.Join(lines, "\n  "))
+		break
+	}
+
+	return strings.Join(parts, "\n\n")
 }

@@ -33,9 +33,18 @@ func (PatchTool) Name() string { return "patch" }
 
 func (PatchTool) Description() string {
 	return "Apply a unified diff to a single workspace file. " +
-		"The diff must change exactly one file and must match the path you pass (same relative path as in the ---/+++ headers after a/ or b/ prefixes). " +
+		"The diff must change exactly one file; path must match the relative path in the --- a/... and +++ b/... headers. " +
 		"Binary patches are not supported. " +
-		"Prefer edit_file for small string replacements; use patch for multi-hunk or git-generated diffs."
+		"Prefer edit_file for small string replacements; use patch for multi-hunk or git-generated diffs. " +
+		"Minimal valid diff shape (context lines start with a single space; removed with -; added with +): " +
+		`diff --git a/foo.go b/foo.go` + "\n" +
+		`--- a/foo.go` + "\n" +
+		`+++ b/foo.go` + "\n" +
+		`@@ -1,3 +1,3 @@` + "\n" +
+		` package main` + "\n" +
+		`-old line` + "\n" +
+		`+new line` + "\n" +
+		` func main() {}`
 }
 
 func (PatchTool) InputSchema() any {
@@ -47,8 +56,9 @@ func (PatchTool) InputSchema() any {
 				"description": "Workspace-relative path to the file being patched (must match the single file in the diff)",
 			},
 			"diff": map[string]any{
-				"type":        "string",
-				"description": "Complete unified diff text for one file (git diff or unified format)",
+				"type": "string",
+				"description": "Complete unified diff for one file: diff --git line, --- a/<path>, +++ b/<path>, @@ hunk @@, " +
+					"then lines with leading space (context), - (remove), + (add). Must match path in headers.",
 			},
 		},
 		"required": []string{"path", "diff"},

@@ -42,6 +42,38 @@ func ParseAtPathBuffer(line string) (query string, ok bool) {
 	return q, true
 }
 
+// ExtractAtTokens returns all distinct @path tokens found in s where @ is preceded
+// by start-of-string or whitespace. Tokens with ".." or absolute paths are skipped.
+// Used by ExpandInlineAtRefs to find files to pre-load as context.
+func ExtractAtTokens(s string) []string {
+	runes := []rune(s)
+	var tokens []string
+	seen := map[string]bool{}
+	i := 0
+	for i < len(runes) {
+		if runes[i] == '@' && (i == 0 || runes[i-1] == ' ' || runes[i-1] == '\t' || runes[i-1] == '\n') {
+			j := i + 1
+			for j < len(runes) && runes[j] != ' ' && runes[j] != '\t' && runes[j] != '\n' {
+				j++
+			}
+			if j > i+1 {
+				tok := string(runes[i:j])
+				path := strings.TrimPrefix(tok, "@")
+				path = strings.TrimSuffix(path, "/")
+				if !strings.Contains(path, "..") && !filepath.IsAbs(path) &&
+				!strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "\\") && !seen[tok] {
+					tokens = append(tokens, tok)
+					seen[tok] = true
+				}
+			}
+			i = j
+			continue
+		}
+		i++
+	}
+	return tokens
+}
+
 // AtFragmentAtCursor returns the @token the user is currently typing at runeCol in lineText.
 // runeCol is the 0-indexed rune column (as returned by textarea.Column()).
 // Scans backward from runeCol; any whitespace before @ means we're not inside an @-token.
