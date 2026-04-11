@@ -39,6 +39,7 @@ Details (modes, sessions, JSON output, troubleshooting): **[usage.md](../docs/go
 | [**documentation.md**](../docs/goclaw/documentation.md) | Where each doc belongs; naming; Diátaxis-style principles |
 | [**code-adjustment-map.md**](../docs/reference/code-adjustment-map.md) | Maps `docs/` topics to `internal/*` packages when changing behavior |
 | [**usage.md**](../docs/goclaw/usage.md) | Day-to-day: run modes, sessions, `prompt`/JSON, flags, slash commands, Anthropic, troubleshooting |
+| [**model-routing.md**](../docs/goclaw/model-routing.md) | Optional per-turn model selection (`task_models`, `--task-model-router`) |
 | [**CLAUDE.md**](CLAUDE.md) | Architecture, tool contract, env vars, packages (source of truth for agents) |
 | [**roadmap.md**](../docs/goclaw/roadmap.md) | Product checklist and CI notes |
 | [**philosophy.md**](../docs/goclaw/philosophy.md) | UX principles |
@@ -71,6 +72,7 @@ Details (modes, sessions, JSON output, troubleshooting): **[usage.md](../docs/go
 | [mcp-servers.example.json](../docs/goclaw/mcp-servers.example.json) | Example `mcp_servers` entries |
 | [manual-tui-checklist.md](../docs/goclaw/manual-tui-checklist.md) | Manual Bubble Tea / readline QA |
 | [ollama-stack.md](../docs/goclaw/ollama-stack.md) | Optional local 7B/8B stack, `compaction_model`, Ollama multi-load |
+| [model-routing.md](../docs/goclaw/model-routing.md) | Per-turn `task_models` map, `rules` / `llm` router |
 | [i18n.md](../docs/goclaw/i18n.md) | LLM language vs English UI |
 | [security.md](../docs/goclaw/security.md) | Security notes |
 | [prefix-input-modes.md](../docs/goclaw/prefix-input-modes.md) | Deferred input modes |

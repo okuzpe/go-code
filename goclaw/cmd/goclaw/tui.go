@@ -21,12 +21,14 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 
 	focus := coordinator.NewFocusRouter()
 	slashEnv := slashcmd.SlashEnv{
-		Workdir:          rt.Workdir,
-		UserConfigDir:    rt.Cfg.UserConfigDir,
-		Profs:            rt.Profs,
-		UserAgentsDir:    rt.UserAgentsDir,
-		ProjectAgentsDir: rt.ProjectAgentsDir,
-		Focus:            focus,
+		Workdir:                     rt.Workdir,
+		UserConfigDir:               rt.Cfg.UserConfigDir,
+		DisableInteractiveThemePick: true,
+		DisableInteractiveAgentPick: true,
+		Profs:                       rt.Profs,
+		UserAgentsDir:               rt.UserAgentsDir,
+		ProjectAgentsDir:            rt.ProjectAgentsDir,
+		Focus:                       focus,
 		Doctor: func(ctx context.Context) (string, error) {
 			return app.DoctorReportFromRuntime(ctx, rt), nil
 		},
@@ -61,27 +63,19 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 			return reply, app.AugmentOrchestratorErr(rt.Cfg.Provider, rt.Cfg.Model(), err)
 		}
 	}
-	recentIDs := []string{}
-	if rt.Store != nil {
-		if entries, err := rt.Store.ListSessionEntries(); err == nil {
-			for i, e := range entries {
-				if i >= 5 {
-					break
-				}
-				recentIDs = append(recentIDs, e.ID)
-			}
-		}
-	}
 	return chat.RunApp(ctx, chat.Options{
-		Title:     app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
-		SessionID: rt.Sess.ID,
-		Workdir:   rt.Workdir,
-		Theme:     chat.NewThemeForAppearance(rt.Cfg.UIAppearance),
+		Title:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
+		SessionID:          rt.Sess.ID,
+		Workdir:            rt.Workdir,
+		UserConfigDir:      rt.Cfg.UserConfigDir,
+		UserAgentsDir:      rt.UserAgentsDir,
+		ProjectAgentsDir:   rt.ProjectAgentsDir,
+		ActiveAgentProfile: rt.Profile.Name,
+		Theme:              chat.NewThemeForAppearance(rt.Cfg.UIAppearance),
 		Welcome: chat.WelcomeOptions{
-			Version:          Version,
-			Subtitle:         app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
-			Workdir:          rt.Workdir,
-			RecentSessionIDs: recentIDs,
+			Version:  Version,
+			Subtitle: app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
+			Workdir:  rt.Workdir,
 		},
 		FocusLine: focus.Hint,
 	}, approval, submit, slash)

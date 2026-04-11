@@ -10,7 +10,9 @@ type SlashCommandSuggest struct {
 
 // slashCommandTable is the canonical list of root REPL / commands. Keep sorted by Name.
 var slashCommandTable = []SlashCommandSuggest{
-	{"/apply-plan", "Load plan file and run one orchestrator step with full tools"},
+	{"/agents", "List or switch agent profile (built-in + custom *.md)"},
+	{"/apply-plan", "Load plan file, switch to general-purpose, run one orchestrator turn"},
+	{"/back", "Return to coordinator session (same as /detach)"},
 	{"/capabilities", "Print full capability guide (no model call)"},
 	{"/compact", "Force context compaction on the current session"},
 	{"/detach", "Stop routing input to the focused worker"},
@@ -19,9 +21,12 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/exit", "Save session and quit"},
 	{"/focus", "Route input to a coordinator worker task id"},
 	{"/help", "List slash commands and usage"},
+	{"/hub", "Return to coordinator (alias of /detach)"},
+	{"/in", "Focus a worker by task id prefix (same as /focus)"},
 	{"/memory", "list | add | delete durable memory entries"},
 	{"/new", "Start a new session (saves current)"},
-	{"/plan", "path | init | template for .goclaw/plan.md"},
+	{"/parent", "Return to coordinator (same as /detach)"},
+	{"/plan", "path | init | save | template for .goclaw/plan.md"},
 	{"/profile", "Switch agent profile (hot-reloads custom agents)"},
 	{"/quit", "Save session and quit"},
 	{"/save", "Persist session without exiting"},

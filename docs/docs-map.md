@@ -50,6 +50,7 @@ Single entry point for humans and AI agents: which file covers which topic, and 
 | [`docs/goclaw/documentation.md`](./goclaw/documentation.md) | Doc taxonomy, goclaw vs monorepo `docs/` | Implemented |
 | [`docs/goclaw/usage.md`](./goclaw/usage.md) | CLI workflows: modes, sessions, prompt/JSON, config, profiles, tools summary, hooks/MCP pointers | Implemented |
 | [`docs/goclaw/ollama-stack.md`](./goclaw/ollama-stack.md) | Open-weight 7B/8B Ollama stack — project `.goclaw/` template, `compaction_model`, multi-model memory | Implemented |
+| [`docs/goclaw/model-routing.md`](./goclaw/model-routing.md) | Per-turn `task_models` routing (`rules` / `llm`), precedence vs profile `model` | Implemented |
 | [`docs/goclaw/roadmap.md`](./goclaw/roadmap.md) | Product checklist and CI notes | Implemented |
 | [`docs/goclaw/philosophy.md`](./goclaw/philosophy.md) | UX principles and scope boundaries | Implemented |
 | [`docs/goclaw/changelog.md`](./goclaw/changelog.md) | Version-to-version user-visible changes | Implemented |

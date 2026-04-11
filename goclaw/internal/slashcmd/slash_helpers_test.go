@@ -36,9 +36,9 @@ func TestPreChatHelpSummary_noWorkdir(t *testing.T) {
 
 func TestSortedProfileNames_sorted(t *testing.T) {
 	profs := map[string]agents.Profile{
-		"zebra":  {Name: "zebra"},
-		"alpha":  {Name: "alpha"},
-		"mango":  {Name: "mango"},
+		"zebra": {Name: "zebra"},
+		"alpha": {Name: "alpha"},
+		"mango": {Name: "mango"},
 	}
 	result := sortedProfileNames(profs)
 	parts := strings.Split(result, ", ")

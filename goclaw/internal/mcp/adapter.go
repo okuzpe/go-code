@@ -73,7 +73,9 @@ func RegisterSessionTools(ctx context.Context, reg *tools.Registry, sess Conn, s
 		if info.Name == "" {
 			continue
 		}
-		reg.Register(NewToolAdapter(sess, serverID, info))
+		if err := reg.Add(NewToolAdapter(sess, serverID, info)); err != nil {
+			return err
+		}
 	}
 	return nil
 }

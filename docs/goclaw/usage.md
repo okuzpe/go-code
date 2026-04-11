@@ -208,17 +208,26 @@ Persistent flags apply to the default command and `chat`:
 | `--mock` | Canned reply (no model) |
 | `--output-format` | `text` or `json` for one-shot stdout |
 | `--json-output` | Stdin automation → JSON |
+| `--plugin-dir` | Plugin roots (repeatable); merges with `plugin_dirs` in settings |
+| `--task-model-router` | `off` \| `rules` \| `llm` — per-turn **`task_models`** routing; see [model-routing.md](./model-routing.md) |
 
 | Subcommand | Purpose |
 |------------|---------|
 | `chat` | Interactive session (same as default) |
 | `prompt <text>...` | One turn from argv |
-| `doctor` | Preflight check |
+| `doctor` | Preflight check (shows `task_model_router` / `task_models` when set) |
 | `sessions list` | Same as `--list-sessions` |
 
 ## Plan file (`.goclaw/plan.md`)
 
-Use profile `plan` to draft, save under `.goclaw/plan.md`. In the REPL: `/plan path`, `/plan init`, `/plan template`, `/apply-plan [path]` (loads plan, switches to `general-purpose`, one orchestrator turn). See [agent-profiles.md](../reference/agent-profiles.md).
+Use profile `plan` to draft the plan as chat output. In the REPL:
+
+- `/plan init` — create `.goclaw/plan.md` from template
+- `/plan save` — save the last assistant message in this session to `.goclaw/plan.md`
+- `/plan path` / `/plan template` — inspect the default path and template skeleton
+- `/apply-plan [path]` — load plan, switch to `general-purpose`, stream one execution turn
+
+Typical workflow: `/profile plan` → ask for a plan → `/plan save` → `/apply-plan`. See [agent-profiles.md](../reference/agent-profiles.md).
 
 ## Slash commands (REPL)
 

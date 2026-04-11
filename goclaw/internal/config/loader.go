@@ -11,38 +11,42 @@ import (
 
 // settingsFile is the JSON shape for ~/.goclaw/settings.json and .goclaw/settings.json.
 type settingsFile struct {
-	Provider             *string           `json:"provider"`
-	OllamaHost           *string           `json:"ollama_host"`
-	OllamaModel          *string           `json:"ollama_model"`
-	CompactionModel      *string           `json:"compaction_model,omitempty"`
-	AnthropicBaseURL     *string           `json:"anthropic_base_url"`
-	AgentProfile         *string           `json:"agent_profile"`
-	AutoCompactThreshold *float64          `json:"auto_compact_threshold"`
-	BashTimeoutSec       *int                `json:"bash_timeout_sec"`
-	ModelContextTokens   *int                `json:"model_context_tokens"`
-	MCPServers           []MCPServerConfig   `json:"mcp_servers"`
-	TrustedWorkspace     *bool               `json:"trusted_workspace"`
-	ExternalHooks        []ExternalHookEntry `json:"external_hooks"`
-	ToolPermissions      map[string]string   `json:"tool_permissions"`
-	AllowScript          *bool               `json:"allow_script"`
-	YoloThreshold        *int                `json:"yolo_threshold"`
-	LLMCompaction        *bool               `json:"llm_compaction"`
-	MCPServersAllowRemote *bool              `json:"mcp_allow_remote_urls,omitempty"`
-	IDEBridgeMCP          *bool   `json:"ide_bridge_mcp,omitempty"`
-	WebSearchBackend      *string `json:"web_search_backend,omitempty"`
-	BraveSearchAPIKey     *string `json:"brave_search_api_key,omitempty"`
-	SerpAPIKey            *string `json:"serpapi_api_key,omitempty"`
-	WebSearchFallbackDDG  *bool   `json:"web_search_fallback_ddg,omitempty"`
-	TokenCountMode         *string `json:"token_count_mode,omitempty"`
-	PluginDirs             []string `json:"plugin_dirs,omitempty"`
-	PluginAllow            []string `json:"plugin_allow,omitempty"`
-	PluginDeny             []string `json:"plugin_deny,omitempty"`
-	MemoryAutoExtract      *bool    `json:"memory_auto_extract,omitempty"`
-	UIAppearance           *string  `json:"ui_appearance,omitempty"`
-	APIKey                 *string  `json:"api_key,omitempty"`
-	OpenAIBaseURL          *string  `json:"openai_base_url,omitempty"`
-	OpenAIAPIKey           *string  `json:"openai_api_key,omitempty"`
-	OpenAIModel            *string  `json:"openai_model,omitempty"`
+	Provider                  *string             `json:"provider"`
+	OllamaHost                *string             `json:"ollama_host"`
+	OllamaModel               *string             `json:"ollama_model"`
+	CompactionModel           *string             `json:"compaction_model,omitempty"`
+	TaskModelRouter           *string             `json:"task_model_router,omitempty"`
+	TaskModels                map[string]string   `json:"task_models,omitempty"`
+	TaskModelRouterModel      *string             `json:"task_model_router_model,omitempty"`
+	PreferredResponseLanguage *string             `json:"preferred_response_language,omitempty"`
+	AnthropicBaseURL          *string             `json:"anthropic_base_url"`
+	AgentProfile              *string             `json:"agent_profile"`
+	AutoCompactThreshold      *float64            `json:"auto_compact_threshold"`
+	BashTimeoutSec            *int                `json:"bash_timeout_sec"`
+	ModelContextTokens        *int                `json:"model_context_tokens"`
+	MCPServers                []MCPServerConfig   `json:"mcp_servers"`
+	TrustedWorkspace          *bool               `json:"trusted_workspace"`
+	ExternalHooks             []ExternalHookEntry `json:"external_hooks"`
+	ToolPermissions           map[string]string   `json:"tool_permissions"`
+	AllowScript               *bool               `json:"allow_script"`
+	YoloThreshold             *int                `json:"yolo_threshold"`
+	LLMCompaction             *bool               `json:"llm_compaction"`
+	MCPServersAllowRemote     *bool               `json:"mcp_allow_remote_urls,omitempty"`
+	IDEBridgeMCP              *bool               `json:"ide_bridge_mcp,omitempty"`
+	WebSearchBackend          *string             `json:"web_search_backend,omitempty"`
+	BraveSearchAPIKey         *string             `json:"brave_search_api_key,omitempty"`
+	SerpAPIKey                *string             `json:"serpapi_api_key,omitempty"`
+	WebSearchFallbackDDG      *bool               `json:"web_search_fallback_ddg,omitempty"`
+	TokenCountMode            *string             `json:"token_count_mode,omitempty"`
+	PluginDirs                []string            `json:"plugin_dirs,omitempty"`
+	PluginAllow               []string            `json:"plugin_allow,omitempty"`
+	PluginDeny                []string            `json:"plugin_deny,omitempty"`
+	MemoryAutoExtract         *bool               `json:"memory_auto_extract,omitempty"`
+	UIAppearance              *string             `json:"ui_appearance,omitempty"`
+	APIKey                    *string             `json:"api_key,omitempty"`
+	OpenAIBaseURL             *string             `json:"openai_base_url,omitempty"`
+	OpenAIAPIKey              *string             `json:"openai_api_key,omitempty"`
+	OpenAIModel               *string             `json:"openai_model,omitempty"`
 }
 
 // Load merges JSON settings into base in this order (later wins for overlapping keys):
@@ -104,6 +108,29 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.CompactionModel != nil && strings.TrimSpace(*sf.CompactionModel) != "" {
 		cfg.CompactionModel = strings.TrimSpace(*sf.CompactionModel)
+	}
+	if sf.TaskModelRouter != nil && strings.TrimSpace(*sf.TaskModelRouter) != "" {
+		cfg.TaskModelRouter = NormalizeTaskModelRouter(*sf.TaskModelRouter)
+	}
+	if len(sf.TaskModels) > 0 {
+		if cfg.TaskModels == nil {
+			cfg.TaskModels = make(map[string]string)
+		}
+		for k, v := range sf.TaskModels {
+			kk := strings.ToLower(strings.TrimSpace(k))
+			if kk == "" {
+				continue
+			}
+			if vv := strings.TrimSpace(v); vv != "" {
+				cfg.TaskModels[kk] = vv
+			}
+		}
+	}
+	if sf.TaskModelRouterModel != nil && strings.TrimSpace(*sf.TaskModelRouterModel) != "" {
+		cfg.TaskModelRouterModel = strings.TrimSpace(*sf.TaskModelRouterModel)
+	}
+	if sf.PreferredResponseLanguage != nil && strings.TrimSpace(*sf.PreferredResponseLanguage) != "" {
+		cfg.PreferredResponseLanguage = strings.TrimSpace(*sf.PreferredResponseLanguage)
 	}
 	if sf.AnthropicBaseURL != nil {
 		cfg.BaseURL = *sf.AnthropicBaseURL

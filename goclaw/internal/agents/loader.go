@@ -94,6 +94,7 @@ func parseAgentFile(path string) (Profile, bool) {
 
 	profile := Profile{
 		Name:          name,
+		Description:   strings.TrimSpace(fm.Description),
 		ModelOverride: strings.TrimSpace(fm.ModelOverride),
 		ToolAllowlist: fm.ToolAllowlist,
 		ReadOnly:      fm.ReadOnly,

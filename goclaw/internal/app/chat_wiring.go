@@ -30,22 +30,22 @@ import (
 
 // ChatRuntime holds shared subsystems built once for an interactive chat session.
 type ChatRuntime struct {
-	Cfg          config.Config
-	Workdir      string
-	Client       llm.Client
-	Sess         *session.Session
-	Store        *session.Store
-	Reg          *tools.Registry
-	MemStore     *memory.Store
-	Policy       *permissions.Policy
-	HookReg      *hooks.Registry
-	Profile      agents.Profile
+	Cfg              config.Config
+	Workdir          string
+	Client           llm.Client
+	Sess             *session.Session
+	Store            *session.Store
+	Reg              *tools.Registry
+	MemStore         *memory.Store
+	Policy           *permissions.Policy
+	HookReg          *hooks.Registry
+	Profile          agents.Profile
 	Profs            map[string]agents.Profile
 	UserAgentsDir    string
 	ProjectAgentsDir string
 	DisableTools     bool
-	Mock         bool
-	McpSessions  []mcp.Conn
+	Mock             bool
+	McpSessions      []mcp.Conn
 	// McpConnectedIDs lists MCP server ids that started and registered tools successfully (same order as McpSessions).
 	McpConnectedIDs []string
 	OrchOpts        []orchestrator.Option
@@ -89,6 +89,9 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	if cmd != nil {
 		if vals, err := cmd.Flags().GetStringSlice("plugin-dir"); err == nil && len(vals) > 0 {
 			cfg.PluginDirs = append(cfg.PluginDirs, vals...)
+		}
+		if v, err := cmd.Flags().GetString("task-model-router"); err == nil && strings.TrimSpace(v) != "" {
+			cfg.TaskModelRouter = config.NormalizeTaskModelRouter(v)
 		}
 	}
 
@@ -324,24 +327,24 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	}
 
 	return &ChatRuntime{
-		Cfg:          cfg,
-		Workdir:      workdir,
-		Client:       client,
-		Sess:         sess,
-		Store:        store,
-		Reg:          reg,
-		MemStore:     memStore,
-		Policy:       policy,
-		HookReg:      hookReg,
+		Cfg:              cfg,
+		Workdir:          workdir,
+		Client:           client,
+		Sess:             sess,
+		Store:            store,
+		Reg:              reg,
+		MemStore:         memStore,
+		Policy:           policy,
+		HookReg:          hookReg,
 		Profile:          profile,
 		Profs:            profs,
 		UserAgentsDir:    userAgentsDir,
 		ProjectAgentsDir: projectAgentsDir,
 		DisableTools:     disableTools,
-		Mock:         mockFlag,
-		McpSessions:     mcpSessions,
-		McpConnectedIDs: mcpConnectedIDs,
-		OrchOpts:        orchOpts,
+		Mock:             mockFlag,
+		McpSessions:      mcpSessions,
+		McpConnectedIDs:  mcpConnectedIDs,
+		OrchOpts:         orchOpts,
 	}, nil
 }
 
@@ -370,5 +373,9 @@ func registerBuiltInTools(r *tools.Registry, workdir string, cfg config.Config, 
 		SerpAPIKey:  cfg.SerpAPIKey,
 		FallbackDDG: cfg.WebSearchFallbackDDG,
 	}))
-	r.Register(tools.NewTodoWrite(todoStore))
+	if todoTool, err := tools.NewTodoWrite(todoStore); err != nil {
+		panic(err)
+	} else {
+		r.Register(todoTool)
+	}
 }

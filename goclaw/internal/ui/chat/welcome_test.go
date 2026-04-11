@@ -52,16 +52,14 @@ func TestWelcomeDashboardLines_wrapsLongWorkdir(t *testing.T) {
 func TestWelcomeDashboardLines_wideTwoColumn(t *testing.T) {
 	th := DefaultTheme()
 	opt := WelcomeOptions{
-		Version:          "dev",
-		Subtitle:       "goclaw  ollama/llama3:latest  coordinator",
-		Workdir:          "C:\\Users\\Example\\Desktop\\go-code\\goclaw",
-		RecentSessionIDs: []string{"abc123def456"},
+		Version:  "dev",
+		Subtitle: "goclaw  ollama/llama3:latest  coordinator",
+		Workdir:  "C:\\Users\\Example\\Desktop\\go-code\\goclaw",
 	}
 	lines := WelcomeDashboardLines(th, opt, 100)
 	require.NotEmpty(t, lines)
 	joined := strings.Join(lines, "\n")
 	require.Contains(t, joined, "Tips for getting started")
-	require.Contains(t, joined, "Recent activity")
 	require.Contains(t, joined, "/help")
 }
 

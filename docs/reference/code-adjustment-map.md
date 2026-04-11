@@ -101,7 +101,7 @@ flowchart LR
 
 | Primary doc | Secondary | Code |
 |-------------|-----------|------|
-| `CLAUDE.md` (loop, tool contract, compaction) | [`tool-contract.md`](./tool-contract.md), [`context-compaction.md`](./context-compaction.md) | `orchestrator.go`, `request.go`, `tool_exec.go`, `compaction.go`, `base_system_prompt.md` |
+| `CLAUDE.md` (loop, tool contract, compaction) | [`tool-contract.md`](./tool-contract.md), [`context-compaction.md`](./context-compaction.md) | `orchestrator.go`, `request.go`, `task_model.go`, `task_model_llm.go`, `tool_exec.go`, `compaction.go`, `base_system_prompt.md` |
 
 **Adjustment:** Iteration/tool budgets, profile filtering, model-facing copy → `request.go` / `orchestrator.go`. User-language runtime hint → `user_language_hint.go` (called from `buildRequest`). Execution, permissions, hooks → `tool_exec.go`. Compaction → `compaction.go` + heuristic described in `CLAUDE.md`.
 
@@ -151,7 +151,7 @@ flowchart LR
 
 | Primary doc | Secondary | Code |
 |-------------|-----------|------|
-| `CLAUDE.md` (paths, merge order, keys) | [`usage.md`](../goclaw/usage.md), [`ollama-stack.md`](../goclaw/ollama-stack.md) | `config.go`, `loader.go` (includes `compaction_model`, `GOCLAW_COMPACTION_MODEL` → `CompactionModel`) |
+| `CLAUDE.md` (paths, merge order, keys) | [`usage.md`](../goclaw/usage.md), [`ollama-stack.md`](../goclaw/ollama-stack.md), [`model-routing.md`](../goclaw/model-routing.md), [`i18n.md`](../goclaw/i18n.md) | `config.go`, `loader.go` (`compaction_model`, `task_model_router`, `task_models`, `preferred_response_language`, related env vars) |
 
 **Adjustment:** New settings keys → `loader.go` + `Default()` + `usage.md` / `CLAUDE.md`. Config paths (`~/.goclaw`, `.goclaw`) are D7 — change only with explicit consensus and doc updates.
 

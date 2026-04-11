@@ -52,12 +52,45 @@ func TestClassifyUserLanguage(t *testing.T) {
 
 func TestUserLanguageSystemSuffix(t *testing.T) {
 	t.Parallel()
-	s := userLanguageSystemSuffix("hola")
+	cfg := config.Default()
+	s := userLanguageSystemSuffix("hola", cfg)
 	if s == "" || !strings.Contains(s, "Runtime user-language hint") || !strings.Contains(s, "Spanish") {
 		t.Fatalf("unexpected suffix: %q", s)
 	}
-	if userLanguageSystemSuffix("hello there") != "" {
-		t.Fatal("expected no hint for plain English")
+	if userLanguageSystemSuffix("ok", cfg) != "" {
+		t.Fatal("expected no hint for ambiguous short message")
+	}
+}
+
+func TestUserLanguageSystemSuffixPreferredOverrides(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.PreferredResponseLanguage = "es"
+	h := userLanguageSystemSuffix("hello friend how are you today", cfg)
+	if !strings.Contains(h, "Preferred response language") || !strings.Contains(h, "Spanish") {
+		t.Fatalf("want settings-driven Spanish hint: %q", h)
+	}
+}
+
+func TestUserLanguageSystemSuffixFromOSLocale(t *testing.T) {
+	// Do not use t.Parallel: mutates process environment.
+	t.Setenv("LC_ALL", "de_DE.UTF-8")
+	t.Setenv("LANG", "")
+	t.Setenv("LC_MESSAGES", "")
+	cfg := config.Default()
+	cfg.PreferredResponseLanguage = "from_os"
+	h := userLanguageSystemSuffix("z", cfg)
+	if !strings.Contains(h, "German") {
+		t.Fatalf("want locale fallback hint: %q", h)
+	}
+}
+
+func TestUserLanguageSystemSuffixWhatlanggoEnglish(t *testing.T) {
+	cfg := config.Default()
+	text := "The quick brown fox jumps over the lazy dog. This sentence is long enough for statistical detection and is clearly English."
+	h := userLanguageSystemSuffix(text, cfg)
+	if !strings.Contains(h, "English") || !strings.Contains(h, "latest user-written message") {
+		t.Fatalf("want whatlanggo English hint: %q", h)
 	}
 }
 

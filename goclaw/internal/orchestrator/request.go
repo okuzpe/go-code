@@ -17,6 +17,8 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	model := o.cfg.Model()
 	if o.profile.ModelOverride != "" {
 		model = o.profile.ModelOverride
+	} else if o.turnModel != "" {
+		model = o.turnModel
 	}
 
 	specs := o.tools.Specs()
@@ -69,7 +71,7 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		}
 	}
 
-	if hint := userLanguageSystemSuffix(lastUserNaturalText(o.session.Messages)); hint != "" {
+	if hint := userLanguageSystemSuffix(lastUserNaturalText(o.session.Messages), o.cfg); hint != "" {
 		sys = sys + hint
 	}
 

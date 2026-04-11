@@ -8,7 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Orchestrator: **runtime user-language hint** (Spanish / French / German / Portuguese) derived from the latest plain user message, appended to the system prompt to improve non-English replies with local models (`internal/orchestrator/user_language_hint.go`).
+- **Task model routing**: optional per-turn model selection via **`task_model_router`** (`off` \| `rules` \| `llm`), **`task_models`** role→model map, and optional **`task_model_router_model`** / env **`GOCLAW_TASK_MODEL_ROUTER`**, **`GOCLAW_TASK_MODEL_ROUTER_MODEL`**; CLI **`--task-model-router`**. See [model-routing.md](model-routing.md).
+- Orchestrator: **runtime user-language hints** — heuristic + **whatlanggo** when reliable + optional **`preferred_response_language`** (`auto` \| `from_os` \| `es` \| `en` \| `fr` \| `de` \| `pt`) and locale fallback (`internal/orchestrator/user_language_*.go`); see [i18n.md](i18n.md).
 - Config: optional **`compaction_model`** (and **`GOCLAW_COMPACTION_MODEL`**) so LLM-driven compaction (`llm_compaction`) can call a smaller/faster model than the main turn; see [`ollama-stack.md`](ollama-stack.md).
 - Project template under **`goclaw/.goclaw/`**: `settings.json` tuned for a local 7B/8B stack and custom agents `stack-base`, `stack-coder`, `stack-coordinator`, `stack-explore`.
 

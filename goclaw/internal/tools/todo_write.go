@@ -16,11 +16,11 @@ type TodoWriteTool struct {
 var _ Tool = (*TodoWriteTool)(nil)
 
 // NewTodoWrite returns a tool bound to store (must be non-nil).
-func NewTodoWrite(store *todos.Store) *TodoWriteTool {
+func NewTodoWrite(store *todos.Store) (*TodoWriteTool, error) {
 	if store == nil {
-		panic("goclaw/tools: NewTodoWrite(nil)")
+		return nil, fmt.Errorf("goclaw/tools: NewTodoWrite(nil)")
 	}
-	return &TodoWriteTool{store: store}
+	return &TodoWriteTool{store: store}, nil
 }
 
 func (t *TodoWriteTool) Name() string { return "todo_write" }

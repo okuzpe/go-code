@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 )
@@ -46,18 +47,39 @@ func (f *FocusRouter) Detach() {
 	f.mu.Unlock()
 }
 
-// Hint returns a short footer line for TUI/readline, or empty when focused on parent.
+// Hint returns a short footer line for TUI: worker focus, or parent when background workers exist.
 func (f *FocusRouter) Hint() string {
 	if f == nil {
 		return ""
 	}
-	id := f.Current()
-	if id == "" {
+	f.mu.Lock()
+	current := f.taskID
+	f.mu.Unlock()
+
+	if current != "" {
+		short := current
+		if len(short) > 12 {
+			short = short[:12] + "…"
+		}
+		return "Inside worker " + short + " — /back or /detach returns to coordinator"
+	}
+
+	list := ListInteractiveWorkers()
+	n := len(list)
+	if n == 0 {
 		return ""
 	}
-	short := id
-	if len(short) > 12 {
-		short = short[:12] + "…"
+	if n == 1 {
+		w := list[0]
+		prefix := strings.TrimSpace(w.TaskID)
+		if len(prefix) > 8 {
+			prefix = prefix[:8]
+		}
+		short := w.TaskID
+		if len(short) > 10 {
+			short = short[:10] + "…"
+		}
+		return fmt.Sprintf("Background worker %s — /focus %s · /workers", short, prefix)
 	}
-	return "Focus: worker " + short + " — /detach returns to coordinator"
+	return fmt.Sprintf("%d background workers — /workers · /focus <id prefix>", n)
 }

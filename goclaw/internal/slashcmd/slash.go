@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,13 +19,17 @@ import (
 
 // SlashEnv carries workspace paths and profile lookup for slash commands.
 type SlashEnv struct {
-	Workdir          string
-	UserConfigDir    string // ~/.goclaw — for /theme merge-write
-	Profs            map[string]agents.Profile
-	UserAgentsDir    string // for hot-reload of custom profiles on /profile
-	ProjectAgentsDir string
-	Doctor           func(ctx context.Context) (string, error)
-	// Focus is optional; when set, /focus and /detach route input to interactive workers.
+	Workdir       string
+	UserConfigDir string // ~/.goclaw — for /theme merge-write
+	// DisableInteractiveThemePick skips arrow-key /theme picker in plain REPL (e.g. when stdin is not a TTY).
+	DisableInteractiveThemePick bool
+	// DisableInteractiveAgentPick skips arrow-key /agents picker (fullscreen TUI uses its own overlay).
+	DisableInteractiveAgentPick bool
+	Profs                       map[string]agents.Profile
+	UserAgentsDir               string // for hot-reload of custom profiles on /profile
+	ProjectAgentsDir            string
+	Doctor                      func(ctx context.Context) (string, error)
+	// Focus is optional; when set, /focus (/in) and /detach (/back, /hub) route input to interactive workers.
 	Focus *coordinator.FocusRouter
 }
 
@@ -259,15 +265,30 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		if len(fields) < 2 {
 			return true, "", false, "", fmt.Errorf("usage: /profile <name>\nnames: %s", agents.ProfileListHint())
 		}
-		// Hot-reload: re-scan agent dirs so newly added *.md files are visible without restart.
-		profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
-		name := strings.ToLower(strings.TrimSpace(fields[1]))
-		p, ok := profs[name]
-		if !ok {
-			return true, "", false, "", fmt.Errorf("unknown profile %q; valid: %s", name, sortedProfileNames(profs))
+		msg, err := switchOrchestratorProfile(orch, env, fields[1])
+		if err != nil {
+			return true, "", false, "", err
 		}
-		orch.SetProfile(p)
-		return true, fmt.Sprintf("active profile: %s", p.Name), false, "", nil
+		return true, msg, false, "", nil
+
+	case "agents":
+		if orch == nil {
+			return true, "", false, "", fmt.Errorf("/agents requires a running agent")
+		}
+		profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
+		if len(fields) < 2 {
+			if out, used, ierr := tryInteractiveAgentsPick(env, orch); ierr != nil {
+				return true, "", false, "", ierr
+			} else if used {
+				return true, out, false, "", nil
+			}
+			return true, formatAgentsList(profs, orch.ProfileName()), false, "", nil
+		}
+		msg, err := switchOrchestratorProfile(orch, env, fields[1])
+		if err != nil {
+			return true, "", false, "", err
+		}
+		return true, msg, false, "", nil
 
 	case "plan":
 		wd := strings.TrimSpace(env.Workdir)
@@ -275,9 +296,10 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 			return true, "", false, "", fmt.Errorf("/plan: workspace directory not set")
 		}
 		if len(fields) < 2 {
-			return true, "", false, "", fmt.Errorf(`usage: /plan path | /plan init | /plan template
-path  — show default plan file path
-init  — create .goclaw/plan.md from template if missing
+			return true, "", false, "", fmt.Errorf(`usage: /plan path | /plan init | /plan save | /plan template
+path     — show default plan file path
+init     — create .goclaw/plan.md from template if missing
+save     — save last assistant message in this session to .goclaw/plan.md
 template — print the template to the terminal`)
 		}
 		sub := strings.ToLower(fields[1])
@@ -293,10 +315,34 @@ template — print the template to the terminal`)
 				return true, fmt.Sprintf("created %s", planfile.Path(wd)), false, "", nil
 			}
 			return true, fmt.Sprintf("already exists: %s", planfile.Path(wd)), false, "", nil
+		case "save":
+			if sc.Sess == nil || *sc.Sess == nil || len((*sc.Sess).Messages) == 0 {
+				return true, "", false, "", fmt.Errorf("/plan save: no messages in current session")
+			}
+			lastText := ""
+			for i := len((*sc.Sess).Messages) - 1; i >= 0; i-- {
+				m := (*sc.Sess).Messages[i]
+				if m.Role == "assistant" && strings.TrimSpace(m.Content) != "" {
+					lastText = m.Content
+					break
+				}
+			}
+			if lastText == "" {
+				return true, "", false, "", fmt.Errorf("/plan save: no assistant message in session to save")
+			}
+			planDir := filepath.Join(wd, planfile.Subdir)
+			if mkErr := os.MkdirAll(planDir, 0o700); mkErr != nil {
+				return true, "", false, "", fmt.Errorf("/plan save: mkdir: %w", mkErr)
+			}
+			planPath := planfile.Path(wd)
+			if writeErr := os.WriteFile(planPath, []byte(lastText+"\n"), 0o600); writeErr != nil {
+				return true, "", false, "", fmt.Errorf("/plan save: write: %w", writeErr)
+			}
+			return true, fmt.Sprintf("plan saved to %s\nRun /apply-plan to execute it.", planPath), false, "", nil
 		case "template":
 			return true, planfile.Template(), false, "", nil
 		default:
-			return true, "", false, "", fmt.Errorf("unknown /plan %q — use path, init, or template", fields[1])
+			return true, "", false, "", fmt.Errorf("unknown /plan %q — use path, init, save, or template", fields[1])
 		}
 
 	case "workers":
@@ -319,20 +365,20 @@ template — print the template to the terminal`)
 		}
 		return true, strings.TrimSuffix(b.String(), "\n"), false, "", nil
 
-	case "detach":
+	case "detach", "back", "parent", "hub":
 		if env.Focus == nil {
-			return true, "", false, "", fmt.Errorf("/detach: focus routing not enabled")
+			return true, "", false, "", fmt.Errorf("focus routing not enabled (/detach, /back)")
 		}
 		env.Focus.Detach()
 		return true, "focus: coordinator (parent session)", false, "", nil
 
-	case "focus":
+	case "focus", "in":
 		if env.Focus == nil {
-			return true, "", false, "", fmt.Errorf("/focus: focus routing not enabled")
+			return true, "", false, "", fmt.Errorf("focus routing not enabled (/focus, /in)")
 		}
 		if len(fields) < 2 {
-			return true, "", false, "", fmt.Errorf(`usage: /focus <task_id_prefix> | /focus parent
-parent — return to coordinator (same as /detach)
+			return true, "", false, "", fmt.Errorf(`usage: /focus <task_id_prefix> | /focus parent   (alias: /in)
+parent — return to coordinator (same as /back or /detach)
 use /workers to list interactive worker ids`)
 		}
 		arg := strings.TrimSpace(strings.ToLower(fields[1]))
@@ -346,7 +392,7 @@ use /workers to list interactive worker ids`)
 			return true, "", false, "", fmt.Errorf("no unique interactive worker matches prefix %q (try /workers)", prefix)
 		}
 		env.Focus.FocusTaskID(full)
-		return true, fmt.Sprintf("focus: worker %s (messages go to this worker until /detach)", full), false, "", nil
+		return true, fmt.Sprintf("focus: worker %s (input goes here until /back or /detach)", full), false, "", nil
 
 	case "apply-plan":
 		if orch == nil {
@@ -374,16 +420,8 @@ use /workers to list interactive worker ids`)
 		}
 		orch.SetProfile(gp)
 		msg := planfile.HandoffUserMessage(p, body)
-		resp, runErr := orch.Run(ctx, msg)
-		if runErr != nil {
-			return true, "", false, "", runErr
-		}
-		var b strings.Builder
-		b.WriteString("switched to profile general-purpose; loaded plan:\n")
-		b.WriteString(p)
-		b.WriteString("\n\n")
-		b.WriteString(resp)
-		return true, b.String(), false, "", nil
+		notice := fmt.Sprintf("switched to profile general-purpose; executing plan: %s", p)
+		return true, notice, false, msg, nil
 
 	default:
 		return true, "", false, "", fmt.Errorf("unknown command /%s — try /help", cmd)
@@ -394,7 +432,7 @@ use /workers to list interactive worker ids`)
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /memory   /theme   /workers   /focus   /detach   /compact   /profile   /quit\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /quit\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
 		b.WriteString(planfile.Path(workdir))
@@ -412,8 +450,8 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("  /plan path|init|template — workspace plan under .goclaw/plan.md\n")
 	b.WriteString("  /apply-plan [path] — run one execution turn from the plan\n")
 	b.WriteString("  /memory list | add | delete — durable memory under ~/.goclaw/memory/\n")
-	b.WriteString("  /workers, /focus <id>, /detach — interactive spawn_agent workers\n")
-	b.WriteString("  /compact, /edit, /profile, /theme, /new, /save, /session, /sessions, /quit\n")
+	b.WriteString("  /workers, /focus or /in <id>, /back or /detach — interactive spawn_agent workers\n")
+	b.WriteString("  /compact, /edit, /agents, /profile, /theme, /new, /save, /session, /sessions, /quit\n")
 	b.WriteString("Flags: --readline (line REPL), --no-tools, --session <id>, --profile <name>\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan file: ")
@@ -443,9 +481,10 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /memory list     — list memory files under ~/.goclaw/memory/\n")
 	b.WriteString("  /memory add <type> <name> <text...>  — types: user | feedback | project | reference\n")
 	b.WriteString("  /memory delete <file.md> — remove one file (see list for basename)\n")
-	b.WriteString("  /profile <name>  — switch agent profile (coordinator, general-purpose, explore, plan, …)\n")
+	b.WriteString("  /agents [name]   — list agents or switch (arrow picker when bare in readline TTY)\n")
+	b.WriteString("  /profile <name>  — switch agent profile (same as /agents <name>)\n")
 	b.WriteString("  /theme [preset]  — show or set TUI ui_appearance (restart TUI to apply)\n")
-	b.WriteString("  /workers — list interactive workers; /focus <task_id_prefix> — send input to worker; /detach — back to parent\n")
+	b.WriteString("  /workers — list workers; /focus or /in <prefix> — jump into worker; /back or /detach — return to coordinator\n")
 	b.WriteString("  /plan path|init|template — default plan path, create from template, or print template\n")
 	b.WriteString("  /apply-plan [path] — load plan file and run with general-purpose profile\n")
 	b.WriteString("  Ctrl+C           — exit (session is saved on shutdown)\n")
@@ -484,15 +523,8 @@ func previewRunes(s string, max int) string {
 
 // sortedProfileNames returns a comma-separated sorted list of profile names for error messages.
 func sortedProfileNames(profs map[string]agents.Profile) string {
-	names := make([]string, 0, len(profs))
-	for name := range profs {
-		names = append(names, name)
+	if len(profs) == 0 {
+		return ""
 	}
-	// inline sort to avoid importing "sort" if it isn't already present
-	for i := 1; i < len(names); i++ {
-		for j := i; j > 0 && names[j] < names[j-1]; j-- {
-			names[j], names[j-1] = names[j-1], names[j]
-		}
-	}
-	return strings.Join(names, ", ")
+	return strings.Join(agents.SortedKeys(profs), ", ")
 }

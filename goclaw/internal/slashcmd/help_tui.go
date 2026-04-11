@@ -28,7 +28,7 @@ func TUIHelpShortcutsText() string {
 	return strings.TrimSpace(`
 Shortcuts
   Enter              send message
-  Ctrl+J / Alt+Enter newline in the input
+  Shift+Enter / Alt+Enter   newline in the input
   / then type        filter slash commands (single-line input only)
   Tab                complete /command
   Esc                close this help panel (when open)

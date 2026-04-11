@@ -13,7 +13,7 @@ func TestSlashCommandTable_sortedByName(t *testing.T) {
 		names[i] = e.Name
 	}
 	require.True(t, sort.StringsAreSorted(names), "slashCommandTable must stay sorted by Name for stable UX")
-	require.Len(t, slashCommandTable, 19)
+	require.Len(t, slashCommandTable, 24)
 }
 
 func TestTUISlashSuggestions_singleLineOnly(t *testing.T) {

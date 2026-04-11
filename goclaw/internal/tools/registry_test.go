@@ -40,6 +40,17 @@ func TestRegistry_duplicatePanics(t *testing.T) {
 	})
 }
 
+func TestRegistry_addDuplicateReturnsError(t *testing.T) {
+	reg := New()
+	require.NoError(t, reg.Add(minimalTool{"beta"}))
+	require.Error(t, reg.Add(minimalTool{"beta"}))
+}
+
+func TestRegistry_addNilReturnsError(t *testing.T) {
+	reg := New()
+	require.Error(t, reg.Add(nil))
+}
+
 func TestRegistry_specs_sortedByName(t *testing.T) {
 	reg := New()
 	reg.Register(minimalTool{"zeta"})

@@ -24,6 +24,11 @@ func handleSlashTheme(env SlashEnv, fields []string) (handled bool, out string, 
 		if err != nil {
 			return true, "", false, "", fmt.Errorf("load config: %w", err)
 		}
+		if out, used, ierr := tryInteractiveThemePick(dir, env.Workdir, merged.UIAppearance, env.DisableInteractiveThemePick); ierr != nil {
+			return true, "", false, "", ierr
+		} else if used {
+			return true, out, false, "", nil
+		}
 		var b strings.Builder
 		b.WriteString("TUI appearance (ui_appearance): ")
 		b.WriteString(merged.UIAppearance)

@@ -24,6 +24,7 @@ type OllamaClient struct {
 	http *http.Client
 
 	// toolsUnsupportedOnce logs once when we fall back to chat-only after Ollama rejects tools.
+	// Use Debug (not Warn): writing stderr during Bubble Tea alt-screen corrupts the TUI on some terminals (e.g. Windows).
 	toolsUnsupportedOnce sync.Once
 }
 
@@ -131,7 +132,7 @@ func (c *OllamaClient) streamWithWireTools(ctx context.Context, req Request, out
 		msg := parseOllamaErrorMessage(errBody)
 		if wireTools && len(req.Tools) > 0 && ollamaReportsToolsUnsupported(resp.StatusCode, msg) {
 			c.toolsUnsupportedOnce.Do(func() {
-				slog.Warn("ollama: model does not support tool calling; using chat-only requests (no agent tools). For read_file/bash/etc. use a tools-capable model such as qwen2.5-coder:7b")
+				slog.Debug("ollama: model does not support tool calling; using chat-only requests (no agent tools). For read_file/bash/etc. use a tools-capable model such as qwen2.5-coder:7b")
 			})
 			return c.streamWithWireTools(ctx, req, out, false)
 		}

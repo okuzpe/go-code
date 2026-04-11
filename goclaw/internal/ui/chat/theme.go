@@ -220,27 +220,12 @@ func (t *Theme) AssistantPlainPrefix() string {
 	return fmt.Sprintf("%s %s", t.AssistantEmoji, t.AssistantName)
 }
 
-// FooterHint is the default hints row when idle (session id is shown separately in the TUI footer).
-func (t *Theme) FooterHint() string {
-	return t.FooterHintForWidth(0)
-}
-
-// FooterHintForWidth returns footer hints; when width is small, uses a shorter line so it does not
-// hard-wrap mid-token in narrow terminals.
-func (t *Theme) FooterHintForWidth(termWidth int) string {
-	const full = "Enter send  Ctrl+J newline  /help  Tab complete  Esc stop/quit  Ctrl+C quit  Ctrl+L clear"
-	const mid = "Enter  Ctrl+J newline  /help  Tab  Esc  Ctrl+C  Ctrl+L"
-	const short = "/help  Esc  Ctrl+C  Ctrl+L"
-	if termWidth <= 0 {
-		return full
+// AppearancePreset returns the ui_appearance key for this theme (e.g. "dark", "auto").
+func (t *Theme) AppearancePreset() string {
+	if t == nil {
+		return ""
 	}
-	if termWidth < 50 {
-		return short
-	}
-	if termWidth < 88 {
-		return mid
-	}
-	return full
+	return t.appearance
 }
 
 // SpinnerAccentStyle is Lip Gloss v2 (required by bubbles/v2 spinner when theme is nil).

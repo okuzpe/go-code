@@ -10,10 +10,9 @@ import (
 
 // WelcomeOptions configures the optional startup panel (Phase 2 parity with Claude Code home).
 type WelcomeOptions struct {
-	Version          string
-	Subtitle         string // e.g. provider · model · profile
-	Workdir          string
-	RecentSessionIDs []string
+	Version  string
+	Subtitle string // e.g. provider · model · profile
+	Workdir  string
 }
 
 // defaultWelcomeWrap is used when terminal width is not known yet (before first WindowSizeMsg).
@@ -148,24 +147,6 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	for _, ln := range wrapPlainWords("CLAUDE.md and .goclaw/ carry project context.", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
-
-	ruleLen := rightW - 1
-	if ruleLen < 8 {
-		ruleLen = 8
-	}
-	rightLines = append(rightLines, "")
-	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(strings.Repeat("─", ruleLen))))
-	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(section.Render("Recent activity")))
-	if len(opt.RecentSessionIDs) == 0 {
-		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render("No recent activity")))
-	} else {
-		for i, id := range opt.RecentSessionIDs {
-			if i >= 4 {
-				break
-			}
-			rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render("· "+shortenSessionID(id))))
-		}
-	}
 	rightLines = append(rightLines, "")
 
 	n := len(leftLines)
@@ -233,18 +214,6 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, _ int
 	body.WriteString(accent.Render("Tips"))
 	body.WriteString("\n")
 	body.WriteString(dim.Render("/help  /capabilities  ·  CLAUDE.md  ·  .goclaw/"))
-
-	if len(opt.RecentSessionIDs) > 0 {
-		body.WriteString("\n")
-		var parts []string
-		for i, id := range opt.RecentSessionIDs {
-			if i >= 3 {
-				break
-			}
-			parts = append(parts, shortenSessionID(id))
-		}
-		body.WriteString(dim.Render("Recent  " + strings.Join(parts, "  ")))
-	}
 
 	frame := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
@@ -481,12 +450,4 @@ func workspaceLooksLikeUserHome(workdir string) bool {
 		return false
 	}
 	return strings.EqualFold(filepath.Clean(w), filepath.Clean(h))
-}
-
-func shortenSessionID(id string) string {
-	id = strings.TrimSpace(id)
-	if len(id) <= 12 {
-		return id
-	}
-	return id[:8] + "…"
 }

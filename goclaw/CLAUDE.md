@@ -137,7 +137,9 @@ goclaw/
 │   │   ├── orchestrator.go      ← `Run` / `RunStreaming`, `Orchestrator`, options, session/profile helpers
 │   │   ├── compaction.go        ← token estimate, `maybeCompact`, `ForceCompact`
 │   │   ├── request.go           ← `buildRequest`, allowlist / ReadOnly tool filtering
-│   │   ├── user_language_hint.go ← runtime locale hint from latest user text (es/fr/de/pt)
+│   │   ├── user_language_hint.go ← merge heuristic + whatlanggo + preferred_response_language / from_os
+│   │   ├── user_language_locale.go ← LANG / LC_* primary tag fallback
+│   │   ├── user_language_whatlang.go ← whatlanggo reliable detection → es/en/fr/de/pt
 │   │   └── tool_exec.go         ← `executeTool`, permissions + hooks + registry dispatch
 │   ├── tools/
 │   │   ├── registry.go          ← interface Tool, Registry{Get/Register/Specs}
@@ -176,6 +178,9 @@ goclaw/
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_MODEL` | `qwen2.5-coder:14b` | Local model name when `provider=ollama` |
 | `GOCLAW_COMPACTION_MODEL` | — | Optional model id for LLM-driven compaction only; applied in `config.Default()` before settings merge; a `compaction_model` key in merged `settings.json` overrides; empty keeps main model for compaction |
+| `GOCLAW_TASK_MODEL_ROUTER` | — | Per-turn model routing: `off`, `rules` (heuristics), or `llm` (classifier call); needs non-empty **`task_models`** in merged settings; see [`docs/goclaw/model-routing.md`](../docs/goclaw/model-routing.md) |
+| `GOCLAW_TASK_MODEL_ROUTER_MODEL` | — | Model id for the `llm` router’s short JSON reply only; merged **`task_model_router_model`** overrides; empty uses **`ModelForCompaction()`** |
+| `GOCLAW_PREFERRED_RESPONSE_LANGUAGE` | — | Optional UI reply bias for runtime language hints: `auto`, `from_os`, or `es` / `en` / `fr` / `de` / `pt`; merged `preferred_response_language` in settings overrides |
 | `ANTHROPIC_API_KEY` | — | Required when `provider=anthropic` |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Override for tests (mock server) |
 | `GOCLAW_MODEL` | `claude-sonnet-4-6` | Anthropic model when `provider=anthropic`; short aliases `opus`, `sonnet`, `haiku` resolve to full ids (see [`internal/config/config.go`](internal/config/config.go)) |
@@ -197,7 +202,7 @@ goclaw/
 - Project: `.goclaw/settings.json` and `.goclaw/settings.local.json`
 - Local files are machine-local; do not commit project `settings.local.json`.
 
-**Merge order:** `config.Default()` (includes env vars) → user `settings.json` → project `settings.json` → user `settings.local.json` → project `settings.local.json` (each step overrides overlapping keys). Then **`GOCLAW_AGENT_PROFILE`** if set. Then CLI: **`goclaw --profile <name>`** overrides `agent_profile` last.
+**Merge order:** `config.Default()` (includes env vars) → user `settings.json` → project `settings.json` → user `settings.local.json` → project `settings.local.json` (each step overrides overlapping keys). Then **`GOCLAW_AGENT_PROFILE`** if set. Then CLI: **`goclaw --profile <name>`** overrides `agent_profile` last; non-empty **`--task-model-router`** overrides merged **`task_model_router`**.
 
 **Provider and model (summary):**
 
@@ -214,15 +219,16 @@ goclaw/
 - **`--tui`** — fullscreen Bubble Tea TUI (**default on a TTY**). Also **`GOCLAW_USE_TUI=1`** to force; **`GOCLAW_USE_TUI=0`** opts out to readline.
 - **`--readline`** — force line-at-a-time readline REPL (disables default TUI).
 - **`--mock`** — stream a canned assistant reply without calling the model (UI check; use with `GOCLAW_MOCK_FAST=1` in automation).
+- **`--task-model-router off|rules|llm`** — override per-turn **`task_models`** routing mode for this process (requires a configured **`task_models`** map when not `off`); see [`model-routing.md`](../docs/goclaw/model-routing.md).
 - **`--output-format text|json`** — for one-shot stdout: `text` prints the final assistant message; `json` prints `{"response","toolCalls"}` (same shape as `--json-output`).
 - **`--json-output`** — shorthand for `--output-format json` when piping one line on stdin (no REPL; incompatible with explicit **`--tui`** / **`GOCLAW_USE_TUI=1`**; set `tool_permissions` to `allow` for tools you need without prompts).
 - **`goclaw prompt "…"`** — same one-turn loop using argv instead of stdin; respects `--output-format` / `--json-output`.
 
-**REPL slash commands** (do not go to the LLM): `/help` or `help` or `?`; `/session`; `/sessions` (list saved ids); `/quit` or `/exit` (save and exit); `/new` (save current JSONL, start empty session); `/save` (persist without exit); `/compact` (force compaction); `/profile <name>` (switch profile without restart); `/workers` (interactive `spawn_agent` workers); `/focus <task_id_prefix>` or `/focus parent`; `/detach` (back to coordinator); `/plan path|init|template`; `/apply-plan [path]` (load plan file, switch to `general-purpose`, run one orchestrator turn); `/memory list|add|delete`. Hooks `SessionStart` / `SessionEnd` fire when the REPL starts and exits.
+**REPL slash commands** (do not go to the LLM): `/help` or `help` or `?`; `/session`; `/sessions` (list saved ids); `/quit` or `/exit` (save and exit); `/new` (save current JSONL, start empty session); `/save` (persist without exit); `/compact` (force compaction); `/profile <name>` (switch profile without restart); `/workers` (interactive `spawn_agent` workers); `/focus <task_id_prefix>` or `/focus parent`; `/detach` (back to coordinator); `/plan path|init|save|template`; `/apply-plan [path]` (load plan file, switch to `general-purpose`, stream one execution turn via modelSubmit); `/memory list|add|delete`. Hooks `SessionStart` / `SessionEnd` fire when the REPL starts and exits.
 
 **Default `agent_profile`:** `coordinator` (hub). Use `agent_profile`, `GOCLAW_AGENT_PROFILE`, or `--profile general-purpose` for direct coding with file tools on the main session.
 
-**Plan → execute:** save a Markdown plan at `.goclaw/plan.md` (see [`internal/planfile/planfile.go`](internal/planfile/planfile.go)); use `/apply-plan` to hand off to full tools. D16 coordinator sketch: [`coordinator.md`](../docs/goclaw/coordinator.md).
+**Plan → execute:** `/profile plan` → ask for a plan → `/plan save` (saves last assistant message to `.goclaw/plan.md`) → `/apply-plan` (streams execution via the normal REPL turn; switches to `general-purpose`). See [`internal/planfile/planfile.go`](internal/planfile/planfile.go). D16 coordinator sketch: [`coordinator.md`](../docs/goclaw/coordinator.md).
 
 Example **`settings.json`:**
 
@@ -244,7 +250,7 @@ Example **`settings.json`:**
 }
 ```
 
-Optional keys: **`compaction_model`** — model id for LLM summarization when **`llm_compaction`** is true (smaller/faster model than the main turn); **`web_search_backend`** (`ddg` \| `brave` \| `serpapi`), **`brave_search_api_key`**, **`serpapi_api_key`**, **`web_search_fallback_ddg`** (default true when using a non-DDG backend), **`token_count_mode`** (`auto` \| `heuristic`) for Anthropic compaction (`auto` uses the [count_tokens API](https://docs.anthropic.com/en/api/messages-count-tokens) once the heuristic estimate crosses 70% of the compaction threshold).
+Optional keys: **`preferred_response_language`** — `auto` (default), `from_os`, or `es` / `en` / `fr` / `de` / `pt` (steers runtime user-language hint; see [`docs/goclaw/i18n.md`](../docs/goclaw/i18n.md)); **`compaction_model`** — model id for LLM summarization when **`llm_compaction`** is true (smaller/faster model than the main turn); **`task_model_router`** / **`task_models`** / **`task_model_router_model`** — per-turn model selection (`off` \| `rules` \| `llm`); see [`model-routing.md`](../docs/goclaw/model-routing.md); **`web_search_backend`** (`ddg` \| `brave` \| `serpapi`), **`brave_search_api_key`**, **`serpapi_api_key`**, **`web_search_fallback_ddg`** (default true when using a non-DDG backend), **`token_count_mode`** (`auto` \| `heuristic`) for Anthropic compaction (`auto` uses the [count_tokens API](https://docs.anthropic.com/en/api/messages-count-tokens) once the heuristic estimate crosses 70% of the compaction threshold).
 
 **Open-weight stack (Ollama):** see [`docs/goclaw/ollama-stack.md`](../docs/goclaw/ollama-stack.md) for project template agents under `goclaw/.goclaw/agents/` and `OLLAMA_MAX_LOADED_MODELS` notes.
 

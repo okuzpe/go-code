@@ -31,6 +31,10 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 		return "doctor: no runtime"
 	}
 	cfg := rt.Cfg
+	taskModelsLine := "task_models: (none)"
+	if n := len(cfg.TaskModels); n > 0 {
+		taskModelsLine = fmt.Sprintf("task_models: %d role(s) mapped", n)
+	}
 	lines := []string{
 		"goclaw doctor",
 		"",
@@ -38,6 +42,8 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 		fmt.Sprintf("session:   %s", rt.Sess.ID),
 		fmt.Sprintf("provider:  %s", cfg.Provider),
 		fmt.Sprintf("model:     %s", cfg.Model()),
+		fmt.Sprintf("task_model_router: %s", config.NormalizeTaskModelRouter(cfg.TaskModelRouter)),
+		taskModelsLine,
 		fmt.Sprintf("profile:   %s", rt.Profile.Name),
 		fmt.Sprintf("tools:     %s", enabledDisabled(!rt.DisableTools)),
 	}

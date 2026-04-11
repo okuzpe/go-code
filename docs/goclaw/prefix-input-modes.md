@@ -12,7 +12,7 @@
 | `@` | File path picker / mentions | No picker; `read_file` / `glob` / paste paths |
 | `&` | Background task | Coordinator `spawn_agent` + `/focus` / `/detach` |
 | `/btw` | Side thread without clearing main context | No equivalent; use `/new` or a separate session |
-| `\\` + Enter | Hard newline in single-line UI | TUI: `Ctrl+J` / `Alt+Enter`; readline: configured newline |
+| `\\` + Enter | Hard newline in single-line UI | TUI: `Shift+Enter` / `Alt+Enter`; readline: configured newline |
 
 ## Why this is a separate epic
 

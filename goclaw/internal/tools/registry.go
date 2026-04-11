@@ -3,6 +3,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"sort"
 )
 
@@ -32,10 +33,21 @@ func New() *Registry {
 
 // Register adds a tool. Panics on duplicate names.
 func (r *Registry) Register(t Tool) {
+	if err := r.Add(t); err != nil {
+		panic(err.Error())
+	}
+}
+
+// Add adds a tool and returns an error if it already exists or if the tool is nil.
+func (r *Registry) Add(t Tool) error {
+	if t == nil {
+		return fmt.Errorf("goclaw/tools: nil tool")
+	}
 	if _, exists := r.tools[t.Name()]; exists {
-		panic("goclaw/tools: duplicate tool name: " + t.Name())
+		return fmt.Errorf("goclaw/tools: duplicate tool name: %s", t.Name())
 	}
 	r.tools[t.Name()] = t
+	return nil
 }
 
 // Get looks up a tool by name.

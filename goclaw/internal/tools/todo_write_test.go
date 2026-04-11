@@ -13,7 +13,8 @@ import (
 
 func TestTodoWriteToolExecute(t *testing.T) {
 	st := todos.NewStore()
-	tw := NewTodoWrite(st)
+	tw, err := NewTodoWrite(st)
+	require.NoError(t, err)
 	raw := `{"merge":false,"todos":[{"id":"1","content":"ship feature","status":"pending"}]}`
 	res, err := tw.Execute(context.Background(), raw)
 	if err != nil {
@@ -29,7 +30,8 @@ func TestTodoWriteToolExecute(t *testing.T) {
 
 func TestTodoWriteRejectsTooManyItems(t *testing.T) {
 	st := todos.NewStore()
-	tw := NewTodoWrite(st)
+	tw, err := NewTodoWrite(st)
+	require.NoError(t, err)
 	todosJSON := make([]map[string]any, todos.MaxItems+1)
 	for i := 0; i < len(todosJSON); i++ {
 		todosJSON[i] = map[string]any{
@@ -48,7 +50,8 @@ func TestTodoWriteRejectsTooManyItems(t *testing.T) {
 
 func TestTodoWriteRejectsContentOverRuneLimit(t *testing.T) {
 	st := todos.NewStore()
-	tw := NewTodoWrite(st)
+	tw, err := NewTodoWrite(st)
+	require.NoError(t, err)
 	long := strings.Repeat("a", todos.MaxContentRunes+1)
 	payload, err := json.Marshal(map[string]any{
 		"merge": false,
@@ -62,4 +65,3 @@ func TestTodoWriteRejectsContentOverRuneLimit(t *testing.T) {
 	require.True(t, res.IsError)
 	require.Contains(t, res.Content, "500")
 }
-

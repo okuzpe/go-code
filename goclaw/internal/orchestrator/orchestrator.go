@@ -92,19 +92,23 @@ func WithInputTokenCounter(c llm.InputTokenCounter) Option {
 
 // Orchestrator wires all subsystems and drives the agent loop.
 type Orchestrator struct {
-	cfg       config.Config
-	llm       llm.Client
-	session   *session.Session
-	tools     *tools.Registry
-	perms     *permissions.Policy
-	hooks     *hooks.Registry
-	profile   agents.Profile
-	approver  ToolApprover
+	cfg               config.Config
+	llm               llm.Client
+	session           *session.Session
+	tools             *tools.Registry
+	perms             *permissions.Policy
+	hooks             *hooks.Registry
+	profile           agents.Profile
+	approver          ToolApprover
 	mem               *memory.Store
 	afterTool         AfterToolHook
 	skillsPrompt      string
 	todoStore         *todos.Store
 	inputTokenCounter llm.InputTokenCounter
+
+	// turnModel is the resolved model id for the current user turn (tool iterations reuse it).
+	// Empty means use cfg.Model() in buildRequest. Cleared after runUserTurn completes.
+	turnModel string
 }
 
 // New creates an Orchestrator with the provided subsystems.
@@ -151,6 +155,9 @@ func (o *Orchestrator) RunStreamingToolTrace(ctx context.Context, userMessage st
 
 func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink StreamSink, toolTrace *[]JSONToolCall) (string, error) {
 	o.session.Add("user", userMessage)
+
+	o.prepareTurnModel(ctx, userMessage)
+	defer func() { o.turnModel = "" }()
 
 	toolCalls := 0
 

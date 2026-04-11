@@ -15,6 +15,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/memory"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/permissions"
+	"github.com/okuzpe/goclaw/internal/planfile"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/todos"
 	"github.com/okuzpe/goclaw/internal/tools"
@@ -66,6 +67,7 @@ func TestHandleSlashHelp(t *testing.T) {
 	}
 	if !strings.Contains(out, "abc123") || !strings.Contains(out, "/memory") || !strings.Contains(out, "/new") ||
 		!strings.Contains(out, "/sessions") || !strings.Contains(out, "/quit") ||
+		!strings.Contains(out, "/agents") ||
 		!strings.Contains(out, "/theme") ||
 		!strings.Contains(out, "/apply-plan") || !strings.Contains(out, "/plan path") ||
 		!strings.Contains(out, "/capabilities") ||
@@ -186,6 +188,96 @@ func TestHandleSlashPlanPath(t *testing.T) {
 	if err != nil || !handled || !strings.Contains(out, ".goclaw") || !strings.Contains(out, "plan.md") {
 		t.Fatalf("plan path: handled=%v err=%v out=%q", handled, err, out)
 	}
+}
+
+func TestHandleSlashApplyPlanModelSubmit(t *testing.T) {
+	wd := t.TempDir()
+	dir := filepath.Join(wd, ".goclaw")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	planContent := "# Test Plan\n\n## Steps\n1. Do something\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "plan.md"), []byte(planContent), 0o600))
+
+	s := session.New()
+	sp := &s
+	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), agents.All()["plan"])
+	env := SlashEnv{Workdir: wd, Profs: agents.All()}
+	sc := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}
+
+	handled, out, quit, modelSubmit, err := HandleSlash(context.Background(), sc, "/apply-plan")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.False(t, quit)
+	require.Contains(t, out, "general-purpose")
+	require.Contains(t, out, "plan.md")
+	require.Contains(t, modelSubmit, "Execute it step by step")
+	require.Contains(t, modelSubmit, planContent)
+	require.Equal(t, "general-purpose", orch.ProfileName())
+}
+
+func TestHandleSlashApplyPlanMissingFile(t *testing.T) {
+	wd := t.TempDir()
+	s := session.New()
+	sp := &s
+	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), agents.All()["plan"])
+	env := SlashEnv{Workdir: wd, Profs: agents.All()}
+	sc := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}
+
+	handled, _, _, _, err := HandleSlash(context.Background(), sc, "/apply-plan")
+	require.True(t, handled)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "plan file")
+}
+
+func TestHandleSlashPlanSave(t *testing.T) {
+	wd := t.TempDir()
+	s := session.New()
+	s.Add("user", "make me a plan")
+	s.AddAssistant("# My Plan\n\n## Steps\n1. Do X\n2. Do Y\n\nRun `/plan save` to save this plan.", nil)
+	sp := &s
+	env := SlashEnv{Workdir: wd, Profs: agents.All()}
+	sc := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: nil, Sess: sp, Store: nil}
+
+	handled, out, _, _, err := HandleSlash(context.Background(), sc, "/plan save")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Contains(t, out, "plan saved")
+	require.Contains(t, out, "/apply-plan")
+
+	written, readErr := os.ReadFile(planfile.Path(wd))
+	require.NoError(t, readErr)
+	require.Contains(t, string(written), "# My Plan")
+}
+
+func TestHandleSlashPlanSaveNoMessage(t *testing.T) {
+	wd := t.TempDir()
+	s := session.New()
+	sp := &s
+	env := SlashEnv{Workdir: wd, Profs: agents.All()}
+	sc := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: nil, Sess: sp, Store: nil}
+
+	handled, _, _, _, err := HandleSlash(context.Background(), sc, "/plan save")
+	require.True(t, handled)
+	require.Error(t, err)
+}
+
+func TestHandleSlashAgents(t *testing.T) {
+	s := session.New()
+	sp := &s
+	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), agents.All()["plan"])
+	env := SlashEnv{Workdir: t.TempDir(), Profs: agents.All(), UserAgentsDir: t.TempDir(), ProjectAgentsDir: t.TempDir()}
+	ctx := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}
+
+	handled, out, _, _, err := HandleSlash(context.Background(), ctx, "/agents")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Contains(t, out, "coordinator")
+	require.Contains(t, out, "explore")
+
+	handled, out, _, _, err = HandleSlash(context.Background(), ctx, "/agents explore")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Contains(t, out, "explore")
+	require.Equal(t, "explore", orch.ProfileName())
 }
 
 func TestHandleSlashProfile(t *testing.T) {

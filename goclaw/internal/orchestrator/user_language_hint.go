@@ -5,6 +5,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/llm"
 )
 
@@ -29,21 +30,68 @@ func lastUserNaturalText(msgs []llm.Message) string {
 	return ""
 }
 
-// userLanguageSystemSuffix appends a short, English-language hint so local models align replies
-// with the user's language even though the rest of the system prompt is English.
-func userLanguageSystemSuffix(latestUserText string) string {
+// userLanguageSystemSuffix appends a short English-meta hint so local models align reply language.
+// cfg.PreferredResponseLanguage: auto | from_os | es | en | fr | de | pt (see config.NormalizePreferredResponseLanguage).
+func userLanguageSystemSuffix(latestUserText string, cfg config.Config) string {
 	latestUserText = strings.TrimSpace(latestUserText)
-	if latestUserText == "" {
-		return ""
-	}
-	if looksLikeStructuredToolInput(latestUserText) {
+	pref := config.NormalizePreferredResponseLanguage(cfg.PreferredResponseLanguage)
+
+	if latestUserText != "" && looksLikeStructuredToolInput(latestUserText) {
 		return ""
 	}
 
-	switch classifyUserLanguage(latestUserText) {
+	if pref != "auto" && pref != "from_os" {
+		if latestUserText == "" {
+			return ""
+		}
+		return hintForPreferredTag(pref)
+	}
+
+	if latestUserText == "" {
+		return ""
+	}
+
+	tag := classifyUserLanguage(latestUserText)
+	if tag == "" {
+		tag = whatlanggoToTag(latestUserText)
+	}
+	if tag == "" && pref == "from_os" {
+		tag = localePrimaryTagFromEnv()
+	}
+
+	return hintForDetectedTag(tag)
+}
+
+func hintForPreferredTag(tag string) string {
+	switch tag {
+	case "es":
+		return runtimeUserLanguageHintHeader +
+			"Preferred response language (goclaw settings): Spanish. Use Spanish for conversational prose unless RESPONSE LANGUAGE says otherwise."
+	case "en":
+		return runtimeUserLanguageHintHeader +
+			"Preferred response language (goclaw settings): English. Use English for conversational prose unless RESPONSE LANGUAGE says otherwise."
+	case "fr":
+		return runtimeUserLanguageHintHeader +
+			"Preferred response language (goclaw settings): French. Use French for conversational prose unless RESPONSE LANGUAGE says otherwise."
+	case "de":
+		return runtimeUserLanguageHintHeader +
+			"Preferred response language (goclaw settings): German. Use German for conversational prose unless RESPONSE LANGUAGE says otherwise."
+	case "pt":
+		return runtimeUserLanguageHintHeader +
+			"Preferred response language (goclaw settings): Portuguese. Use Portuguese for conversational prose unless RESPONSE LANGUAGE says otherwise."
+	default:
+		return ""
+	}
+}
+
+func hintForDetectedTag(tag string) string {
+	switch tag {
 	case "es":
 		return runtimeUserLanguageHintHeader +
 			"The latest user-written message reads as Spanish. Reply in Spanish for all conversational prose (per RESPONSE LANGUAGE)."
+	case "en":
+		return runtimeUserLanguageHintHeader +
+			"The latest user-written message reads as English. Reply in English for all conversational prose (per RESPONSE LANGUAGE)."
 	case "fr":
 		return runtimeUserLanguageHintHeader +
 			"The latest user-written message reads as French. Reply in French for all conversational prose (per RESPONSE LANGUAGE)."

@@ -14,19 +14,21 @@ The previous long-form specification (sections §1–§8, design exercises, mark
 
 ```mermaid
 flowchart TB
-  CLI[goclaw cmd] --> App[internal/app]
+  CMD[cmd/goclaw] --> CliPkg[internal/cli]
+  CliPkg --> App[internal/app]
   App --> Orch[internal/orchestrator]
   Orch --> LLM[internal/llm]
   Orch --> Tools[internal/tools]
   Tools --> MCP[internal/mcp]
 ```
 
-**Docs ↔ code layers:** when you change a subsystem, see **[reference/code-adjustment-map.md](./reference/code-adjustment-map.md)** for which Markdown files to read and which packages to edit (and [`docs-map.md`](./docs-map.md) for the full file index).
+**Docs ↔ code layers:** `cmd/goclaw/main.go` wires **`cli.NewRootCmd`** (Cobra in `internal/cli`) into `internal/app` (`RunChat`, `RunPrompt`, `RunListSessions`, `RunDoctor`). When you change a subsystem, see **[reference/code-adjustment-map.md](./reference/code-adjustment-map.md)** for which Markdown files to read and which packages to edit (and [`docs-map.md`](./docs-map.md) for the full file index).
 
 ## Changelog
 
 | Date | Change |
 |------|--------|
+| 2026-04-11 | High-level diagram: added [`internal/cli`](../goclaw/internal/cli/) between `cmd/goclaw` and `internal/app`; note on `main.go` wiring and link to [code-adjustment-map.md](./reference/code-adjustment-map.md) for full graph. |
 | 2026-04-10 | Replaced with English hub; prior content moved to [architecture-legacy-es.md](./archive/architecture-legacy-es.md). |
 | 2026-04-10 | Removed duplicate “Where to read” table; single index is [docs-map.md](./docs-map.md). |
 | 2026-04-10 | Link to [code-adjustment-map.md](./reference/code-adjustment-map.md) for docs-to-package adjustment routes. |

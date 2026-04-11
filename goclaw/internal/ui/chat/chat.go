@@ -71,6 +71,27 @@ type Model struct {
 	helpOpen     bool
 	helpFullText string
 	appVersion   string
+
+	// Interactive /theme overlay (arrow keys + Enter).
+	themePickOpen     bool
+	themePickCursor   int
+	themePickFullText string
+	userConfigDir     string
+	workdir           string
+
+	// Interactive /agents overlay (arrow keys + Enter).
+	agentPickOpen      bool
+	agentPickCursor    int
+	agentPickFullText  string
+	userAgentsDir      string
+	projectAgentsDir   string
+	activeAgentProfile string
+
+	// footerRendered is built once in layout() so View() joins the same string as used for height math
+	// (avoids footer/sizing mismatch if textarea state differed between two footerView calls).
+	footerRendered string
+	// lastTranscript avoids redundant viewport.SetContent when only the footer/spinner changed (reduces flicker).
+	lastTranscript string
 }
 
 type toolTickMsg struct{}
@@ -108,6 +129,13 @@ type Options struct {
 	Theme     *Theme
 	// Workdir when set enables the cwd-aware session intro before "Ready."
 	Workdir string
+	// UserConfigDir is ~/.goclaw; when set, /theme opens an interactive picker in the fullscreen TUI.
+	UserConfigDir string
+	// UserAgentsDir and ProjectAgentsDir enable /agents picker (merged with built-ins).
+	UserAgentsDir    string
+	ProjectAgentsDir string
+	// ActiveAgentProfile seeds the /agents picker cursor (typically the session start profile).
+	ActiveAgentProfile string
 	// Welcome optional bordered panel before the title (version + tips).
 	Welcome WelcomeOptions
 	// FocusLine optional; when non-nil, its return value is shown in the footer (e.g. worker focus).
@@ -164,7 +192,7 @@ const inputMaxHeight = 6
 const maxSlashSuggestRows = 5
 
 func placeholderForWidth(termWidth int) string {
-	const full = "Ask anything…  /help for commands  Ctrl+J newline"
+	const full = "Ask anything…  /help · Shift+Enter newline"
 	const narrow = "Ask anything…  /help"
 	if termWidth > 0 && termWidth < 60 {
 		return narrow
@@ -192,9 +220,10 @@ func New(ctx context.Context, opts Options) Model {
 	in.CharLimit = 0 // no char limit
 	in.Focus()
 
-	// Override key bindings: Enter submits, Alt+Enter / Ctrl+J inserts newline
+	// Enter is handled in handleKeyString (submit). Newline: Shift+Enter / Alt+Enter.
+	// Ctrl+J is omitted — many Windows/Git Bash terminals swallow it before Bubble Tea sees it.
 	km := in.KeyMap
-	km.InsertNewline.SetKeys("ctrl+j", "alt+enter")
+	km.InsertNewline.SetKeys("shift+enter", "alt+enter")
 	in.KeyMap = km
 
 	spin := spinner.New(
@@ -214,6 +243,11 @@ func New(ctx context.Context, opts Options) Model {
 		sessionID:           strings.TrimSpace(opts.SessionID),
 		focusLine:           opts.FocusLine,
 		appVersion:          strings.TrimSpace(opts.Welcome.Version),
+		userConfigDir:       strings.TrimSpace(opts.UserConfigDir),
+		workdir:             strings.TrimSpace(opts.Workdir),
+		userAgentsDir:       strings.TrimSpace(opts.UserAgentsDir),
+		projectAgentsDir:    strings.TrimSpace(opts.ProjectAgentsDir),
+		activeAgentProfile:  strings.TrimSpace(opts.ActiveAgentProfile),
 	}
 	if strings.TrimSpace(opts.Welcome.Version) != "" {
 		if dash := WelcomeDashboardLines(th, opts.Welcome, 0); len(dash) > 0 {
@@ -256,6 +290,49 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, sc = m.spinner.Update(msg)
 		return m, sc
 	case tea.KeyMsg:
+		if m.agentPickOpen {
+			switch msg.String() {
+			case "up":
+				m.moveAgentPickCursor(-1)
+				return m, nil
+			case "down":
+				m.moveAgentPickCursor(1)
+				return m, nil
+			case "enter":
+				m.applyAgentPick()
+				return m, nil
+			case "esc":
+				m.closeAgentPicker()
+				return m, nil
+			case "ctrl+c":
+				return m, tea.Quit
+			default:
+				return m, nil
+			}
+		}
+		if m.themePickOpen {
+			switch msg.String() {
+			case "up":
+				m.moveThemePickCursor(-1)
+				return m, nil
+			case "down":
+				m.moveThemePickCursor(1)
+				return m, nil
+			case "enter":
+				out := m.applyThemePick()
+				if strings.TrimSpace(out) != "" {
+					m.appendSystem(out)
+				}
+				return m, nil
+			case "esc":
+				m.closeThemePicker()
+				return m, nil
+			case "ctrl+c":
+				return m, tea.Quit
+			default:
+				return m, nil
+			}
+		}
 		if m.helpOpen {
 			switch msg.String() {
 			case "esc":
@@ -279,6 +356,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncInputPlaceholder()
 		m.rebuildWelcomeForWidth()
 		m.reflowTitleSeparator()
+		if m.themePickOpen {
+			m.refreshThemePickOverlay()
+		}
+		if m.agentPickOpen {
+			m.refreshAgentPickOverlay()
+		}
 		m.layout()
 		var vcmd tea.Cmd
 		m.viewport, vcmd = m.viewport.Update(msg)
@@ -305,6 +388,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinnerActive = true
 		return m, func() tea.Msg { return m.spinner.Tick() }
 	case assistantDeltaMsg:
+		if !m.streaming {
+			// Drop stray deltas after completion (e.g. race with batching); avoids a second assistant row.
+			return m, nil
+		}
 		m.spinnerActive = false
 		if m.assistantPlaceholder {
 			m.stripAssistantPlaceholderLine()
@@ -377,7 +464,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
-	if !m.helpOpen {
+	if !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
 		m.input, cmd = m.input.Update(msg)
 		cmds = append(cmds, cmd)
 		// Dynamic input height: grow textarea as user types more lines (up to inputMaxHeight).
@@ -458,6 +545,14 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 		m.resizeInput() // shrink back to 1 line after submit
 		m.appendSeparator()
 		m.appendUser(txt)
+		if bareThemeSlashInput(txt) && strings.TrimSpace(m.userConfigDir) != "" {
+			m.openThemePicker()
+			return m, nil, true
+		}
+		if bareAgentsSlashInput(txt) && m.slashHandle != nil {
+			m.openAgentPicker()
+			return m, nil, true
+		}
 		if m.slashHandle != nil {
 			handled, out, quit, modelSubmit, err := m.slashHandle(txt)
 			if handled {
@@ -514,6 +609,7 @@ func (m *Model) resizeInput() {
 // was already at the bottom, scroll stays pinned to the latest output.
 func (m *Model) setLinesContent(stickToBottom bool) {
 	joined := strings.Join(m.lines, "\n")
+	m.lastTranscript = joined
 	stick := stickToBottom || m.viewport.AtBottom()
 	m.viewport.SetContent(joined)
 	if stick {
@@ -523,6 +619,14 @@ func (m *Model) setLinesContent(stickToBottom bool) {
 
 func (m *Model) syncInputPlaceholder() {
 	m.input.Placeholder = placeholderForWidth(m.width)
+}
+
+func (m *Model) footerBrand() string {
+	v := strings.TrimSpace(m.appVersion)
+	if v == "" {
+		return "goclaw"
+	}
+	return "goclaw v" + v
 }
 
 func (m *Model) footerPrimaryStatus() string {
@@ -546,9 +650,13 @@ func (m *Model) footerPrimaryStatus() string {
 }
 
 func (m *Model) View() tea.View {
+	// Keep viewport height in sync with the footer on every frame. Footer line count changes when
+	// the spinner/status row appears or disappears; if we only relied on layout() from resize/typing,
+	// the transcript viewport could be sized for the wrong footer and clip or overlap the UI.
+	m.layout()
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		m.viewport.View(),
-		m.footerView(),
+		m.footerRendered,
 	)
 	v := tea.NewView(content)
 	v.AltScreen = true
@@ -601,7 +709,9 @@ func (m *Model) reflowTitleSeparator() {
 }
 
 func (m *Model) layout() {
-	footerH := lipgloss.Height(m.footerView())
+	foot := m.footerView()
+	m.footerRendered = foot
+	footerH := lipgloss.Height(foot)
 	h := m.height - footerH
 	if h < 1 {
 		h = 1
@@ -610,16 +720,35 @@ func (m *Model) layout() {
 	m.viewport.SetHeight(h)
 	if m.helpOpen {
 		m.viewport.SetContent(m.helpFullText)
+		m.lastTranscript = m.helpFullText
 		return
 	}
-	stick := m.viewport.AtBottom()
-	m.viewport.SetContent(strings.Join(m.lines, "\n"))
-	if stick {
-		m.viewport.GotoBottom()
+	if m.agentPickOpen {
+		m.viewport.SetContent(m.agentPickFullText)
+		m.lastTranscript = m.agentPickFullText
+		return
+	}
+	if m.themePickOpen {
+		m.viewport.SetContent(m.themePickFullText)
+		m.lastTranscript = m.themePickFullText
+		return
+	}
+	joined := strings.Join(m.lines, "\n")
+	if joined != m.lastTranscript {
+		stick := m.viewport.AtBottom()
+		m.viewport.SetContent(joined)
+		m.lastTranscript = joined
+		if stick {
+			m.viewport.GotoBottom()
+		}
 	}
 }
 
 func (m *Model) openHelpOverlay(replBody string) {
+	m.themePickOpen = false
+	m.themePickFullText = ""
+	m.agentPickOpen = false
+	m.agentPickFullText = ""
 	var b strings.Builder
 	if m.appVersion != "" {
 		b.WriteString("goclaw · v")
@@ -650,26 +779,56 @@ func (m *Model) footerView() string {
 		th = DefaultTheme()
 	}
 	if m.helpOpen {
-		return th.FooterDim.Render("Esc close help  ↑↓ PgUp/PgDn scroll  Ctrl+C quit")
+		line := "Esc · scroll · Ctrl+C quit"
+		if m.width > 4 {
+			return th.FooterDim.Width(m.width).Render(line)
+		}
+		return th.FooterDim.Render(line)
+	}
+	if m.themePickOpen {
+		line := "↑↓ · Enter apply · Esc cancel · Ctrl+C quit"
+		if m.width > 4 {
+			return th.FooterDim.Width(m.width).Render(line)
+		}
+		return th.FooterDim.Render(line)
+	}
+	if m.agentPickOpen {
+		line := "↑↓ · Enter apply · Esc cancel · Ctrl+C quit"
+		if m.width > 4 {
+			return th.FooterDim.Width(m.width).Render(line)
+		}
+		return th.FooterDim.Render(line)
 	}
 
+	fw := m.width
 	primary := strings.TrimSpace(m.footerPrimaryStatus())
-	hints := th.FooterHintForWidth(m.width)
-	session := footerline.HintsWithSession(hints, m.sessionID, m.width)
+	session := footerline.HintsWithSession(m.footerBrand(), m.sessionID, m.width)
 
 	var b strings.Builder
 
 	// Show primary status (spinner/thinking) only when active; skip the extra line when idle.
 	if primary != "" {
-		b.WriteString(th.FooterDim.Render(primary))
+		if fw > 4 {
+			b.WriteString(th.FooterDim.Width(fw).Render(primary))
+		} else {
+			b.WriteString(th.FooterDim.Render(primary))
+		}
 		b.WriteString("\n")
 	}
-	b.WriteString(th.FooterDim.Render(session))
+	if fw > 4 {
+		b.WriteString(th.FooterDim.Width(fw).Render(session))
+	} else {
+		b.WriteString(th.FooterDim.Render(session))
+	}
 
 	if m.focusLine != nil {
 		if fh := strings.TrimSpace(m.focusLine()); fh != "" {
 			b.WriteString("\n")
-			b.WriteString(th.FooterDim.Render(fh))
+			if fw > 4 {
+				b.WriteString(th.FooterDim.Width(fw).Render(fh))
+			} else {
+				b.WriteString(th.FooterDim.Render(fh))
+			}
 		}
 	}
 
@@ -693,7 +852,7 @@ func (m *Model) footerView() string {
 
 // slashSuggestStripView renders filtered /commands above the input (single-line buffer only).
 func (m *Model) slashSuggestStripView() string {
-	if m.helpOpen || m.streaming || m.pending != nil {
+	if m.helpOpen || m.themePickOpen || m.agentPickOpen || m.streaming || m.pending != nil {
 		return ""
 	}
 	raw := m.input.Value()
@@ -706,6 +865,10 @@ func (m *Model) slashSuggestStripView() string {
 		th = DefaultTheme()
 	}
 	ruleW := m.width
+	const maxPickRule = 52
+	if ruleW > maxPickRule {
+		ruleW = maxPickRule
+	}
 	maxW := m.width - 4
 	if maxW < 40 {
 		maxW = m.width
@@ -864,10 +1027,26 @@ func (m *Model) stripAssistantPlaceholderLine() {
 	last := m.lines[len(m.lines)-1]
 	plain := stripANSI(last)
 	pfx := th.AssistantPlainPrefix()
-	if strings.HasPrefix(plain, pfx) && strings.Contains(plain, "…") {
+	if isAssistantDimPlaceholderLine(plain, pfx) {
 		m.lines = m.lines[:len(m.lines)-1]
 		m.setLinesContent(false)
 	}
+}
+
+// isAssistantDimPlaceholderLine reports whether plain text is our dim "…" (or ASCII "...") assistant row.
+func isAssistantDimPlaceholderLine(plain, assistantPlainPrefix string) bool {
+	if !strings.HasPrefix(plain, assistantPlainPrefix) {
+		return false
+	}
+	rest := strings.TrimSpace(plain[len(assistantPlainPrefix):])
+	if strings.Contains(rest, "…") && strings.TrimSpace(strings.ReplaceAll(rest, "…", "")) == "" {
+		return true
+	}
+	// ASCII ellipsis only
+	if strings.Trim(rest, ".") == "" && len(rest) > 0 {
+		return true
+	}
+	return false
 }
 
 func (m *Model) toolQueueStatusLine() string {
@@ -989,6 +1168,18 @@ func dropLeadingBlankLines(lines []string) []string {
 	return lines[i:]
 }
 
+// dropTrailingBlankLines removes empty lines Glamour often emits after the last paragraph.
+func dropTrailingBlankLines(lines []string) []string {
+	j := len(lines)
+	for j > 0 && strings.TrimSpace(lines[j-1]) == "" {
+		j--
+	}
+	if j == len(lines) {
+		return lines
+	}
+	return lines[:j]
+}
+
 // finalizeCurrentSegment renders the current curAssistant buffer as markdown
 // and replaces the streaming line with the formatted version. Called both
 // before a tool use (to finalize pre-tool text) and on assistantDone.
@@ -1010,6 +1201,7 @@ func (m *Model) finalizeCurrentSegment() {
 	mdLines := strings.Split(rendered, "\n")
 	mdLines = normalizeAssistantMarkdownLines(mdLines)
 	mdLines = dropLeadingBlankLines(mdLines)
+	mdLines = dropTrailingBlankLines(mdLines)
 	if len(mdLines) == 0 {
 		return
 	}

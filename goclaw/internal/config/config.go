@@ -26,6 +26,27 @@ type Config struct {
 	// Empty means use Model(). Set via settings.json "compaction_model" or GOCLAW_COMPACTION_MODEL.
 	CompactionModel string
 
+	// TaskModelRouter selects how to pick the LLM model id for each user turn from task_models:
+	// "off" (default), "rules" (heuristics + profile bias), or "llm" (cheap router call, then task_models lookup).
+	// JSON: task_model_router; env: GOCLAW_TASK_MODEL_ROUTER; CLI: --task-model-router.
+	TaskModelRouter string
+
+	// TaskModels maps role names to model ids for the active provider (e.g. code, reasoning, fast, default).
+	// When TaskModelRouter is not off and this map is non-empty, the orchestrator resolves each turn to one role
+	// and uses the mapped model instead of Model() unless the agent profile sets model (ModelOverride).
+	// JSON: task_models (object).
+	TaskModels map[string]string
+
+	// TaskModelRouterModel is the model used only for the "llm" router classification call (short output).
+	// Empty means use ModelForCompaction() so a small compaction model can serve as router.
+	// JSON: task_model_router_model; env: GOCLAW_TASK_MODEL_ROUTER_MODEL.
+	TaskModelRouterModel string
+
+	// PreferredResponseLanguage steers runtime user-language hints in the orchestrator:
+	// "auto" (default when empty), "es", "en", "fr", "de", "pt", or "from_os" (use LANG/LC_* as fallback).
+	// JSON: preferred_response_language; env: GOCLAW_PREFERRED_RESPONSE_LANGUAGE.
+	PreferredResponseLanguage string
+
 	// Anthropic settings (only used when Provider == "anthropic")
 	APIKey  string // ANTHROPIC_API_KEY env var
 	BaseURL string // override for mock server
@@ -123,13 +144,13 @@ type Config struct {
 // MCPServerConfig describes one MCP server (stdio subprocess and/or Streamable HTTP URL).
 // If both URL and Command are set, URL (HTTP) takes precedence.
 type MCPServerConfig struct {
-	ID       string            `json:"id"`
-	Command  string            `json:"command"`
-	Args     []string          `json:"args"`
-	Env      map[string]string `json:"env,omitempty"`
-	CWD      string            `json:"cwd,omitempty"`
-	URL      string            `json:"url,omitempty"` // Streamable HTTP MCP endpoint
-	Headers  map[string]string `json:"headers,omitempty"`
+	ID      string            `json:"id"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env,omitempty"`
+	CWD     string            `json:"cwd,omitempty"`
+	URL     string            `json:"url,omitempty"` // Streamable HTTP MCP endpoint
+	Headers map[string]string `json:"headers,omitempty"`
 	// BearerTokenFile is read at MCP dial time; contents (trimmed) are sent as Authorization: Bearer.
 	// Use a chmod 600 file; prefer over committing tokens. Full OAuth flows are future work (V3 doc).
 	BearerTokenFile string `json:"bearer_token_file,omitempty"`
@@ -160,27 +181,30 @@ type ExternalHookEntry struct {
 func Default() Config {
 	home, _ := os.UserHomeDir()
 	return Config{
-		Provider:             "ollama",
-		OllamaHost:           envOr("OLLAMA_HOST", "http://localhost:11434"),
-		OllamaModel:          envOr("OLLAMA_MODEL", "qwen2.5-coder:14b"),
-		CompactionModel:      envOr("GOCLAW_COMPACTION_MODEL", ""),
-		APIKey:               os.Getenv("ANTHROPIC_API_KEY"),
-		BaseURL:              envOr("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
-		OpenAICompatBaseURL:  envOr("OPENAI_BASE_URL", ""),
-		OpenAICompatAPIKey:   envOr("OPENAI_API_KEY", ""),
-		OpenAICompatModel:    envOr("OPENAI_MODEL", ""),
-		AutoCompactThreshold: 0.85,
-		UserConfigDir:        filepath.Join(home, ".goclaw"),
-		ProjectConfigDir:     ".goclaw",
-		AgentProfile:           "coordinator",
-		PermissionModes:        nil,
-		YoloThreshold:          -1,
-		WebSearchBackend:       "ddg",
-		BraveSearchAPIKey:      os.Getenv("BRAVE_SEARCH_API_KEY"),
-		SerpAPIKey:             os.Getenv("SERPAPI_API_KEY"),
-		WebSearchFallbackDDG:   true,
-		TokenCountMode:           "auto",
-		UIAppearance:             "auto",
+		Provider:                  "ollama",
+		OllamaHost:                envOr("OLLAMA_HOST", "http://localhost:11434"),
+		OllamaModel:               envOr("OLLAMA_MODEL", "qwen2.5-coder:14b"),
+		CompactionModel:           envOr("GOCLAW_COMPACTION_MODEL", ""),
+		TaskModelRouter:           NormalizeTaskModelRouter(envOr("GOCLAW_TASK_MODEL_ROUTER", "")),
+		TaskModelRouterModel:      envOr("GOCLAW_TASK_MODEL_ROUTER_MODEL", ""),
+		PreferredResponseLanguage: envOr("GOCLAW_PREFERRED_RESPONSE_LANGUAGE", ""),
+		APIKey:                    os.Getenv("ANTHROPIC_API_KEY"),
+		BaseURL:                   envOr("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+		OpenAICompatBaseURL:       envOr("OPENAI_BASE_URL", ""),
+		OpenAICompatAPIKey:        envOr("OPENAI_API_KEY", ""),
+		OpenAICompatModel:         envOr("OPENAI_MODEL", ""),
+		AutoCompactThreshold:      0.85,
+		UserConfigDir:             filepath.Join(home, ".goclaw"),
+		ProjectConfigDir:          ".goclaw",
+		AgentProfile:              "coordinator",
+		PermissionModes:           nil,
+		YoloThreshold:             -1,
+		WebSearchBackend:          "ddg",
+		BraveSearchAPIKey:         os.Getenv("BRAVE_SEARCH_API_KEY"),
+		SerpAPIKey:                os.Getenv("SERPAPI_API_KEY"),
+		WebSearchFallbackDDG:      true,
+		TokenCountMode:            "auto",
+		UIAppearance:              "auto",
 	}
 }
 
@@ -222,9 +246,51 @@ func (c Config) Model() string {
 // it is used so a smaller/faster model can run compaction while Model() serves the main turn.
 func (c Config) ModelForCompaction() string {
 	if m := strings.TrimSpace(c.CompactionModel); m != "" {
-		return m
+		return c.NormalizeModelForProvider(m)
 	}
 	return c.Model()
+}
+
+// NormalizeModelForProvider normalizes a user-supplied model id (aliases for Anthropic, trim otherwise).
+func (c Config) NormalizeModelForProvider(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw
+	}
+	if c.Provider == "anthropic" {
+		return resolveAnthropicModelName(raw)
+	}
+	return raw
+}
+
+// NormalizeTaskModelRouter returns off, rules, or llm. Unknown values become off.
+func NormalizeTaskModelRouter(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "off", "false", "0", "no":
+		return "off"
+	case "rules", "on", "true", "1", "yes", "heuristic", "heuristics":
+		return "rules"
+	case "llm":
+		return "llm"
+	default:
+		return "off"
+	}
+}
+
+// TaskModelRoutingActive reports whether per-turn model selection from TaskModels should run.
+func (c Config) TaskModelRoutingActive() bool {
+	if NormalizeTaskModelRouter(c.TaskModelRouter) == "off" {
+		return false
+	}
+	return len(c.TaskModels) > 0
+}
+
+// RouterModelForLLM returns the model id for the optional LLM-based task classifier.
+func (c Config) RouterModelForLLM() string {
+	if m := strings.TrimSpace(c.TaskModelRouterModel); m != "" {
+		return c.NormalizeModelForProvider(m)
+	}
+	return c.ModelForCompaction()
 }
 
 // BashTimeoutSeconds returns the bash tool timeout in seconds (clamped to 1..3600).
@@ -245,6 +311,22 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// NormalizePreferredResponseLanguage returns a canonical mode: auto, from_os, or a supported tag (es|en|fr|de|pt).
+// Unknown values are treated as auto.
+func NormalizePreferredResponseLanguage(raw string) string {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	switch s {
+	case "", "auto":
+		return "auto"
+	case "from_os":
+		return "from_os"
+	case "es", "en", "fr", "de", "pt":
+		return s
+	default:
+		return "auto"
+	}
 }
 
 // NormalizeWebSearchBackend returns a canonical backend name ("ddg", "brave", "serpapi").
