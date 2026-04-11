@@ -36,6 +36,12 @@ Shortcuts
   Ctrl+L             clear transcript
   /edit              compose a multiline message in $EDITOR
 
+Prefix input (single line; same permissions as tools — see docs/goclaw/prefix-input-modes.md)
+  !cmd               run bash tool (allowlisted shell)
+  @path               read_file in the workspace
+  &task               spawn_agent (general-purpose; hub profile)
+  /btw text           side question — one wrapped message to the model
+
 For Esc vs streaming vs exit, follow the footer hint line under the input.
 
 Docs: docs/goclaw/usage.md (monorepo) and CLAUDE.md in the goclaw module.

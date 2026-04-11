@@ -1,33 +1,45 @@
-# Prefix input modes (`!`, `@`, `&`, `/btw`, …) — deferred
+# Prefix input modes (`!`, `@`, `&`, `/btw`)
 
 ## Status
 
-**Not implemented.** goclaw uses slash commands (`/help`, `/edit`, …), tools invoked by the model, and the line/TUI input as documented in [usage.md](./usage.md). This document records why a Claude Code–style prefix mini-language is **out of scope** until explicitly specified.
+**Implemented.** These prefixes are interpreted locally in the fullscreen TUI and readline REPL **after** slash commands ([`HandleSlash`](../../goclaw/internal/slashcmd/slash.go)) and **before** the message is sent to the model. They reuse the same **tool registry, permission policy, approval flow, and hooks** as model-invoked tools (see [`RunToolInvocation`](../../goclaw/internal/orchestrator/tool_invocation.go)).
 
-## What other products sometimes do
+## Dispatch order
 
-| Prefix | Typical meaning (elsewhere) | goclaw today |
-|--------|----------------------------|--------------|
-| `!` | “Bash mode” / send shell to host | No dedicated mode; `bash` tool under permission policy |
-| `@` | File path picker / mentions | No picker; `read_file` / `glob` / paste paths |
-| `&` | Background task | Coordinator `spawn_agent` + `/focus` / `/detach` |
-| `/btw` | Side thread without clearing main context | No equivalent; use `/new` or a separate session |
-| `\\` + Enter | Hard newline in single-line UI | TUI: `Shift+Enter` / `Alt+Enter`; readline: configured newline |
+1. **Slash** — Lines handled by `/help`, `/memory`, … (not sent to the model unless a command returns `modelSubmit`, e.g. `/btw`, `/edit`).
+2. **Prefix** — Parsed by [`internal/inputprefix`](../../goclaw/internal/inputprefix/); may run a single tool locally or rewrite text for the model.
+3. **Model** — Remaining text is passed to `RunStreaming` (or to a focused worker when coordinator routing is active).
 
-## Why this is a separate epic
+**Worker focus:** When input is routed to a coordinator worker (`/focus`), prefix modes are **not** applied; the full line is delivered to the worker session.
 
-1. **Security** — A `!` mode that bypasses the normal tool boundary could widen shell exposure unless it reuses the same `bash` policy, approval, and allowlist.
-2. **UX contract** — Prefixes interact with multiline input, completion, streaming, and the TUI footer; each needs a defined behavior.
-3. **Model vs local** — Clarify what is interpreted locally before send vs what is sent to the model as plain text.
-4. **Readline vs TUI** — Feature parity rules (e.g. `@` file completion) differ by frontend.
+**Mock (`--mock`):** Prefix interpretation is **disabled**; input is passed through to the mock streamer so UI tests stay deterministic.
 
-## If this is picked up later
+## Multiline input (TUI)
 
-- Write one short **requirements** section per prefix (trigger syntax, interaction with tools, errors).
-- Add **tests** for parsing and for “no accidental shell” regressions.
-- Prefer **reusing** existing tools and permissions rather than a parallel execution path.
+- For **`!`**, **`@`**, and **`&`**, only the **first line** of the buffer is used; any following lines must be empty after trim, or the parser returns an error (avoids silent truncation of pasted blocks).
+- Normal messages may still use **Shift+Enter** / **Alt+Enter** for newlines without these prefixes.
+
+## Per-prefix behavior
+
+| Prefix | Syntax | Effect |
+|--------|--------|--------|
+| `!` | `!` + shell command (first line) | Runs the **`bash`** tool with JSON `{"command":"…"}`. Same allowlist, metacharacter rules, timeout, and permissions as a model-requested bash call. Output is shown in the UI and recorded in the session as a user line plus a short assistant summary (no fake `tool_use` blocks in history). |
+| `@` | `@` + path (first line) | Runs **`read_file`** with JSON `{"path":"…"}`. Path resolution matches the workspace-scoped `read_file` tool (relative to workspace or absolute inside it). |
+| `&` | `&` + task description (first line) | Runs **`spawn_agent`** with `profile: general-purpose`, `task` set to the text after `&`, default `timeout_sec`, `interactive: false`. Requires **`spawn_agent`** on the active profile’s tool registry (typically **coordinator** hub). If the tool is unavailable, the user sees a clear error. |
+| `/btw` | `/btw` + text (slash command) | Handled in [`slash.go`](../../goclaw/internal/slashcmd/slash.go): rewrites to a **single user message** with an explicit “side question” preamble so the model answers briefly without abandoning the main thread. **Session:** the rewritten text is what is stored as the user turn (the `/btw` prefix is not preserved verbatim). |
+
+## Security
+
+- **`!`** must **not** bypass [`rejectShellMetacharacters`](../../goclaw/internal/tools/bash.go), the bash binary allowlist, `Policy.Evaluate`, interactive approval, or `PreToolUse` / `PostToolUse` hooks.
+- **`@`** must not read outside the workspace; enforcement is entirely in the **`read_file`** tool implementation.
+- **`&`** is subject to **`spawn_agent`** policy (deny/ask/allow) like any other tool call.
+
+## Readline vs TUI
+
+- **Parity:** The same [`inputprefix.Analyze`](../../goclaw/internal/inputprefix/analyze.go) helper is used in both frontends.
+- **Completion:** There is no `@` file picker in readline yet; users type paths explicitly. The TUI may later add a picker similar to `/theme` / `/agents`.
 
 ## Related
 
-- TUI `/` autocomplete and `/help` overlay: [usage.md](./usage.md) § Slash commands, autocomplete, and help.
-- Slash command table: `internal/slashcmd/slash_commands.go`.
+- Slash commands and `/help`: [usage.md](./usage.md).
+- Slash command table: `goclaw/internal/slashcmd/slash_commands.go`.

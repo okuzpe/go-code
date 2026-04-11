@@ -13,6 +13,7 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/agents", "List or switch agent profile (built-in + custom *.md)"},
 	{"/apply-plan", "Load plan file, switch to general-purpose, run one orchestrator turn"},
 	{"/back", "Return to coordinator session (same as /detach)"},
+	{"/btw", "Side question: rewrite and send one user message to the model"},
 	{"/capabilities", "Print full capability guide (no model call)"},
 	{"/compact", "Force context compaction on the current session"},
 	{"/detach", "Stop routing input to the focused worker"},

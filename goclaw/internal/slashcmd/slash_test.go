@@ -139,6 +139,26 @@ func TestHandleSlashMemoryAddListDelete(t *testing.T) {
 	}
 }
 
+func TestHandleSlashBtwModelSubmit(t *testing.T) {
+	s := session.New()
+	sp := &s
+	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), agents.Explore)
+	handled, out, quit, ms, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), orch, sp, nil), "/btw is this ok?")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.False(t, quit)
+	require.Equal(t, "", out)
+	require.Contains(t, ms, "Side question")
+	require.Contains(t, ms, "is this ok?")
+}
+
+func TestHandleSlashBtwRequiresOrchestrator(t *testing.T) {
+	var sp *session.Session
+	_, _, _, _, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/btw hello")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "/btw")
+}
+
 func TestHandleSlashCompactRequiresOrchestrator(t *testing.T) {
 	var sp *session.Session
 	_, _, _, _, err := HandleSlash(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/compact")

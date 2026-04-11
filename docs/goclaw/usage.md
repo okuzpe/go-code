@@ -48,6 +48,19 @@ Exit: `Esc` (TUI) or `Ctrl+C`. Clear: `Ctrl+L` (TUI).
 - **`/help` in the TUI** — Opens a **dismissible help panel** over the transcript (same text as the slash handler). **Esc** closes the panel; **↑** / **↓** (or `k` / `j`) and **PgUp** / **PgDn** scroll long output. **Ctrl+C** still quits the app from the panel.
 - **Readline** — **Tab** completes `/` commands via the readline prefix completer. **`/help`** prints the full help text **inline** in the transcript (no overlay).
 
+### Prefix input (`!`, `@`, `&`, `/btw`)
+
+Interpreted **after** slash commands and **before** the model (TUI and readline). Same **permission policy, approval, and hooks** as normal tool calls. **Single line** for `!`, `@`, and `&` (extra lines after a newline are rejected). **`--mock`** disables prefix handling.
+
+| Prefix | Meaning |
+|--------|---------|
+| `!` + command | Run the **`bash`** tool with that command (allowlist and metacharacter rules apply). |
+| `@` + path | Run **`read_file`** for a path inside the workspace. |
+| `&` + task | Run **`spawn_agent`** with profile `general-purpose` (requires **`spawn_agent`** on the active profile, typically **coordinator**). |
+| `/btw` + text | Slash command: submit **one** user message wrapped as a short “side question” to the model. |
+
+Full grammar and security notes: [prefix-input-modes.md](./prefix-input-modes.md).
+
 ## Sessions and memory
 
 Sessions save as JSONL under `~/.goclaw/sessions/<id>.jsonl` on exit or `/save`.
@@ -231,7 +244,7 @@ Typical workflow: `/profile plan` → ask for a plan → `/plan save` → `/appl
 
 ## Slash commands (REPL)
 
-Handled locally (not sent to the model): `/help`, `/doctor`, `/session`, `/sessions`, `/quit`, `/exit`, `/new`, `/save`, `/compact`, `/profile`, `/plan`, `/apply-plan`, `/memory`. Same health output as `goclaw doctor` when `/doctor` is wired in the REPL.
+Handled locally (not sent to the model): `/help`, `/doctor`, `/session`, `/sessions`, `/quit`, `/exit`, `/new`, `/save`, `/compact`, `/profile`, `/plan`, `/apply-plan`, `/memory`, and slash-only helpers. **`/btw`** consumes the line but **submits** a rewritten user message to the model. **Prefix** lines `!`, `@`, `&` run tools locally then record user + assistant text in the session (see [prefix-input-modes.md](./prefix-input-modes.md)). Same health output as `goclaw doctor` when `/doctor` is wired in the REPL.
 
 ## Hooks, MCP, IDE ping
 

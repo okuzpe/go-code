@@ -192,7 +192,7 @@ const inputMaxHeight = 6
 const maxSlashSuggestRows = 5
 
 func placeholderForWidth(termWidth int) string {
-	const full = "Ask anything…  /help · Shift+Enter newline"
+	const full = "Ask anything…  ! @ & /btw /help · Shift+Enter newline"
 	const narrow = "Ask anything…  /help"
 	if termWidth > 0 && termWidth < 60 {
 		return narrow

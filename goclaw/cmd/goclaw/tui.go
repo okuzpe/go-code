@@ -59,6 +59,9 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 				err := coordinator.DeliverWorkerMessage(ctx, id, userText, sink)
 				return "", app.AugmentOrchestratorErr(rt.Cfg.Provider, rt.Cfg.Model(), err)
 			}
+			if handled, err := app.RunLocalPrefixToolIfAny(ctx, rt.Mock, orch, rt.Sess, userText, sink); handled {
+				return "", err
+			}
 			reply, err := orch.RunStreaming(ctx, userText, sink)
 			return reply, app.AugmentOrchestratorErr(rt.Cfg.Provider, rt.Cfg.Model(), err)
 		}

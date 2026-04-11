@@ -11,6 +11,7 @@ import (
 
 	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/coordinator"
+	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/memory"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/planfile"
@@ -76,6 +77,20 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string) (handled bo
 	switch cmd {
 	case "help":
 		return true, replHelpText(env, sess, orch), false, "", nil
+
+	case "btw":
+		if orch == nil {
+			return true, "", false, "", fmt.Errorf("/btw requires a running agent")
+		}
+		const prefix = "/btw"
+		rest := strings.TrimSpace(s)
+		if len(rest) >= len(prefix) && strings.EqualFold(rest[:len(prefix)], prefix) {
+			rest = strings.TrimSpace(rest[len(prefix):])
+		}
+		if rest == "" {
+			return true, "", false, "", fmt.Errorf(`usage: /btw your question or note`)
+		}
+		return true, "", false, inputprefix.BtwRewrite(rest), nil
 
 	case "doctor":
 		if env.Doctor == nil {
@@ -330,8 +345,7 @@ template — print the template to the terminal`)
 			if lastText == "" {
 				return true, "", false, "", fmt.Errorf("/plan save: no assistant message in session to save")
 			}
-			planDir := filepath.Join(wd, planfile.Subdir)
-			if mkErr := os.MkdirAll(planDir, 0o700); mkErr != nil {
+			if mkErr := os.MkdirAll(filepath.Join(wd, planfile.Subdir), 0o700); mkErr != nil {
 				return true, "", false, "", fmt.Errorf("/plan save: mkdir: %w", mkErr)
 			}
 			planPath := planfile.Path(wd)
@@ -409,10 +423,7 @@ use /workers to list interactive worker ids`)
 		if !ok {
 			return true, "", false, "", fmt.Errorf("/apply-plan: general-purpose profile missing")
 		}
-		arg := ""
-		if len(fields) >= 1 && len(s) > len(fields[0]) {
-			arg = strings.TrimSpace(s[len(fields[0]):])
-		}
+		arg := strings.TrimSpace(strings.TrimPrefix(s, fields[0]))
 		p := planfile.ResolvePlanArg(wd, arg)
 		body, rerr := planfile.Read(p)
 		if rerr != nil {
@@ -432,7 +443,8 @@ use /workers to list interactive worker ids`)
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /quit\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /btw   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /quit\n")
+	b.WriteString("Prefix input (see docs/goclaw/prefix-input-modes.md):  !cmd   @path   &task\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
 		b.WriteString(planfile.Path(workdir))
@@ -447,11 +459,12 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("Slash commands (after chat starts; not sent to the model):\n")
 	b.WriteString("  /help, help, ? — full list with session id and profile\n")
 	b.WriteString("  /capabilities — structured overview (what the agent can do; not sent to the model)\n")
-	b.WriteString("  /plan path|init|template — workspace plan under .goclaw/plan.md\n")
-	b.WriteString("  /apply-plan [path] — run one execution turn from the plan\n")
+	b.WriteString("  /plan path|init|save|template — workspace plan under .goclaw/plan.md\n")
+	b.WriteString("  /apply-plan [path] — load plan, switch to general-purpose, stream execution\n")
 	b.WriteString("  /memory list | add | delete — durable memory under ~/.goclaw/memory/\n")
 	b.WriteString("  /workers, /focus or /in <id>, /back or /detach — interactive spawn_agent workers\n")
-	b.WriteString("  /compact, /edit, /agents, /profile, /theme, /new, /save, /session, /sessions, /quit\n")
+	b.WriteString("  /compact, /edit, /agents, /profile, /theme, /new, /save, /session, /sessions, /quit, /btw\n")
+	b.WriteString("Prefix: ! (bash), @ (read_file), & (spawn_agent) — single line; docs/goclaw/prefix-input-modes.md\n")
 	b.WriteString("Flags: --readline (line REPL), --no-tools, --session <id>, --profile <name>\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan file: ")
@@ -485,9 +498,14 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /profile <name>  — switch agent profile (same as /agents <name>)\n")
 	b.WriteString("  /theme [preset]  — show or set TUI ui_appearance (restart TUI to apply)\n")
 	b.WriteString("  /workers — list workers; /focus or /in <prefix> — jump into worker; /back or /detach — return to coordinator\n")
-	b.WriteString("  /plan path|init|template — default plan path, create from template, or print template\n")
-	b.WriteString("  /apply-plan [path] — load plan file and run with general-purpose profile\n")
+	b.WriteString("  /plan path|init|save|template — default plan path, create from template, save last message, or print template\n")
+	b.WriteString("  /apply-plan [path] — load plan, switch to general-purpose, stream execution\n")
+	b.WriteString("  /btw <text>      — side question: one user message with a brief-aside preamble (sent to the model)\n")
 	b.WriteString("  Ctrl+C           — exit (session is saved on shutdown)\n")
+	b.WriteString("\nPrefix input (before model; same tools and permissions; single line each; see docs/goclaw/prefix-input-modes.md):\n")
+	b.WriteString("  !<command>       — bash tool\n")
+	b.WriteString("  @<path>          — read_file in the workspace\n")
+	b.WriteString("  &<task>          — spawn_agent (general-purpose; requires spawn_agent on the active profile)\n")
 	b.WriteString("\nRestart CLI flags: --session <id>  --list-sessions  --no-tools  --readline  --profile <name>\n")
 	b.WriteString("Env: default UI on a TTY is fullscreen TUI; GOCLAW_USE_TUI=0 or GOCLAW_USE_READLINE=1 uses line readline.\n")
 	b.WriteString("Env: GOCLAW_AGENT_PROFILE overrides agent_profile from settings (e.g. general-purpose).\n")

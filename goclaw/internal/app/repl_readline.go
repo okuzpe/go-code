@@ -193,6 +193,14 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 			continue
 		}
 
+		if handled, err := RunLocalPrefixToolIfAny(r.baseCtx, r.rt.Mock, r.orch, sess, input, &terminalSink{}); handled {
+			if err != nil {
+				slog.Error("prefix input error", "err", err)
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			}
+			continue
+		}
+
 		runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, input, &terminalSink{}, setReqCancel)
 	}
 }
