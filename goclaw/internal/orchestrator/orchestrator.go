@@ -342,6 +342,17 @@ func (o *Orchestrator) SetConfig(cfg config.Config) {
 	o.cfg = cfg
 }
 
+// SetToolPermission overrides the permission mode for a single tool in the active policy.
+// Useful for slash commands that toggle auto-approval within a session (e.g. /allow-writes).
+func (o *Orchestrator) SetToolPermission(toolName string, mode permissions.Mode) {
+	o.perms.Set(toolName, mode)
+}
+
+// YoloThreshold returns the active YOLO auto-approval threshold (-1 = disabled).
+func (o *Orchestrator) YoloThreshold() int {
+	return o.cfg.YoloThreshold
+}
+
 // ProfileName returns the active profile's name.
 func (o *Orchestrator) ProfileName() string {
 	return o.profile.Name

@@ -848,7 +848,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 	if m.pending != nil {
 		switch k {
-		case "y", "Y":
+		case "y", "Y", "enter":
 			select {
 			case m.pending.Resp <- true:
 			default:
@@ -1177,6 +1177,9 @@ func (m *Model) applySlashHints(hints slashcmd.UIHints) {
 		}
 		if hints.WelcomeHubDelegatesCoding != nil {
 			m.welcomeOpts.HubDelegatesCoding = *hints.WelcomeHubDelegatesCoding
+		}
+		if hints.WelcomeWriteApprovalRequired != nil {
+			m.welcomeOpts.WriteApprovalRequired = *hints.WelcomeWriteApprovalRequired
 		}
 		if m.welcomeBlockEnd > 0 {
 			m.rebuildWelcomeForWidth()

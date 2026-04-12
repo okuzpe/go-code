@@ -18,6 +18,9 @@ type UIHints struct {
 	WelcomeFileWriteToolsHidden *bool
 	// WelcomeHubDelegatesCoding when non-nil updates welcome panel hints (spawn_agent delegation).
 	WelcomeHubDelegatesCoding *bool
+	// WelcomeWriteApprovalRequired when non-nil updates the approval-required hint: true when write tools are
+	// available in the profile but yolo_threshold is below the workspace-write risk score (60).
+	WelcomeWriteApprovalRequired *bool
 	// FooterHint when non-nil updates the TUI footer line (e.g. after /plan save). Empty string clears. Nil leaves unchanged.
 	FooterHint *string
 	// ReloadTranscript when non-nil means the in-memory session was replaced; the TUI should rebuild the transcript view.
@@ -44,6 +47,8 @@ func setWelcomeHints(h *UIHints, orch *orchestrator.Orchestrator, subtitle strin
 	h.WelcomeFileWriteToolsHidden = &hide
 	hub := p.AllowsSpawnAgentDelegation()
 	h.WelcomeHubDelegatesCoding = &hub
+	approvalRequired := p.AllowsWorkspaceFileWrites() && orch.YoloThreshold() < 60
+	h.WelcomeWriteApprovalRequired = &approvalRequired
 }
 
 func setFooterHint(h *UIHints, line string) {

@@ -16,6 +16,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/memory"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
+	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/planfile"
 	"github.com/okuzpe/goclaw/internal/session"
 
@@ -452,6 +453,17 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		setWelcomeHints(hintsOut, orch, sub)
 		return true, msg, false, "", nil
 
+	case "allow-writes":
+		if orch == nil {
+			return true, "", false, "", fmt.Errorf("/allow-writes requires a running agent")
+		}
+		for _, toolName := range []string{"write_file", "edit_file", "patch"} {
+			orch.SetToolPermission(toolName, permissions.ModeAllow)
+		}
+		hint := "workspace write tools auto-approved for this session (write_file, edit_file, patch)"
+		setFooterHint(hintsOut, hint)
+		return true, hint, false, "", nil
+
 	case "plan":
 		wd := strings.TrimSpace(env.Workdir)
 		if wd == "" {
@@ -607,7 +619,7 @@ use /workers to list interactive worker ids`)
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview]   /btw   /copy   /export   /init   /memory   /model   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /resume   /clear   /quit\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview]   /btw   /copy   /export   /init   /memory   /model   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /allow-writes   /resume   /clear   /quit\n")
 	b.WriteString("Prefix input (see docs/goclaw/prefix-input-modes.md):  !cmd   @path   &task\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
@@ -668,6 +680,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /memory delete <file.md> — remove one file (see list for basename)\n")
 	b.WriteString("  /agents [name]   — list agents or switch (arrow picker when bare in readline TTY)\n")
 	b.WriteString("  /profile <name>  — switch agent profile (same as /agents <name>)\n")
+	b.WriteString("  /allow-writes    — auto-approve write_file, edit_file, patch for this session (no per-call prompts)\n")
 	if env.SetSessionModel != nil && env.SessionModel != nil {
 		b.WriteString("  /model [id]      — show or set the default model for this session (Ollama / openai_compatible)\n")
 	}

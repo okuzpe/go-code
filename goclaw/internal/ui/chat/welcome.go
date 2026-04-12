@@ -18,6 +18,9 @@ type WelcomeOptions struct {
 	FileWriteToolsHidden bool
 	// HubDelegatesCoding when true with FileWriteToolsHidden, hint mentions spawn_agent (coordinator-style profiles).
 	HubDelegatesCoding bool
+	// WriteApprovalRequired when true (and FileWriteToolsHidden is false), hint that write tools need per-call approval
+	// and how to enable auto-approval. Set when yolo_threshold is below the workspace-write risk score (60).
+	WriteApprovalRequired bool
 }
 
 // defaultWelcomeWrap is used when terminal width is not known yet (before first WindowSizeMsg).
@@ -197,6 +200,11 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 				rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 			}
 		}
+	} else if opt.WriteApprovalRequired {
+		rightLines = append(rightLines, "")
+		for _, ln := range wrapPlainWords("Write tools available · each call needs approval (y/n/Enter) — or /allow-writes to skip prompts this session.", rightW-1) {
+			rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+		}
 	}
 	rightLines = append(rightLines, "")
 
@@ -281,6 +289,9 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 		} else {
 			body.WriteString(dim.Render("Read-only profile — /profile general-purpose for direct file edits."))
 		}
+	} else if opt.WriteApprovalRequired {
+		body.WriteString("\n")
+		body.WriteString(dim.Render("Write tools available · each call needs approval (y/n/Enter) — or /allow-writes to skip prompts this session."))
 	}
 
 	body.WriteString("\n")

@@ -213,7 +213,7 @@ func Default() Config {
 		ProjectConfigDir:          ".goclaw",
 		AgentProfile:              "general-purpose",
 		PermissionModes:           nil,
-		YoloThreshold:             -1,
+		YoloThreshold:             60,
 		WebSearchBackend:          "ddg",
 		BraveSearchAPIKey:         os.Getenv("BRAVE_SEARCH_API_KEY"),
 		SerpAPIKey:                os.Getenv("SERPAPI_API_KEY"),

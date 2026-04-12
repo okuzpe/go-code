@@ -94,13 +94,18 @@ func setSessionModel(rt *app.ChatRuntime, orch *orchestrator.Orchestrator, id st
 }
 
 func welcomeOptions(rt *app.ChatRuntime) chat.WelcomeOptions {
+	// writeApprovalRequired is true when write tools are available in the profile
+	// but the yolo_threshold is below the workspace-write risk score (60), meaning each
+	// write_file / edit_file / patch call will trigger an interactive approval prompt.
+	writeApprovalRequired := rt.Profile.AllowsWorkspaceFileWrites() && rt.Cfg.YoloThreshold < 60
 	return chat.WelcomeOptions{
-		Version:              Version,
-		Subtitle:             app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
-		Workdir:              rt.Workdir,
-		Profile:              rt.Profile.Name,
-		FileWriteToolsHidden: !rt.Profile.AllowsWorkspaceFileWrites(),
-		HubDelegatesCoding:   rt.Profile.AllowsSpawnAgentDelegation(),
+		Version:               Version,
+		Subtitle:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
+		Workdir:               rt.Workdir,
+		Profile:               rt.Profile.Name,
+		FileWriteToolsHidden:  !rt.Profile.AllowsWorkspaceFileWrites(),
+		HubDelegatesCoding:    rt.Profile.AllowsSpawnAgentDelegation(),
+		WriteApprovalRequired: writeApprovalRequired,
 	}
 }
 
