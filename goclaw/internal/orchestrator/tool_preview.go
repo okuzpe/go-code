@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+const (
+	toolUsePreviewMaxRunes        = 160
+	toolUsePreviewSpawnAgentRunes = 280
+)
+
 // FormatToolUsePreview turns tool JSON input into a short human-readable summary
 // for terminals and approval prompts (no raw JSON).
 func FormatToolUsePreview(toolName, input string) string {
@@ -14,13 +19,13 @@ func FormatToolUsePreview(toolName, input string) string {
 		return ""
 	}
 	if s := formatKnownToolPreview(toolName, input); s != "" {
-		max := 160
+		max := toolUsePreviewMaxRunes
 		if toolName == "spawn_agent" {
-			max = 280
+			max = toolUsePreviewSpawnAgentRunes
 		}
 		return truncatePreviewRunes(s, max)
 	}
-	return truncatePreviewRunes(genericJSONSummary(input), 160)
+	return truncatePreviewRunes(genericJSONSummary(input), toolUsePreviewMaxRunes)
 }
 
 func formatKnownToolPreview(toolName, input string) string {
@@ -96,7 +101,7 @@ func formatKnownToolPreview(toolName, input string) string {
 		}
 	case "todo_write":
 		var v struct {
-			Merge *bool           `json:"merge"`
+			Merge *bool             `json:"merge"`
 			Todos []json.RawMessage `json:"todos"`
 		}
 		if json.Unmarshal([]byte(input), &v) == nil {

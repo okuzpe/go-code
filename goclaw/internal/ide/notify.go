@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const ideNotifyHTTPTimeout = 2 * time.Second
+
 // Notifier is called after selected tools complete (best-effort).
 type Notifier interface {
 	AfterTool(toolName string, resultBytes int, isError bool)
@@ -36,7 +38,7 @@ func FromEnv() Notifier {
 	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
 		return Noop{}
 	}
-	return &localHTTPNotify{url: raw, client: &http.Client{Timeout: 2 * time.Second}}
+	return &localHTTPNotify{url: raw, client: &http.Client{Timeout: ideNotifyHTTPTimeout}}
 }
 
 type localHTTPNotify struct {

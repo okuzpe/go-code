@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,11 +12,7 @@ func cloneHeaderMap(m map[string]string) map[string]string {
 	if len(m) == 0 {
 		return nil
 	}
-	out := make(map[string]string, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
+	return maps.Clone(m)
 }
 
 func headerHasAuthorization(m map[string]string) bool {
@@ -36,9 +33,10 @@ func readBearerTokenFile(workdir, path string) (string, error) {
 	if !filepath.IsAbs(path) {
 		full = filepath.Join(workdir, path)
 	}
+	full = filepath.Clean(full)
 	b, err := os.ReadFile(full)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("read bearer_token_file %s: %w", full, err)
 	}
 	return strings.TrimSpace(string(b)), nil
 }

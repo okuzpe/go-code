@@ -27,7 +27,7 @@ func TryPasteAsAtPaths(workdir, content string) (string, bool) {
 	if len(candidates) == 0 {
 		return "", false
 	}
-	var tokens []string
+	tokens := make([]string, 0, len(candidates))
 	for _, raw := range candidates {
 		raw = strings.TrimSpace(raw)
 		raw = strings.Trim(raw, `"'`) // strip shell-style quoting
@@ -73,8 +73,9 @@ func splitPastedPaths(s string) []string {
 	}
 	// Newline-separated (some terminals/OS drag multiple files this way).
 	if strings.Contains(s, "\n") {
-		var parts []string
-		for _, line := range strings.Split(s, "\n") {
+		lines := strings.Split(s, "\n")
+		parts := make([]string, 0, len(lines))
+		for _, line := range lines {
 			line = strings.TrimSpace(line)
 			if line != "" {
 				parts = append(parts, line)
@@ -92,7 +93,7 @@ func splitPastedPaths(s string) []string {
 
 // parseQuotedPaths parses a sequence of shell-quoted path tokens.
 func parseQuotedPaths(s string) []string {
-	var paths []string
+	paths := make([]string, 0, 8)
 	for {
 		s = strings.TrimSpace(s)
 		if s == "" {

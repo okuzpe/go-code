@@ -131,7 +131,7 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 			sub = env.ChatSubtitle()
 		}
 		if orch != nil {
-			setWelcomeHints(hintsOut, orch.ProfileName(), sub)
+			setWelcomeHints(hintsOut, orch, sub)
 		}
 		return true, fmt.Sprintf("model set to %q (this session)", id), false, "", nil
 
@@ -425,7 +425,7 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		if env.ChatSubtitle != nil {
 			sub = env.ChatSubtitle()
 		}
-		setWelcomeHints(hintsOut, orch.ProfileName(), sub)
+		setWelcomeHints(hintsOut, orch, sub)
 		return true, msg, false, "", nil
 
 	case "agents":
@@ -449,7 +449,7 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		if env.ChatSubtitle != nil {
 			sub = env.ChatSubtitle()
 		}
-		setWelcomeHints(hintsOut, orch.ProfileName(), sub)
+		setWelcomeHints(hintsOut, orch, sub)
 		return true, msg, false, "", nil
 
 	case "plan":
@@ -594,7 +594,7 @@ use /workers to list interactive worker ids`)
 		if env.ChatSubtitle != nil {
 			sub = env.ChatSubtitle()
 		}
-		setWelcomeHints(hintsOut, orch.ProfileName(), sub)
+		setWelcomeHints(hintsOut, orch, sub)
 		setFooterHint(hintsOut, "")
 		return true, notice, false, msg, nil
 

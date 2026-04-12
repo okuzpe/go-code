@@ -5,6 +5,20 @@ import (
 	"strings"
 )
 
+// Risk score bands (0 = safest; higher = more likely to require confirmation).
+const (
+	riskScoreNone        = 0
+	riskScoreNetwork     = 5
+	riskScoreBashRead    = 10
+	riskScoreSpawnAgent  = 20
+	riskScoreBashWrite   = 40
+	riskScoreUnknownTool = 50
+	riskScoreMCP         = 50
+	riskScoreFileWrite   = 60
+	riskScoreScript      = 70
+	riskScoreFileAbs     = 90
+)
+
 // RiskScore returns a score from 0 (safe, auto-approve) to 100 (dangerous, always prompt).
 // Tool calls with score <= Config.YoloThreshold are auto-approved without user interaction.
 //
@@ -23,33 +37,33 @@ import (
 func RiskScore(toolName, toolInput string) int {
 	switch toolName {
 	case "read_file", "glob", "grep", "web_search", "todo_write":
-		return 0
+		return riskScoreNone
 
 	case "web_fetch":
-		return 5
+		return riskScoreNetwork
 
 	case "bash":
 		return bashRiskScore(toolInput)
 
 	case "spawn_agent":
-		return 20
+		return riskScoreSpawnAgent
 
 	case "stop_task":
-		return 5
+		return riskScoreNetwork
 
 	case "write_file", "edit_file", "patch":
 		return fileWriteRiskScore(toolInput)
 
 	case "script":
-		return 70
+		return riskScoreScript
 	}
 
 	if strings.HasPrefix(toolName, "mcp__") {
-		return 50
+		return riskScoreMCP
 	}
 
 	// Unknown tool: treat as medium risk.
-	return 50
+	return riskScoreUnknownTool
 }
 
 // bashRiskCategory classifies the bash command first token into read-only, write, or unknown.
@@ -117,11 +131,11 @@ func bashRiskScore(toolInput string) int {
 
 	switch bashCategory(command) {
 	case bashRead:
-		return 10
+		return riskScoreBashRead
 	case bashWrite:
-		return 40
+		return riskScoreBashWrite
 	default:
-		return 50
+		return riskScoreUnknownTool
 	}
 }
 
@@ -134,8 +148,8 @@ func fileWriteRiskScore(toolInput string) int {
 		// Absolute paths outside cwd or paths traversing up are higher risk.
 		if strings.HasPrefix(path, "/") || strings.HasPrefix(path, `\`) ||
 			strings.HasPrefix(path, "..") {
-			return 90
+			return riskScoreFileAbs
 		}
 	}
-	return 60
+	return riskScoreFileWrite
 }

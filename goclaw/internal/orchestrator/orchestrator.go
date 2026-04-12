@@ -347,6 +347,11 @@ func (o *Orchestrator) ProfileName() string {
 	return o.profile.Name
 }
 
+// ActiveProfile returns the active agent profile (tool allowlist, read-only flag, prompts).
+func (o *Orchestrator) ActiveProfile() agents.Profile {
+	return o.profile
+}
+
 // allToolsAutoApprove returns true when every tool in the list would be auto-approved
 // without interactive input — either via a DecisionAllow policy or a YOLO bypass.
 // Only when this holds for all tools can the turn be executed in parallel.

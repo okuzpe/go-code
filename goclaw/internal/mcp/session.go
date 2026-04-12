@@ -21,6 +21,11 @@ import (
 // MaxMessageBytes is the maximum single-line JSON-RPC message size on stdio.
 const MaxMessageBytes = 16 * 1024 * 1024
 
+const (
+	stderrScanInitialBytes = 64 * 1024
+	stderrScanMaxBytes     = 1024 * 1024
+)
+
 // Session is one MCP server connection over subprocess stdio.
 type Session struct {
 	cmd    *exec.Cmd
@@ -88,8 +93,8 @@ func StartStdioSession(ctx context.Context, command string, args []string, extra
 
 func drainStderr(ctx context.Context, r io.Reader) {
 	sc := bufio.NewScanner(r)
-	buf := make([]byte, 0, 64*1024)
-	sc.Buffer(buf, 1024*1024)
+	buf := make([]byte, 0, stderrScanInitialBytes)
+	sc.Buffer(buf, stderrScanMaxBytes)
 	for sc.Scan() {
 		select {
 		case <-ctx.Done():

@@ -15,6 +15,9 @@ import (
 const (
 	rotateAfterBytes = 256 * 1024 // 256 KB
 	maxRotatedFiles  = 3
+
+	jsonlScanInitialBytes = 64 * 1024
+	jsonlScanMaxBytes     = 16 * 1024 * 1024
 )
 
 // Store persists sessions as JSONL files under a directory.
@@ -83,6 +86,8 @@ func (st *Store) Load(sessionID string) (*Session, error) {
 	}
 
 	scanner := bufio.NewScanner(f)
+	scanBuf := make([]byte, 0, jsonlScanInitialBytes)
+	scanner.Buffer(scanBuf, jsonlScanMaxBytes)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.TrimSpace(line) == "" {
@@ -124,7 +129,7 @@ func (st *Store) ListIDs() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("session store: readdir: %w", err)
 	}
-	var ids []string
+	ids := make([]string, 0, len(entries))
 	for _, e := range entries {
 		name := e.Name()
 		// Only current files: no dot-separated rotation suffix.

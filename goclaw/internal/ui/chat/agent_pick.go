@@ -41,6 +41,7 @@ func (m *Model) refreshAgentPickOverlay() {
 		m.agentPickCursor = len(items) - 1
 	}
 	var b strings.Builder
+	b.Grow(len(items)*96 + 384)
 	b.WriteString(th.ModalTitle.Render("Agent profile"))
 	b.WriteString("\n\n")
 	for i, name := range items {

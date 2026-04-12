@@ -16,16 +16,20 @@ import (
 
 type discardStreamSink struct{}
 
-func (discardStreamSink) OnTextDelta(string)              {}
-func (discardStreamSink) OnToolUse(string, string)        {}
+func (discardStreamSink) OnTextDelta(string)                {}
+func (discardStreamSink) OnToolUse(string, string)          {}
 func (discardStreamSink) OnToolResult(string, string, bool) {}
-func (discardStreamSink) OnDone(string)                  {}
+func (discardStreamSink) OnDone(string)                     {}
 
 func automationOutputToolApprover(_ context.Context, toolName, _ string) (bool, error) {
 	return false, fmt.Errorf(
 		"automation output mode cannot prompt for tool approval; set \"tool_permissions\" for %q to \"allow\" in settings (or use --no-tools)",
 		toolName,
 	)
+}
+
+func withAutomationOutputToolApprover(base []orchestrator.Option) []orchestrator.Option {
+	return append(append([]orchestrator.Option(nil), base...), orchestrator.WithToolApprover(automationOutputToolApprover))
 }
 
 func readSingleLineStdin(r io.Reader) (string, error) {
@@ -72,8 +76,7 @@ func RunChatJSONOutputFromLine(ctx context.Context, rt *ChatRuntime, line string
 		return nil
 	}
 
-	orchOpts := append(append([]orchestrator.Option(nil), rt.OrchOpts...), orchestrator.WithToolApprover(automationOutputToolApprover))
-	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, orchOpts...)
+	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, withAutomationOutputToolApprover(rt.OrchOpts)...)
 
 	var trace []orchestrator.JSONToolCall
 	resp, err := orch.RunStreamingToolTrace(ctx, line, nil, &trace)
@@ -114,8 +117,7 @@ func RunChatTextOutputFromLine(ctx context.Context, rt *ChatRuntime, line string
 		return nil
 	}
 
-	orchOpts := append(append([]orchestrator.Option(nil), rt.OrchOpts...), orchestrator.WithToolApprover(automationOutputToolApprover))
-	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, orchOpts...)
+	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, withAutomationOutputToolApprover(rt.OrchOpts)...)
 
 	resp, err := orch.RunStreaming(ctx, line, discardStreamSink{})
 	if err != nil {

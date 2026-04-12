@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // MaxItems is the maximum number of todos kept in the session store.
@@ -70,7 +71,7 @@ func (s *Store) Apply(jsonInput string) error {
 		if strings.TrimSpace(t.Content) == "" {
 			return fmt.Errorf("todo %q needs non-empty content", t.ID)
 		}
-		if len([]rune(t.Content)) > MaxContentRunes {
+		if utf8.RuneCountInString(t.Content) > MaxContentRunes {
 			return fmt.Errorf("todo %q content exceeds %d runes", t.ID, MaxContentRunes)
 		}
 		switch t.Status {

@@ -50,7 +50,11 @@ func messageToAnthropicWire(m Message) (anthropicWireMessage, error) {
 }
 
 func anthropicAssistantBlocks(text string, calls []ToolCallRecord) ([]map[string]any, error) {
-	var blocks []map[string]any
+	capBlocks := len(calls)
+	if text != "" {
+		capBlocks++
+	}
+	blocks := make([]map[string]any, 0, capBlocks)
 	if text != "" {
 		blocks = append(blocks, map[string]any{"type": "text", "text": text})
 	}
@@ -74,7 +78,11 @@ func anthropicAssistantBlocks(text string, calls []ToolCallRecord) ([]map[string
 }
 
 func anthropicUserToolResultBlocks(results []ToolResultRecord, extraText string) ([]map[string]any, error) {
-	var blocks []map[string]any
+	capBlocks := len(results)
+	if extraText != "" {
+		capBlocks++
+	}
+	blocks := make([]map[string]any, 0, capBlocks)
 	if extraText != "" {
 		blocks = append(blocks, map[string]any{"type": "text", "text": extraText})
 	}

@@ -1,12 +1,15 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 )
+
+var utf8BOM = []byte{0xef, 0xbb, 0xbf}
 
 // MergeWriteSettings merges patch into the JSON object at path (creating the file and parent dirs if needed).
 // Unknown top-level keys in an existing file are preserved. Atomic replace via temp file in the same directory.
@@ -46,8 +49,8 @@ func MergeWriteSettings(path string, patch map[string]any) error {
 
 func trimBOMAndSpace(b []byte) []byte {
 	b = trimSpaceBytes(b)
-	if len(b) >= 3 && b[0] == 0xef && b[1] == 0xbb && b[2] == 0xbf {
-		b = b[3:]
+	if len(b) >= len(utf8BOM) && bytes.HasPrefix(b, utf8BOM) {
+		b = b[len(utf8BOM):]
 	}
 	return trimSpaceBytes(b)
 }

@@ -14,7 +14,11 @@ import (
 	"github.com/okuzpe/goclaw/internal/tools"
 )
 
-const defaultExternalHookTimeout = 30 * time.Second
+const (
+	defaultExternalHookTimeout = 30 * time.Second
+	// defaultHookHTTPTimeout is used for hooks.json "url" entries and when OnHTTP gets a non-positive timeout.
+	defaultHookHTTPTimeout = 15 * time.Second
+)
 
 type externalCommand struct {
 	path string
@@ -39,7 +43,7 @@ func (r *Registry) OnHTTP(event EventType, rawURL string, timeout time.Duration)
 		return
 	}
 	if timeout <= 0 {
-		timeout = 15 * time.Second
+		timeout = defaultHookHTTPTimeout
 	}
 	r.httpHooks[event] = append(r.httpHooks[event], externalHTTP{url: rawURL, timeout: timeout})
 }

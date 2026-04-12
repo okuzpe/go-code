@@ -5,7 +5,8 @@ import (
 	"unicode"
 )
 
-const maxNormalizedToolNameLen = 64
+// maxNormalizedToolNameRunes caps the full "mcp__server__tool" string (rune count, UTF-8 safe).
+const maxNormalizedToolNameRunes = 64
 
 // NormalizeMCPToolName builds the LLM-facing tool name: mcp__<server>__<tool>.
 // Characters outside [a-zA-Z0-9_-] become underscores; result is trimmed and capped.
@@ -19,8 +20,9 @@ func NormalizeMCPToolName(server, tool string) string {
 		t = "tool"
 	}
 	out := "mcp__" + s + "__" + t
-	if len(out) > maxNormalizedToolNameLen {
-		out = out[:maxNormalizedToolNameLen]
+	rs := []rune(out)
+	if len(rs) > maxNormalizedToolNameRunes {
+		out = string(rs[:maxNormalizedToolNameRunes])
 	}
 	return out
 }

@@ -21,6 +21,9 @@ const (
 	TypeFeedback  Type = "feedback"
 	TypeProject   Type = "project"
 	TypeReference Type = "reference"
+
+	memorySanitizedNameMaxRunes = 48
+	memoryRandomSuffixBytes     = 8 // hex length 2*bytes in Save() basename
 )
 
 // Entry is a single memory record stored as a markdown file with YAML frontmatter.
@@ -49,7 +52,7 @@ func (st *Store) Save(e Entry) (string, error) {
 	if err := os.MkdirAll(st.dir, 0o700); err != nil {
 		return "", fmt.Errorf("memory store: mkdir: %w", err)
 	}
-	base := sanitizeBaseName(e.Name) + "_" + randomHex(8) + ".md"
+	base := sanitizeBaseName(e.Name) + "_" + randomHex(memoryRandomSuffixBytes) + ".md"
 	path := filepath.Join(st.dir, base)
 	data := formatEntryFile(e)
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
@@ -61,9 +64,13 @@ func (st *Store) Save(e Entry) (string, error) {
 	return base, nil
 }
 
+func invalidMemoryBasename(basename string) bool {
+	return strings.Contains(basename, string(os.PathSeparator)) || basename == "." || basename == ".."
+}
+
 // Load reads one entry by file basename (e.g. from List).
 func (st *Store) Load(basename string) (*Entry, error) {
-	if strings.Contains(basename, string(os.PathSeparator)) || basename == "." || basename == ".." {
+	if invalidMemoryBasename(basename) {
 		return nil, fmt.Errorf("memory store: invalid basename")
 	}
 	path := filepath.Join(st.dir, basename)
@@ -92,7 +99,7 @@ func (st *Store) List() ([]Entry, error) {
 		e Entry
 		t int64
 	}
-	var tmp []withTime
+	tmp := make([]withTime, 0, len(entries))
 	for _, ent := range entries {
 		name := ent.Name()
 		if !strings.HasSuffix(name, ".md") || name == "MEMORY.md" {
@@ -124,7 +131,7 @@ func (st *Store) List() ([]Entry, error) {
 
 // Delete removes one entry file by basename.
 func (st *Store) Delete(basename string) error {
-	if strings.Contains(basename, string(os.PathSeparator)) || basename == "." || basename == ".." {
+	if invalidMemoryBasename(basename) {
 		return fmt.Errorf("memory store: invalid basename")
 	}
 	path := filepath.Join(st.dir, basename)
@@ -170,8 +177,9 @@ func sanitizeBaseName(s string) string {
 		return "note"
 	}
 	s = safeNameRE.ReplaceAllString(s, "_")
-	if len(s) > 48 {
-		s = s[:48]
+	r := []rune(s)
+	if len(r) > memorySanitizedNameMaxRunes {
+		s = string(r[:memorySanitizedNameMaxRunes])
 	}
 	return s
 }

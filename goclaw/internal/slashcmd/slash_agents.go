@@ -124,7 +124,7 @@ func tryInteractiveAgentsPick(env SlashEnv, orch *orchestrator.Orchestrator, hin
 		if env.ChatSubtitle != nil {
 			sub = env.ChatSubtitle()
 		}
-		setWelcomeHints(hintsOut, orch.ProfileName(), sub)
+		setWelcomeHints(hintsOut, orch, sub)
 		return msg, true, nil
 	default:
 		return "", false, nil

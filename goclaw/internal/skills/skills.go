@@ -7,10 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/okuzpe/goclaw/internal/text"
 )
 
 const defaultMaxRunes = 24000
 const maxPerFileRunes = 4096
+
+const skillBodyTruncatedSuffix = "\n…(truncated)"
 
 // Collect walks each root (if it exists) for files named SKILL.md (any depth under that root).
 // Stops appending once total runes exceed maxRunes.
@@ -59,10 +63,7 @@ func Collect(roots []string, maxRunes int) (string, error) {
 			if hasFM {
 				chunk = formatSkillChunk(path, meta, body, maxPerFileRunes)
 			} else {
-				rs := []rune(body)
-				if len(rs) > maxPerFileRunes {
-					body = string(rs[:maxPerFileRunes]) + "\n…(truncated)"
-				}
+				body = text.TruncateRunesWithSuffix(body, maxPerFileRunes, skillBodyTruncatedSuffix)
 				chunk = "### " + path + "\n" + body + "\n\n"
 			}
 			add := utf8.RuneCountInString(chunk)

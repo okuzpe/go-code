@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/okuzpe/goclaw/internal/config"
@@ -48,8 +49,9 @@ func runOnboardingReadline(version, workdir string, base config.Config) error {
 	for i, name := range config.UIAppearanceChoices {
 		fmt.Printf("  %d. %s\n", i+1, name)
 	}
-	fmt.Printf("  %d. auto (terminal-adaptive)\n", len(config.UIAppearanceChoices)+1)
-	fmt.Print("\n Choose (1-7): ")
+	maxAppearance := len(config.UIAppearanceChoices) + 1
+	fmt.Printf("  %d. auto (terminal-adaptive)\n", maxAppearance)
+	fmt.Printf("\n Choose (1-%d): ", maxAppearance)
 	appearance, err := readLine()
 	if err != nil {
 		return err
@@ -158,24 +160,18 @@ func formatVersionSuffix(version string) string {
 }
 
 func parseAppearanceChoice(s string) string {
-	switch s {
-	case "1":
-		return config.UIAppearanceDark
-	case "2":
-		return config.UIAppearanceLight
-	case "3":
-		return config.UIAppearanceDarkColorblind
-	case "4":
-		return config.UIAppearanceLightColorblind
-	case "5":
-		return config.UIAppearanceDarkANSI
-	case "6":
-		return config.UIAppearanceLightANSI
-	case "7":
-		return config.UIAppearanceAuto
-	default:
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil || n < 1 {
 		return config.UIAppearanceAuto
 	}
+	choices := config.UIAppearanceChoices
+	if n <= len(choices) {
+		return choices[n-1]
+	}
+	if n == len(choices)+1 {
+		return config.UIAppearanceAuto
+	}
+	return config.UIAppearanceAuto
 }
 
 func readLine() (string, error) {
@@ -184,5 +180,5 @@ func readLine() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSuffix(line, "\n"), nil
+	return strings.TrimRight(line, "\r\n"), nil
 }

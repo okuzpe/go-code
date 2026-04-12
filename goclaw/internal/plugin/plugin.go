@@ -13,6 +13,8 @@ import (
 	"github.com/okuzpe/goclaw/internal/hooks"
 )
 
+const defaultPluginHooksFile = "hooks.json"
+
 // Manifest is goclaw-plugin.json at the plugin root.
 type Manifest struct {
 	Name      string `json:"name"`
@@ -58,7 +60,7 @@ func resolveDir(workdir, d string) string {
 // RegisterHooksFromDirs loads goclaw-plugin.json in each directory entry (not recursive).
 // Returns plugin names that registered at least one hook file load attempt (manifest valid + allowed).
 func RegisterHooksFromDirs(reg *hooks.Registry, dirs []string, workdir string, allow, deny []string) []string {
-	var loaded []string
+	loaded := make([]string, 0, len(dirs))
 	for _, d := range dirs {
 		abs := resolveDir(workdir, d)
 		if abs == "" {
@@ -88,7 +90,7 @@ func RegisterHooksFromDirs(reg *hooks.Registry, dirs []string, workdir string, a
 		}
 		hf := strings.TrimSpace(man.HooksFile)
 		if hf == "" {
-			hf = "hooks.json"
+			hf = defaultPluginHooksFile
 		}
 		hookPath := filepath.Join(abs, hf)
 		if err := hooks.LoadHooksFile(reg, hookPath); err != nil {

@@ -15,10 +15,16 @@ import (
 //go:embed onboarding_security_full.md
 var onboardingSecurityFullMD string
 
+const (
+	glamourSecurityMinWrap       = 40
+	glamourSecurityFallbackWrap  = 68
+	onboardingSecurityDocRuleMax = 78
+)
+
 // glamourRenderSecurityFull renders the full SECURITY-style markdown for terminal display.
 func glamourRenderSecurityFull(uiAppearance string, wrap int) string {
-	if wrap < 40 {
-		wrap = 68
+	if wrap < glamourSecurityMinWrap {
+		wrap = glamourSecurityFallbackWrap
 	}
 	opts := config.GlamourTermRendererOptions(uiAppearance, wrap)
 	r, err := glamour.NewTermRenderer(opts...)
@@ -183,7 +189,7 @@ func (m *secPreflightModel) viewDoc(w int) string {
 func renderOnboardingSecurityDocFrame(viewportText string, w int, uiAppearance string) string {
 	p := terminalstyle.PaletteForAppearance(uiAppearance)
 	pathStyle := lipgloss.NewStyle().Bold(true).Foreground(p.TrustAccent2)
-	rule := lipgloss.NewStyle().Foreground(p.Muted).Render(strings.Repeat("╌", min(max(w-2, 40), 78)))
+	rule := lipgloss.NewStyle().Foreground(p.Muted).Render(strings.Repeat("╌", min(max(w-2, 40), onboardingSecurityDocRuleMax)))
 	head := pathStyle.Render("docs/goclaw/security.md") + "\n" + rule
 	foot := lipgloss.NewStyle().
 		Foreground(p.Muted).

@@ -47,7 +47,7 @@ func ParseAtPathBuffer(line string) (query string, ok bool) {
 // Used by ExpandInlineAtRefs to find files to pre-load as context.
 func ExtractAtTokens(s string) []string {
 	runes := []rune(s)
-	var tokens []string
+	tokens := make([]string, 0, 8)
 	seen := map[string]bool{}
 	i := 0
 	for i < len(runes) {
@@ -61,7 +61,7 @@ func ExtractAtTokens(s string) []string {
 				path := strings.TrimPrefix(tok, "@")
 				path = strings.TrimSuffix(path, "/")
 				if !strings.Contains(path, "..") && !filepath.IsAbs(path) &&
-				!strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "\\") && !seen[tok] {
+					!strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "\\") && !seen[tok] {
 					tokens = append(tokens, tok)
 					seen[tok] = true
 				}
@@ -281,7 +281,9 @@ func AtTabExpand(workdir, line string) (replacement string, ok bool) {
 // ReadlineAtCompletions implements readline.AutoCompleter: @ path completion or slash commands.
 type ReadlineAtCompletions struct {
 	Workdir string
-	Slash   interface{ Do(line []rune, pos int) ([][]rune, int) }
+	Slash   interface {
+		Do(line []rune, pos int) ([][]rune, int)
+	}
 }
 
 // Do forwards to @ path completion or slash PrefixCompleter.

@@ -3,6 +3,7 @@ package skills
 import (
 	"strings"
 
+	"github.com/okuzpe/goclaw/internal/text"
 	"gopkg.in/yaml.v3"
 )
 
@@ -34,7 +35,7 @@ func ParseFrontmatter(raw []byte) (meta Meta, body string, hasMeta bool) {
 	if len(lines) < 2 || strings.TrimSpace(lines[0]) != "---" {
 		return Meta{}, s, false
 	}
-	var yamlLines []string
+	yamlLines := make([]string, 0, max(0, len(lines)-2))
 	i := 1
 	for ; i < len(lines); i++ {
 		if strings.TrimSpace(lines[i]) == "---" {
@@ -76,11 +77,7 @@ func formatSkillChunk(path string, meta Meta, body string, maxBodyRunes int) str
 	}
 	b.WriteByte('\n')
 	if body != "" {
-		rs := []rune(body)
-		if len(rs) > maxBodyRunes {
-			body = string(rs[:maxBodyRunes]) + "\n…(truncated)"
-		}
-		b.WriteString(body)
+		b.WriteString(text.TruncateRunesWithSuffix(body, maxBodyRunes, skillBodyTruncatedSuffix))
 	}
 	b.WriteString("\n\n")
 	return b.String()

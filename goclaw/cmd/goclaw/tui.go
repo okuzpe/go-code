@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/okuzpe/goclaw/internal/app"
@@ -17,7 +18,9 @@ type fullscreenChat struct{}
 
 func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime) error {
 	approval := chat.NewApprovalBroker()
-	orchOpts := append(append([]orchestrator.Option(nil), rt.OrchOpts...), orchestrator.WithToolApprover(approval.ToolApprover()))
+
+	orchOpts := slices.Clone(rt.OrchOpts)
+	orchOpts = append(orchOpts, orchestrator.WithToolApprover(approval.ToolApprover()))
 	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, orchOpts...)
 
 	focus := coordinator.NewFocusRouter()
@@ -37,24 +40,12 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 	sess := rt.Sess
 	slashEnv.SessionModel = func() string { return rt.Cfg.Model() }
 	slashEnv.SetSessionModel = func(id string) error {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			return fmt.Errorf("model id is empty")
-		}
-		switch strings.ToLower(strings.TrimSpace(rt.Cfg.Provider)) {
-		case "ollama":
-			rt.Cfg.OllamaModel = id
-		case "openai_compatible":
-			rt.Cfg.OpenAICompatModel = id
-		default:
-			return fmt.Errorf("/model applies to provider ollama or openai_compatible only (current: %s)", rt.Cfg.Provider)
-		}
-		orch.SetConfig(rt.Cfg)
-		return nil
+		return setSessionModel(rt, orch, id)
 	}
 	slashEnv.ChatSubtitle = func() string {
 		return app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName())
 	}
+
 	slash := func(input string) (handled bool, out string, quit bool, modelSubmit string, err error, hints slashcmd.UIHints) {
 		sc := slashcmd.SlashContext{SlashEnv: slashEnv, Mem: rt.MemStore, Orch: orch, Sess: &sess, Store: rt.Store}
 		var hi slashcmd.UIHints
@@ -65,75 +56,108 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		}
 		return h, o, q, ms, e, hi
 	}
-	var submit chat.Submitter
-	if rt.Mock {
-		submit = func(ctx context.Context, userText string, sink orchestrator.StreamSink) (string, error) {
-			if id := strings.TrimSpace(focus.Current()); id != "" {
-				err := coordinator.DeliverWorkerMessage(ctx, id, userText, sink)
-				return "", app.AugmentOrchestratorErr(rt.Cfg.Provider, rt.Cfg.Model(), err)
-			}
-			reply, err := app.StreamMockAssistant(ctx, userText, sink, rt.Sess)
-			return reply, app.AugmentOrchestratorErr(rt.Cfg.Provider, rt.Cfg.Model(), err)
-		}
-	} else {
-		submit = func(ctx context.Context, userText string, sink orchestrator.StreamSink) (string, error) {
-			if id := strings.TrimSpace(focus.Current()); id != "" {
-				err := coordinator.DeliverWorkerMessage(ctx, id, userText, sink)
-				return "", app.AugmentOrchestratorErr(rt.Cfg.Provider, rt.Cfg.Model(), err)
-			}
-			if handled, err := app.RunLocalPrefixToolIfAny(ctx, rt.Mock, orch, rt.Sess, userText, sink); handled {
-				return "", err
-			}
-			userText = app.ExpandInlineAtRefs(ctx, orch, userText)
-			reply, err := orch.RunStreaming(ctx, userText, sink)
-			return reply, app.AugmentOrchestratorErr(rt.Cfg.Provider, rt.Cfg.Model(), err)
-		}
-	}
-	return chat.RunApp(ctx, chat.Options{
-		TUIMouseScroll: rt.Cfg.TUIMouseScroll,
-		Title:          app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
-		SessionID:      rt.Sess.ID,
-		FooterStats: func() string {
-			if rt.Sess == nil {
-				return ""
-			}
-			n := rt.Sess.Len()
-			if n <= 0 {
-				return ""
-			}
-			live := rt.Sess.StreamingAssistantChars()
-			tok := orchestrator.SessionMessagesTokenEstimateLive(rt.Sess.Messages, rt.Cfg.Provider, live)
-			var base string
-			if n == 1 {
-				base = "1 msg"
-			} else {
-				base = fmt.Sprintf("%d msgs", n)
-			}
-			if tok >= 1 {
-				base = fmt.Sprintf("%s · ~%d tokens", base, tok)
-			}
-			if pct, ok := orchestrator.SessionCompactionFillPercentLive(rt.Sess.Messages, rt.Cfg, live); ok {
-				base = fmt.Sprintf("%s · compact~%d%%", base, pct)
-			}
-			if app.OllamaFunctionToolsDropped(rt) {
-				return base + " · Ollama text-only"
-			}
-			return base
-		},
+
+	submit := newChatSubmitter(rt, orch, focus)
+
+	opts := chat.Options{
+		TUIMouseScroll:     rt.Cfg.TUIMouseScroll,
+		Title:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
+		SessionID:          rt.Sess.ID,
+		FooterStats:        func() string { return tuiFooterStats(rt) },
 		Workdir:            rt.Workdir,
 		UserConfigDir:      rt.Cfg.UserConfigDir,
 		UserAgentsDir:      rt.UserAgentsDir,
 		ProjectAgentsDir:   rt.ProjectAgentsDir,
 		ActiveAgentProfile: rt.Profile.Name,
 		Theme:              chat.NewThemeForAppearance(rt.Cfg.UIAppearance),
-		Welcome: chat.WelcomeOptions{
-			Version:              Version,
-			Subtitle:             app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
-			Workdir:              rt.Workdir,
-			Profile:              rt.Profile.Name,
-			FileWriteToolsHidden: !rt.Profile.AllowsWorkspaceFileWrites(),
-			HubDelegatesCoding:   rt.Profile.AllowsSpawnAgentDelegation(),
-		},
-		FocusLine: focus.Hint,
-	}, approval, submit, slash)
+		Welcome:            welcomeOptions(rt),
+		FocusLine:          focus.Hint,
+	}
+	return chat.RunApp(ctx, opts, approval, submit, slash)
+}
+
+func setSessionModel(rt *app.ChatRuntime, orch *orchestrator.Orchestrator, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("model id is empty")
+	}
+	switch strings.ToLower(strings.TrimSpace(rt.Cfg.Provider)) {
+	case "ollama":
+		rt.Cfg.OllamaModel = id
+	case "openai_compatible":
+		rt.Cfg.OpenAICompatModel = id
+	default:
+		return fmt.Errorf("/model applies to provider ollama or openai_compatible only (current: %s)", rt.Cfg.Provider)
+	}
+	orch.SetConfig(rt.Cfg)
+	return nil
+}
+
+func welcomeOptions(rt *app.ChatRuntime) chat.WelcomeOptions {
+	return chat.WelcomeOptions{
+		Version:              Version,
+		Subtitle:             app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
+		Workdir:              rt.Workdir,
+		Profile:              rt.Profile.Name,
+		FileWriteToolsHidden: !rt.Profile.AllowsWorkspaceFileWrites(),
+		HubDelegatesCoding:   rt.Profile.AllowsSpawnAgentDelegation(),
+	}
+}
+
+func tuiFooterStats(rt *app.ChatRuntime) string {
+	if rt.Sess == nil {
+		return ""
+	}
+	n := rt.Sess.Len()
+	if n <= 0 {
+		return ""
+	}
+	live := rt.Sess.StreamingAssistantChars()
+	prov := rt.Cfg.Provider
+
+	base := "1 msg"
+	if n != 1 {
+		base = fmt.Sprintf("%d msgs", n)
+	}
+	if tok := orchestrator.SessionMessagesTokenEstimateLive(rt.Sess.Messages, prov, live); tok >= 1 {
+		base = fmt.Sprintf("%s · ~%d tokens", base, tok)
+	}
+	if pct, ok := orchestrator.SessionCompactionFillPercentLive(rt.Sess.Messages, rt.Cfg, live); ok {
+		base = fmt.Sprintf("%s · compact~%d%%", base, pct)
+	}
+	if app.OllamaFunctionToolsDropped(rt) {
+		return base + " · Ollama text-only"
+	}
+	return base
+}
+
+func newChatSubmitter(rt *app.ChatRuntime, orch *orchestrator.Orchestrator, focus *coordinator.FocusRouter) chat.Submitter {
+	augment := func(err error) error {
+		return app.AugmentOrchestratorErr(rt.Cfg.Provider, rt.Cfg.Model(), err)
+	}
+
+	return func(ctx context.Context, userText string, sink orchestrator.StreamSink) (string, error) {
+		if id := strings.TrimSpace(focus.Current()); id != "" {
+			err := coordinator.DeliverWorkerMessage(ctx, id, userText, sink)
+			if err != nil {
+				if errors.Is(err, coordinator.ErrInteractiveWorkerNotFound) {
+					focus.Detach()
+				} else {
+					return "", augment(err)
+				}
+			} else {
+				return "", augment(err)
+			}
+		}
+		if rt.Mock {
+			reply, err := app.StreamMockAssistant(ctx, userText, sink, rt.Sess)
+			return reply, augment(err)
+		}
+		if handled, err := app.RunLocalPrefixToolIfAny(ctx, rt.Mock, orch, rt.Sess, userText, sink); handled {
+			return "", err
+		}
+		userText = app.ExpandInlineAtRefs(ctx, orch, userText)
+		reply, err := orch.RunStreaming(ctx, userText, sink)
+		return reply, augment(err)
+	}
 }

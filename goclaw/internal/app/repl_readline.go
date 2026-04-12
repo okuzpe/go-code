@@ -19,6 +19,12 @@ import (
 	"github.com/okuzpe/goclaw/internal/slashcmd"
 )
 
+const (
+	replPromptIDMaxRunes             = 8
+	replToolApprovalFallbackMaxRunes = 400
+	replHistoryLimit                 = 500
+)
+
 func replHistoryFile(userConfigDir string) string {
 	return filepath.Join(userConfigDir, "history")
 }
@@ -27,16 +33,10 @@ func replPrompt(s *session.Session, focus *coordinator.FocusRouter) string {
 	if s == nil {
 		return "> "
 	}
-	id := s.ID
-	if len(id) > 8 {
-		id = id[:8]
-	}
+	id := truncateRunesHard(s.ID, replPromptIDMaxRunes)
 	if focus != nil {
 		if w := strings.TrimSpace(focus.Current()); w != "" {
-			wid := w
-			if len(wid) > 8 {
-				wid = wid[:8]
-			}
+			wid := truncateRunesHard(w, replPromptIDMaxRunes)
 			return fmt.Sprintf("%s@w%s> ", id, wid)
 		}
 	}
@@ -48,10 +48,7 @@ func terminalToolApprover(rl *readline.Instance, getPrompt func() string, uiAppe
 		_ = ctx
 		preview := orchestrator.FormatToolUsePreview(toolName, toolInput)
 		if preview == "" {
-			preview = toolInput
-			if len(preview) > 400 {
-				preview = preview[:400] + "…"
-			}
+			preview = truncate(toolInput, replToolApprovalFallbackMaxRunes)
 		}
 		printToolApprovalPrompt(os.Stderr, toolName, preview, uiAppearance)
 		rl.SetPrompt("Allow execution? [y/N]: ")
@@ -190,8 +187,17 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 		}
 
 		if wid := strings.TrimSpace(r.focus.Current()); wid != "" {
-			runWorkerTurn(r.baseCtx, r.rt.Cfg.Provider, r.rt.Cfg.Model(), wid, input, r.sink, setReqCancel)
-			continue
+			werr := runWorkerTurn(r.baseCtx, r.rt.Cfg.Provider, r.rt.Cfg.Model(), wid, input, r.sink, setReqCancel)
+			if werr == nil {
+				continue
+			}
+			if errors.Is(werr, coordinator.ErrInteractiveWorkerNotFound) {
+				r.focus.Detach()
+				fmt.Fprintln(os.Stderr, "note: focused worker ended — routing this message to the parent session")
+				// fall through to parent orchestrator with the same input
+			} else {
+				continue
+			}
 		}
 
 		if handled, err := RunLocalPrefixToolIfAny(r.baseCtx, r.rt.Mock, r.orch, sess, input, r.sink); handled {
@@ -212,7 +218,7 @@ func runWorkerTurn(
 	provider, model, taskID, userText string,
 	sink orchestrator.StreamSink,
 	setReqCancel func(context.CancelFunc),
-) {
+) error {
 	reqCtx, reqCancel := context.WithCancel(baseCtx)
 	setReqCancel(reqCancel)
 	err := coordinator.DeliverWorkerMessage(reqCtx, taskID, userText, sink)
@@ -220,9 +226,12 @@ func runWorkerTurn(
 	setReqCancel(nil)
 	reqCancel()
 	if err != nil && !(errors.Is(err, context.Canceled) && baseCtx.Err() == nil) {
-		slog.Error("worker turn error", "err", err)
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		if !errors.Is(err, coordinator.ErrInteractiveWorkerNotFound) {
+			slog.Error("worker turn error", "err", err)
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		}
 	}
+	return err
 }
 
 func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrator.Option) error {
@@ -239,7 +248,7 @@ func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrat
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:          replPrompt(rt.Sess, focus),
 		HistoryFile:     historyFile,
-		HistoryLimit:    500,
+		HistoryLimit:    replHistoryLimit,
 		AutoComplete:    slashcmd.NewReadlineSlashAtCompleter(rt.Workdir),
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",

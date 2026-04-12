@@ -13,6 +13,18 @@ import (
 	"golang.org/x/term"
 )
 
+const (
+	onboardingGlamourRuleMaxCols = 72
+	onboardingPlainRuleMaxCols   = 64
+
+	onboardingTermMinCols      = 40
+	onboardingTermFallbackWrap = 68
+	onboardingGlamourWrapMin   = 48
+	onboardingGlamourWrapMax   = 100
+	onboardingStdoutWrapMin    = 52
+	onboardingStdoutWrapMax    = 78
+)
+
 //go:embed onboarding_welcome.md
 var onboardingWelcomeMD string
 
@@ -32,7 +44,7 @@ func onboardingWelcomeMarkdown(version string) string {
 // termWidthForOnboarding returns a sensible wrap width for glamour (readline or TUI).
 func termWidthForOnboarding(explicit int) int {
 	if explicit > 0 {
-		return min(max(explicit-4, 48), 100)
+		return min(max(explicit-4, onboardingGlamourWrapMin), onboardingGlamourWrapMax)
 	}
 	return stdoutWrapWidth()
 }
@@ -41,10 +53,10 @@ func termWidthForOnboarding(explicit int) int {
 func stdoutWrapWidth() int {
 	fd := int(os.Stdout.Fd())
 	w, _, err := term.GetSize(fd)
-	if err != nil || w < 40 {
-		return 68
+	if err != nil || w < onboardingTermMinCols {
+		return onboardingTermFallbackWrap
 	}
-	return min(max(w-6, 52), 78)
+	return min(max(w-6, onboardingStdoutWrapMin), onboardingStdoutWrapMax)
 }
 
 // renderOnboardingSecurityMarkdown returns ANSI-styled welcome + security (glamour + lipgloss accent strip).
@@ -66,7 +78,7 @@ func renderOnboardingSecurityMarkdown(version, uiAppearance string, width int) s
 	p := terminalstyle.PaletteForAppearance(uiAppearance)
 	rule := lipgloss.NewStyle().
 		Foreground(p.Muted).
-		Render(strings.Repeat("─", min(wrap+2, 72)))
+		Render(strings.Repeat("─", min(wrap+2, onboardingGlamourRuleMaxCols)))
 	return rule + "\n" + out
 }
 
@@ -100,7 +112,7 @@ func onboardingWelcomePlainBlock(version string, width int) string {
 	var o strings.Builder
 	o.WriteString("\n")
 	o.WriteString(fmt.Sprintf(" Welcome to goclaw%s\n", formatVersionSuffix(version)))
-	o.WriteString(strings.Repeat("─", min(w, 64)))
+	o.WriteString(strings.Repeat("─", min(w, onboardingPlainRuleMaxCols)))
 	o.WriteString("\n\n")
 	o.WriteString(wrapPlain("Before you start", w))
 	o.WriteString("\n\n")
@@ -125,7 +137,7 @@ func printOnboardingWelcomeLipglossFallback(version, uiAppearance string) {
 	w := stdoutWrapWidth()
 	p := terminalstyle.PaletteForAppearance(uiAppearance)
 	title := lipgloss.NewStyle().Bold(true).Foreground(p.TrustAccent).Render(onboardingWelcomeTitle(version))
-	rule := lipgloss.NewStyle().Foreground(p.Muted).Render(strings.Repeat("─", min(w, 72)))
+	rule := lipgloss.NewStyle().Foreground(p.Muted).Render(strings.Repeat("─", min(w, onboardingGlamourRuleMaxCols)))
 	sub := lipgloss.NewStyle().Bold(true).
 		Foreground(lipgloss.AdaptiveColor{Light: "#374151", Dark: "#E5E7EB"}).
 		Render("Before you start")

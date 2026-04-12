@@ -221,10 +221,10 @@ func NewApprovalBroker() *ApprovalBroker {
 
 func (b *ApprovalBroker) ToolApprover() orchestrator.ToolApprover {
 	return func(ctx context.Context, toolName, toolInput string) (bool, error) {
-		preview := orchestrator.FormatToolUsePreview(toolName, toolInput)
-		if len(preview) > 400 {
-			preview = preview[:400] + "…"
-		}
+		preview := text.TruncateRunes(
+			orchestrator.FormatToolUsePreview(toolName, toolInput),
+			tuiToolApprovalPreviewMaxRunes,
+		)
 		req := ApprovalRequest{
 			ToolName: toolName,
 			Preview:  preview,
@@ -250,6 +250,20 @@ const inputMaxHeight = 6
 // idleTranscriptHintMinRunes triggers a one-line scroll hint after long assistant replies (e.g. plans).
 const idleTranscriptHintMinRunes = 1200
 
+const (
+	tuiToolApprovalPreviewMaxRunes = 400
+	approvalOverlayPreviewMaxRunes = 240
+	approvalOverlayPreviewMinRunes = 8
+	approvalOverlayPreviewStep     = 8
+	toolQueueSummaryMaxRunes       = 55
+
+	defaultTerminalWidthFallback = 80
+	composePlaceholderNarrowMaxW = 60
+
+	mdLineRunawayIndentMin = 4
+	mdTabIndentSpaces      = 4
+)
+
 // minComposeWidth is the smallest textarea width when the buffer is short (avoids a tiny box).
 const minComposeWidth = 28
 
@@ -273,7 +287,7 @@ const maxSlashSuggestRows = 5
 func placeholderForWidth(termWidth int) string {
 	const full = "Ask anything…  ! @ & /btw /help · Ctrl+B scroll · Shift+Enter newline"
 	const narrow = "Ask anything…  /help · Ctrl+B scroll"
-	if termWidth > 0 && termWidth < 60 {
+	if termWidth > 0 && termWidth < composePlaceholderNarrowMaxW {
 		return narrow
 	}
 	return full
@@ -1158,6 +1172,12 @@ func (m *Model) applySlashHints(hints slashcmd.UIHints) {
 		if hints.WelcomeSubtitle != "" {
 			m.welcomeOpts.Subtitle = hints.WelcomeSubtitle
 		}
+		if hints.WelcomeFileWriteToolsHidden != nil {
+			m.welcomeOpts.FileWriteToolsHidden = *hints.WelcomeFileWriteToolsHidden
+		}
+		if hints.WelcomeHubDelegatesCoding != nil {
+			m.welcomeOpts.HubDelegatesCoding = *hints.WelcomeHubDelegatesCoding
+		}
 		if m.welcomeBlockEnd > 0 {
 			m.rebuildWelcomeForWidth()
 			m.preambleEnd = m.welcomeBlockEnd
@@ -1673,16 +1693,16 @@ func (m *Model) approvalStripView() string {
 		toolShow = text.TruncateRunes(toolShow, 20)
 	}
 
-	previewRunes := len([]rune(previewPlain))
-	if previewRunes > 240 {
-		previewRunes = 240
+	previewRunes := utf8.RuneCountInString(previewPlain)
+	if previewRunes > approvalOverlayPreviewMaxRunes {
+		previewRunes = approvalOverlayPreviewMaxRunes
 	}
-	for previewRunes >= 8 {
+	for previewRunes >= approvalOverlayPreviewMinRunes {
 		prevShow := text.TruncateRunes(previewPlain, previewRunes)
 		if s, ok := try(toolShow, prevShow); ok {
 			return s
 		}
-		previewRunes -= 8
+		previewRunes -= approvalOverlayPreviewStep
 	}
 	if s, ok := try(toolShow, "…"); ok {
 		return s
@@ -1746,6 +1766,7 @@ func renderAtRefChips(s string, th *Theme) string {
 	}
 	runes := []rune(s)
 	var b strings.Builder
+	b.Grow(len(s) + 8)
 	i := 0
 	for i < len(runes) {
 		r := runes[i]
@@ -1782,7 +1803,7 @@ func (m *Model) widthOrDefault() int {
 	if m.width > 0 {
 		return m.width
 	}
-	return 80
+	return defaultTerminalWidthFallback
 }
 
 func (m *Model) appendThinkingRow() {
@@ -1923,10 +1944,10 @@ func (m *Model) replaceToolRunningWithCard(lineIdx int, toolName, summary, conte
 	m.syncLineMetaLen()
 	if lineIdx < len(m.lineMeta) {
 		m.lineMeta[lineIdx] = lineMeta{
-			kind:         lineKindToolCard,
-			toolName:     toolName,
+			kind:        lineKindToolCard,
+			toolName:    toolName,
 			toolSummary: summary,
-			toolError:    isError,
+			toolError:   isError,
 		}
 	}
 	m.setLinesContent(false)
@@ -1987,10 +2008,7 @@ func (m *Model) toolQueueStatusLine() string {
 	job := m.toolWaitQueue[0]
 	base := orchestrator.ToolWorkingPhrase(job.name)
 	if summary := strings.TrimSpace(job.summary); summary != "" {
-		const maxSummaryCols = 55
-		if len([]rune(summary)) > maxSummaryCols {
-			summary = string([]rune(summary)[:maxSummaryCols]) + "…"
-		}
+		summary = text.TruncateRunes(summary, toolQueueSummaryMaxRunes)
 		base = base + " · " + summary
 	}
 	if !m.toolWaitStartedAt.IsZero() {
@@ -2075,7 +2093,7 @@ func normalizeAssistantMarkdownLines(lines []string) []string {
 		}
 		// Continuation lines: strip runaway indentation from word-wrap, keep shallow list indents.
 		n := countLeadingASCIISpaces(line)
-		if n >= 4 {
+		if n >= mdLineRunawayIndentMin {
 			out[i] = strings.TrimLeft(line, " \t")
 		} else {
 			out[i] = line
@@ -2090,7 +2108,7 @@ func countLeadingASCIISpaces(s string) int {
 		if r == ' ' {
 			n++
 		} else if r == '\t' {
-			n += 4
+			n += mdTabIndentSpaces
 		} else {
 			break
 		}

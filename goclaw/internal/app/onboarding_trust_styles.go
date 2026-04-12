@@ -9,6 +9,12 @@ import (
 	"github.com/okuzpe/goclaw/internal/ui/terminalstyle"
 )
 
+const (
+	onboardingTrustRuleInnerMin = 40
+	onboardingTrustRuleMaxCols  = 76
+	onboardingTrustWrapMin      = 48
+)
+
 func trustStyles(uiAppearance string) (
 	titleStyle lipgloss.Style,
 	ruleStyle lipgloss.Style,
@@ -39,9 +45,9 @@ func renderOnboardingTrustStepTUI(uiAppearance, absWd string, cursor, width int)
 	inner := width - 2
 	trustTitleStyle, trustRuleStyle, trustPathStyle, trustBodyStyle, trustHintStyle, trustSelStyle, _ := trustStyles(uiAppearance)
 	title := trustTitleStyle.Render("Accessing workspace")
-	rule := trustRuleStyle.Render(strings.Repeat("─", min(max(inner, 40), 76)))
+	rule := trustRuleStyle.Render(strings.Repeat("─", min(max(inner, onboardingTrustRuleInnerMin), onboardingTrustRuleMaxCols)))
 	pathLine := trustPathStyle.Render(absWd)
-	body := trustBodyStyle.Render(wrapPlain("Quick safety check: trust this folder for hooks under .goclaw/?", max(inner, 48)))
+	body := trustBodyStyle.Render(wrapPlain("Quick safety check: trust this folder for hooks under .goclaw/?", max(inner, onboardingTrustWrapMin)))
 
 	var opts strings.Builder
 	labels := []string{"Yes, I trust this folder", "No, exit"}
@@ -78,10 +84,10 @@ func renderOnboardingTrustStepReadlineTTY(uiAppearance, absWd string, width int)
 	if width <= 0 {
 		width = 80
 	}
-	inner := max(width-2, 48)
+	inner := max(width-2, onboardingTrustWrapMin)
 	trustTitleStyle, trustRuleStyle, trustPathStyle, trustBodyStyle, trustHintStyle, _, trustNumStyle := trustStyles(uiAppearance)
 	title := trustTitleStyle.Render("Accessing workspace")
-	rule := trustRuleStyle.Render(strings.Repeat("─", min(inner, 76)))
+	rule := trustRuleStyle.Render(strings.Repeat("─", min(inner, onboardingTrustRuleMaxCols)))
 	pathLine := trustPathStyle.Render(absWd)
 
 	p1 := trustBodyStyle.Render(wrapPlain("Quick safety check: Is this a project you created or one you trust (your own code, a well-known open source project, or work from your team)? If not, review this folder first.", inner))

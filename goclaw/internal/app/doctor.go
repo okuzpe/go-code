@@ -21,6 +21,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	ollamaDoctorProbeTimeout = 900 * time.Millisecond
+	doctorMCPDisplayMaxRunes = 72
+)
+
 // RunDoctor prints a short preflight report and exits.
 func RunDoctor(cmd *cobra.Command, _ []string) error {
 	rt, err := PrepareChatRuntime(cmd)
@@ -103,11 +108,7 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 		}
 	}
 
-	if rt.Store != nil {
-		lines = append(lines, checkLine("session store initialized", true))
-	} else {
-		lines = append(lines, checkLine("session store initialized", false))
-	}
+	lines = append(lines, checkLine("session store initialized", rt.Store != nil))
 
 	lines = append(lines, mcpSummaryLines(rt)...)
 
@@ -142,7 +143,7 @@ func pluginSkillMemorySection(rt *ChatRuntime) []string {
 	// Only aggregate SKILL.md from workspace roots here — user home skill trees can be large;
 	// snippet size matches what startup injects from the repo, not the full merged prompt.
 	wsSkillRoots := workspaceSkillRootsOnly(rt)
-	snippet, _ := skills.Collect(wsSkillRoots, 24000)
+	snippet, _ := skills.Collect(wsSkillRoots, skillsMaxRunes)
 	out = append(out, fmt.Sprintf("  workspace skills snippet (approx): %d bytes", len(strings.TrimSpace(snippet))))
 	memCount := 0
 	memIndex := false
@@ -161,10 +162,9 @@ func pluginSkillMemorySection(rt *ChatRuntime) []string {
 }
 
 func skillRootsForDoctor(rt *ChatRuntime) []string {
-	cfg := rt.Cfg
 	var roots []string
 	roots = append(roots, workspaceSkillRootsOnly(rt)...)
-	ud := strings.TrimSpace(cfg.UserConfigDir)
+	ud := strings.TrimSpace(rt.Cfg.UserConfigDir)
 	if ud != "" {
 		roots = append(roots,
 			filepath.Join(ud, "skills"),
@@ -223,17 +223,25 @@ func pluginResolveDir(workdir, d string) string {
 	return filepath.Clean(filepath.Join(workdir, d))
 }
 
-func mcpSummaryLines(rt *ChatRuntime) []string {
-	eligible := 0
-	for _, srv := range rt.Cfg.MCPServers {
-		if srv.Disabled || strings.TrimSpace(srv.ID) == "" {
-			continue
-		}
-		if strings.TrimSpace(srv.Command) == "" && strings.TrimSpace(srv.URL) == "" {
-			continue
-		}
-		eligible++
+func isEligibleMCPServer(srv config.MCPServerConfig) bool {
+	if srv.Disabled || strings.TrimSpace(srv.ID) == "" {
+		return false
 	}
+	return strings.TrimSpace(srv.Command) != "" || strings.TrimSpace(srv.URL) != ""
+}
+
+func countEligibleMCPServers(servers []config.MCPServerConfig) int {
+	n := 0
+	for _, srv := range servers {
+		if isEligibleMCPServer(srv) {
+			n++
+		}
+	}
+	return n
+}
+
+func mcpSummaryLines(rt *ChatRuntime) []string {
+	eligible := countEligibleMCPServers(rt.Cfg.MCPServers)
 	connected := len(rt.McpSessions)
 	out := []string{
 		checkLine("mcp configured servers reachable", !rt.DisableTools || eligible == 0 || connected == eligible),
@@ -251,16 +259,12 @@ func mcpConnectionHintLines(cfg config.Config, rt *ChatRuntime) []string {
 		return nil
 	}
 	var out []string
-	eligible := 0
+	eligible := countEligibleMCPServers(cfg.MCPServers)
 	connected := len(rt.McpSessions)
 	for _, srv := range cfg.MCPServers {
-		if srv.Disabled || strings.TrimSpace(srv.ID) == "" {
+		if !isEligibleMCPServer(srv) {
 			continue
 		}
-		if strings.TrimSpace(srv.Command) == "" && strings.TrimSpace(srv.URL) == "" {
-			continue
-		}
-		eligible++
 		u := strings.TrimSpace(srv.URL)
 		if u == "" {
 			continue
@@ -329,12 +333,14 @@ func writeToolApprovalHintLines(rt *ChatRuntime) []string {
 	if rt == nil || rt.DisableTools || !rt.Profile.AllowsWorkspaceFileWrites() || rt.Policy == nil {
 		return nil
 	}
-	if rt.Policy.Evaluate("write_file") == permissions.DecisionDeny || rt.Policy.Evaluate("edit_file") == permissions.DecisionDeny {
+	wf := rt.Policy.Evaluate("write_file")
+	ef := rt.Policy.Evaluate("edit_file")
+	if wf == permissions.DecisionDeny || ef == permissions.DecisionDeny {
 		return []string{
 			"  tool_permissions sets write_file or edit_file to deny — the agent cannot persist those edits until you change settings.",
 		}
 	}
-	if rt.Policy.Evaluate("write_file") == permissions.DecisionAsk || rt.Policy.Evaluate("edit_file") == permissions.DecisionAsk {
+	if wf == permissions.DecisionAsk || ef == permissions.DecisionAsk {
 		return []string{
 			"  write_file / edit_file default to ask: approve prompts in the UI, or set tool_permissions.allow in settings for fewer interruptions.",
 		}
@@ -422,10 +428,7 @@ func emptyPlaceholder(s string) string {
 
 func shortCommandSummary(srv config.MCPServerConfig) string {
 	if u := strings.TrimSpace(srv.URL); u != "" {
-		if len(u) > 72 {
-			u = u[:69] + "..."
-		}
-		return "url=" + u
+		return "url=" + truncate(u, doctorMCPDisplayMaxRunes)
 	}
 	cmd := strings.TrimSpace(srv.Command)
 	var b strings.Builder
@@ -434,10 +437,7 @@ func shortCommandSummary(srv config.MCPServerConfig) string {
 	if len(srv.Args) > 0 {
 		b.WriteString(" ")
 		args := strings.Join(srv.Args, " ")
-		if len(args) > 72 {
-			args = args[:69] + "..."
-		}
-		b.WriteString(args)
+		b.WriteString(truncate(args, doctorMCPDisplayMaxRunes))
 	}
 	if srv.CWD != "" {
 		b.WriteString("  cwd=" + srv.CWD)
@@ -502,16 +502,12 @@ func effectiveOllamaHost(host string) string {
 }
 
 func probeOllama(ctx context.Context, host string) bool {
-	host = strings.TrimSpace(host)
-	if host == "" {
-		host = "http://localhost:11434"
-	}
-	u := strings.TrimRight(host, "/") + "/api/tags"
+	u := ollamaTagsProbeURL(host)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return false
 	}
-	client := &http.Client{Timeout: 900 * time.Millisecond}
+	client := &http.Client{Timeout: ollamaDoctorProbeTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return false

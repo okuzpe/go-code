@@ -26,6 +26,9 @@ const defaultWelcomeWrap = 72
 // welcomeWideMinCols enables a two-column dashboard when the terminal is wide enough.
 const welcomeWideMinCols = 86
 
+// welcomeNarrowContentMaxFloor avoids clipping on very narrow terminals (see WindowSizeMsg path).
+const welcomeNarrowContentMaxFloor = 12
+
 // WelcomeDashboardLines returns a framed home panel before the transcript.
 // termWidth is the terminal width in cells; use 0 to wrap at defaultWelcomeWrap.
 // Empty Version skips the panel.
@@ -41,9 +44,9 @@ func WelcomeDashboardLines(th *Theme, opt WelcomeOptions, termWidth int) []strin
 	contentMax := defaultWelcomeWrap
 	if termWidth > 0 {
 		contentMax = termWidth - 4
-		// Never wider than the terminal body; a floor of 24 caused clipping on narrow CMD windows.
-		if contentMax < 12 {
-			contentMax = 12
+		// Never wider than the terminal body; keep a small floor so narrow windows do not clip.
+		if contentMax < welcomeNarrowContentMaxFloor {
+			contentMax = welcomeNarrowContentMaxFloor
 		}
 	}
 

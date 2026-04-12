@@ -28,6 +28,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	privateDirPerm  = 0o700
+	skillsMaxRunes  = 24000
+	mcpDialTimeout  = 30 * time.Second
+	hookHTTPTimeout = 15 * time.Second
+)
+
 // ChatRuntime holds shared subsystems built once for an interactive chat session.
 type ChatRuntime struct {
 	Cfg              config.Config
@@ -62,6 +69,68 @@ func OllamaFunctionToolsDropped(rt *ChatRuntime) bool {
 		return false
 	}
 	return oc.FunctionToolsDropped()
+}
+
+// appendIDEBridgeMCPServerIfMissing appends the IDE-discovered MCP server when it is not already configured.
+func appendIDEBridgeMCPServerIfMissing(cfg *config.Config, endpointURL string, hdrs map[string]string) {
+	if cfg == nil {
+		return
+	}
+	u := strings.TrimSpace(endpointURL)
+	if u == "" {
+		return
+	}
+	for _, existing := range cfg.MCPServers {
+		if strings.TrimSpace(existing.URL) == u || strings.TrimSpace(existing.ID) == "ide" {
+			return
+		}
+	}
+	cfg.MCPServers = append(cfg.MCPServers, config.MCPServerConfig{
+		ID:      "ide",
+		URL:     u,
+		Headers: hdrs,
+	})
+}
+
+// buildMCPServerDial builds a dial closure for one MCP server (HTTP preferred when URL is set).
+func buildMCPServerDial(srv config.MCPServerConfig, workdir string, allowRemote bool) (func(context.Context) (mcp.Conn, error), error) {
+	hasURL := strings.TrimSpace(srv.URL) != ""
+	hasCmd := strings.TrimSpace(srv.Command) != ""
+	switch {
+	case hasURL:
+		parsed, err := url.Parse(strings.TrimSpace(srv.URL))
+		if err != nil {
+			return nil, err
+		}
+		if err := mcp.ValidateHTTPURL(parsed, allowRemote); err != nil {
+			return nil, err
+		}
+		urlStr := parsed.String()
+		hdrs := cloneHeaderMap(srv.Headers)
+		if tf := strings.TrimSpace(srv.BearerTokenFile); tf != "" {
+			if tok, err := readBearerTokenFile(workdir, tf); err != nil {
+				slog.Warn("mcp bearer_token_file unreadable", "id", srv.ID, "err", err)
+			} else if tok != "" && !headerHasAuthorization(hdrs) {
+				if hdrs == nil {
+					hdrs = make(map[string]string)
+				}
+				hdrs["Authorization"] = "Bearer " + tok
+			}
+		}
+		return func(_ context.Context) (mcp.Conn, error) {
+			return mcp.NewHTTPSession(urlStr, hdrs)
+		}, nil
+	case hasCmd:
+		cmd := srv.Command
+		args := append([]string(nil), srv.Args...)
+		env := srv.EnvSlice()
+		cwd := srv.CWD
+		return func(dctx context.Context) (mcp.Conn, error) {
+			return mcp.StartStdioSession(dctx, cmd, args, env, cwd)
+		}, nil
+	default:
+		return nil, fmt.Errorf("mcp: neither url nor command configured")
+	}
 }
 
 // PrepareChatRuntime builds config, session, tools, hooks, and MCP for one interactive run.
@@ -121,7 +190,11 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 		slog.Warn("custom agent load error", "err", err)
 		profs = agents.All()
 	}
-	profile, ok := profs[cfg.AgentProfile]
+	profileKey := strings.TrimSpace(cfg.AgentProfile)
+	profile, ok := profs[profileKey]
+	if !ok {
+		profile, ok = profs[strings.ToLower(profileKey)]
+	}
 	if !ok {
 		return nil, fmt.Errorf("unknown agent profile %q; valid profiles: %s (use --profile or \"agent_profile\" in settings.json)",
 			cfg.AgentProfile, agents.JoinSortedProfileKeys(profs))
@@ -172,7 +245,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	}
 
 	memDir := filepath.Join(cfg.UserConfigDir, "memory")
-	if err := os.MkdirAll(memDir, 0o700); err != nil {
+	if err := os.MkdirAll(memDir, privateDirPerm); err != nil {
 		return nil, fmt.Errorf("memory dir: %w", err)
 	}
 	memStore := memory.New(memDir)
@@ -181,7 +254,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	// user store with a scoped store so tool auto-capture and prompt injection stay isolated.
 	if profile.MemoryScope != "" {
 		agentMemDir := memory.PerAgentMemoryDir(profile.MemoryScope, profile.Name, cfg.UserConfigDir, workdir, cfg.ProjectConfigDir)
-		if err := os.MkdirAll(agentMemDir, 0o700); err != nil {
+		if err := os.MkdirAll(agentMemDir, privateDirPerm); err != nil {
 			slog.Warn("per-agent memory dir create failed; using global store", "dir", agentMemDir, "err", err)
 		} else {
 			memStore = memory.New(agentMemDir)
@@ -211,7 +284,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 			continue
 		}
 		if strings.TrimSpace(h.URL) != "" {
-			hookReg.OnHTTP(et, strings.TrimSpace(h.URL), 15*time.Second)
+			hookReg.OnHTTP(et, strings.TrimSpace(h.URL), hookHTTPTimeout)
 		} else if strings.TrimSpace(h.Command) != "" {
 			hookReg.OnCommand(et, h.Command, h.Args...)
 		}
@@ -235,33 +308,14 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 		filepath.Join(cfg.UserConfigDir, "skills"),
 		filepath.Join(cfg.UserConfigDir, ".claude", "skills"),
 	}
-	skillSnippet, _ := skills.Collect(skillRoots, 24000)
+	skillSnippet, _ := skills.Collect(skillRoots, skillsMaxRunes)
 
 	reg := tools.New()
 	disableTools := noToolsFlag || strings.TrimSpace(os.Getenv("GOCLAW_DISABLE_TOOLS")) == "1"
 	if cfg.IDEBridgeMCP && !disableTools {
 		ideDir := filepath.Join(cfg.UserConfigDir, "ide")
 		if u, hdrs, err := ide.DiscoverMCPEndpoint(ideDir); err == nil {
-			u = strings.TrimSpace(u)
-			if u != "" {
-				dupURL := false
-				hasIDEID := false
-				for _, s := range cfg.MCPServers {
-					if strings.TrimSpace(s.URL) == u {
-						dupURL = true
-					}
-					if strings.TrimSpace(s.ID) == "ide" {
-						hasIDEID = true
-					}
-				}
-				if !dupURL && !hasIDEID {
-					cfg.MCPServers = append(cfg.MCPServers, config.MCPServerConfig{
-						ID:      "ide",
-						URL:     u,
-						Headers: hdrs,
-					})
-				}
-			}
+			appendIDEBridgeMCPServerIfMissing(&cfg, u, hdrs)
 		}
 	}
 	var mcpSessions []mcp.Conn
@@ -291,45 +345,12 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 			if !hasURL && !hasCmd {
 				continue
 			}
-			sctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			var dial func(context.Context) (mcp.Conn, error)
-			switch {
-			case hasURL:
-				parsed, perr := url.Parse(strings.TrimSpace(srv.URL))
-				if perr != nil {
-					slog.Warn("mcp url parse failed", "id", srv.ID, "err", perr)
-					cancel()
-					continue
-				}
-				if verr := mcp.ValidateHTTPURL(parsed, cfg.MCPServersAllowRemote); verr != nil {
-					slog.Warn("mcp url not allowed", "id", srv.ID, "err", verr)
-					cancel()
-					continue
-				}
-				urlStr := parsed.String()
-				hdrs := cloneHeaderMap(srv.Headers)
-				if tf := strings.TrimSpace(srv.BearerTokenFile); tf != "" {
-					if tok, err := readBearerTokenFile(workdir, tf); err != nil {
-						slog.Warn("mcp bearer_token_file unreadable", "id", srv.ID, "err", err)
-					} else if tok != "" && !headerHasAuthorization(hdrs) {
-						if hdrs == nil {
-							hdrs = make(map[string]string)
-						}
-						hdrs["Authorization"] = "Bearer " + tok
-					}
-				}
-				dial = func(_ context.Context) (mcp.Conn, error) {
-					return mcp.NewHTTPSession(urlStr, hdrs)
-				}
-			default:
-				cmd := srv.Command
-				args := append([]string(nil), srv.Args...)
-				env := srv.EnvSlice()
-				cwd := srv.CWD
-				dial = func(dctx context.Context) (mcp.Conn, error) {
-					return mcp.StartStdioSession(dctx, cmd, args, env, cwd)
-				}
+			dial, prepErr := buildMCPServerDial(srv, workdir, cfg.MCPServersAllowRemote)
+			if prepErr != nil {
+				slog.Warn("mcp dial setup failed", "id", srv.ID, "err", prepErr)
+				continue
 			}
+			sctx, cancel := context.WithTimeout(context.Background(), mcpDialTimeout)
 			mcpSess, startErr := mcp.NewResilientConn(sctx, dial)
 			if startErr != nil {
 				slog.Warn("mcp connect failed", "id", srv.ID, "err", startErr)
@@ -424,11 +445,24 @@ func registerBuiltInTools(r *tools.Registry, workdir string, cfg config.Config, 
 		SerpAPIKey:  cfg.SerpAPIKey,
 		FallbackDDG: cfg.WebSearchFallbackDDG,
 	}))
-	if todoTool, err := tools.NewTodoWrite(todoStore); err != nil {
+	todoTool, err := tools.NewTodoWrite(todoStore)
+	if err != nil {
 		panic(err)
-	} else {
-		r.Register(todoTool)
 	}
+	r.Register(todoTool)
+}
+
+// readProjectFileLines reads a workspace-relative file and returns up to maxLines of trimmed content.
+func readProjectFileLines(workdir, name string, maxLines int) ([]string, bool) {
+	data, err := os.ReadFile(filepath.Join(workdir, name))
+	if err != nil {
+		return nil, false
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+	}
+	return lines, true
 }
 
 // buildProjectContext reads key project files from workdir and returns a compact
@@ -450,38 +484,22 @@ func buildProjectContext(workdir string) string {
 		{"pyproject.toml", 8, "pyproject.toml"},
 	}
 	for _, c := range manifests {
-		data, err := os.ReadFile(filepath.Join(workdir, c.file))
-		if err != nil {
-			continue
+		if lines, ok := readProjectFileLines(workdir, c.file, c.maxLine); ok {
+			parts = append(parts, c.label+":\n  "+strings.Join(lines, "\n  "))
+			break // one manifest is enough
 		}
-		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-		if len(lines) > c.maxLine {
-			lines = lines[:c.maxLine]
-		}
-		parts = append(parts, c.label+":\n  "+strings.Join(lines, "\n  "))
-		break // one manifest is enough
 	}
 
 	// Append first 20 lines of README if present.
 	for _, name := range []string{"README.md", "README.txt", "README"} {
-		data, err := os.ReadFile(filepath.Join(workdir, name))
-		if err != nil {
-			continue
+		if lines, ok := readProjectFileLines(workdir, name, 20); ok {
+			parts = append(parts, name+":\n  "+strings.Join(lines, "\n  "))
+			break
 		}
-		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-		if len(lines) > 20 {
-			lines = lines[:20]
-		}
-		parts = append(parts, name+":\n  "+strings.Join(lines, "\n  "))
-		break
 	}
 
 	// Append CLAUDE.md project rules — this is the primary source of agent instructions.
-	if data, err := os.ReadFile(filepath.Join(workdir, "CLAUDE.md")); err == nil {
-		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-		if len(lines) > 60 {
-			lines = lines[:60]
-		}
+	if lines, ok := readProjectFileLines(workdir, "CLAUDE.md", 60); ok {
 		parts = append(parts, "CLAUDE.md (project rules):\n  "+strings.Join(lines, "\n  "))
 	}
 

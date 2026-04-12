@@ -6,9 +6,13 @@ import (
 	"time"
 
 	"github.com/okuzpe/goclaw/internal/orchestrator"
+	"github.com/okuzpe/goclaw/internal/text"
 )
 
-const toolLogContentCap = 64 * 1024 // 64 KB display cap for detail view
+const (
+	toolLogContentCap      = 64 * 1024 // 64 KB display cap for detail view (UTF-8–safe prefix)
+	toolLogSummaryMaxRunes = 60
+)
 
 // openToolLog opens the tool history overlay at the most recent entry.
 func (m *Model) openToolLog() {
@@ -82,10 +86,9 @@ func (m *Model) refreshToolLogOverlay() {
 		}
 		b.WriteString("\n\n")
 		content := entry.content
-		truncated := false
-		if len(content) > toolLogContentCap {
-			content = content[:toolLogContentCap]
-			truncated = true
+		truncated := len(content) > toolLogContentCap
+		if truncated {
+			content = text.TruncateUTF8ByBytes(content, toolLogContentCap)
 		}
 		b.WriteString(th.ModalBody.Render(content))
 		if truncated {
@@ -111,10 +114,7 @@ func (m *Model) refreshToolLogOverlay() {
 		label := orchestrator.ToolFinishedPhrase(entry.name)
 		detail := ""
 		if entry.summary != "" {
-			sum := entry.summary
-			if len(sum) > 60 {
-				sum = sum[:60] + "…"
-			}
+			sum := text.TruncateRunes(entry.summary, toolLogSummaryMaxRunes)
 			detail = "  " + sum
 		}
 		elapsed := ""

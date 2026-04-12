@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+func relEscapesWorkspace(rel string) bool {
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 // resolveExistingPathUnderRoot resolves userPath to an absolute path that exists under root,
 // following symlinks.
 //
@@ -45,7 +49,7 @@ func resolveExistingPathUnderRoot(root, userPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("path escapes workspace")
 	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if relEscapesWorkspace(rel) {
 		return "", fmt.Errorf("path escapes workspace")
 	}
 	return eval, nil
@@ -79,7 +83,7 @@ func resolveWriteTargetUnderRoot(root, userPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("path escapes workspace")
 	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if relEscapesWorkspace(rel) {
 		return "", fmt.Errorf("path escapes workspace")
 	}
 

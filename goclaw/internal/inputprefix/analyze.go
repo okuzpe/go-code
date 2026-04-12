@@ -11,6 +11,8 @@ import (
 // Kind describes how the REPL should handle analyzed input.
 type Kind int
 
+const defaultSpawnAgentTimeoutSec = 120
+
 const (
 	// KindPassthrough sends the original input to the model unchanged.
 	KindPassthrough Kind = iota
@@ -56,7 +58,7 @@ func Analyze(raw string) (Analysis, error) {
 			return Analysis{}, fmt.Errorf("prefix ! must be a single line (extra text after newline)")
 		case strings.HasPrefix(first, "&"):
 			return Analysis{}, fmt.Errorf("prefix & must be a single line (extra text after newline)")
-		// @ with extra lines falls through to KindPassthrough — inline expansion handles it.
+			// @ with extra lines falls through to KindPassthrough — inline expansion handles it.
 		}
 	}
 
@@ -114,7 +116,7 @@ func Analyze(raw string) (Analysis, error) {
 		payload, err := json.Marshal(spawnPayload{
 			Profile:    "general-purpose",
 			Task:       task,
-			TimeoutSec: 120,
+			TimeoutSec: defaultSpawnAgentTimeoutSec,
 		})
 		if err != nil {
 			return Analysis{}, fmt.Errorf("prefix &: %w", err)

@@ -44,12 +44,12 @@ func RunLocalPrefixToolIfAny(
 	if runErr != nil {
 		return true, runErr
 	}
+	body := FormatPrefixToolReply(analysis.ToolName, content, isError)
 	if sess != nil {
 		sess.Add("user", analysis.UserLine)
-		sess.AddAssistant(FormatPrefixToolReply(analysis.ToolName, content, isError), nil)
+		sess.AddAssistant(body, nil)
 	}
 	if sink != nil {
-		body := FormatPrefixToolReply(analysis.ToolName, content, isError)
 		for _, line := range strings.Split(body, "\n") {
 			sink.OnTextDelta(line + "\n")
 		}

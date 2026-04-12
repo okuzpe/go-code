@@ -2,12 +2,17 @@ package coordinator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 )
+
+// ErrInteractiveWorkerNotFound is returned when DeliverWorkerMessage targets a task_id
+// that is not a running interactive worker (e.g. worker finished and was unregistered).
+var ErrInteractiveWorkerNotFound = errors.New("interactive worker not found")
 
 // workerJob is one user message delivered to an interactive worker's loop.
 type workerJob struct {
@@ -48,7 +53,7 @@ func loadInteractive(taskID string) (*interactiveWorker, bool) {
 
 // ListInteractiveWorkers returns a snapshot of running interactive workers.
 func ListInteractiveWorkers() []InteractiveWorkerInfo {
-	var out []InteractiveWorkerInfo
+	out := make([]InteractiveWorkerInfo, 0, 8)
 	interactiveReg.Range(func(k, v any) bool {
 		id, _ := k.(string)
 		w, _ := v.(*interactiveWorker)
@@ -82,7 +87,7 @@ func ResolveInteractiveTaskID(prefix string) (full string, ok bool) {
 	if prefix == "" {
 		return "", false
 	}
-	var matches []string
+	matches := make([]string, 0, 4)
 	interactiveReg.Range(func(k, _ any) bool {
 		id, _ := k.(string)
 		if strings.HasPrefix(id, prefix) {
@@ -107,7 +112,7 @@ func DeliverWorkerMessage(ctx context.Context, taskID, text string, sink orchest
 	id := strings.TrimSpace(taskID)
 	w, ok := loadInteractive(id)
 	if !ok {
-		return fmt.Errorf("no interactive worker with task_id %q (use /workers)", id)
+		return fmt.Errorf("%w: no interactive worker with task_id %q (use /workers)", ErrInteractiveWorkerNotFound, id)
 	}
 	t := strings.TrimSpace(text)
 	if t == "" {

@@ -34,6 +34,7 @@ func (m *Model) refreshThemePickOverlay() {
 		m.themePickCursor = len(items) - 1
 	}
 	var b strings.Builder
+	b.Grow(len(items)*48 + 384)
 	b.WriteString(th.ModalTitle.Render("TUI appearance (ui_appearance)"))
 	b.WriteString("\n\n")
 	for i, name := range items {

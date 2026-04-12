@@ -2,11 +2,19 @@ package slashcmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	"golang.org/x/term"
+)
+
+const (
+	asciiCtrlC = 3
+	asciiLF    = 10
+	asciiCR    = 13
+	asciiESC   = 27
 )
 
 // ttyListPickResult is the outcome of pickListTTY.
@@ -56,20 +64,20 @@ func pickListTTY(fd int, in io.Reader, out io.Writer, header string, items []str
 	for {
 		b, err := br.ReadByte()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return "", ttyListPickCancelled, nil
 			}
 			return "", ttyListPickNone, err
 		}
 		switch b {
-		case 3: // Ctrl+C
+		case asciiCtrlC:
 			return "", ttyListPickCancelled, nil
-		case 13, 10:
+		case asciiCR, asciiLF:
 			return items[cursor], ttyListPickChosen, nil
-		case 27:
+		case asciiESC:
 			next, err := br.ReadByte()
 			if err != nil {
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					return "", ttyListPickCancelled, nil
 				}
 				return "", ttyListPickNone, err
@@ -77,7 +85,7 @@ func pickListTTY(fd int, in io.Reader, out io.Writer, header string, items []str
 			if next == '[' {
 				dir, err := br.ReadByte()
 				if err != nil {
-					if err == io.EOF {
+					if errors.Is(err, io.EOF) {
 						return "", ttyListPickCancelled, nil
 					}
 					return "", ttyListPickNone, err

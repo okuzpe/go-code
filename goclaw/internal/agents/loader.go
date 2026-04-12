@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -41,12 +42,17 @@ func LoadCustomProfiles(dir string) ([]Profile, error) {
 		return nil, err
 	}
 
-	var profiles []Profile
+	paths := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 			continue
 		}
-		path := filepath.Join(dir, entry.Name())
+		paths = append(paths, filepath.Join(dir, entry.Name()))
+	}
+	slices.Sort(paths)
+
+	profiles := make([]Profile, 0, len(paths))
+	for _, path := range paths {
 		profile, ok := parseAgentFile(path)
 		if !ok {
 			continue
@@ -88,48 +94,90 @@ func parseAgentFile(path string) (Profile, bool) {
 		return Profile{}, false
 	}
 
-	// Combine system_prompt from frontmatter and body text.
-	systemPrompt := strings.TrimSpace(fm.SystemPrompt)
-	if bodyText := strings.TrimSpace(body); bodyText != "" {
-		if systemPrompt != "" {
-			systemPrompt += "\n\n" + bodyText
-		} else {
-			systemPrompt = bodyText
-		}
+	memRaw := strings.TrimSpace(fm.Memory)
+	memScope := normalizeMemoryScope(memRaw)
+	if memRaw != "" && memScope == "" {
+		slog.Warn("custom agent: unknown memory scope (use user, project, or local)", "path", path, "memory", memRaw)
+	}
+
+	maxTurns := fm.MaxTurns
+	if maxTurns < 0 {
+		maxTurns = 0
 	}
 
 	profile := Profile{
 		Name:            name,
 		Description:     strings.TrimSpace(fm.Description),
 		ModelOverride:   strings.TrimSpace(fm.ModelOverride),
-		ToolAllowlist:   fm.ToolAllowlist,
-		DisallowedTools: fm.DisallowedTools,
+		ToolAllowlist:   sanitizeToolNameList(fm.ToolAllowlist),
+		DisallowedTools: sanitizeToolNameList(fm.DisallowedTools),
 		ReadOnly:        fm.ReadOnly,
-		SystemPrompt:    systemPrompt,
-		MaxTurns:        fm.MaxTurns,
-		MemoryScope:     normalizeMemoryScope(strings.TrimSpace(fm.Memory)),
+		SystemPrompt:    mergeAgentSystemPrompt(fm.SystemPrompt, body),
+		MaxTurns:        maxTurns,
+		MemoryScope:     memScope,
 	}
 	slog.Debug("custom agent loaded", "name", name, "path", path)
 	return profile, true
 }
 
+// mergeAgentSystemPrompt joins YAML system_prompt with the markdown body (after frontmatter).
+func mergeAgentSystemPrompt(yamlPrompt, body string) string {
+	yamlPrompt = strings.TrimSpace(yamlPrompt)
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return yamlPrompt
+	}
+	if yamlPrompt == "" {
+		return body
+	}
+	return yamlPrompt + "\n\n" + body
+}
+
+// sanitizeToolNameList trims entries and drops blanks. Preserves YAML nil vs empty slice:
+// nil → nil (field absent); empty [] → []string{} (explicit no tools); only junk entries → []string{}.
+func sanitizeToolNameList(in []string) []string {
+	if in == nil {
+		return nil
+	}
+	if len(in) == 0 {
+		return []string{}
+	}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return []string{}
+	}
+	return out
+}
+
 // normalizeMemoryScope validates and returns a canonical memory scope value.
-// Valid values are "user", "project", "local"; anything else maps to "".
+// Valid values are "user", "project", "local" (case-insensitive); anything else maps to "".
 func normalizeMemoryScope(raw string) string {
-	switch raw {
-	case "user", "project", "local":
-		return raw
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "user":
+		return "user"
+	case "project":
+		return "project"
+	case "local":
+		return "local"
 	default:
 		return ""
 	}
 }
 
 // splitFrontmatter splits a Markdown file into YAML frontmatter and body.
-// The file must start with "---\n"; the second "---" closes the frontmatter block.
+// The file must start with "---" then a newline; the next "---" line closes the frontmatter block.
+// CRLF in the source is normalized to LF before parsing so the closing delimiter is found reliably.
 // Returns (frontmatter, body, true) on success; ("", "", false) if no valid frontmatter is found.
 func splitFrontmatter(content string) (string, string, bool) {
+	content = strings.ReplaceAll(strings.ReplaceAll(content, "\r\n", "\n"), "\r", "\n")
+
 	const delimiter = "---"
-	// Must start with "---" (optionally followed by \r\n or \n).
 	if !strings.HasPrefix(content, delimiter) {
 		return "", "", false
 	}
@@ -163,24 +211,21 @@ func splitFrontmatter(content string) (string, string, bool) {
 
 // AllWithCustom returns built-in profiles merged with user and project custom profiles.
 // Priority: project > user > built-in (later wins for the same name).
+// The error is always nil; scan failures are logged and skipped.
 func AllWithCustom(userAgentsDir, projectAgentsDir string) (map[string]Profile, error) {
 	result := All()
-
-	userProfiles, err := LoadCustomProfiles(userAgentsDir)
-	if err != nil {
-		slog.Warn("custom agent: failed to scan user agents dir", "dir", userAgentsDir, "err", err)
-	}
-	for _, profile := range userProfiles {
-		result[profile.Name] = profile
-	}
-
-	projectProfiles, err := LoadCustomProfiles(projectAgentsDir)
-	if err != nil {
-		slog.Warn("custom agent: failed to scan project agents dir", "dir", projectAgentsDir, "err", err)
-	}
-	for _, profile := range projectProfiles {
-		result[profile.Name] = profile
-	}
-
+	mergeCustomProfilesFromDir(result, userAgentsDir, "user agents dir")
+	mergeCustomProfilesFromDir(result, projectAgentsDir, "project agents dir")
 	return result, nil
+}
+
+func mergeCustomProfilesFromDir(dst map[string]Profile, dir, label string) {
+	list, err := LoadCustomProfiles(dir)
+	if err != nil {
+		slog.Warn("custom agent: failed to scan agents directory", "scope", label, "dir", dir, "err", err)
+		return
+	}
+	for _, p := range list {
+		dst[p.Name] = p
+	}
 }

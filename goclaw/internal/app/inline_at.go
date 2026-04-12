@@ -23,13 +23,20 @@ func ExpandInlineAtRefs(ctx context.Context, orch *orchestrator.Orchestrator, us
 	if len(tokens) == 0 {
 		return userText
 	}
-	var blocks []string
+
+	// Deduplicate by normalized path so @go.mod and @go.mod/ do not run read_file twice.
+	seenPath := make(map[string]struct{}, len(tokens))
+	blocks := make([]string, 0, len(tokens))
 	for _, tok := range tokens {
-		path := strings.TrimPrefix(tok, "@")
-		path = strings.TrimSuffix(path, "/") // strip trailing slash from dir tokens
+		path := normalizeInlineAtPath(tok)
 		if path == "" {
 			continue
 		}
+		if _, dup := seenPath[path]; dup {
+			continue
+		}
+		seenPath[path] = struct{}{}
+
 		payload, err := json.Marshal(map[string]string{"path": path})
 		if err != nil {
 			continue
@@ -50,4 +57,9 @@ func ExpandInlineAtRefs(ctx context.Context, orch *orchestrator.Orchestrator, us
 	b.WriteString("\n\n[End of @ context]\n\n")
 	b.WriteString(userText)
 	return b.String()
+}
+
+func normalizeInlineAtPath(tok string) string {
+	path := strings.TrimPrefix(strings.TrimSpace(tok), "@")
+	return strings.TrimSuffix(strings.TrimSpace(path), "/")
 }

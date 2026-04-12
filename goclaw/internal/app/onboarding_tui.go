@@ -206,7 +206,7 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor--
 				}
 			case "down", "j":
-				if m.cursor < 2 {
+				if m.cursor < len(m.connChoices)-1 {
 					m.cursor++
 				}
 			case "enter":
@@ -351,11 +351,6 @@ func (m *obModel) View() tea.View {
 
 func (m *obModel) viewBody() string {
 	var b strings.Builder
-	w := m.width
-	if w <= 0 {
-		w = 80
-	}
-	_ = w
 
 	switch m.step {
 	case obSecurity:
@@ -429,11 +424,4 @@ func (m *obModel) viewBody() string {
 		b.WriteString(fmt.Sprintf("\n\n error: %v", m.err))
 	}
 	return b.String()
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

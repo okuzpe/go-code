@@ -31,7 +31,7 @@ func DiscoverMCPEndpoint(dir string) (string, map[string]string, error) {
 		}
 		return "", nil, err
 	}
-	var names []string
+	names := make([]string, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() {
 			continue

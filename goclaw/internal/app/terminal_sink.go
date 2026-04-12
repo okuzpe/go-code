@@ -12,7 +12,8 @@ import (
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 )
 
-const terminalToolOutputCap = 2 * 1024 // 2 KiB display cap in readline mode
+// terminalToolOutputMaxRunes caps tool OUT preview in readline mode (rune count, avoids splitting UTF-8).
+const terminalToolOutputMaxRunes = 2 * 1024
 
 // terminalSink streams LLM text and tool lifecycle events to the terminal in readline mode.
 // Text deltas are printed directly to stdout; tool events go to stderr so they don't
@@ -56,9 +57,12 @@ func (s *terminalSink) OnToolResult(_ string, content string, isError bool) {
 	}
 	displayed := strings.TrimSpace(content)
 	truncated := false
-	if len(displayed) > terminalToolOutputCap {
-		displayed = displayed[:terminalToolOutputCap]
-		truncated = true
+	if displayed != "" {
+		rs := []rune(displayed)
+		if len(rs) > terminalToolOutputMaxRunes {
+			displayed = string(rs[:terminalToolOutputMaxRunes])
+			truncated = true
+		}
 	}
 	if displayed != "" {
 		fmt.Fprintf(os.Stderr, "\nOUT\n%s", displayed)
@@ -124,10 +128,10 @@ type completedTool struct {
 // Used by the readline REPL to power the /tools command.
 type loggingTerminalSink struct {
 	terminalSink
-	mu          sync.Mutex
-	log         []completedTool
-	currentName string
-	currentSumm string
+	mu           sync.Mutex
+	log          []completedTool
+	currentName  string
+	currentSumm  string
 	currentStart time.Time
 }
 

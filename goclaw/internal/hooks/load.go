@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"time"
 )
 
 // LoadHooksFile reads `.goclaw/hooks.json` (array of hook entries) and registers them.
@@ -34,7 +33,7 @@ func LoadHooksFile(reg *Registry, path string) error {
 			continue
 		}
 		if strings.TrimSpace(e.URL) != "" {
-			reg.OnHTTP(et, strings.TrimSpace(e.URL), 15*time.Second)
+			reg.OnHTTP(et, strings.TrimSpace(e.URL), defaultHookHTTPTimeout)
 			continue
 		}
 		if strings.TrimSpace(e.Command) != "" {

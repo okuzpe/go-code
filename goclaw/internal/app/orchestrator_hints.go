@@ -21,7 +21,7 @@ func AugmentOrchestratorErr(provider, model string, err error) error {
 func orchestratorFailureHints(provider, model string, err error) []string {
 	msg := err.Error()
 	low := strings.ToLower(msg)
-	var out []string
+	out := make([]string, 0, 4)
 
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "anthropic":

@@ -13,6 +13,14 @@ import (
 	"golang.org/x/term"
 )
 
+const (
+	bannerSeparatorWidth    = 44
+	bannerSessionIDMaxRunes = 12
+	chatTitleModelMaxRunes  = 40
+	toolPreviewWrapWidth    = 76
+	toolApprovalBoxWidth    = 78
+)
+
 func isTTY(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	if !ok {
@@ -27,10 +35,23 @@ var asciiLogo = `
   ┃╺┓┃ ┃┃  ┃  ┣━┫┃╻┃
   ┗━┛┗━┛┗━╸┗━╸╹ ╹┗┻┛`
 
+// profileWriteFootnote returns a hint when the profile cannot use workspace write tools (read-only or hub).
+func profileWriteFootnote(profile agents.Profile) (string, bool) {
+	if profile.AllowsWorkspaceFileWrites() {
+		return "", false
+	}
+	if profile.AllowsSpawnAgentDelegation() {
+		return "Hub profile (no direct write tools) — delegate with spawn_agent or /profile general-purpose.", true
+	}
+	return "Read-only profile — /profile general-purpose for direct file edits.", true
+}
+
 // printStartupBanner renders the ASCII header and session summary for the readline REPL path (and the
 // plain-text branch when stdout is not a TTY). Default fullscreen TUI does not call this — startup UX
 // lives in internal/ui/chat (welcome panel, footer).
 func printStartupBanner(version, provider, model, profileName, sessionID, workdir string, disableTools bool, uiAppearance string, profile agents.Profile) {
+	footnote, showFootnote := profileWriteFootnote(profile)
+
 	if !isTTY(os.Stdout) {
 		fmt.Printf("goclaw %s  provider=%s  model=%s  profile=%s  session=%s\n",
 			version, provider, model, profileName, sessionID)
@@ -40,12 +61,8 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 		} else {
 			fmt.Println("Tools in Ask mode — answer y/N. Ctrl+C to exit.")
 		}
-		if !profile.AllowsWorkspaceFileWrites() {
-			if profile.AllowsSpawnAgentDelegation() {
-				fmt.Println("Note: hub profile (write tools hidden) — use spawn_agent for coding or switch to profile general-purpose.")
-			} else {
-				fmt.Println("Note: read-only profile — use profile general-purpose for direct file edits.")
-			}
+		if showFootnote {
+			fmt.Println("Note: " + footnote)
 		}
 		fmt.Println()
 		return
@@ -58,7 +75,7 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 	accent := lipgloss.NewStyle().Foreground(p.BannerLogo).Bold(true)
 
 	logo := accent.Render(asciiLogo)
-	sep := dim.Render(strings.Repeat("─", 44))
+	sep := dim.Render(strings.Repeat("─", bannerSeparatorWidth))
 
 	kv := func(key, value string) string {
 		return keySt.Render(key) + dim.Render(": ") + valSt.Render(value)
@@ -66,7 +83,7 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 
 	info := lipgloss.JoinVertical(lipgloss.Left,
 		"  "+kv("provider", provider)+"  "+kv("model", model),
-		"  "+kv("profile", profileName)+"  "+kv("session", truncate(sessionID, 12)),
+		"  "+kv("profile", profileName)+"  "+kv("session", truncate(sessionID, bannerSessionIDMaxRunes)),
 		"  "+kv("workspace", workdir),
 	)
 
@@ -85,12 +102,8 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 	fmt.Println(sep)
 	fmt.Println(toolsNote)
 
-	if !profile.AllowsWorkspaceFileWrites() {
-		if profile.AllowsSpawnAgentDelegation() {
-			fmt.Println(dim.Render("  Hub profile (no direct write tools) — delegate with spawn_agent or /profile general-purpose"))
-		} else {
-			fmt.Println(dim.Render("  Read-only profile — /profile general-purpose for direct file edits"))
-		}
+	if showFootnote {
+		fmt.Println(dim.Render("  " + footnote))
 	}
 
 	fmt.Println(helpLine)
@@ -107,7 +120,7 @@ func printToolApprovalPrompt(w io.Writer, toolName, preview string, uiAppearance
 	dim := lipgloss.NewStyle().Foreground(p.Muted)
 	head := lipgloss.NewStyle().Bold(true).Foreground(p.BannerWarning).Render("⚡ Tool approval")
 	name := lipgloss.NewStyle().Bold(true).Foreground(p.TrustAccent2).Render(toolName)
-	body := lipgloss.NewStyle().Foreground(p.ModalBody).Render(wrapPlain(preview, 76))
+	body := lipgloss.NewStyle().Foreground(p.ModalBody).Render(wrapPlain(preview, toolPreviewWrapWidth))
 	foot := dim.Italic(true).Render("y/Enter allow  n deny")
 
 	cardBorder := lipgloss.Border{
@@ -124,7 +137,7 @@ func printToolApprovalPrompt(w io.Writer, toolName, preview string, uiAppearance
 		Border(cardBorder, true, true, true, true).
 		BorderForeground(p.InputBorder).
 		Padding(0, 1).
-		Width(78).
+		Width(toolApprovalBoxWidth).
 		Render(name + "\n" + body)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, head)
@@ -145,22 +158,22 @@ func wrapPlain(text string, width int) string {
 	var lines []string
 	var b strings.Builder
 	lineLen := 0
-	for _, w := range words {
-		wl := utf8.RuneCountInString(w)
+	for _, word := range words {
+		wordLen := utf8.RuneCountInString(word)
 		if lineLen == 0 {
-			b.WriteString(w)
-			lineLen = wl
+			b.WriteString(word)
+			lineLen = wordLen
 			continue
 		}
-		if lineLen+1+wl > width {
+		if lineLen+1+wordLen > width {
 			lines = append(lines, b.String())
 			b.Reset()
-			b.WriteString(w)
-			lineLen = wl
+			b.WriteString(word)
+			lineLen = wordLen
 		} else {
 			b.WriteByte(' ')
-			b.WriteString(w)
-			lineLen += 1 + wl
+			b.WriteString(word)
+			lineLen += 1 + wordLen
 		}
 	}
 	if b.Len() > 0 {
@@ -177,10 +190,17 @@ func truncate(s string, max int) string {
 	return string(r[:max]) + "…"
 }
 
+// truncateRunesHard returns at most max runes of s with no suffix (compact labels, e.g. REPL prompt IDs).
+func truncateRunesHard(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max])
+}
+
 // FormatChatWindowTitle keeps the TUI header on one line for typical terminal widths.
 func FormatChatWindowTitle(provider, model, profile string) string {
-	if len(model) > 40 {
-		model = model[:39] + "…"
-	}
+	model = truncate(model, chatTitleModelMaxRunes)
 	return fmt.Sprintf("goclaw  %s/%s  %s", provider, model, profile)
 }

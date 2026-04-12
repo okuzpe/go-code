@@ -54,10 +54,10 @@ func (m *Model) appendSeparatorMeta() {
 
 func (m *Model) appendToolCardMeta(toolName, summary string, isError bool) {
 	m.lineMeta = append(m.lineMeta, lineMeta{
-		kind:         lineKindToolCard,
-		toolName:     toolName,
+		kind:        lineKindToolCard,
+		toolName:    toolName,
 		toolSummary: summary,
-		toolError:    isError,
+		toolError:   isError,
 	})
 }
 
@@ -67,10 +67,10 @@ func (m *Model) appendThinkingMeta(started time.Time) {
 
 func (m *Model) appendToolRunningMeta(toolName, summary string, started time.Time) {
 	m.lineMeta = append(m.lineMeta, lineMeta{
-		kind:         lineKindToolRunning,
-		toolName:     toolName,
+		kind:        lineKindToolRunning,
+		toolName:    toolName,
 		toolSummary: summary,
-		startedAt:    started,
+		startedAt:   started,
 	})
 }
 
@@ -151,7 +151,7 @@ func renderAssistantMarkdownSegment(th *Theme, raw string, termWidth int, prefix
 		return ""
 	}
 	padStr := strings.Repeat(" ", prefixW+1)
-	var finalLines []string
+	finalLines := make([]string, 0, len(mdLines))
 	for i, line := range mdLines {
 		if i == 0 {
 			finalLines = append(finalLines, fmt.Sprintf("%s %s", prefix, line))

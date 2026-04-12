@@ -6,6 +6,12 @@ import (
 	"sync"
 )
 
+const (
+	focusHintFocusedMaxRunes          = 12
+	focusHintBackgroundPrefixMaxRunes = 8
+	focusHintBackgroundLabelMaxRunes  = 10
+)
+
 // FocusRouter tracks whether user input is routed to the coordinator or an interactive worker.
 type FocusRouter struct {
 	mu     sync.Mutex
@@ -57,10 +63,7 @@ func (f *FocusRouter) Hint() string {
 	f.mu.Unlock()
 
 	if current != "" {
-		short := current
-		if len(short) > 12 {
-			short = short[:12] + "…"
-		}
+		short := truncateRunesEllipsis(current, focusHintFocusedMaxRunes)
 		return "Inside worker " + short + " — /back or /detach returns to coordinator"
 	}
 
@@ -71,15 +74,31 @@ func (f *FocusRouter) Hint() string {
 	}
 	if n == 1 {
 		w := list[0]
-		prefix := strings.TrimSpace(w.TaskID)
-		if len(prefix) > 8 {
-			prefix = prefix[:8]
-		}
-		short := w.TaskID
-		if len(short) > 10 {
-			short = short[:10] + "…"
-		}
+		prefix := truncateRunesHard(strings.TrimSpace(w.TaskID), focusHintBackgroundPrefixMaxRunes)
+		short := truncateRunesEllipsis(w.TaskID, focusHintBackgroundLabelMaxRunes)
 		return fmt.Sprintf("Background worker %s — /focus %s · /workers", short, prefix)
 	}
 	return fmt.Sprintf("%d background workers — /workers · /focus <id prefix>", n)
+}
+
+func truncateRunesEllipsis(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max]) + "…"
+}
+
+func truncateRunesHard(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max])
 }

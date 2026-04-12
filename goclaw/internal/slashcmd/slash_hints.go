@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/session"
 )
 
@@ -13,6 +14,10 @@ type UIHints struct {
 	RefreshWelcome  bool
 	WelcomeProfile  string
 	WelcomeSubtitle string
+	// WelcomeFileWriteToolsHidden when non-nil updates welcome panel hints (matches agents.Profile.AllowsWorkspaceFileWrites).
+	WelcomeFileWriteToolsHidden *bool
+	// WelcomeHubDelegatesCoding when non-nil updates welcome panel hints (spawn_agent delegation).
+	WelcomeHubDelegatesCoding *bool
 	// FooterHint when non-nil updates the TUI footer line (e.g. after /plan save). Empty string clears. Nil leaves unchanged.
 	FooterHint *string
 	// ReloadTranscript when non-nil means the in-memory session was replaced; the TUI should rebuild the transcript view.
@@ -25,13 +30,20 @@ func clearHints(h *UIHints) {
 	}
 }
 
-func setWelcomeHints(h *UIHints, profile, subtitle string) {
-	if h == nil {
+// setWelcomeHints refreshes the TUI welcome strip from the orchestrator's active profile
+// (so /profile updates file-tool and hub hints, not only the profile name).
+func setWelcomeHints(h *UIHints, orch *orchestrator.Orchestrator, subtitle string) {
+	if h == nil || orch == nil {
 		return
 	}
+	p := orch.ActiveProfile()
 	h.RefreshWelcome = true
-	h.WelcomeProfile = profile
+	h.WelcomeProfile = p.Name
 	h.WelcomeSubtitle = subtitle
+	hide := !p.AllowsWorkspaceFileWrites()
+	h.WelcomeFileWriteToolsHidden = &hide
+	hub := p.AllowsSpawnAgentDelegation()
+	h.WelcomeHubDelegatesCoding = &hub
 }
 
 func setFooterHint(h *UIHints, line string) {

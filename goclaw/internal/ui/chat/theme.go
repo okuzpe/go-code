@@ -8,8 +8,39 @@ import (
 	lipv2 "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/okuzpe/goclaw/internal/text"
 	"github.com/okuzpe/goclaw/internal/ui/terminalstyle"
 )
+
+const (
+	mdRenderRightMarginCells = 3
+	mdMinWrapWidth           = 36
+
+	separatorDefaultWidth = 56
+	statusBarDefaultWidth = 60
+
+	toolCardWidthInset            = 4
+	toolCardMinInnerWidth         = 36
+	toolCardDashMin               = 3
+	toolInProgressSummaryMaxRunes = 120
+)
+
+func toolCardInnerWidth(termWidth int) int {
+	cardW := termWidth - toolCardWidthInset
+	if cardW < toolCardMinInnerWidth {
+		cardW = toolCardMinInnerWidth
+	}
+	return cardW
+}
+
+func toolCardTopRule(t *Theme, headRendered string, cardW int) string {
+	nameW := lipgloss.Width(headRendered)
+	dashCount := cardW - nameW - 2
+	if dashCount < toolCardDashMin {
+		dashCount = toolCardDashMin
+	}
+	return t.ToolCardBorder.Render("╭─") + headRendered + t.ToolCardBorder.Render(strings.Repeat("─", dashCount))
+}
 
 // Theme holds Lip Gloss styles and copy for the chat TUI. Centralize here so the
 // assistant persona, prompt, and palette stay consistent (Claude Code–style polish).
@@ -79,10 +110,9 @@ func (t *Theme) RenderMarkdown(md string, termWidth int, prefixDisplayWidth int)
 		return md
 	}
 	// Reserve: prefix column + one space after prefix + small right margin.
-	margin := 3
-	wrap := termWidth - prefixDisplayWidth - margin
-	if wrap < 36 {
-		wrap = 36
+	wrap := termWidth - prefixDisplayWidth - mdRenderRightMarginCells
+	if wrap < mdMinWrapWidth {
+		wrap = mdMinWrapWidth
 	}
 
 	glamStyle := t.mdGlamourStyle
@@ -122,7 +152,7 @@ func (t *Theme) RenderMarkdown(md string, termWidth int, prefixDisplayWidth int)
 // SeparatorLine renders a dim horizontal rule between turns (full terminal width in cells).
 func (t *Theme) SeparatorLine(width int) string {
 	if width <= 0 {
-		width = 56
+		width = separatorDefaultWidth
 	}
 	w := width
 	if w < 1 {
@@ -137,18 +167,10 @@ func (t *Theme) SeparatorLine(width int) string {
 //	│  src/main.go
 //	╰─ ✓
 func (t *Theme) RenderToolCard(toolLabel, summary string, isError bool, width int) string {
-	cardW := width - 4
-	if cardW < 36 {
-		cardW = 36
-	}
+	cardW := toolCardInnerWidth(width)
 
 	nameRendered := t.ToolCardHead.Render(" " + toolLabel + " ")
-	nameW := lipgloss.Width(nameRendered)
-	dashCount := cardW - nameW - 2
-	if dashCount < 3 {
-		dashCount = 3
-	}
-	header := t.ToolCardBorder.Render("╭─") + nameRendered + t.ToolCardBorder.Render(strings.Repeat("─", dashCount))
+	header := toolCardTopRule(t, nameRendered, cardW)
 
 	var icon string
 	if isError {
@@ -184,31 +206,20 @@ func (t *Theme) RenderThinkingRow(elapsedSec int, width int) string {
 
 // RenderToolInProgressRow is a compact IN block for a tool that has not returned yet.
 func (t *Theme) RenderToolInProgressRow(toolLabel, summary string, elapsedSec int, width int) string {
-	cardW := width - 4
-	if cardW < 36 {
-		cardW = 36
-	}
+	cardW := toolCardInnerWidth(width)
 	headText := toolLabel + " · IN"
 	if elapsedSec >= 1 {
 		headText = fmt.Sprintf("%s (%ds)", headText, elapsedSec)
 	}
 	nameRendered := t.ToolCardHead.Render(" " + headText + " ")
-	nameW := lipgloss.Width(nameRendered)
-	dashCount := cardW - nameW - 2
-	if dashCount < 3 {
-		dashCount = 3
-	}
-	header := t.ToolCardBorder.Render("╭─") + nameRendered + t.ToolCardBorder.Render(strings.Repeat("─", dashCount))
+	header := toolCardTopRule(t, nameRendered, cardW)
 	footer := t.ToolCardBorder.Render("╰─") + t.FooterDim.Render(" …")
 
 	var b strings.Builder
 	b.WriteString("  ")
 	b.WriteString(header)
 	if s := strings.TrimSpace(summary); s != "" {
-		const maxRunes = 120
-		if len([]rune(s)) > maxRunes {
-			s = string([]rune(s)[:maxRunes]) + "…"
-		}
+		s = text.TruncateRunes(s, toolInProgressSummaryMaxRunes)
 		b.WriteString("\n  ")
 		b.WriteString(t.ToolCardBorder.Render("│"))
 		b.WriteString("  ")
@@ -222,7 +233,7 @@ func (t *Theme) RenderToolInProgressRow(toolLabel, summary string, elapsedSec in
 // StatusBarRender renders a one-line status bar with separator and content.
 func (t *Theme) StatusBarRender(status string, width int) string {
 	if width <= 0 {
-		width = 60
+		width = statusBarDefaultWidth
 	}
 	bar := t.Separator.Render(strings.Repeat("─", width))
 	if strings.TrimSpace(status) == "" {

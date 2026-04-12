@@ -54,6 +54,14 @@ func TestSplitFrontmatter_multilineBody(t *testing.T) {
 	require.Equal(t, "Line 1.\nLine 2.\n", body)
 }
 
+func TestSplitFrontmatter_CRLF(t *testing.T) {
+	content := "---\r\nname: crlf-agent\r\n---\r\nBody line.\r\n"
+	fm, body, ok := splitFrontmatter(content)
+	require.True(t, ok)
+	require.Equal(t, "name: crlf-agent", fm)
+	require.Equal(t, "Body line.\n", body)
+}
+
 // --- parseAgentFile ---
 
 func TestParseAgentFile_validMinimal(t *testing.T) {
@@ -89,6 +97,18 @@ func TestParseAgentFile_bodyOnlyNoSystemPrompt(t *testing.T) {
 	profile, ok := parseAgentFile(path)
 	require.True(t, ok)
 	require.Equal(t, "Just a body.", profile.SystemPrompt)
+}
+
+func TestParseAgentFile_invalidMemoryScopeIgnored(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agent.md")
+	content := "---\nname: mem-agent\nmemory: production\n---\n"
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	profile, ok := parseAgentFile(path)
+	require.True(t, ok)
+	require.Equal(t, "mem-agent", profile.Name)
+	require.Equal(t, "", profile.MemoryScope)
 }
 
 func TestParseAgentFile_withAllFields(t *testing.T) {
