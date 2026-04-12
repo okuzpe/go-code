@@ -1,187 +1,188 @@
-# Coordinator Mode y Team/Swarm — referencia y eco Go
+# Coordinator Mode and Team/Swarm — reference and Go mapping
 
 **Status in goclaw:** **Coordinator (hub-and-spoke)** is implemented — [`docs/goclaw/coordinator.md`](../goclaw/coordinator.md), `internal/coordinator`, `--profile coordinator`. **Team/Swarm** peer topology here remains reference-only.
 
-Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D16 coordinator). Referencia conceptual (terceros, análisis del código de Claude Code): [Coordinator Mode — claude-code-explain](https://claude-code-explain.helmcode.com/coordinator-mode).
+Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D16 coordinator). Conceptual reference (third-party analysis of Claude Code): [Coordinator Mode — claude-code-explain](https://claude-code-explain.helmcode.com/coordinator-mode).
 
-**Mensaje central:** en el producto analizado hay **dos sistemas multi-agente distintos**, no uno solo con dos nombres. Mezclarlos en diseño propio produce permisos incoherentes (p. ej. un “coordinador” que aún puede `Write`).
-
----
-
-## 1. Dos topologías
-
-| Aspecto | **Coordinator Mode** (hub-and-spoke) | **Team / Swarm** (peer-to-peer) |
-|---------|--------------------------------------|----------------------------------|
-| Topología | Un **coordinador** central; solo él habla con workers | Cualquier compañero puede mensajear a cualquier otro |
-| Comunicación | Coordinador ↔ workers | Many-to-many |
-| UI terminal | Sin UI especial en referencia | **tmux** (splits, colores); alternativa **iTerm2** (AppleScript) en macOS |
-| Activación (ref.) | Flag de build + env `CLAUDE_CODE_COORDINATOR_MODE=1` | Tool **Agent** con parámetro **`team_name`** |
-| Mejor encaje (ref.) | Tareas complejas con orquestación **estricta** | Trabajo colaborativo paralelo |
+**Key message:** the analyzed product has **two distinct multi-agent systems**, not one system with two names. Conflating them in your own design produces incoherent permissions (e.g. a "coordinator" that can still `Write`).
 
 ---
 
-## 2. Coordinator Mode (detalle)
+## 1. Two topologies
 
-### 2.1 Restricción de seguridad clave
+| Aspect | **Coordinator Mode** (hub-and-spoke) | **Team / Swarm** (peer-to-peer) |
+|--------|--------------------------------------|----------------------------------|
+| Topology | One central **coordinator**; only it talks to workers | Any peer can message any other |
+| Communication | Coordinator ↔ workers | Many-to-many |
+| Terminal UI | No special UI in reference | **tmux** (splits, colors); alternative **iTerm2** (AppleScript) on macOS |
+| Activation (ref.) | Build flag + env `CLAUDE_CODE_COORDINATOR_MODE=1` | **Agent** tool with **`team_name`** parameter |
+| Best fit (ref.) | Complex tasks with **strict** orchestration | Parallel collaborative work |
 
-El **coordinador no accede al filesystem ni al shell**: no Read/Write/Edit/Bash directos. Toda mutación o lectura de código pasa por **workers** con toolbox completo. Es una capa de **razonamiento y delegación** sin superficie de “accidentalmente edité el repo”.
+---
 
-### 2.2 Herramientas del coordinador (referencia)
+## 2. Coordinator Mode (detail)
 
-Solo un subconjunto **~4 herramientas** orientadas a orquestación, p. ej.:
+### 2.1 Key security restriction
 
-- **Agent** — lanzar / enrutar workers  
-- **SendMessage** — continuar un worker por id o enviar instrucciones  
-- **TaskStop** — detener tareas  
-- **SyntheticOutput** — salida estructurada cuando el producto lo requiere  
+The **coordinator does not access the filesystem or shell**: no direct Read/Write/Edit/Bash. All mutations or code reads go through **workers** that have the full toolbox. It is a **reasoning and delegation** layer with no "I accidentally edited the repo" surface.
 
-(Los workers conservan el conjunto completo salvo lo que el producto bloquee por política; en referencia el coordinador está fuertemente capado.)
+### 2.2 Coordinator tools (reference)
 
-### 2.3 Otros cambios respecto al modo normal
+Only a subset of **~4 tools** oriented toward orchestration, e.g.:
 
-| Aspecto | Modo normal | Coordinator mode (ref.) |
-|---------|-------------|-------------------------|
-| System prompt | Prompt estándar | Prompt **específico de coordinador** |
-| Acceso a ficheros / shell | Directo vía tools | **Solo vía workers** |
+- **Agent** — launch / route workers  
+- **SendMessage** — continue a worker by id or send instructions  
+- **TaskStop** — stop tasks  
+- **SyntheticOutput** — structured output when the product requires it  
 
-### 2.4 Flujo de trabajo en cuatro fases (referencia)
+(Workers retain the full set minus whatever the product blocks by policy; in the reference product the coordinator is heavily restricted.)
 
-| Fase | Quién | Objetivo |
-|------|--------|----------|
-| 1. Research | Workers (**paralelo**) | Explorar código / contexto |
-| 2. Synthesis | Coordinador | Leer hallazgos; **redactar spec** con rutas y **números de línea** concretos |
-| 3. Implementation | Workers (**secuencial** por área de ficheros) | Aplicar cambios según spec; un worker a la vez por zona |
-| 4. Verification | Workers | Comprobar que funciona; puede solaparse con impl en **áreas distintas** |
+### 2.3 Other changes vs. normal mode
 
-### 2.5 Resultado de worker → coordinador (formato de referencia)
+| Aspect | Normal mode | Coordinator mode (ref.) |
+|--------|-------------|-------------------------|
+| System prompt | Standard prompt | **Coordinator-specific** prompt |
+| File / shell access | Direct via tools | **Only via workers** |
 
-Los resultados vuelven como mensajes **user-role** con XML encapsulado, p. ej.:
+### 2.4 Four-phase workflow (reference)
 
-- `task-id`, `status` (`completed` \| `failed` \| `killed`)
-- `summary`, `result` (salida detallada), `usage` (tokens u métricas)
+| Phase | Who | Goal |
+|-------|-----|------|
+| 1. Research | Workers (**parallel**) | Explore code / context |
+| 2. Synthesis | Coordinator | Read findings; **draft spec** with concrete paths and **line numbers** |
+| 3. Implementation | Workers (**sequential** per file area) | Apply changes per spec; one worker at a time per zone |
+| 4. Verification | Workers | Confirm it works; can overlap with impl in **different areas** |
 
-**Eco Go:** tipo `WorkerNotification` + XML o JSON estable; el orquestador parsea y **reescribe** el estado interno sin pasar el transcript crudo del worker al siguiente turno del coordinador si la política lo evita.
+### 2.5 Worker result → coordinator (reference format)
 
-### 2.6 Continue vs spawn (heurística de referencia)
+Results come back as **user-role** messages with encapsulated XML, e.g.:
 
-| Situación | Acción | Razón |
+- `task-id`, `status` (`completed` | `failed` | `killed`)
+- `summary`, `result` (detailed output), `usage` (tokens or metrics)
+
+**Go mapping:** `WorkerNotification` type with stable XML or JSON; the orchestrator parses and **rewrites** internal state without passing the raw worker transcript to the next coordinator turn if policy requires it.
+
+### 2.6 Continue vs. spawn (reference heuristic)
+
+| Situation | Action | Reason |
 |-----------|--------|--------|
-| El worker ya exploró ficheros que hay que editar | **Continue** (`SendMessage` al mismo id) | Conserva contexto cargado |
-| Research amplio pero implementación estrecha | **Spawn** nuevo | No arrastrar contexto innecesario |
-| Reparar un fallo | **Continue** | Mantiene el error en contexto |
-| Verificar código de otro worker | **Spawn** nuevo | Ojos frescos |
-| El enfoque anterior fue erróneo | **Spawn** nuevo | Reinicio limpio |
+| Worker already explored files that need editing | **Continue** (`SendMessage` to same id) | Preserves loaded context |
+| Wide research but narrow implementation | **Spawn** new | Don't carry unnecessary context |
+| Fixing a failure | **Continue** | Keeps the error in context |
+| Verifying another worker's code | **Spawn** new | Fresh eyes |
+| Previous approach was wrong | **Spawn** new | Clean restart |
 
-### 2.7 Regla crítica: aislamiento del prompt del worker
+### 2.7 Critical rule: worker prompt isolation
 
-Los workers **no ven** la conversación del coordinador con el usuario. Cada prompt de worker debe ser **autocontenido**: el coordinador debe volcar en la delegación las **rutas, líneas e instrucciones exactas**. Prohibido confiar en frases tipo “según tus hallazgos anteriores” — el worker no tiene esos hallazgos salvo que estén en **su** mensaje de tarea.
+Workers **do not see** the coordinator's conversation with the user. Each worker prompt must be **self-contained**: the coordinator must include **exact paths, line numbers, and instructions** in the delegation. Never rely on phrases like "based on your earlier findings" — the worker does not have those findings unless they are in **its** task message.
 
-**Encaje con [agent-profiles.md §3](./agent-profiles.md)** (inyectar en delegación vs cargar `CLAUDE.md` entero): misma filosofía de **prompt mínimo pero suficiente**.
-
----
-
-## 3. Team / Swarm (detalle)
-
-### 3.1 Estructura en disco (referencia, rutas ilustrativas bajo `~/.claude/`)
-
-| Artefacto | Ruta típica (ref.) |
-|-----------|-------------------|
-| Config del equipo | `teams/{team-name}/config.json` |
-| Lista de tareas | `tasks/{team-name}/` |
-| Buzones (inboxes) | `teams/{team-name}/inboxes/{name}.json` |
-| Rol fijo “team lead” | Nombre reservado p. ej. `team-lead` |
-
-### 3.2 Flujo resumido
-
-1. Team lead crea equipo (**TeamCreate**).  
-2. Crea tareas (herramientas **Task***).  
-3. Lanza compañeros (**Agent** con `team_name` + nombre).  
-4. Asigna dueños (**TaskUpdate**, campo owner).  
-5. Compañeros trabajan y cierran tareas.  
-6. Mensajería con **SendMessage** (peer-to-peer).  
-7. Apagado: **SendMessage** con tipo `shutdown_request` / respuesta.  
-8. Limpieza **TeamDelete** cuando no queden compañeros activos.
-
-### 3.3 Backends de “terminal” (referencia)
-
-| Backend | Notas |
-|---------|--------|
-| **In-process** | Aislado con AsyncLocalStorage (en TS); en tests / headless |
-| **tmux** | Proceso Claude Code separado por panel; splits y títulos |
-| **iTerm2** | macOS, AppleScript para splits/pestañas |
-
-Layouts (ref.): dentro de tmux existente → lead ~30% izquierda, equipo ~70% derecha (`main-vertical`); fuera de tmux → sesión nueva `claude-swarm`, ventana `swarm-view`, socket aislado, layout `tiled`.
-
-### 3.4 SendMessage dual (referencia)
-
-- **Coordinator Mode:** `SendMessage({ to: "<agent-id>", message: "..." })` continúa un worker.  
-- **Team/Swarm:** mensaje a un compañero por nombre, o **broadcast** `to: "*"` (uso moderado).
-
-**Enrutado (ref.):** prefijos tipo `bridge:<id>`, `uds:<path>`, id de agente registrado, `*` para broadcast a buzones, o nombre → escritura en mailbox de fichero.
-
-### 3.5 Mailboxes (ficheros JSON + bloqueo)
-
-- Mensajes JSON: `from`, `text`, `timestamp`, `read`, opcionales `color`, `summary`.  
-- **proper-lockfile** (en referencia) para carreras entre escritores.  
-- Poll ~**1 s** (hook UI React en referencia).  
-- El poll también puede canalizar permisos, sandbox, shutdown, aprobación de plan, etc.
-
-Inyección al contexto del compañero como XML, p. ej. `<teammate-message teammate_id="..." ...>`.
+**Matches [agent-profiles.md §3](./agent-profiles.md)** (inject into delegation vs. loading full `CLAUDE.md`): same philosophy of **minimal but sufficient prompt**.
 
 ---
 
-## 4. Tabla resumen Coordinator vs Team/Swarm
+## 3. Team / Swarm (detail)
 
-| Aspecto | Coordinator | Team/Swarm |
-|---------|-------------|------------|
-| Topología | Hub-and-spoke | Peer-to-peer |
-| Mensajes | Coordinador ↔ workers | Cualquiera ↔ cualquiera |
-| Tools del “centro” | Solo orquestación | Team lead con conjunto amplio (ref.) |
-| Workers | Toolbox completo (sin Agent/SendMessage hacia fuera según política) | Toolbox + **SendMessage** entre pares |
-| Entrega de trabajo | XML `task-notification` | Mailboxes + XML teammate-message |
-| UI | Sin fuerza tmux | tmux / iTerm2 |
+### 3.1 Disk structure (reference, illustrative paths under `~/.claude/`)
+
+| Artifact | Typical path (ref.) |
+|----------|---------------------|
+| Team config | `teams/{team-name}/config.json` |
+| Task list | `tasks/{team-name}/` |
+| Mailboxes (inboxes) | `teams/{team-name}/inboxes/{name}.json` |
+| Fixed "team lead" role | Reserved name e.g. `team-lead` |
+
+### 3.2 Summarized flow
+
+1. Team lead creates team (**TeamCreate**).  
+2. Creates tasks (**Task*** tools).  
+3. Launches peers (**Agent** with `team_name` + name).  
+4. Assigns owners (**TaskUpdate**, owner field).  
+5. Peers work and close tasks.  
+6. Messaging via **SendMessage** (peer-to-peer).  
+7. Shutdown: **SendMessage** with type `shutdown_request` / response.  
+8. Cleanup **TeamDelete** when no active peers remain.
+
+### 3.3 Terminal backends (reference)
+
+| Backend | Notes |
+|---------|-------|
+| **In-process** | Isolated with AsyncLocalStorage (in TS); for tests / headless |
+| **tmux** | Separate Claude Code process per pane; splits and titles |
+| **iTerm2** | macOS, AppleScript for splits/tabs |
+
+Layouts (ref.): inside existing tmux → lead ~30% left, team ~70% right (`main-vertical`); outside tmux → new session `claude-swarm`, window `swarm-view`, isolated socket, `tiled` layout.
+
+### 3.4 Dual SendMessage (reference)
+
+- **Coordinator Mode:** `SendMessage({ to: "<agent-id>", message: "..." })` continues a worker.  
+- **Team/Swarm:** message to a peer by name, or **broadcast** `to: "*"` (use sparingly).
+
+**Routing (ref.):** prefixes like `bridge:<id>`, `uds:<path>`, registered agent id, `*` for mailbox broadcast, or name → write to file mailbox.
+
+### 3.5 Mailboxes (JSON files + locking)
+
+- JSON messages: `from`, `text`, `timestamp`, `read`, optional `color`, `summary`.  
+- **proper-lockfile** (in reference) to prevent write races.  
+- Poll ~**1 s** (React UI hook in reference).  
+- The poll can also carry permissions, sandbox, shutdown, plan approval, etc.
+
+Injected into the peer's context as XML, e.g. `<teammate-message teammate_id="..." ...>`.
 
 ---
 
-## 5. Eco Go (sin copiar el stack TS)
+## 4. Coordinator vs. Team/Swarm summary table
 
-| Pieza referencia | Propuesta Go |
-|------------------|--------------|
-| Flag + env activador | `internal/config`: `CoordinatorMode bool`, validado en arranque |
-| Perfil tool del rol | [agent-profiles.md](./agent-profiles.md): **Coordinator** = allowlist explícita; **Worker** = General-Purpose o especializado |
-| Workers aislados | Proceso hijo **o** goroutine + `session` fork por `agent_id`; **nunca** compartir slice de mensajes del coordinador |
-| SendMessage / TaskStop | `internal/tools` + `orchestrator` enrutando a registro de workers vivos |
-| Team/Swarm mailboxes | `internal/swarm` o `internal/team`: `Mailbox interface { Push, Poll }` con implementación **dir+lock** primero; luego opcional Redis/DB |
-| tmux/iTerm2 | **No hay paridad** con tmux/iTerm del producto de referencia; en Windows priorizar **headless** + logs |
-| Polling 1 s | `time.Ticker` o eventos con `fsnotify` donde tenga sentido |
-
-**Dependencias (alineado con [CLAUDE.md](../../goclaw/CLAUDE.md)):** `coordinator` / `swarm` no deben importar `tools` de forma circular; el **orquestador** mantiene el mapa `agentID → run context`.
+| Aspect | Coordinator | Team/Swarm |
+|--------|-------------|------------|
+| Topology | Hub-and-spoke | Peer-to-peer |
+| Messages | Coordinator ↔ workers | Anyone ↔ anyone |
+| Tools for "center" | Orchestration only | Team lead with broad set (ref.) |
+| Workers | Full toolbox (no Agent/SendMessage outward per policy) | Toolbox + **SendMessage** between peers |
+| Work delivery | XML `task-notification` | Mailboxes + XML teammate-message |
+| UI | No forced tmux | tmux / iTerm2 |
 
 ---
 
-## 6. Fases del producto de referencia vs goclaw
+## 5. Go mapping (without copying the TS stack)
 
-| Fase (referencia) | Qué implicaba allí |
-|------|------------|
-| Producto sin multi-agente | Un solo bucle REPL |
-| Coordinator introducido | Allowlist + workers aislados (sin tmux obligatorio) |
-| Team/Swarm | Mailboxes peer, tareas compartidas, UI opcional |
+| Reference piece | Go proposal |
+|-----------------|-------------|
+| Activating flag + env | `internal/config`: `CoordinatorMode bool`, validated at startup |
+| Role tool profile | [agent-profiles.md](./agent-profiles.md): **Coordinator** = explicit allowlist; **Worker** = General-Purpose or specialized |
+| Isolated workers | Child process **or** goroutine + `session` fork per `agent_id`; **never** share the coordinator's message slice |
+| SendMessage / TaskStop | `internal/tools` + `orchestrator` routing to registry of live workers |
+| Team/Swarm mailboxes | `internal/swarm` or `internal/team`: `Mailbox interface { Push, Poll }` with **dir+lock** implementation first; optional Redis/DB later |
+| tmux/iTerm2 | **No parity** with the reference product's tmux/iTerm; on Windows prioritize **headless** + logs |
+| 1 s polling | `time.Ticker` or events with `fsnotify` where it makes sense |
 
-**goclaw hoy:** **D16 hub-and-spoke** (`spawn_agent` / `stop_task`, perfil `coordinator`) está **implementado** — ver [coordinator.md](../goclaw/coordinator.md). **Team/Swarm** peer-style sigue siendo **diseño de referencia**; el hub en disco [`internal/swarm`](../../goclaw/internal/swarm) es experimental y distinto del coordinador.
+**Dependencies (aligned with [CLAUDE.md](../../goclaw/CLAUDE.md)):** `coordinator` / `swarm` must not import `tools` in a circular way; the **orchestrator** owns the `agentID → run context` map.
 
 ---
 
-## 7. Relación con otros docs
+## 6. Reference product phases vs. goclaw
 
-- **[context-compaction.md](./context-compaction.md):** cada worker tiene su propio presupuesto de contexto; el coordinador compacta **su** hilo, no el interno del worker.  
-- **[memory-system.md](./memory-system.md):** decisiones estables tras una sesión multi-agente pueden merecer `project` / `feedback`; no sustituyen specs en XML.  
-- **§2.1 herramientas dedicadas:** los workers siguen D12; el coordinador no usa Bash para leer repo.
-- **[yolo-classifier.md](./yolo-classifier.md):** en auto-modo, los workers con toolbox completo deben pasar el mismo **gate** de seguridad que una sesión simple; la delegación no sustituye al clasificador.
+| Phase (reference) | What it meant |
+|-------------------|----------------|
+| Product without multi-agent | Single REPL loop |
+| Coordinator introduced | Allowlist + isolated workers (no required tmux) |
+| Team/Swarm | Peer mailboxes, shared tasks, optional UI |
+
+**goclaw today:** **D16 hub-and-spoke** (`spawn_agent` / `stop_task`, `coordinator` profile) is **implemented** — see [coordinator.md](../goclaw/coordinator.md). **Team/Swarm** peer-style remains **reference design**; the disk hub [`internal/swarm`](../../goclaw/internal/swarm) is experimental and separate from the coordinator.
+
+---
+
+## 7. Relation to other docs
+
+- **[context-compaction.md](./context-compaction.md):** each worker has its own context budget; the coordinator compacts **its** thread, not the worker's internal one.  
+- **[memory-system.md](./memory-system.md):** stable decisions after a multi-agent session may deserve `project` / `feedback` entries; they do not replace specs in XML.  
+- **§2.1 dedicated tools:** workers still follow D12; the coordinator does not use Bash to read the repo.
+- **[yolo-classifier.md](./yolo-classifier.md):** in auto mode, workers with the full toolbox must pass the same **security gate** as a simple session; delegation does not substitute the classifier.
 
 ---
 
 ## 8. Changelog
 
-| Fecha | Cambio |
-|-------|--------|
-| 2026-04-07 | Creación: dos topologías, fases, mailboxes, continue/spawn, invariante “worker no ve al coordinador”, eco Go, enlace helmcode §16 |
+| Date | Change |
+|------|--------|
+| 2026-04-07 | Created: two topologies, phases, mailboxes, continue/spawn, worker-does-not-see-coordinator invariant, Go mapping, helmcode §16 link |
+| 2026-04-12 | Translated from Spanish to English |

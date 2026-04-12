@@ -1,105 +1,106 @@
-# Contexto y compactación — referencia y eco Go
+# Context and compaction — reference and Go mapping
 
-**Status in goclaw:** Session compaction uses a **token heuristic** and configurable threshold — [`goclaw/internal/orchestrator/compaction.go`](../../goclaw/internal/orchestrator/compaction.go), **D15** in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md). Numbers below still calibrate against the **reference product**, not hard limits in Go.
+**Status in goclaw:** Session compaction uses a **token heuristic** and configurable threshold — [`goclaw/internal/orchestrator/compaction.go`](../../goclaw/internal/orchestrator/compaction.go), **D15** in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md). Numbers below are still calibrated against the **reference product**, not hard limits in Go.
 
-Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D15 compaction). Referencia conceptual (terceros, análisis del código de Claude Code): [Context & Compaction — claude-code-explain](https://claude-code-explain.helmcode.com/context-compaction).
+Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D15 compaction). Conceptual reference (third-party analysis of Claude Code): [Context & Compaction — claude-code-explain](https://claude-code-explain.helmcode.com/context-compaction).
 
-Los números concretos de esta página son **del producto analizado**, no compromisos de nuestro binario: sirven para **calibrar** implementación y flags de configuración (ver [CLAUDE.md](../../goclaw/CLAUDE.md) (D15)).
-
----
-
-## 1. Por qué encaja en nuestros documentos
-
-| Tema (ver [CLAUDE.md](../../goclaw/CLAUDE.md)) | Relación |
-|-----------------------------------------------|----------|
-| Límites de contexto / cliente LLM (**D15**) | La compactación es política **alrededor** de ese cliente + el historial en `session`. |
-| Micro vs compactación fuerte (este doc §3–§4) | Micro-compactación vs compactación fuerte; reinyección opcional. |
-| Perfiles de agente | Menos contexto inyectado ⇒ menos presión sobre la ventana; no sustituye podar **tool results**. |
-| Memoria en disco (**D13**) | Tras un resumen agresivo, `MEMORY.md` y ficheros de memoria siguen siendo la capa **estable** fuera del hilo. |
-| `session` vs `llm` | Quien compacta con **otra llamada al modelo** suele ser `orchestrator` o un worker, no el paquete de estado puro. |
-| Reintentos / [retry-logic.md](./retry-logic.md) (**D22**) | Esa llamada extra hereda la misma política de **reintentos/backoff**, con cancelación acotada. |
+The concrete numbers on this page are **from the analyzed product**, not commitments of our binary: they serve to **calibrate** implementation and configuration flags (see [CLAUDE.md](../../goclaw/CLAUDE.md) D15).
 
 ---
 
-## 2. Ventana de contexto (referencia analizada)
+## 1. Why this fits in our documents
 
-| Contexto | Tokens (ref.) | Nota |
-|----------|---------------|------|
-| Por defecto | ~200 000 | “Default” en el producto de referencia |
-| Modelos “1M” | ~1 000 000 | Ej.: familias Sonnet 4.x / Opus 4.6 con modo ampliado |
-| Anulación | Personalizado | En referencia: p. ej. variable tipo `CLAUDE_CODE_MAX_CONTEXT_TOKENS` |
-
-**Eco Go:** leer límite efectivo del proveedor (API) o del runtime local (Ollama: contexto del modelo cargado, mucho menor que 200K en práctica — ver [local-models.md](./local-models.md)) y expon optionally override en config.
-
----
-
-## 3. Auto-compactación (compactación fuerte)
-
-Flujo descrito en la referencia:
-
-1. **Umbral:** quedan ~**13 000** tokens libres antes del techo → se dispara compactación automática.
-2. **Sub-agente / fork:** un proceso lee el historial completo y genera un **resumen comprimido**.
-3. **Sustitución:** el hilo que ve el modelo principal pasa a ser ese resumen (no el historial íntegro).
-4. **Presupuesto post-compact:** ~**50 000** tokens para “recuperar” contexto útil; en referencia hay límites tipo **máx. 5 archivos**, **~5 000 tokens por archivo** (p. ej. skills y ficheros clave).
-5. **Cortacircuito:** si la compactación **falla 3 veces seguidas**, deja de reintentar para evitar bucles.
-
-**Eco Go:** tareas asíncronas con `context.Context`, mismo cliente `llm` pero system prompt de “summarizer”, métrica de fallos consecutivos, y política de reinyección explícita (leer de disco bajo presupuesto en lugar de confiar en que el modelo “recuerde” el repo).
-
-**Compactación manual:** en referencia existe un comando tipo **`/compact`** antes de llegar al límite; suele producir resúmenes más intencionados que un auto-compact de último minuto. Equivalente Go: comando REPL o flag que invoque el mismo pipeline con confirmación.
+| Topic (see [CLAUDE.md](../../goclaw/CLAUDE.md)) | Relation |
+|-------------------------------------------------|----------|
+| Context limits / LLM client (**D15**) | Compaction is policy **around** that client + history in `session`. |
+| Micro vs. strong compaction (this doc §3–§4) | Micro-compaction vs. strong compaction; optional re-injection. |
+| Agent profiles | Less injected context ⇒ less window pressure; does not replace pruning **tool results**. |
+| Disk memory (**D13**) | After aggressive summarization, `MEMORY.md` and memory files remain the **stable** layer outside the thread. |
+| `session` vs `llm` | The component that compacts with **another model call** is usually `orchestrator` or a worker, not the pure-state package. |
+| Retries / [retry-logic.md](./retry-logic.md) (**D22**) | That extra call inherits the same **retry/backoff** policy, with bounded cancellation. |
 
 ---
 
-## 4. Micro-compactación (inline, durante la sesión)
+## 2. Context window (analyzed reference)
 
-Objetivo: **no** esperar al umbral global; reduce ruido de **resultados de herramientas antiguos**.
+| Context | Tokens (ref.) | Note |
+|---------|---------------|------|
+| Default | ~200,000 | "Default" in the reference product |
+| "1M" models | ~1,000,000 | E.g. Sonnet 4.x / Opus 4.6 families with extended mode |
+| Override | Custom | In reference: e.g. a variable like `CLAUDE_CODE_MAX_CONTEXT_TOKENS` |
 
-- Cuando un `tool_result` “envejece” (heurística: antigüedad en el historial o turnos desde el último uso), su contenido se reemplaza por un marcador corto, p. ej. **`[Old tool result content cleared]`** (texto ilustrativo del patrón analizado).
-- Herramientas cubiertas en la referencia para este tratamiento incluyen entre otras: **Read, Bash, Grep, Glob, WebSearch, WebFetch, Edit, Write**.
-
-**Imágenes:** en referencia se estima un coste fijo conservador (**~2 000 tokens** por imagen) para el presupuesto aunque el fichero sea distinto.
-
-**Eco Go:** implementación en `internal/session` o `internal/contextwindow`: cola de mensajes con metadatos por bloque (`ToolName`, `tokensEstimate`, edad); función `MicroCompact(messages)` antes de cada `Complete`. Cuidado con **no** borrar resultados que el último turno del usuario aún necesita (heurística o “pinning” explícito en v2).
-
----
-
-## 5. Límites de salida del modelo (referencia)
-
-Constantes orientativas del producto analizado (útiles al dimensionar `max_tokens` por fase):
-
-| Modo | Tokens máx. salida (ref.) |
-|------|---------------------------|
-| Respuesta estándar | ~32 000 |
-| Capado (reserva de “slots”) | ~8 000 |
-| Escalado / recuperación tras errores | ~64 000 |
-| Salida del **agente de compactación** (resumen) | ~20 000 |
-
-**Eco Go:** parametrizar por tipo de llamada (`TurnUser`, `TurnCompaction`, `TurnRecovery`) en `internal/llm`.
+**Go mapping:** read the effective limit from the provider (API) or local runtime (Ollama: context of the loaded model, much smaller than 200K in practice — see [local-models.md](./local-models.md)) and optionally allow override in config.
 
 ---
 
-## 6. Qué no mezclar
+## 3. Auto-compaction (strong compaction)
 
-- **Compactación** ≠ **memoria persistente** ([memory-system.md](./memory-system.md)): el resumen vive en el hilo; la memoria en disco evita perder hechos estables cuando el hilo se resume.
-- **Micro-compactación** ≠ **truncar logs en disco**: solo el **mensaje en vuelo** hacia el API.
-- Números 13K / 50K / 32K son **referencia**: con Ollama 7B el techo real puede ser 8K–32K según modelo; los umbrales deben ser **fracción del límite configurado** o tablas por proveedor (D15).
-- **Multi-agente:** el hilo del **coordinador** y el de cada **worker** son independientes; compactar uno no reemplaza el historial de los demás — ver [coordinator-mode.md §2.7](./coordinator-mode.md) (aislamiento del worker).
+Flow described in the reference:
+
+1. **Threshold:** ~**13,000** free tokens remain before the ceiling → automatic compaction fires.
+2. **Sub-agent / fork:** a process reads the full history and generates a **compressed summary**.
+3. **Replacement:** the thread seen by the main model becomes that summary (not the full history).
+4. **Post-compact budget:** ~**50,000** tokens to "recover" useful context; in the reference there are limits like **max 5 files**, **~5,000 tokens per file** (e.g. skills and key files).
+5. **Circuit breaker:** if compaction **fails 3 times in a row**, it stops retrying to avoid loops.
+
+**Go mapping:** async tasks with `context.Context`, same `llm` client but with a "summarizer" system prompt, consecutive-failure metric, and explicit re-injection policy (read from disk under budget rather than trusting the model to "remember" the repo).
+
+**Manual compaction:** the reference product has a **`/compact`** command before hitting the limit; this usually produces more intentional summaries than a last-minute auto-compact. Go equivalent: REPL command or flag that invokes the same pipeline with confirmation.
 
 ---
 
-## 7. goclaw hoy vs mejoras opcionales
+## 4. Micro-compaction (inline, during the session)
 
-| Ámbito | Compactación |
-|------|----------------|
-| **goclaw (shipped)** | Heurística de tokens + umbral configurable, **tail** de turnos recientes preservado, fase 1 que limpia `tool_results` antiguos, `/compact`, opción **`llm_compaction`** + **`compaction_model`** — ver [`compaction.go`](../../goclaw/internal/orchestrator/compaction.go) y **D15** en [`CLAUDE.md`](../../goclaw/CLAUDE.md) |
-| **Referencia** | Micro-compact agresiva, presupuestos post-compact de decenas de miles de tokens, etc. — calibración, no exigencia |
-| **No implementado / más adelante** | Reinyección automática de ficheros bajo presupuesto como en algunos productos referencia; ver [roadmap.md](../goclaw/roadmap.md) si se prioriza |
+Goal: **not** waiting for the global threshold; reduces noise from **old tool results**.
+
+- When a `tool_result` "ages" (heuristic: age in history or turns since last use), its content is replaced by a short marker, e.g. **`[Old tool result content cleared]`** (illustrative text from the analyzed pattern).
+- Tools covered in the reference for this treatment include among others: **Read, Bash, Grep, Glob, WebSearch, WebFetch, Edit, Write**.
+
+**Images:** the reference uses a conservative fixed estimate (**~2,000 tokens** per image) for the budget even if the file differs.
+
+**Go mapping:** implement in `internal/session` or `internal/contextwindow`: message queue with per-block metadata (`ToolName`, `tokensEstimate`, age); `MicroCompact(messages)` function before each `Complete`. Be careful **not** to clear results the last user turn still needs (heuristic or explicit "pinning" in v2).
+
+---
+
+## 5. Model output limits (reference)
+
+Reference values from the analyzed product (useful for sizing `max_tokens` per phase):
+
+| Mode | Max output tokens (ref.) |
+|------|--------------------------|
+| Standard response | ~32,000 |
+| Capped (slot reservation) | ~8,000 |
+| Scaled / recovery after errors | ~64,000 |
+| **Compaction agent** output (summary) | ~20,000 |
+
+**Go mapping:** parameterize by call type (`TurnUser`, `TurnCompaction`, `TurnRecovery`) in `internal/llm`.
+
+---
+
+## 6. What not to conflate
+
+- **Compaction** ≠ **persistent memory** ([memory-system.md](./memory-system.md)): the summary lives in the thread; disk memory prevents losing stable facts when the thread is summarized.
+- **Micro-compaction** ≠ **truncating on-disk logs**: only the **in-flight message** to the API.
+- Numbers 13K / 50K / 32K are **reference**: with Ollama 7B the real ceiling can be 8K–32K depending on the model; thresholds should be a **fraction of the configured limit** or per-provider tables (D15).
+- **Multi-agent:** the **coordinator** thread and each **worker** thread are independent; compacting one does not replace the others' history — see [coordinator-mode.md §2.7](./coordinator-mode.md) (worker isolation).
+
+---
+
+## 7. goclaw today vs. optional improvements
+
+| Area | Compaction |
+|------|------------|
+| **goclaw (shipped)** | Token heuristic + configurable threshold, recent-turn **tail** preserved, phase 1 that clears old `tool_results`, `/compact`, **`llm_compaction`** + **`compaction_model`** option — see [`compaction.go`](../../goclaw/internal/orchestrator/compaction.go) and **D15** in [`CLAUDE.md`](../../goclaw/CLAUDE.md) |
+| **Reference** | Aggressive micro-compact, post-compact budgets of tens of thousands of tokens, etc. — calibration, not a requirement |
+| **Not implemented / future** | Automatic file re-injection under budget as in some reference products; see [roadmap.md](../goclaw/roadmap.md) if prioritized |
 
 ---
 
 ## 8. Changelog
 
-| Fecha | Cambio |
-|-------|--------|
-| 2026-04-07 | Creación: ventana, auto/micro-compact, límites de salida, eco Go, enlace helmcode §06 |
-| 2026-04-07 | §6: multi-agente (hilos separados) → [coordinator-mode.md](./coordinator-mode.md). |
-| 2026-04-07 | §1: tabla + [retry-logic.md](./retry-logic.md) (sub-llamada compactación). |
+| Date | Change |
+|------|--------|
+| 2026-04-07 | Created: window, auto/micro-compact, output limits, Go mapping, helmcode §06 link |
+| 2026-04-07 | §6: multi-agent (separate threads) → [coordinator-mode.md](./coordinator-mode.md) |
+| 2026-04-07 | §1: table + [retry-logic.md](./retry-logic.md) (compaction sub-call) |
+| 2026-04-12 | Translated from Spanish to English |

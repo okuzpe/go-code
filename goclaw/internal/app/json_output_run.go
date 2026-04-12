@@ -18,7 +18,7 @@ type discardStreamSink struct{}
 
 func (discardStreamSink) OnTextDelta(string)              {}
 func (discardStreamSink) OnToolUse(string, string)        {}
-func (discardStreamSink) OnToolResult(string, int, bool) {}
+func (discardStreamSink) OnToolResult(string, string, bool) {}
 func (discardStreamSink) OnDone(string)                  {}
 
 func automationOutputToolApprover(_ context.Context, toolName, _ string) (bool, error) {

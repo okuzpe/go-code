@@ -27,6 +27,15 @@ var validTaskRoles = map[string]struct{}{
 	"creative":  {},
 }
 
+func containsAny(s string, keywords []string) bool {
+	for _, kw := range keywords {
+		if strings.Contains(s, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeTaskRole(r string) string {
 	r = strings.ToLower(strings.TrimSpace(r))
 	if _, ok := validTaskRoles[r]; ok {
@@ -43,53 +52,32 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 	}
 	lower := strings.ToLower(m)
 
-	if strings.Contains(m, "```") ||
-		strings.Contains(lower, "refactor") ||
-		strings.Contains(lower, "implement") ||
-		strings.Contains(lower, "debug") ||
-		strings.Contains(lower, "panic") ||
-		strings.Contains(lower, "fix ") ||
-		strings.Contains(lower, "stack trace") ||
-		strings.Contains(lower, "compil") ||
-		strings.Contains(lower, "unit test") ||
-		strings.Contains(lower, "typescript") ||
-		strings.Contains(lower, "javascript") ||
-		strings.Contains(lower, "golang") ||
-		strings.Contains(lower, "python") ||
-		strings.Contains(lower, "error:") ||
-		strings.Contains(lower, "stacktrace") ||
-		strings.Contains(lower, "lint ") ||
-		strings.Contains(lower, " pull request") ||
-		strings.Contains(lower, "pull request") ||
-		strings.Contains(lower, "commit ") {
+	codeKeywords := []string{
+		"refactor", "implement", "debug", "panic", "fix ", "stack trace", "compil",
+		"unit test", "typescript", "javascript", "golang", "python", "error:",
+		"stacktrace", "lint ", "pull request", "commit ",
+	}
+	if strings.Contains(m, "```") || containsAny(lower, codeKeywords) {
 		return "code"
 	}
 
-	if strings.Contains(lower, "why ") ||
-		strings.Contains(lower, "step by step") ||
-		strings.Contains(lower, "prove ") ||
-		strings.Contains(lower, "analiz") ||
-		strings.Contains(lower, "analyze") ||
-		strings.Contains(lower, "trade-off") ||
-		strings.Contains(lower, "tradeoff") ||
-		strings.Contains(lower, "razon") ||
-		strings.Contains(lower, "implic") {
+	reasoningKeywords := []string{
+		"why ", "step by step", "prove ", "analiz", "analyze",
+		"trade-off", "tradeoff", "implic",
+	}
+	if containsAny(lower, reasoningKeywords) {
 		return "reasoning"
 	}
 
-	if strings.Contains(lower, "brainstorm") ||
-		strings.Contains(lower, "marketing") ||
-		strings.Contains(lower, "slogan") ||
-		strings.Contains(lower, "poem") ||
-		strings.Contains(lower, "creative") ||
-		strings.Contains(lower, "story ") {
+	creativeKeywords := []string{"brainstorm", "marketing", "slogan", "poem", "creative", "story "}
+	if containsAny(lower, creativeKeywords) {
 		return "creative"
 	}
 
-	if strings.Contains(lower, "where is") ||
-		strings.Contains(lower, "find ") && (strings.Contains(lower, "file") || strings.Contains(lower, "code") || strings.Contains(lower, "definition")) ||
-		strings.Contains(lower, "navigate") ||
-		strings.Contains(lower, "codebase") && strings.Contains(lower, "search") {
+	findWithContext := strings.Contains(lower, "find ") &&
+		(strings.Contains(lower, "file") || strings.Contains(lower, "code") || strings.Contains(lower, "definition"))
+	codebaseSearch := strings.Contains(lower, "codebase") && strings.Contains(lower, "search")
+	if strings.Contains(lower, "where is") || strings.Contains(lower, "navigate") || findWithContext || codebaseSearch {
 		return "explore"
 	}
 
@@ -101,6 +89,23 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 		return "fast"
 	}
 	return role
+}
+
+// taskExplorationHint returns a per-turn system suffix that reinforces the tool-first rule
+// for any task type that requires accessing the codebase.
+func taskExplorationHint(role string) string {
+	switch role {
+	case "code":
+		return "\n\n[THIS TURN: coding — call glob/grep/read_file FIRST. FIRST output = tool call. No text before it.]"
+	case "reasoning", "explore":
+		return "\n\n[THIS TURN: analysis/plan — call glob/read_file/grep FIRST to read actual files. FIRST output = tool call. No text before it.]"
+	case "fast":
+		// Fast/trivial: no tool hint needed, but still suppress verbose output.
+		return "\n\n[THIS TURN: answer directly and briefly. No preamble.]"
+	default:
+		// For any other non-chat role: remind to act first.
+		return "\n\n[THIS TURN: if tools are needed, FIRST output = tool call. No preamble, no explanation.]"
+	}
 }
 
 func profileFallbackRole(profile agents.Profile) string {
@@ -163,10 +168,12 @@ func (o *Orchestrator) resolveTaskModel(ctx context.Context, userMsg string) Tas
 
 func (o *Orchestrator) prepareTurnModel(ctx context.Context, userMsg string) {
 	o.turnModel = ""
+	o.taskRole = ""
 	if strings.TrimSpace(o.profile.ModelOverride) != "" {
 		return
 	}
 	res := o.resolveTaskModel(ctx, userMsg)
+	o.taskRole = res.Role
 	if strings.TrimSpace(res.Model) != "" {
 		o.turnModel = strings.TrimSpace(res.Model)
 	}

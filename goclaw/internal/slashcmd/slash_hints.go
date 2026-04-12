@@ -2,6 +2,7 @@ package slashcmd
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/okuzpe/goclaw/internal/session"
@@ -12,6 +13,8 @@ type UIHints struct {
 	RefreshWelcome  bool
 	WelcomeProfile  string
 	WelcomeSubtitle string
+	// FooterHint when non-nil updates the TUI footer line (e.g. after /plan save). Empty string clears. Nil leaves unchanged.
+	FooterHint *string
 	// ReloadTranscript when non-nil means the in-memory session was replaced; the TUI should rebuild the transcript view.
 	ReloadTranscript *session.Session
 }
@@ -29,6 +32,14 @@ func setWelcomeHints(h *UIHints, profile, subtitle string) {
 	h.RefreshWelcome = true
 	h.WelcomeProfile = profile
 	h.WelcomeSubtitle = subtitle
+}
+
+func setFooterHint(h *UIHints, line string) {
+	if h == nil {
+		return
+	}
+	s := strings.TrimSpace(line)
+	h.FooterHint = &s
 }
 
 func setReloadTranscript(h *UIHints, s *session.Session) {

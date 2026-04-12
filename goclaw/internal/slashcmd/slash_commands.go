@@ -11,7 +11,7 @@ type SlashCommandSuggest struct {
 // slashCommandTable is the canonical list of root REPL / commands. Keep sorted by Name.
 var slashCommandTable = []SlashCommandSuggest{
 	{"/agents", "List or switch agent profile (built-in + custom *.md)"},
-	{"/apply-plan", "Load plan file, switch to general-purpose, run one orchestrator turn"},
+	{"/apply-plan", "Execute saved plan (see --preview); optional path; switches to general-purpose"},
 	{"/back", "Return to coordinator session (same as /detach)"},
 	{"/btw", "Side question: rewrite and send one user message to the model"},
 	{"/capabilities", "Print full capability guide (no model call)"},
@@ -39,6 +39,7 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/session", "Show or set session id"},
 	{"/sessions", "List saved session ids on disk"},
 	{"/theme", "Set TUI appearance preset in settings"},
+	{"/tools", "Show tool call history for this session (readline); /tools N shows full output of step N"},
 	{"/workers", "List coordinator workers and task ids"},
 }
 

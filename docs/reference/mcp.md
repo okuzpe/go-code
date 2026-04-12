@@ -8,7 +8,7 @@ For a coding agent in 2025–2026, built-in tools alone often fall short of user
 
 ---
 
-## Implemented in goclaw (English)
+## Implemented in goclaw
 
 **Code:** [`goclaw/internal/mcp`](../../goclaw/internal/mcp) — JSON-RPC 2.0 over **stdio** (subprocess) or **Streamable HTTP** ([`goclaw/internal/mcp/http.go`](../../goclaw/internal/mcp/http.go)): `initialize`, `notifications/initialized`, `tools/list`, `tools/call`. **`mcp_servers`** in merged settings ([`goclaw/internal/config/loader.go`](../../goclaw/internal/config/loader.go)) uses `command` for stdio, or `url` plus optional `headers` for HTTP. **Loopback-only** URLs unless **`mcp_allow_remote_urls`: true**.
 
@@ -111,8 +111,6 @@ Config expansion: `${VAR}` and `${VAR:-default}`.
 | **Reference (early)** | Stabilize loop + builtin tools only — background for comparison. |
 | **goclaw (shipped)** | `internal/mcp`: **stdio** + **Streamable HTTP**, dynamic `mcp__*` tools, limits, **permissions**, `mcp_servers`, optional `bearer_token_file`, resilient reconnect — see **D6** in [`CLAUDE.md`](../../goclaw/CLAUDE.md). |
 | **Not implemented** | WebSocket transport, OAuth for MCP, resources/list/read as first-class commands — still **D6** future scope / [mcp-remote.md](../goclaw/mcp-remote.md). |
-
-**D6** should still fix: which transports ship when, `.mcp.json` compatibility, and enterprise policy parity if required from day one.
 
 ---
 

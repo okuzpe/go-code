@@ -36,6 +36,8 @@ type Model struct {
 	lines      []string
 	streaming  bool
 	statusLine string
+	// footerHint is a one-line reminder under the session footer (e.g. after /plan save); cleared on next send.
+	footerHint string
 
 	// assistantPlaceholder is true while we show a dim "…" line before first token.
 	assistantPlaceholder bool
@@ -61,6 +63,14 @@ type Model struct {
 
 	// toolWaitStartedAt is when the first pending tool in the queue began (for elapsed seconds in the footer).
 	toolWaitStartedAt time.Time
+
+	// toolLog accumulates all completed tool calls in this session for the Ctrl+T overlay.
+	toolLog       []toolLogEntry
+	toolLogStart  time.Time // when the current in-flight tool started (for elapsed)
+	toolLogOpen   bool
+	toolLogCursor int  // index into toolLog; -1 = none
+	toolLogDetail bool // true = showing full content of toolLog[toolLogCursor]
+	toolLogText   string
 
 	sessionID string
 
@@ -112,6 +122,15 @@ type toolTickMsg struct{}
 type pendingTool struct {
 	name    string
 	summary string
+}
+
+// toolLogEntry is a completed tool call stored in the session-scoped tool history.
+type toolLogEntry struct {
+	name    string
+	summary string        // input preview (from OnToolUse)
+	content string        // full result string (from OnToolResult; capped at display)
+	isError bool
+	elapsed time.Duration
 }
 
 type submitRunner struct {
@@ -357,6 +376,49 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		if m.toolLogOpen {
+			if m.toolLogDetail {
+				switch msg.String() {
+				case "esc":
+					m.toolLogDetail = false
+					m.refreshToolLogOverlay()
+					m.layout()
+					m.viewport.GotoTop()
+					return m, nil
+				case "ctrl+c":
+					return m, tea.Quit
+				default:
+					var vcmd tea.Cmd
+					m.viewport, vcmd = m.viewport.Update(msg)
+					return m, vcmd
+				}
+			}
+			switch msg.String() {
+			case "up":
+				m.moveToolLogCursor(-1)
+				return m, nil
+			case "down":
+				m.moveToolLogCursor(1)
+				return m, nil
+			case "enter":
+				if m.toolLogCursor >= 0 && m.toolLogCursor < len(m.toolLog) {
+					m.toolLogDetail = true
+					m.refreshToolLogOverlay()
+					m.layout()
+					m.viewport.GotoTop()
+				}
+				return m, nil
+			case "esc", "ctrl+t":
+				m.closeToolLog()
+				return m, nil
+			case "ctrl+c":
+				return m, tea.Quit
+			default:
+				var vcmd tea.Cmd
+				m.viewport, vcmd = m.viewport.Update(msg)
+				return m, vcmd
+			}
+		}
 		if m.helpOpen {
 			switch msg.String() {
 			case "esc":
@@ -440,7 +502,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.curAssistantLineIdx = -1
 		m.toolWaitQueue = append(m.toolWaitQueue, pendingTool{name: msg.name, summary: msg.preview})
 		if len(m.toolWaitQueue) == 1 {
-			m.toolWaitStartedAt = time.Now()
+			now := time.Now()
+			m.toolWaitStartedAt = now
+			m.toolLogStart = now
 		}
 		m.spinnerActive = true
 		m.statusLine = m.toolQueueStatusLine()
@@ -474,7 +538,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !ok {
 			job = pendingTool{name: msg.name, summary: ""}
 		}
-		m.appendToolDoneLine(job.name, job.summary, msg.isError)
+		m.appendToolDoneLine(job.name, job.summary, msg.content, msg.isError)
 		if len(m.toolWaitQueue) > 0 {
 			m.toolWaitStartedAt = time.Now()
 			m.statusLine = m.toolQueueStatusLine()
@@ -501,7 +565,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Drag-and-drop interception: convert file/dir paths pasted from the OS into @relpath tokens.
 	if paste, isPaste := msg.(tea.PasteMsg); isPaste &&
 		!m.streaming && m.pending == nil &&
-		!m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
+		!m.toolLogOpen && !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
 		if tokens, ok := inputprefix.TryPasteAsAtPaths(m.workdir, paste.Content); ok {
 			// Insert a space before the token if cursor is right after non-space text.
 			row := m.input.Line()
@@ -528,7 +592,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
-	if !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
+	if !m.toolLogOpen && !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
 		m.input, cmd = m.input.Update(msg)
 		cmds = append(cmds, cmd)
 		// Dynamic input height: grow textarea as user types more lines (up to inputMaxHeight).
@@ -624,11 +688,24 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 		return m, nil, false
+	case "ctrl+t":
+		if m.streaming || m.pending != nil {
+			return m, nil, true
+		}
+		m.openToolLog()
+		return m, nil, true
+	case "ctrl+p":
+		if m.streaming || m.pending != nil {
+			return m, nil, true
+		}
+		m.openAgentPicker()
+		return m, nil, true
 	case "enter":
 		txt := strings.TrimSpace(m.input.Value())
 		if txt == "" {
 			return m, nil, true
 		}
+		m.footerHint = ""
 		// Avoid overlapping RunStreaming calls on the same session (or sending while awaiting tools).
 		if m.streaming {
 			return m, nil, true
@@ -803,6 +880,9 @@ func (m *Model) applySlashHints(hints slashcmd.UIHints) {
 	if hints.ReloadTranscript != nil {
 		m.rebuildTranscriptForSession(hints.ReloadTranscript)
 	}
+	if hints.FooterHint != nil {
+		m.footerHint = strings.TrimSpace(*hints.FooterHint)
+	}
 }
 
 func (m *Model) rebuildTranscriptForSession(s *session.Session) {
@@ -880,6 +960,11 @@ func (m *Model) layout() {
 	}
 	m.viewport.SetWidth(m.width)
 	m.viewport.SetHeight(h)
+	if m.toolLogOpen {
+		m.viewport.SetContent(m.toolLogText)
+		m.lastTranscript = m.toolLogText
+		return
+	}
 	if m.helpOpen {
 		m.viewport.SetContent(m.helpFullText)
 		m.lastTranscript = m.helpFullText
@@ -941,6 +1026,18 @@ func (m *Model) footerView() string {
 	if th == nil {
 		th = DefaultTheme()
 	}
+	if m.toolLogOpen {
+		var line string
+		if m.toolLogDetail {
+			line = "Esc back · scroll · Ctrl+C quit"
+		} else {
+			line = "↑↓ move · Enter view · Esc close · Ctrl+C quit"
+		}
+		if m.width > 4 {
+			return th.FooterDim.Width(m.width).Render(line)
+		}
+		return th.FooterDim.Render(line)
+	}
 	if m.helpOpen {
 		line := "Esc · scroll · Ctrl+C quit"
 		if m.width > 4 {
@@ -965,7 +1062,11 @@ func (m *Model) footerView() string {
 
 	fw := m.width
 	primary := strings.TrimSpace(m.footerPrimaryStatus())
-	hints := m.footerBrand() + " · Esc · double Ctrl+C to quit · PgUp/PgDn scroll"
+	toolHint := ""
+	if len(m.toolLog) > 0 && !m.streaming {
+		toolHint = fmt.Sprintf(" · Ctrl+T tools (%d)", len(m.toolLog))
+	}
+	hints := m.footerBrand() + " · Esc · double Ctrl+C to quit · PgUp/PgDn scroll" + toolHint
 	session := footerline.HintsWithSession(hints, m.sessionID, m.width)
 
 	var b strings.Builder
@@ -983,6 +1084,15 @@ func (m *Model) footerView() string {
 		b.WriteString(th.FooterDim.Width(fw).Render(session))
 	} else {
 		b.WriteString(th.FooterDim.Render(session))
+	}
+
+	if fh := strings.TrimSpace(m.footerHint); fh != "" {
+		b.WriteString("\n")
+		if fw > 4 {
+			b.WriteString(th.FooterDim.Width(fw).Render(fh))
+		} else {
+			b.WriteString(th.FooterDim.Render(fh))
+		}
 	}
 
 	if m.focusLine != nil {
@@ -1016,7 +1126,7 @@ func (m *Model) footerView() string {
 
 // prefixSuggestStripView shows @ path picks, / slash picks, or short ! / & hints above the input.
 func (m *Model) prefixSuggestStripView() string {
-	if m.helpOpen || m.themePickOpen || m.agentPickOpen || m.streaming || m.pending != nil {
+	if m.toolLogOpen || m.helpOpen || m.themePickOpen || m.agentPickOpen || m.streaming || m.pending != nil {
 		return ""
 	}
 	if s := m.atSuggestStripView(); s != "" {
@@ -1385,8 +1495,9 @@ func (m *Model) popToolJob() (pendingTool, bool) {
 	return j, true
 }
 
-// appendToolDoneLine renders a completed tool call as a compact card (claw-code style).
-func (m *Model) appendToolDoneLine(toolName, summary string, isError bool) {
+// appendToolDoneLine renders a completed tool call as a compact card (claw-code style)
+// and records it in the session tool log for Ctrl+T drill-down.
+func (m *Model) appendToolDoneLine(toolName, summary, content string, isError bool) {
 	th := m.theme
 	if th == nil {
 		th = DefaultTheme()
@@ -1399,6 +1510,7 @@ func (m *Model) appendToolDoneLine(toolName, summary string, isError bool) {
 	card := th.RenderToolCard(label, truncatedSummary, isError, m.width)
 	m.lines = append(m.lines, card)
 	m.setLinesContent(false)
+	m.appendToToolLog(toolName, summary, content, isError)
 }
 
 // refreshAssistantLine updates or appends a line with streaming content.
@@ -1566,7 +1678,7 @@ type toolUseMsg struct {
 
 type toolResultMsg struct {
 	name    string
-	bytes   int
+	content string // full result string (used for tool log drill-down)
 	isError bool
 }
 

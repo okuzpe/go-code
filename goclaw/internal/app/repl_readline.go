@@ -102,6 +102,7 @@ type readlineREPL struct {
 	slashEnv slashcmd.SlashEnv
 	orch     *orchestrator.Orchestrator
 	focus    *coordinator.FocusRouter
+	sink     *loggingTerminalSink
 }
 
 func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
@@ -183,17 +184,17 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 				fmt.Println(slashOut)
 			}
 			if strings.TrimSpace(modelSubmit) != "" {
-				runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, modelSubmit, &terminalSink{}, setReqCancel)
+				runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, modelSubmit, r.sink, setReqCancel)
 			}
 			continue
 		}
 
 		if wid := strings.TrimSpace(r.focus.Current()); wid != "" {
-			runWorkerTurn(r.baseCtx, r.rt.Cfg.Provider, r.rt.Cfg.Model(), wid, input, &terminalSink{}, setReqCancel)
+			runWorkerTurn(r.baseCtx, r.rt.Cfg.Provider, r.rt.Cfg.Model(), wid, input, r.sink, setReqCancel)
 			continue
 		}
 
-		if handled, err := RunLocalPrefixToolIfAny(r.baseCtx, r.rt.Mock, r.orch, sess, input, &terminalSink{}); handled {
+		if handled, err := RunLocalPrefixToolIfAny(r.baseCtx, r.rt.Mock, r.orch, sess, input, r.sink); handled {
 			if err != nil {
 				slog.Error("prefix input error", "err", err)
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -202,7 +203,7 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 		}
 
 		input = ExpandInlineAtRefs(r.baseCtx, r.orch, input)
-		runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, input, &terminalSink{}, setReqCancel)
+		runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, input, r.sink, setReqCancel)
 	}
 }
 
@@ -254,6 +255,7 @@ func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrat
 
 	go func() { <-ctx.Done(); _ = rl.Close() }()
 
+	logSink := &loggingTerminalSink{}
 	repl := &readlineREPL{
 		baseCtx: ctx,
 		rt:      rt,
@@ -266,10 +268,12 @@ func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrat
 			Doctor: func(ctx context.Context) (string, error) {
 				return DoctorReportFromRuntime(ctx, rt), nil
 			},
-			Focus: focus,
+			Focus:   focus,
+			ToolLog: func(n int) string { return logSink.FormatToolLog(n) },
 		},
 		orch:  orch,
 		focus: focus,
+		sink:  logSink,
 	}
 	repl.slashEnv.ChatSubtitle = func() string {
 		return FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName())

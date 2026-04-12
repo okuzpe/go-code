@@ -6,6 +6,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/okuzpe/goclaw/internal/orchestrator"
 )
 
 // Batching reduces tea.Send / viewport refresh churn during LLM streaming.
@@ -65,14 +67,15 @@ func (s *batchedProgramSink) flush() {
 	}
 }
 
-func (s *batchedProgramSink) OnToolUse(name, preview string) {
+func (s *batchedProgramSink) OnToolUse(name, rawInput string) {
 	s.flush()
+	preview := orchestrator.FormatToolUsePreview(name, rawInput)
 	s.p.Send(toolUseMsg{name: name, preview: preview})
 }
 
-func (s *batchedProgramSink) OnToolResult(name string, resultBytes int, isError bool) {
+func (s *batchedProgramSink) OnToolResult(name string, content string, isError bool) {
 	s.flush()
-	s.p.Send(toolResultMsg{name: name, bytes: resultBytes, isError: isError})
+	s.p.Send(toolResultMsg{name: name, content: content, isError: isError})
 }
 
 func (s *batchedProgramSink) OnDone(_ string) {

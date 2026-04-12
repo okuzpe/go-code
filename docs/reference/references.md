@@ -1,37 +1,37 @@
 # References (assistant / agentic CLI patterns)
 
-**Índice de cobertura ↔ [Claude Code Internals](https://claude-code-explain.helmcode.com/):** [docs-map.md](../docs-map.md) — tabla por tema, qué está **implementado** en goclaw vs referencia, orden de lectura.
+**Coverage index ↔ [Claude Code Internals](https://claude-code-explain.helmcode.com/):** [docs-map.md](../docs-map.md) — table by topic, what is **implemented** in goclaw vs reference, reading order.
 
-**Decisiones y arquitectura:** [architecture.md](../architecture.md) — hub corto en inglés (navegación). Comportamiento GoClaw: [goclaw/CLAUDE.md](../../goclaw/CLAUDE.md). **Docs ↔ código (mantenimiento):** [code-adjustment-map.md](./code-adjustment-map.md) — qué leer y qué paquetes `internal/*` tocar por capa.
+**Decisions and architecture:** [architecture.md](../architecture.md) — short hub (navigation). GoClaw behavior: [goclaw/CLAUDE.md](../../goclaw/CLAUDE.md). **Docs ↔ code (maintenance):** [code-adjustment-map.md](./code-adjustment-map.md) — what to read and which `internal/*` packages to touch per layer.
 
-- [skills.md](./skills.md) — formato `SKILL.md`, hooks en sesión, roadmap v3.
-- [bash-security.md](./bash-security.md) — capas shell/sandbox (referencia vs implementación actual), **D4**.
-- [costs.md](./costs.md) — pricing cloud y modo “fast”; **D1**; N/A Ollama.
-- [local-models.md](./local-models.md) — Ollama, modelos 7B/14B, límites RTX 4050 / 32 GB, imagen/vídeo como herramientas opcionales.
-- [tool-contract.md](./tool-contract.md) — nombres/límites/riesgo de herramientas (contrato **implementado** en `internal/tools`), política red, presupuesto bucle.
-- [agent-profiles.md](./agent-profiles.md) — perfiles de agente (modelo + tools + permisos + contexto), eco Go.
-- [memory-system.md](./memory-system.md) — memoria entre sesiones (tipos, MEMORY.md, límites, extractor), eco Go.
-- [context-compaction.md](./context-compaction.md) — ventana de contexto, micro-compact, auto-compact, presupuestos de salida, eco Go (**D15**).
-- [coordinator-mode.md](./coordinator-mode.md) — Coordinator hub-and-spoke vs Team/Swarm, mailboxes, invariante prompts autocontenidos (**D16**).
-- [yolo-classifier.md](./yolo-classifier.md) — monitor de auto-modo: consulta lateral LLM, XML dos etapas, fast paths, fail-closed (**D17**).
-- [hooks.md](./hooks.md) — eventos (~27), tipos command/prompt/agent/http, permisos, workspace trust (**D18**).
-- [custom-agents.md](./custom-agents.md) — agentes `*.md` + YAML (tools, MCP, hooks, memoria por agente), prioridad vs built-ins (**D19**).
-- [plugins.md](./plugins.md) — manifiesto, nueve tipos de capacidad, marketplace, merge al arranque, políticas (**D20**).
-- [ide-bridge.md](./ide-bridge.md) — integración IDE local (MCP localhost, lockfiles) vs Bridge remoto; prioridad editor; **D21**.
-- [mcp.md](./mcp.md) — cliente MCP hacia servidores externos (stdio/SSE/HTTP/WS), naming `mcp__*`, scopes, auth, roadmap v2/v3; **D6**.
-- [practical-tips.md](./practical-tips.md) — diez decisiones de producto visibles (memoria, compact, permisos, perfiles, costes `/fast`); eco Go.
-- [retry-logic.md](./retry-logic.md) — backoff exponencial, 429/529/5xx, reintentos por invocación, modo unattended (referencia); **D22**.
+- [skills.md](./skills.md) — `SKILL.md` format, session hooks, roadmap v3.
+- [bash-security.md](./bash-security.md) — shell/sandbox layers (reference vs current implementation), **D4**.
+- [costs.md](./costs.md) — cloud pricing and "fast" mode; **D1**; N/A Ollama.
+- [local-models.md](./local-models.md) — Ollama, 7B/14B models, RTX 4050 / 32 GB limits, image/video as optional tools.
+- [tool-contract.md](./tool-contract.md) — tool names/limits/risk (contract **implemented** in `internal/tools`), network policy, loop budget.
+- [agent-profiles.md](./agent-profiles.md) — agent profiles (model + tools + permissions + context), Go mapping.
+- [memory-system.md](./memory-system.md) — cross-session memory (types, MEMORY.md, limits, extractor), Go mapping.
+- [context-compaction.md](./context-compaction.md) — context window, micro-compact, auto-compact, output budgets, Go mapping (**D15**).
+- [coordinator-mode.md](./coordinator-mode.md) — Coordinator hub-and-spoke vs Team/Swarm, mailboxes, self-contained prompt invariant (**D16**).
+- [yolo-classifier.md](./yolo-classifier.md) — auto-mode monitor: lateral LLM call, two-stage XML, fast paths, fail-closed (**D17**).
+- [hooks.md](./hooks.md) — events (~27), types command/prompt/agent/http, permissions, workspace trust (**D18**).
+- [custom-agents.md](./custom-agents.md) — `*.md` + YAML agents (tools, MCP, hooks, per-agent memory), priority vs built-ins (**D19**).
+- [plugins.md](./plugins.md) — manifest, nine capability types, marketplace, merge on startup, policies (**D20**).
+- [ide-bridge.md](./ide-bridge.md) — local IDE integration (MCP localhost, lockfiles) vs remote Bridge; editor priority; **D21**.
+- [mcp.md](./mcp.md) — MCP client toward external servers (stdio/SSE/HTTP/WS), `mcp__*` naming, scopes, auth, roadmap v2/v3; **D6**.
+- [practical-tips.md](./practical-tips.md) — ten visible product decisions (memory, compact, permissions, profiles, `/fast` costs); Go mapping.
+- [retry-logic.md](./retry-logic.md) — exponential backoff, 429/529/5xx, retries per invocation, unattended mode (reference); **D22**.
 
 **OpenClaw** (upstream **Node/TS** multi-channel agent product — useful for comparison only): [github.com/openclaw/openclaw](https://github.com/openclaw/openclaw), [docs.openclaw.ai](https://docs.openclaw.ai). Design lessons absorbed into goclaw docs: [philosophy.md — Lessons from wider agent stacks](../goclaw/philosophy.md#lessons-from-wider-agent-stacks), [roadmap.md — Future transport and scale](../goclaw/roadmap.md#future-transport-and-scale).
 
-**Otro código en local:** [claw-code/](../../claw-code/) (parity / Rust / TUI — ver [roadmap.md — Future transport and scale](../goclaw/roadmap.md#future-transport-and-scale) y [CLAUDE.md](../../goclaw/CLAUDE.md)).
+**Other local code:** [claw-code/](../../claw-code/) (parity / Rust / TUI — see [roadmap.md — Future transport and scale](../goclaw/roadmap.md#future-transport-and-scale) and [CLAUDE.md](../../goclaw/CLAUDE.md)).
 
 - [Anthropic API documentation](https://docs.anthropic.com/en/api/getting-started)
 - [How Claude Code works](https://code.claude.com/docs/en/how-claude-code-works) (official product docs)
 - [Model Context Protocol specification](https://modelcontextprotocol.io/specification/2025-11-25)
 - [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk)
-- [Ollama](https://ollama.com/) (ejecución local de modelos, API HTTP)
-- [Open-source image generation models (2026 overview)](https://www.bentoml.com/blog/a-guide-to-open-source-image-generation-models) — FLUX, SD, Z-Image, Qwen-Image, ComfyUI vs A1111; profundidad en [local-models.md §3](./local-models.md)
+- [Ollama](https://ollama.com/) (local model execution, HTTP API)
+- [Open-source image generation models (2026 overview)](https://www.bentoml.com/blog/a-guide-to-open-source-image-generation-models) — FLUX, SD, Z-Image, Qwen-Image, ComfyUI vs A1111; depth in [local-models.md §3](./local-models.md)
 - [Claude Code architecture deep dive (third-party)](https://wavespeed.ai/blog/posts/claude-code-architecture-leaked-source-deep-dive/)
 - [Claude Code internals (third-party explainer)](https://claude-code-explain.helmcode.com/)
 - [Claude Code internals — System Prompt (third-party)](https://claude-code-explain.helmcode.com/system-prompt)

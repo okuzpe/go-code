@@ -8,6 +8,15 @@ import (
 	"github.com/okuzpe/goclaw/internal/text"
 )
 
+// TERMINOLOGY
+//   - Orchestrator (internal/orchestrator): the agent loop runtime. Drives ONE agent turn:
+//     user message → LLM stream → tool calls → LLM feedback → repeat. Every agent profile
+//     (including coordinator) runs inside an orchestrator instance.
+//   - Coordinator (this file, Coordinator profile): a HUB MODE. The orchestrator runs the
+//     coordinator profile, which uses spawn_agent to create isolated child orchestrators
+//     (workers). The coordinator itself never touches files or shell — it delegates.
+//     "Coordinator" is a profile choice; "orchestrator" is the runtime that runs it.
+
 // Profile configures how the orchestrator behaves for a given agent type.
 type Profile struct {
 	Name          string
@@ -22,8 +31,9 @@ type Profile struct {
 // inherit the global config; set ModelOverride to pin a specific model.
 var (
 	GeneralPurpose = Profile{
-		Name:         "general-purpose",
-		SystemPrompt: "Act first. No preambles (\"I'll now…\", \"Let me…\"). Read → change → verify with tools. When done: one line.",
+		Name: "general-purpose",
+		SystemPrompt: `Tool tasks: glob/grep/read_file FIRST (understand before touching), then edit/patch/write, then verify with bash. NO text before the first tool call. One line after all tools finish.
+Chat/info: answer directly, no tools.`,
 	}
 
 	Explore = Profile{
@@ -65,19 +75,21 @@ var (
 		SystemPrompt:  "Output a single short status line, no markdown.",
 	}
 
-	// Coordinator orchestrates complex tasks by delegating to worker agents via spawn_agent.
-	// It never uses file or shell tools directly — all work is delegated.
+	// Coordinator is a hub mode profile. The orchestrator runs this profile when the user
+	// selects --profile coordinator. It uses spawn_agent to create isolated child
+	// orchestrators (workers) and synthesizes their results. It never touches files or
+	// shell tools directly — all actual work is delegated to workers.
 	Coordinator = Profile{
 		Name:          "coordinator",
 		ToolAllowlist: []string{"spawn_agent", "stop_task", "todo_write"},
 		ReadOnly:      true,
-		SystemPrompt: "You are a coordinator agent. Break complex tasks into focused, self-contained " +
-			"sub-tasks and delegate them to worker agents using spawn_agent. " +
+		SystemPrompt: "You are a coordinator (hub mode): you never use file or shell tools directly — " +
+			"you delegate everything to isolated worker agents via spawn_agent, then synthesize their results.\n" +
+			"Break complex tasks into focused, self-contained sub-tasks and delegate them to worker agents using spawn_agent. " +
 			"Each spawn_agent result includes task_id; use stop_task with that id to cancel a worker that is still running. " +
 			"Workers are fully isolated — they cannot see this conversation, so include all " +
 			"necessary file paths, function names, and context in each task description. " +
-			"Report worker results in 1-3 lines maximum. Do not re-describe what workers did — the tool cards show it. Only add context the cards don't capture. " +
-			"Never use file or shell tools directly; always delegate to workers.\n" +
+			"Report worker results in 1-3 lines maximum. Do not re-describe what workers did — the tool cards show it. Only add context the cards don't capture.\n" +
 			"Profile selection guide:\n" +
 			"- general-purpose: any task that writes, edits, or creates files, runs commands, or implements code — use this for ALL coding and editing tasks.\n" +
 			"- explore: read-only search, grep, or understanding the codebase — no changes needed.\n" +

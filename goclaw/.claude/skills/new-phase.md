@@ -1,6 +1,6 @@
 ---
 name: new-phase
-description: Use when starting a new development phase, asking what comes next, or transitioning between MVP phases in goclaw.
+description: Use when starting a new development phase or asking what comes next in goclaw.
 ---
 
 ## Starting a new phase in goclaw
@@ -30,7 +30,7 @@ Tests: mock scenarios (text-only, streaming, HTTP 500).
 
 ---
 
-### Phase 2 — MVP tools
+### Phase 2 — Core tools
 **Goal**: Four tools with basic safety.
 
 Add:
@@ -70,12 +70,12 @@ Deliverable: data under `~/.goclaw/memory/`; long sessions compact; hooks fire a
 
 ---
 
-### Post-MVP (do not start until the above is solid)
+### v2/v3 extensions (all shipped)
 
-| Track | Adds | Why wait |
-|-------|------|----------|
-| v2: MCP | External servers | Needs stable session + memory |
-| v2: YOLO Classifier | Safer auto mode | Needs mature permissions |
-| v2: Multi-agent | Hub coordinator | Needs battle-tested orchestrator |
-| v3: Plugins | Extension marketplace | Needs stable core |
-| v3: IDE Bridge | VS Code / Cursor | Often depends on MCP |
+| Track | Ships as | Status |
+|-------|----------|--------|
+| v2: MCP | `internal/mcp` stdio + HTTP | **Done** |
+| v2: YOLO Classifier | `internal/permissions/risk.go` | **Done** |
+| v2: Multi-agent | `internal/coordinator` (`spawn_agent`, `stop_task`) | **Done** |
+| v3: Plugins | `internal/plugin` (local only; no remote marketplace) | **Done** |
+| v3: IDE Bridge | lockfile MCP + `GOCLAW_IDE_NOTIFY_URL` | **Partial** (full editor UX extension-dependent) |

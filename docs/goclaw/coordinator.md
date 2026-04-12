@@ -75,6 +75,6 @@ Each worker orchestrator receives the same **workspace root**, **project context
 |------|--------|
 | 2026-04-08 | Initial sketch (pre-code). |
 | 2026-04-09 | Updated to reflect implemented `internal/coordinator`, links to code and parity harness. |
-| 2026-04-10 | Renamed file to `coordinator.md` (see [documentation.md](./documentation.md)); former name `D16_COORDINATOR_SKETCH.md` remains a redirect stub. |
+| 2026-04-10 | Renamed file to `coordinator.md` from the earlier working name. |
 | 2026-04-10 | Documented interactive `spawn_agent`, `running` status, `/focus` / `/detach`, and default hub profile. |
 | 2026-04-11 | Documented worker project context, memory, skills injection; MCP not inherited on workers. |

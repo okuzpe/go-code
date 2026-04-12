@@ -4,7 +4,7 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 
 **Source of truth for the goclaw binary:** [`goclaw/CLAUDE.md`](../goclaw/CLAUDE.md) — architecture decisions D1–D22, coding conventions, roadmap. **Diagrams & module flow:** [`architecture.md`](./architecture.md).
 
-**Project README (only):** [`goclaw/README.md`](../goclaw/README.md) — requirements, quick start, short links into this map. Repo root [`README.md`](../README.md) redirects there. **Where to add new docs:** [`docs/goclaw/documentation.md`](./goclaw/documentation.md). **This file (`docs-map.md`)** is the master file index (there is no `docs/README.md`). **Languages:** `docs/goclaw/` = English product docs; `docs/reference/` = mostly Spanish design reference (see [documentation.md](./goclaw/documentation.md)).
+**Project README (only):** [`goclaw/README.md`](../goclaw/README.md) — requirements, quick start, short links into this map. Repo root [`README.md`](../README.md) redirects there. **Where to add new docs:** [`docs/goclaw/documentation.md`](./goclaw/documentation.md). **This file (`docs-map.md`)** is the master file index (there is no `docs/README.md`). **Languages:** All docs are **English** — product docs in `docs/goclaw/`, design reference in `docs/reference/`.
 
 ---
 
@@ -31,7 +31,7 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 
 1. [`docs/goclaw/usage.md`](./goclaw/usage.md) — run and configure the CLI
 2. [`goclaw/CLAUDE.md`](../goclaw/CLAUDE.md) — module state, decisions D1–D22, conventions
-3. [`architecture.md`](./architecture.md) — package map, boot flow, orchestrator loop, coordinator workers, tool order (English)
+3. [`architecture.md`](./architecture.md) — package map, boot flow, orchestrator loop, coordinator workers, tool order
 4. [`docs/goclaw/documentation.md`](./goclaw/documentation.md) — **optional** — where to place new Markdown (contributors)
 5. [`code-adjustment-map.md`](./reference/code-adjustment-map.md) — which `docs/` topics map to which `internal/*` packages
 6. [`tool-contract.md`](./reference/tool-contract.md) — tool limits, network policy, loop budget

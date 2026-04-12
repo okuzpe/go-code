@@ -83,6 +83,8 @@ See the `audit` skill for the full checklist.
 |------|------------------------|
 | **tool** | Go function implementing `internal/tools.Tool` (read_file, bash, etc.) |
 | **agent** | Profile with model + tool allowlist + permissionMode + system prompt |
+| **orchestrator** | The `internal/orchestrator` package — the **agent loop runtime**. Drives one agent turn: user message → LLM stream → tool calls → LLM feedback → repeat. Every agent profile (including coordinator) runs *inside* an orchestrator. Not a user-visible concept — it is the engine. |
+| **coordinator** | An agent **profile** (hub mode, `--profile coordinator`). When the orchestrator runs this profile, the agent uses `spawn_agent` to create isolated child orchestrators (workers) and synthesizes their results. The coordinator never touches files or shell directly — all work is delegated. Contrast: "orchestrator" = runtime; "coordinator" = a mode the runtime can run. |
 | **skill** | Reusable Markdown prompt template (`.claude/skills/*.md`) |
 | **command** | REPL **slash command** (`/help`, `/compact`, `/memory`, etc.); do not use this term for Cobra subcommands |
 | **CLI command** / **subcommand** | Cobra entry (e.g. `goclaw`, `goclaw sessions list`); agent profile is selected via **`--profile`**, not a slash command |
@@ -396,9 +398,9 @@ var _ llm.Client = (*AnthropicClient)(nil)
 
 ---
 
-## Tool Contract MVP
+## Tool Contract
 
-### Built-in tools (MVP)
+### Built-in tools
 
 | Tool | Risk | Input | Output cap | Notes |
 |------|------|-------|------------|-------|
@@ -441,7 +443,7 @@ var _ llm.Client = (*AnthropicClient)(nil)
 |----------|----------------|
 | D1: Providers | Ollama = default. Anthropic and `openai_compatible` (OpenAI Chat Completions–compatible) = opt-in with credentials. Keep provider-specific code behind `llm.Client`. |
 | D4: Bash security | Allowlist (expanded binaries + git subcommands), not denylist. Single simple command: `rejectShellMetacharacters` blocks shell chaining that would bypass the allowlist. User confirmation always required in Ask mode. |
-| D5: Permissions | Default = ModeAsk (fail-closed). `bypassPermissions` NOT implemented in MVP. |
+| D5: Permissions | Default = ModeAsk (fail-closed). `bypassPermissions` intentionally not implemented — see **What NOT to do**. |
 | D6: MCP | **stdio + Streamable HTTP** (`internal/mcp`, `http.go`): subprocess **or** `mcp_servers[].url` (optional `headers`, optional **`bearer_token_file`** → `Authorization: Bearer` if no header set); tools as `mcp__server__tool`. HTTP URLs must be **loopback** unless `mcp_allow_remote_urls` is set in settings. **Not done:** OAuth, WebSocket, legacy HTTP+SSE-only servers. See [`mcp-remote.md`](../docs/goclaw/mcp-remote.md). |
 | D7: Config paths | `~/.goclaw/` (user), `.goclaw/` (project). Decided, do not change. |
 | D12: Dedicated tools | Prefer `read_file`/`glob`/`grep` over bash equivalents. Bash = last resort. |
@@ -451,7 +453,7 @@ var _ llm.Client = (*AnthropicClient)(nil)
 | D17: YOLO Classifier | **Implemented** in `internal/permissions/risk.go` — rule-based risk scorer (0–100); `yolo_threshold: -1` default (off); auto-approves reads at threshold 0. |
 | D18: Hooks | PreToolUse can block. PostToolUse is best-effort (non-fatal). |
 | D19: Custom agents | **Implemented** — Markdown + YAML frontmatter in `~/.goclaw/agents/*.md` and `.goclaw/agents/*.md`; fields: `name`, `model`, `tool_allowlist`, `read_only`, `system_prompt`; body appended to system prompt; hot-reload on `/profile`; project overrides user overrides built-in. See [`internal/agents/profile.go`](internal/agents/profile.go). |
-| D20: Plugins | **MVP** — `internal/plugin`: each root contains `goclaw-plugin.json` (`name`, optional `hooks_file`); `plugin_dirs` in settings + `--plugin-dir` (repeatable); `plugin_allow` / `plugin_deny` (deny wins). Hooks load via same mechanism as `.goclaw/hooks.json`. Treat plugins as **executable config** (supply chain), like `trusted_workspace`. |
+| D20: Plugins | **Shipped** — `internal/plugin`: each root contains `goclaw-plugin.json` (`name`, optional `hooks_file`); `plugin_dirs` in settings + `--plugin-dir` (repeatable); `plugin_allow` / `plugin_deny` (deny wins). Hooks load via same mechanism as `.goclaw/hooks.json`. Treat plugins as **executable config** (supply chain), like `trusted_workspace`. |
 | Skills (runtime) | **`internal/skills`** discovers `SKILL.md` under `.goclaw/skills/`, `.claude/skills/`, `~/.goclaw/skills/`, `~/.goclaw/.claude/skills/` (recursive under each root); content is injected under `## Loaded skills (SKILL.md)` in the system prompt (bounded size). |
 | D22: Retry | **Implemented** in [`internal/llm/retry.go`](internal/llm/retry.go): `doHTTPWithRetry` wraps Anthropic, Ollama, and OpenAI-compat POSTs — retries on **429**, **503**, **504** with `Retry-After` when present, else exponential backoff (base 500ms, ceiling 5min), up to **10** attempts; transient **network errors** retry with the same backoff. |
 
@@ -513,18 +515,18 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 ```
 [DONE] Phase 0: go.mod, package layout, mock server, OllamaClient, AnthropicClient
 [DONE] Phase 1: Core loop — session UUID, JSONL store + rotation, REPL + slog, mock tests
-[DONE] Phase 2: Tools MVP — read_file (workspace), bash (allowlist), web_fetch (SSRF), web_search (DDG)
+[DONE] Phase 2: Core tools — read_file (workspace), bash (allowlist), web_fetch (SSRF), web_search (DDG)
 [DONE] Phase 3: Ask prompt (stderr), `-profile`, `settings.json` loader, `tool_permissions` map
-[DONE] Phase 4: Memory filesystem + index (MEMORY.md), compaction + memory snippet in system prompt (MVP)
+[DONE] Phase 4: Memory filesystem + index (MEMORY.md), compaction + memory snippet in system prompt
 [DONE] Refinement: structured tool messages (multi-tool, `is_error` continuation), `settings.local.json`,
        `-session` / `-list-sessions`, `-no-tools` / `GOCLAW_DISABLE_TOOLS`, Ollama `tool_name` wire fix
 [DONE] write_file + edit_file: workspace-scoped atomic writes, str_replace edit, ReadOnly profile stripping
-[DONE] Post-MVP slice: MCP stdio client + multi-server config, MCP tools on Registry, external hooks + workspace trust, IDE localhost notifier (`GOCLAW_IDE_NOTIFY_URL`)
+[DONE] MCP + hooks slice: MCP stdio client + multi-server config, MCP tools on Registry, external hooks + workspace trust, IDE localhost notifier (`GOCLAW_IDE_NOTIFY_URL`)
 [DONE] v2: YOLO Classifier (`internal/permissions/risk.go`), multi-agent coordinator (`internal/coordinator`), custom agents (`internal/agents/profile.go`), parallel tool execution, LLM-driven compaction, script tool
 [DONE] v3 slice: local plugins (`internal/plugin`), SKILL.md prompt injection (`internal/skills`), MCP `bearer_token_file`, opt-in memory auto-capture, minimal swarm hub (`internal/swarm`), IDE extension contract §7 in [ide-bridge.md](../docs/reference/ide-bridge.md). **Still open:** MCP OAuth/WS, remote plugin marketplace, full editor MCP UX.
 ```
 
-### To continue (polish / post-MVP):
+### Completed polish items:
 1. ~~`go test -race` in CI~~ — [`.github/workflows/goclaw-ci.yml`](../.github/workflows/goclaw-ci.yml) at monorepo root (`defaults.run.working-directory: goclaw`). Subfolder workflows under `goclaw/.github/` are not executed by GitHub Actions.
 2. ~~`web_search` backends~~ — `web_search_backend` (`ddg` \| `brave` \| `serpapi`), optional DDG fallback; keys in settings / env (`BRAVE_SEARCH_API_KEY`, `SERPAPI_API_KEY`).
 3. ~~Compaction + tests~~ — summary lists removed/tail counts; [`internal/orchestrator/estimate_test.go`](internal/orchestrator/estimate_test.go) and extra edge tests.
@@ -545,7 +547,7 @@ When adding sections to this file, keep them in English (Language Rule — STRIC
 
 ---
 
-## Post-MVP phased delivery (MCP, IDE, hooks)
+## MCP, IDE, and hooks — delivery status
 
 **Status (2026-04):** MCP-1–3 plus **Streamable HTTP** (`internal/mcp/http.go`), external hooks + workspace trust, IDE **lockfile discovery** (`ide_bridge_mcp`, `internal/ide/discovery.go`), and **minimal** IDE notify (`GOCLAW_IDE_NOTIFY_URL`). **Not done:** MCP OAuth, WebSocket transport, async hook transports.
 
@@ -558,6 +560,6 @@ When adding sections to this file, keep them in English (Language Rule — STRIC
 | **IDE** | Localhost MCP toward editor | **Partial** — lockfile → `mcp_servers` when `ide_bridge_mcp`; `GOCLAW_IDE_NOTIFY_URL`; see [ide-bridge.md](../docs/reference/ide-bridge.md) (**D21**) |
 | **Hooks** | Subprocess / HTTP + project file | **Done** — `external_hooks`, `.goclaw/hooks.json` + `trusted_workspace` |
 
-**Plugins (D20):** MVP implemented — see D20 row; full marketplace / remote install remains out of scope. D16 coordinator (**done** — `internal/coordinator`), D17 YOLO classifier (**done** — `internal/permissions/risk.go`), D19 custom agents (**done** — `internal/agents/profile.go`).
+**Plugins (D20):** Shipped — see D20 row; full marketplace / remote install remains out of scope. D16 coordinator (**done** — `internal/coordinator`), D17 YOLO classifier (**done** — `internal/permissions/risk.go`), D19 custom agents (**done** — `internal/agents/profile.go`).
 
 Further IDE work: extension publishers adopt `~/.goclaw/ide/*.json` (or document alternate paths) and exercise the same MCP HTTP path as other remote servers.

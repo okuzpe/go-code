@@ -1,107 +1,108 @@
-# Tips prácticos (decisiones de producto visibles) — referencia y eco Go
+# Practical tips (visible product decisions) — reference and Go mapping
 
-Resumen de **diez comportamientos** que en Claude Code están **acoplados al código** (no son “trucos” de documentación). Fuente analizada: [Practical Tips — claude-code-explain](https://claude-code-explain.helmcode.com/tips). Cada tip enlaza con nuestros documentos de profundidad donde ya cubrimos el mismo tema.
+Summary of **ten behaviors** that in Claude Code are **wired into the code** (not just documentation tricks). Source analyzed: [Practical Tips — claude-code-explain](https://claude-code-explain.helmcode.com/tips). Each tip links to our in-depth documents that cover the same topic.
 
-**Leyenda:** estándar · **Atención** · **Peligro** (según impacto en coste, seguridad o pérdida de datos).
-
----
-
-## 1. Reglas de repo en la capa alta del prompt
-
-**Tip:** En referencia, `CLAUDE.md` en la raíz es de las **primeras** piezas que entran en contexto y orienta toda la sesión.
-
-**Eco nosotros:** equivalente conceptual **`AGENTS.md`** / `CLAUDE.md` en la raíz del proyecto (convención ya citada en [memory-system.md](./memory-system.md) §1 y [CLAUDE.md](../../goclaw/CLAUDE.md)). Conviene **una sola fuente de verdad** para reglas de equipo: no duplicar en memoria lo que pertenece al repo.
+**Legend:** standard · **Attention** · **Danger** (by impact on cost, security, or data loss).
 
 ---
 
-## 2. Memoria entre sesiones
+## 1. Repo rules at the top of the prompt
 
-**Tip:** Persistencia bajo rutas tipo `~/.claude/projects/<slug>/memory/`; hechos que el usuario pide recordar **vuelven** en sesiones futuras.
+**Tip:** In the reference product, `CLAUDE.md` at the repo root is one of the **first** pieces injected into context and orients the whole session.
 
-**Eco nosotros:** [memory-system.md](./memory-system.md), **D14**, `internal/memory`. Ajustar rutas a `~/.config/assistant/…` o `.assistant/memory` al implementar.
-
----
-
-## 3. Agente Explore con modelo barato
-
-**Tip:** **Explore** usa **Haiku** (rápido y barato) para búsquedas en código; delegar ahí ahorra tokens frente a usar el modelo principal para lo mismo.
-
-**Eco nosotros:** [agent-profiles.md](./agent-profiles.md) + [CLAUDE.md](../../goclaw/CLAUDE.md); con **Ollama**, asignar un modelo **7B** al perfil Explore y reservar el grande para el bucle principal ([local-models.md](./local-models.md)).
+**Our mapping:** conceptual equivalent is `CLAUDE.md` at the project root (convention already cited in [memory-system.md](./memory-system.md) and [CLAUDE.md](../../goclaw/CLAUDE.md)). Keep **one source of truth** for team rules — do not duplicate in memory what belongs in the repo.
 
 ---
 
-## 4. “Fast mode” ≠ modelo distinto (**Atención**)
+## 2. Memory across sessions
 
-**Tip:** `/fast` en referencia **no cambia** el modelo (p. ej. sigue siendo Opus): sube **prioridad de cómputo** y el **precio por token de entrada** (orden **6×** en la explicación analizada).
+**Tip:** Persistence under paths like `~/.claude/projects/<slug>/memory/`; facts the user asks to remember **come back** in future sessions.
 
-**Eco nosotros:** si ofrecéis modo “prioridad” sobre una API de pago, documentar **explícitamente** precio vs modelo; en local (Ollama) el análogo suele ser “más rápido” solo por cola/GPU, no por surcharges — no copiar la semántica de `/fast` sin leer la doc del proveedor.
-
-Réplica de costes (referencia): [Costs — claude-code-explain](https://claude-code-explain.helmcode.com/costs); síntesis local: [costs.md](./costs.md).
+**Our mapping:** [memory-system.md](./memory-system.md), D14, `internal/memory`. Adjust paths to `~/.goclaw/memory/` in goclaw.
 
 ---
 
-## 5. Auto-compact ~13K tokens libres
+## 3. Explore agent with a cheap model
 
-**Tip:** Cuando quedan ~**13.000** tokens hasta el límite, se dispara un agente que **resume** el hilo; `/compact` manual da más control.
+**Tip:** **Explore** uses **Haiku** (fast and cheap) for code searches; delegating there saves tokens versus using the main model for the same task.
 
-**Eco nosotros:** [context-compaction.md](./context-compaction.md), **D15**; con modelos locales, usar **umbrales proporcionales** al contexto real, no los números fijos del producto cloud.
-
----
-
-## 6. `bypassPermissions` omite toda la puerta de seguridad (**Peligro**)
-
-**Tip:** Modo que **auto-aprueba** todas las herramientas, incluidas destructivas (`rm`, `git push --force`, etc.). Solo en entornos **totalmente confiables** y aislados.
-
-**Eco nosotros:** [CLAUDE.md](../../goclaw/CLAUDE.md) (permissions), **D5**; equivalencia en nuestro CLI debe estar **oculta tras flags** claros y advertencias; nunca por defecto.
+**Our mapping:** [agent-profiles.md](./agent-profiles.md) + [CLAUDE.md](../../goclaw/CLAUDE.md); with **Ollama**, assign a **7B** model to the Explore profile and reserve the large one for the main loop ([local-models.md](./local-models.md)).
 
 ---
 
-## 7. Clasificador YOLO y comandos de alto riesgo en auto-modo
+## 4. "Fast mode" ≠ different model (**Attention**)
 
-**Tip:** En modo automático, el clasificador en dos etapas **bloquea** patrones tipo `curl`, `wget`, `ssh`, `git`, `kubectl`, `aws`, etc.; para ejecutarlos hace falta **aprobación manual** o reglas **allow** explícitas.
+**Tip:** `/fast` in the reference product does **not** change the model (e.g. it stays Opus): it raises **compute priority** and the **price per input token** (roughly **6×** in the analyzed explanation).
 
-**Eco nosotros:** [yolo-classifier.md](./yolo-classifier.md), **D17**; al implementar fast paths locales, alinear categorías con esta lista para no sorprender al usuario.
+**Our mapping:** if you offer a "priority" mode over a paid API, document **explicitly** price vs model; locally (Ollama) the analogue is usually "faster" only because of queue/GPU, not surcharges — do not copy the `/fast` semantics without reading the provider docs.
 
----
-
-## 8. `MEMORY.md` con techo duro (**Atención**)
-
-**Tip:** El índice se inyecta **siempre**; si supera ~**200 líneas** o ~**25 KB**, el exceso se **trunca** (en referencia sin aviso fuerte). El índice debe ser **sólo punteros**, no el cuerpo de la memoria.
-
-**Eco nosotros:** [memory-system.md §3](./memory-system.md); preferible **avisar** por UX cuando se acerque al límite.
+Cost reference: [Costs — claude-code-explain](https://claude-code-explain.helmcode.com/costs); local summary: [costs.md](./costs.md).
 
 ---
 
-## 9. Agentes personalizados en Markdown
+## 5. Auto-compact at ~13K free tokens
 
-**Tip:** Ficheros `.md` con **YAML** (tools, modelo, `permissionMode`, …); el cuerpo es el system prompt; carga automática.
+**Tip:** When ~**13,000** tokens remain before the limit, an agent fires that **summarizes** the thread; manual `/compact` gives more control.
 
-**Eco nosotros:** [custom-agents.md](./custom-agents.md), **D19**, [CLAUDE.md](../../goclaw/CLAUDE.md).
-
----
-
-## 10. Agente Verification en segundo plano
-
-**Tip:** Tras implementaciones, un agente **Verification** emite veredicto estructurado (**PASS** / **FAIL** / **PARTIAL**), visible en terminal (p. ej. en rojo) — útil como **quality gate** en CI.
-
-**Eco nosotros:** perfil **`coordinator`** y `spawn_agent` ya existen ([agent-profiles.md](./agent-profiles.md)); otras topologías “Team” de la referencia **no** están en goclaw — invocación vía binario con perfil restringido sigue siendo patrón válido.
+**Our mapping:** [context-compaction.md](./context-compaction.md), D15; with local models, use **proportional thresholds** based on the real context window, not the fixed numbers from the cloud product.
 
 ---
 
-## Resumen eco Go
+## 6. `bypassPermissions` skips the entire security gate (**Danger**)
 
-| Tip | Paquetes / decisiones |
-|-----|------------------------|
-| 1 | `internal/prompt` — orden de capas; `AGENTS.md` en CWD |
-| 2–8 | `internal/memory`, `internal/session`, `internal/permissions`, `internal/classifier` — **D14**, **D15**, **D17** |
-| 3–9–10 | `internal/agentprofile`, [custom-agents.md](./custom-agents.md) — **D13**, **D19** |
-| 4 | Precios vía config/proveedor; sin suposición “más rápido = gratis” |
+**Tip:** Mode that **auto-approves** all tools, including destructive ones (`rm`, `git push --force`, etc.). Only for **fully trusted and isolated** environments.
+
+**Our mapping:** [CLAUDE.md](../../goclaw/CLAUDE.md) (permissions), D5; any equivalent in our CLI must be **behind explicit flags** and warnings; never the default.
+
+---
+
+## 7. YOLO classifier and high-risk commands in auto mode
+
+**Tip:** In automatic mode, the two-stage classifier **blocks** patterns like `curl`, `wget`, `ssh`, `git`, `kubectl`, `aws`, etc.; running them requires **manual approval** or explicit **allow** rules.
+
+**Our mapping:** [yolo-classifier.md](./yolo-classifier.md), D17; when implementing local fast paths, align the categories with this list to avoid surprising the user.
+
+---
+
+## 8. `MEMORY.md` with a hard ceiling (**Attention**)
+
+**Tip:** The index is **always injected**; if it exceeds ~**200 lines** or ~**25 KB**, the excess is **truncated** (in the reference product without a strong warning). The index must contain **only pointers**, not the full memory body.
+
+**Our mapping:** [memory-system.md §3](./memory-system.md); it is preferable to **warn the user by UX** when approaching the limit.
+
+---
+
+## 9. Custom agents in Markdown
+
+**Tip:** `.md` files with **YAML** frontmatter (tools, model, `permissionMode`, …); the body is the system prompt; loaded automatically.
+
+**Our mapping:** [custom-agents.md](./custom-agents.md), D19, [CLAUDE.md](../../goclaw/CLAUDE.md).
+
+---
+
+## 10. Verification agent in the background
+
+**Tip:** After implementations, a **Verification** agent emits a structured verdict (**PASS** / **FAIL** / **PARTIAL**), visible in the terminal (e.g. in red) — useful as a **quality gate** in CI.
+
+**Our mapping:** the **`coordinator`** profile and `spawn_agent` already exist ([agent-profiles.md](./agent-profiles.md)); other "Team" topologies from the reference product are **not** in goclaw — invocation via binary with a restricted profile remains a valid pattern.
+
+---
+
+## Go mapping summary
+
+| Tip | Packages / decisions |
+|-----|----------------------|
+| 1 | `internal/app` — prompt layer order; `CLAUDE.md` in CWD via `buildProjectContext` |
+| 2–8 | `internal/memory`, `internal/session`, `internal/permissions`, `internal/permissions/risk.go` — D14, D15, D17 |
+| 3–9–10 | `internal/agents`, [custom-agents.md](./custom-agents.md) — D13, D19 |
+| 4 | Pricing via config/provider; no assumption "faster = free" |
 
 ---
 
 ## Changelog
 
-| Fecha | Cambio |
-|-------|--------|
-| 2026-04-07 | Creación: 10 tips, severidad, enlaces internos + Costs; eco Go |
-| 2026-04-07 | §4: enlace [COSTS.md](./costs.md). |
+| Date | Change |
+|------|--------|
+| 2026-04-07 | Created: 10 tips, severity levels, internal links + Costs; Go mapping |
+| 2026-04-07 | §4: link to [costs.md](./costs.md) |
+| 2026-04-12 | Translated from Spanish to English |

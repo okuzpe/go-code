@@ -246,13 +246,21 @@ Use profile `plan` to draft the plan as chat output. In the REPL:
 - `/plan init` — create `.goclaw/plan.md` from template
 - `/plan save` — save the last assistant message in this session to `.goclaw/plan.md`
 - `/plan path` / `/plan template` — inspect the default path and template skeleton
-- `/apply-plan [path]` — load plan, switch to `general-purpose`, stream one execution turn
+- `/apply-plan [--preview] [path]` — **`--preview`**: print a bounded excerpt of the plan on disk (no model call, no profile switch). **Without `--preview`**: load the plan, switch to `general-purpose`, and stream **one** execution turn (same as before).
 
-Typical workflow: `/profile plan` → ask for a plan → `/plan save` → `/apply-plan`. See [agent-profiles.md](../reference/agent-profiles.md).
+Typical workflow: `/profile plan` → ask for a plan → `/plan save` → `/apply-plan --preview` (optional review) → `/apply-plan`. In the **TUI**, **Ctrl+P** opens the agent profile picker (same as typing `/agents` and Enter). See [agent-profiles.md](../reference/agent-profiles.md).
 
 ## Slash commands (REPL)
 
-Handled locally (not sent to the model): `/help`, `/doctor`, `/session`, `/sessions`, `/quit`, `/exit`, `/new`, `/save`, `/compact`, `/profile`, `/plan`, `/apply-plan`, `/memory`, and slash-only helpers. **`/btw`** consumes the line but **submits** a rewritten user message to the model. **Prefix** lines `!`, `@`, `&` run tools locally then record user + assistant text in the session (see [prefix-input-modes.md](./prefix-input-modes.md)). Same health output as `goclaw doctor` when `/doctor` is wired in the REPL.
+Handled locally (not sent to the model). Run **`/help`** for the full list. Key groups:
+
+- **Session:** `/new`, `/save`, `/session`, `/sessions`, `/resume`, `/compact`
+- **Navigation:** `/focus <id>`, `/detach` (aliases: `/back`, `/hub`, `/parent`, `/in`), `/workers`
+- **Content:** `/copy`, `/export`, `/memory`, `/plan`, `/apply-plan`
+- **Config:** `/profile`, `/agents`, `/theme`, `/init`, `/doctor`
+- **UI:** `/clear` (same as Ctrl+L in readline), `/edit` (multiline via $EDITOR), `/capabilities`, `/help`
+
+**`/btw`** consumes the line but **submits** a rewritten user message to the model. **Prefix** lines `!`, `@`, `&` run tools locally then record user + assistant text in the session (see [prefix-input-modes.md](./prefix-input-modes.md)). Same health output as `goclaw doctor` when `/doctor` is wired in the REPL.
 
 ## Hooks, MCP, IDE ping
 

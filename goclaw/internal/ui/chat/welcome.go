@@ -145,7 +145,18 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	for _, ln := range wrapPlainWords("Run /help for commands. Try /init or /plan when you want a structured run.", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
+	for _, ln := range wrapPlainWords("Ctrl+P opens the agent profile picker (same as /agents).", rightW-1) {
+		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+	}
 	for _, ln := range wrapPlainWords("CLAUDE.md and .goclaw/ carry project context.", rightW-1) {
+		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+	}
+	rightLines = append(rightLines, "")
+	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(section.Render("Guided flows")))
+	for _, ln := range wrapPlainWords("Plan: /profile plan, describe your goal, /plan save, /apply-plan --preview, then /apply-plan to implement.", rightW-1) {
+		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+	}
+	for _, ln := range wrapPlainWords("Multi-agent: /profile coordinator — delegate with spawn_agent; /workers and /focus for interactive workers.", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
 	if opt.Profile == "coordinator" {
@@ -221,6 +232,10 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, _ int
 	body.WriteString(accent.Render("Tips"))
 	body.WriteString("\n")
 	body.WriteString(dim.Render("/help  /capabilities  ·  CLAUDE.md  ·  .goclaw/"))
+	body.WriteString("\n")
+	body.WriteString(dim.Render("Ctrl+P — agent profile picker  ·  Plan: /profile plan → /plan save → /apply-plan --preview → /apply-plan"))
+	body.WriteString("\n")
+	body.WriteString(dim.Render("Multi-agent: /profile coordinator, /workers, /focus"))
 	if opt.Profile == "coordinator" {
 		body.WriteString("\n")
 		body.WriteString(dim.Render("Coordinator mode — use /profile general-purpose to edit files directly."))

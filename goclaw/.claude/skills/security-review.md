@@ -15,11 +15,11 @@ description: Use when reviewing code for security, before merging a tool, or whe
 
 #### bash
 - [ ] Command validated against allowlist (not denylist)
-- [ ] MVP allowlist includes only safe prefixes (`go`, `git status`, `ls`, `cat`, etc.)
+- [ ] Allowlist includes only safe prefixes (`go`, `git status`, `ls`, `cat`, etc.)
 - [ ] Timeout (30s default)
 - [ ] Output truncated at 256 KiB
 - [ ] Optional `cwd` constrained to workspace when provided
-- [ ] Sensitive env inheritance reviewed (MVP: minimal surface)
+- [ ] Sensitive env inheritance reviewed (minimal surface)
 
 #### web_fetch
 - [ ] URL parsed with `url.Parse` before connect
@@ -45,7 +45,7 @@ description: Use when reviewing code for security, before merging a tool, or whe
 
 ### Permission model
 - [ ] Global default is `ModeAsk` (fail-closed)
-- [ ] `bypassPermissions` not in MVP
+- [ ] `bypassPermissions` intentionally not implemented (see CLAUDE.md § What NOT to do)
 - [ ] `ModeDeny` enforced before tool execution
 - [ ] `PreToolUse` hook errors block execution (orchestrator surfaces as tool error per policy)
 

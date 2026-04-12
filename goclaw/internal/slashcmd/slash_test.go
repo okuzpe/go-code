@@ -315,6 +315,34 @@ func TestHandleSlashPlanPath(t *testing.T) {
 	}
 }
 
+func TestHandleSlashApplyPlanPreview(t *testing.T) {
+	wd := t.TempDir()
+	dir := filepath.Join(wd, ".goclaw")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	planContent := "# Preview Plan\n\nBody line.\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "plan.md"), []byte(planContent), 0o600))
+
+	s := session.New()
+	sp := &s
+	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), agents.All()["plan"])
+	env := SlashEnv{Workdir: wd, Profs: agents.All()}
+	sc := SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}
+
+	var hints UIHints
+	handled, out, quit, modelSubmit, err := HandleSlash(context.Background(), sc, "/apply-plan --preview", &hints)
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.False(t, quit)
+	require.Empty(t, modelSubmit)
+	require.Contains(t, out, "Plan preview")
+	require.Contains(t, out, "plan.md")
+	require.Contains(t, out, "Body line")
+	require.Contains(t, out, "/apply-plan to execute")
+	require.Equal(t, "plan", orch.ProfileName(), "preview must not switch profile")
+	require.NotNil(t, hints.FooterHint)
+	require.Contains(t, *hints.FooterHint, "/apply-plan")
+}
+
 func TestHandleSlashApplyPlanModelSubmit(t *testing.T) {
 	wd := t.TempDir()
 	dir := filepath.Join(wd, ".goclaw")
@@ -367,6 +395,7 @@ func TestHandleSlashPlanSave(t *testing.T) {
 	require.True(t, handled)
 	require.Contains(t, out, "plan saved")
 	require.Contains(t, out, "/apply-plan")
+	require.Contains(t, out, "--preview")
 
 	written, readErr := os.ReadFile(planfile.Path(wd))
 	require.NoError(t, readErr)

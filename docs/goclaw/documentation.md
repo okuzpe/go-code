@@ -6,7 +6,7 @@ The **master file index** for the whole `docs/` tree is [`docs-map.md`](../docs-
 
 **Architecture diagrams & app flow (repo hub):** [`architecture.md`](../architecture.md) — package map, boot path, `ChatRuntime`, orchestrator loop, coordinator vs workers, tool registration order.
 
-**Language:** Product and operator docs under **`docs/goclaw/`** are **English** (match the CLI UI strings). Cross-cutting design notes under **`docs/reference/`** are mostly **Spanish** today (comparison with Claude Code–style stacks); treat them as reference, not UI copy. A future pass may translate or split `reference-es/` — until then, keep new **product** prose in English.
+**Language:** All documentation in this repository is **English** — same rule as CLAUDE.md code comments. `docs/reference/` files are design-level reference notes; keep them in English.
 
 **Terminology:** Prefer **shipped** / **not implemented** / **Partial** (see [`docs-map.md`](../docs-map.md)) over legacy **MVP** or **post-MVP** labels when describing goclaw — those phases referred to an older planning vocabulary; the code is the source of truth.
 
@@ -19,7 +19,6 @@ The **master file index** for the whole `docs/` tree is [`docs-map.md`](../docs-
 | Operators | [`usage.md`](usage.md) | Run modes, flags, sessions, config, troubleshooting |
 | Topic notes | `docs/goclaw/*.md` (kebab-case) | goclaw-specific deep dives (coordinator wire format, MCP notes, …) |
 | Cross-cutting contracts | `docs/reference/*.md` | Tool contracts, hooks, MCP reference, diagrams — shared vocabulary |
-| Deferred / historical topic notes | `docs/goclaw/*.md` (e.g. [prefix-input-modes.md](prefix-input-modes.md)) | Specs not shipped; keep out of the default reading path |
 
 ## House rules
 

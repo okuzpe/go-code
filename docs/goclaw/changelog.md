@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **TUI:** welcome panel **Guided flows** (plan + multi-agent), **Ctrl+P** opens agent picker; footer hint after `/plan save` and `/apply-plan --preview`.
+- **Slash:** `/apply-plan --preview` shows a plan excerpt without executing; `/apply-plan` still runs one execution turn. `/plan save` message points at preview-then-execute.
+- **bash tool (Windows):** allow **`dir`**, **`where`**, **`type`** when using CMD fallback; clearer hint when `bash`/`sh` are missing from `PATH`.
 - **Documentation:** reference and roadmap wording now distinguish **shipped** behavior from **not implemented** / **Partial** (removed stale MVP/post-MVP labels where features already exist); see [documentation.md](documentation.md) terminology note and [roadmap.md](roadmap.md).
 
 ## [1.3.0] - 2026-04-11

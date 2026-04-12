@@ -53,6 +53,7 @@ func (BashTool) Name() string { return "bash" }
 
 func (BashTool) Description() string {
 	return "Run one allowlisted shell command (non-interactive, output capped at 256 KiB, 30 s timeout). " +
+		"On Windows, bash/sh from Git for Windows (or MSYS) are preferred; without them, commands run via cmd.exe with a reduced allowlist (dir, where, type, plus cross-platform tools like git and go). " +
 		"Allowed categories: filesystem (ls, find, stat, mkdir, cp, mv, rm, touch, chmod, diff, tar, zip…), " +
 		"text (cat, head, tail, grep, rg, sed, awk, cut, sort, uniq, jq…), " +
 		"build (go, make, cmake, cargo, npm, yarn, pnpm, node, npx, bun, python3, pip, uv, java, mvn, gradle, ruby, gem…), " +
@@ -75,6 +76,10 @@ func (BashTool) InputSchema() any {
 			"cwd": map[string]any{
 				"type":        "string",
 				"description": "Working directory (optional, defaults to process cwd)",
+			},
+			"description": map[string]any{
+				"type":        "string",
+				"description": "One short sentence (≤ 80 chars) describing what this command does. Used for display only — not passed to the shell.",
 			},
 		},
 		"required": []string{"command"},
@@ -127,6 +132,12 @@ var allowedBinaries = map[string]struct{}{
 
 	// GitHub CLI
 	"gh": {},
+}
+
+// allowedWindowsCmdExtras are built-in CMD names allowed when goclaw falls back to cmd.exe /C
+// (no bash.exe / sh.exe on PATH). Keep this minimal; prefer Git for Windows for full Unix tooling.
+var allowedWindowsCmdExtras = map[string]struct{}{
+	"dir": {}, "where": {}, "type": {},
 }
 
 var allowedGitSub = map[string]struct{}{
@@ -345,7 +356,28 @@ func validateAllowlistedCommand(cmdLine string) error {
 	if _, ok := allowedBinaries[bin]; ok {
 		return nil
 	}
-	return fmt.Errorf("command not on allowlist: %s", bin)
+	if runtime.GOOS == "windows" {
+		if _, ok := allowedWindowsCmdExtras[bin]; ok {
+			return nil
+		}
+	}
+	err := fmt.Errorf("command not on allowlist: %s", bin)
+	if runtime.GOOS == "windows" && !hasPOSIXShellOnPath() {
+		return fmt.Errorf("%w\n%s", err, windowsBashToolHint())
+	}
+	return err
+}
+
+func hasPOSIXShellOnPath() bool {
+	if _, err := exec.LookPath("bash"); err == nil {
+		return true
+	}
+	_, err := exec.LookPath("sh")
+	return err == nil
+}
+
+func windowsBashToolHint() string {
+	return "Tip: the bash tool uses Git Bash or MSYS sh when available. Without them, only a small CMD subset is allowed (dir, where, type) plus tools already on PATH (e.g. git, go). Install Git for Windows for ls/grep-style commands, or run goclaw from WSL."
 }
 
 // rejectShellMetacharacters blocks syntax that would let a first-token allowlist check

@@ -38,6 +38,8 @@ type SlashEnv struct {
 	Focus *coordinator.FocusRouter
 	// ChatSubtitle optional; after profile switches returns window subtitle (e.g. provider · model · profile).
 	ChatSubtitle func() string
+	// ToolLog optional; returns formatted tool history text for the /tools command (readline mode only).
+	ToolLog func(n int) string
 }
 
 // SlashContext carries dependencies for HandleSlash (memory, orchestrator, session pointer, disk store).
@@ -90,11 +92,7 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 		if orch == nil {
 			return true, "", false, "", fmt.Errorf("/btw requires a running agent")
 		}
-		const prefix = "/btw"
-		rest := strings.TrimSpace(s)
-		if len(rest) >= len(prefix) && strings.EqualFold(rest[:len(prefix)], prefix) {
-			rest = strings.TrimSpace(rest[len(prefix):])
-		}
+		rest := strings.TrimSpace(strings.Join(fields[1:], " "))
 		if rest == "" {
 			return true, "", false, "", fmt.Errorf(`usage: /btw your question or note`)
 		}
@@ -109,6 +107,16 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 			return true, "", false, "", derr
 		}
 		return true, out, false, "", nil
+
+	case "tools":
+		if env.ToolLog == nil {
+			return true, "(tool history not available in this mode — use Ctrl+T in the TUI)", false, "", nil
+		}
+		n := 0
+		if len(fields) >= 2 {
+			fmt.Sscan(fields[1], &n)
+		}
+		return true, env.ToolLog(n), false, "", nil
 
 	case "quit", "exit":
 		return true, "bye", true, "", ErrReplQuit
@@ -463,7 +471,8 @@ template — print the template to the terminal`)
 			if writeErr := os.WriteFile(planPath, []byte(lastText+"\n"), 0o600); writeErr != nil {
 				return true, "", false, "", fmt.Errorf("/plan save: write: %w", writeErr)
 			}
-			return true, fmt.Sprintf("plan saved to %s\nRun /apply-plan to execute it.", planPath), false, "", nil
+			setFooterHint(hintsOut, "Plan saved — /apply-plan --preview to review, then /apply-plan to execute.")
+			return true, fmt.Sprintf("plan saved to %s\nRun /apply-plan --preview to review, then /apply-plan to execute.", planPath), false, "", nil
 		case "template":
 			return true, planfile.Template(), false, "", nil
 		default:
@@ -538,11 +547,17 @@ use /workers to list interactive worker ids`)
 		if !ok {
 			return true, "", false, "", fmt.Errorf("/apply-plan: general-purpose profile missing")
 		}
-		arg := strings.TrimSpace(strings.TrimPrefix(s, fields[0]))
-		p := planfile.ResolvePlanArg(wd, arg)
+		rest := strings.TrimSpace(strings.TrimPrefix(s, fields[0]))
+		pathTail, preview := parseApplyPlanRest(rest)
+		p := planfile.ResolvePlanArg(wd, pathTail)
 		body, rerr := planfile.Read(p)
 		if rerr != nil {
 			return true, "", false, "", rerr
+		}
+		if preview {
+			out := formatPlanPreviewOutput(p, body)
+			setFooterHint(hintsOut, "Review complete — run /apply-plan to execute (or /apply-plan --preview again).")
+			return true, out, false, "", nil
 		}
 		orch.SetProfile(gp)
 		msg := planfile.HandoffUserMessage(p, body)
@@ -552,6 +567,7 @@ use /workers to list interactive worker ids`)
 			sub = env.ChatSubtitle()
 		}
 		setWelcomeHints(hintsOut, orch.ProfileName(), sub)
+		setFooterHint(hintsOut, "")
 		return true, notice, false, msg, nil
 
 	default:
@@ -563,7 +579,7 @@ use /workers to list interactive worker ids`)
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan   /btw   /copy   /export   /init   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /resume   /clear   /quit\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview]   /btw   /copy   /export   /init   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /resume   /clear   /quit\n")
 	b.WriteString("Prefix input (see docs/goclaw/prefix-input-modes.md):  !cmd   @path   &task\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
@@ -581,7 +597,7 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("  /capabilities — structured overview (what the agent can do; not sent to the model)\n")
 	b.WriteString("  /plan path|init|save|template — workspace plan under .goclaw/plan.md\n")
 	b.WriteString("  /init — create .goclaw/settings.json with coding defaults if missing\n")
-	b.WriteString("  /apply-plan [path] — load plan, switch to general-purpose, stream execution\n")
+	b.WriteString("  /apply-plan [--preview] [path] — preview plan on disk, or execute (switch to general-purpose, stream one turn)\n")
 	b.WriteString("  /memory list | add | delete — durable memory under ~/.goclaw/memory/\n")
 	b.WriteString("  /workers, /focus or /in <id>, /back or /detach — interactive spawn_agent workers\n")
 	b.WriteString("  /compact, /copy, /export, /edit, /init, /agents, /profile, /theme, /new, /save, /session, /sessions, /resume, /clear, /quit, /btw\n")
@@ -625,7 +641,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /theme [preset]  — show or set TUI ui_appearance (restart TUI to apply)\n")
 	b.WriteString("  /workers — list workers; /focus or /in <prefix> — jump into worker; /back or /detach — return to coordinator\n")
 	b.WriteString("  /plan path|init|save|template — default plan path, create from template, save last message, or print template\n")
-	b.WriteString("  /apply-plan [path] — load plan, switch to general-purpose, stream execution\n")
+	b.WriteString("  /apply-plan [--preview] [path] — preview plan on disk, or execute (switch to general-purpose, stream one turn)\n")
 	b.WriteString("  /btw <text>      — side question: one user message with a brief-aside preamble (sent to the model)\n")
 	b.WriteString("  Ctrl+C           — exit (session is saved on shutdown)\n")
 	b.WriteString("\nPrefix input (before model; same tools and permissions; single line each; see docs/goclaw/prefix-input-modes.md):\n")

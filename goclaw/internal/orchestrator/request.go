@@ -77,6 +77,10 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		}
 	}
 
+	if hint := taskExplorationHint(o.taskRole); hint != "" {
+		sys = sys + hint
+	}
+
 	if hint := userLanguageSystemSuffix(lastUserNaturalText(o.session.Messages), o.cfg); hint != "" {
 		sys = sys + hint
 	}
@@ -86,7 +90,7 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		System:    sys,
 		Messages:  o.session.Messages,
 		Tools:     llmTools,
-		MaxTokens: 8192,
+		MaxTokens: 4096,
 	}
 }
 

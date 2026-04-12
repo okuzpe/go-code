@@ -44,7 +44,7 @@ func (c *captureSink) OnToolUse(name, _ string) {
 	c.events = append(c.events, "tool_use:"+name)
 }
 
-func (c *captureSink) OnToolResult(name string, _ int, isError bool) {
+func (c *captureSink) OnToolResult(name string, _ string, isError bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	suffix := "ok"

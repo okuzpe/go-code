@@ -72,7 +72,9 @@ func WithSkillsSnippet(s string) Option {
 type StreamSink interface {
 	OnTextDelta(text string)
 	OnToolUse(name, inputPreview string)
-	OnToolResult(name string, resultBytes int, isError bool)
+	// OnToolResult is called after each tool finishes. content is the full result
+	// string (may be large; callers may cap display to a reasonable limit).
+	OnToolResult(name string, content string, isError bool)
 	OnDone(finalText string)
 }
 
@@ -131,6 +133,10 @@ type Orchestrator struct {
 	// turnModel is the resolved model id for the current user turn (tool iterations reuse it).
 	// Empty means use cfg.Model() in buildRequest. Cleared after runUserTurn completes.
 	turnModel string
+
+	// taskRole is the classified task role for the current user turn (e.g. "code", "explore").
+	// Used by buildRequest to inject a per-role system hint. Cleared after runUserTurn completes.
+	taskRole string
 }
 
 // New creates an Orchestrator with the provided subsystems.
@@ -179,7 +185,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	o.session.Add("user", userMessage)
 
 	o.prepareTurnModel(ctx, userMessage)
-	defer func() { o.turnModel = "" }()
+	defer func() { o.turnModel = ""; o.taskRole = "" }()
 
 	toolCalls := 0
 
@@ -207,8 +213,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 					"preview", FormatToolUsePreview(ev.Name, ev.Input),
 				)
 				if sink != nil {
-					preview := FormatToolUsePreview(ev.Name, ev.Input)
-					sink.OnToolUse(ev.Name, preview)
+					sink.OnToolUse(ev.Name, ev.Input)
 				}
 			case llm.Done:
 				// stream finished
@@ -254,7 +259,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 					o.afterTool(r.ToolName, input, len(r.Content), r.IsError)
 				}
 				if sink != nil {
-					sink.OnToolResult(r.ToolName, len(r.Content), r.IsError)
+					sink.OnToolResult(r.ToolName, r.Content, r.IsError)
 				}
 			}
 			appendJSONToolTrace(toolTrace, pendingTools, results)
@@ -271,7 +276,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 					o.afterTool(tu.Name, tu.Input, len(out.Content), out.IsError)
 				}
 				if sink != nil {
-					sink.OnToolResult(tu.Name, len(out.Content), out.IsError)
+					sink.OnToolResult(tu.Name, out.Content, out.IsError)
 				}
 				results = append(results, llm.ToolResultRecord{
 					ToolUseID: tu.ID,

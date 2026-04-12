@@ -28,6 +28,7 @@ func TUIHelpShortcutsText() string {
 	return strings.TrimSpace(`
 Shortcuts
   Enter              send message
+  Ctrl+P             open agent profile picker (same as /agents Enter)
   Shift+Enter / Alt+Enter   newline in the input
   / then type        filter slash commands (single-line input only)
   Tab                complete /command
@@ -51,5 +52,15 @@ Prefix input (single line; same permissions as tools — see docs/goclaw/prefix-
 For Esc vs streaming vs exit, follow the footer hint line under the input.
 
 Docs: docs/goclaw/usage.md (monorepo) and CLAUDE.md in the goclaw module.
+
+Architecture note
+  Orchestrator     The agent loop runtime — drives one agent turn (LLM + tools + repeat).
+                   Every profile runs inside an orchestrator. Not user-visible; it is the engine.
+  Coordinator      A hub profile (--profile coordinator). The orchestrator runs it in hub mode:
+                   the agent uses spawn_agent to delegate to isolated worker orchestrators, then
+                   synthesizes results. It never touches files or shell directly.
+  General-purpose  Default profile. Explore → implement → verify with tools directly (no workers).
+                   Ctrl+T (TUI) or /tools (readline) shows the tool call history for this session.
 `)
+
 }

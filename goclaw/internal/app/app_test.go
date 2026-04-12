@@ -68,7 +68,7 @@ type noopStreamSink struct{}
 
 func (noopStreamSink) OnTextDelta(string)             {}
 func (noopStreamSink) OnToolUse(string, string)       {}
-func (noopStreamSink) OnToolResult(string, int, bool) {}
+func (noopStreamSink) OnToolResult(string, string, bool) {}
 func (noopStreamSink) OnDone(string)                  {}
 
 var _ orchestrator.StreamSink = noopStreamSink{}

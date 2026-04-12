@@ -1,145 +1,146 @@
-# Agentes personalizados (Markdown + frontmatter) — referencia y eco Go
+# Custom agents (Markdown + frontmatter) — reference and Go mapping
 
 **Status in goclaw:** **D19 implemented** — Markdown + YAML frontmatter in `~/.goclaw/agents/*.md` and `.goclaw/agents/*.md`; see [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md) and [`agent-profiles.md`](./agent-profiles.md).
 
-Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D19 custom agents) y [agent-profiles.md](./agent-profiles.md). Referencia (terceros, análisis de Claude Code): [Custom Agents — claude-code-explain](https://claude-code-explain.helmcode.com/custom-agents).
+Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D19 custom agents) and [agent-profiles.md](./agent-profiles.md). Reference (third-party, Claude Code analysis): [Custom Agents — claude-code-explain](https://claude-code-explain.helmcode.com/custom-agents).
 
-**Idea:** un **.md por agente** con **YAML frontmatter** que fija identidad operativa (tools, modelo, permisos, MCP, hooks, memoria, color); el **cuerpo Markdown** es el system prompt. Sin código extra para “registrar” el agente más allá de colocarlo en una ruta de descubrimiento.
-
----
-
-## 1. Dónde encaja en nuestros documentos
-
-| Documento | Relación |
-|-----------|----------|
-| [agent-profiles.md](./agent-profiles.md) §2 | Los **7 perfiles integrados** (incl. `coordinator`) son el set **built-in**; un custom con el **mismo nombre** puede **sustituir** al built-in en referencia (prioridad). |
-| [coordinator-mode.md](./coordinator-mode.md) | La tool **Agent** elige `subagent_type` → resuelve definición custom o built-in. |
-| [hooks.md](./hooks.md) | Frontmatter **`hooks`**: registra hooks de **sesión** al spawn del sub-agente; se limpian al terminar; `Stop` → `SubagentStop` en referencia. |
-| [memory-system.md](./memory-system.md) | Memoria de **proyecto** (`MEMORY.md`) ≠ memoria **por agente** (`memory: user|project|local` + directorio dedicado); ver §5 de este doc. |
-| §2.8 **MCP** | `mcpServers` en frontmatter: referencias con nombre o definición inline; limpieza al finalizar agente si aplica. |
-| §2.9 **Skills** | Campo `skills` para precargar contenido antes del primer turno. |
-| [yolo-classifier.md](./yolo-classifier.md) | `permissionMode` del agente limita o expande riesgo; sigue pasando por **D17** en auto-modo. |
+**Idea:** one **.md per agent** with **YAML frontmatter** that fixes the operational identity (tools, model, permissions, MCP, hooks, memory, color); the **Markdown body** is the system prompt. No extra code to "register" the agent beyond placing it in a discovery path.
 
 ---
 
-## 2. Tipos de definición y prioridad (referencia)
+## 1. Where it fits in our documents
 
-| Tipo | Origen típico |
+| Document | Relation |
+|----------|----------|
+| [agent-profiles.md](./agent-profiles.md) §2 | The **7 built-in profiles** (incl. `coordinator`) are the built-in set; a custom with the **same name** can **override** the built-in in the reference (priority). |
+| [coordinator-mode.md](./coordinator-mode.md) | The **Agent** tool picks `subagent_type` → resolves custom or built-in definition. |
+| [hooks.md](./hooks.md) | Frontmatter **`hooks`**: registers **session** hooks when the sub-agent spawns; cleaned up on finish; `Stop` → `SubagentStop` in reference. |
+| [memory-system.md](./memory-system.md) | **Project** memory (`MEMORY.md`) ≠ **per-agent** memory (`memory: user|project|local` + dedicated directory); see §5 of this doc. |
+| §2.8 **MCP** | `mcpServers` in frontmatter: named references or inline definition; cleanup on agent finish if applicable. |
+| §2.9 **Skills** | `skills` field to preload content before the first turn. |
+| [yolo-classifier.md](./yolo-classifier.md) | Agent `permissionMode` limits or expands risk; still passes through **D17** in auto mode. |
+
+---
+
+## 2. Definition types and priority (reference)
+
+| Type | Typical origin |
 |------|----------------|
-| **Built-in** | Código (dinámico) — tabla en [agent-profiles.md §2](./agent-profiles.md) |
-| **Custom** | `agents/*.md` en rutas de usuario / proyecto |
-| **Plugin** | `plugin/agents/*.md` + restricciones de seguridad (§7) |
-| **Flag CLI** | `--agents` JSON, solo sesión |
+| **Built-in** | Code (dynamic) — table in [agent-profiles.md §2](./agent-profiles.md) |
+| **Custom** | `agents/*.md` in user / project paths |
+| **Plugin** | `plugin/agents/*.md` + security restrictions (§7) |
+| **CLI flag** | `--agents` JSON, session-only |
 
-**Orden de prioridad** (más alto gana en referencia): managed enterprise → flag sesión → **proyecto** `agents/` → **usuario** `~/…/agents/` → **plugin** → **built-in** (más bajo).
+**Priority order** (highest wins in reference): managed enterprise → session flag → **project** `agents/` → **user** `~/…/agents/` → **plugin** → **built-in** (lowest).
 
-**Eco Go:** tabla explícita en `internal/agentprofile` (`Resolve(name string, sources ...)`); flag env tipo `ASSISTANT_SIMPLE=true` puede **omitir** customs (equivalente `CLAUDE_CODE_SIMPLE`).
+**Go mapping:** explicit table in `internal/agents` (`Resolve(name string, sources ...)`); env flag like `GOCLAW_SIMPLE=true` can **skip** customs (equivalent to `CLAUDE_CODE_SIMPLE`).
 
 ---
 
-## 3. Formato del fichero (conceptual)
+## 3. File format (conceptual)
 
-- **Rutas ilustrativas (ref.):** `<cwd>/.claude/agents/foo.md`, `~/.claude/agents/foo.md`.
-- **Eco Go:** `.assistant/agents/*.md` y `~/.config/assistant/agents/*.md` (nombres exactos **D19** + D7).
+- **Illustrative paths (ref.):** `<cwd>/.claude/agents/foo.md`, `~/.claude/agents/foo.md`.
+- **Go mapping:** `.goclaw/agents/*.md` and `~/.goclaw/agents/*.md` (exact names in **D19** + D7).
 
-**Frontmatter — campos clave**
+**Frontmatter — key fields**
 
-| Campo | Rol |
-|-------|-----|
-| `name` | Identificador → `subagent_type` |
-| `description` | **Crítico para selección:** “Use when…” concret; multilínea con `\n` |
-| `tools` / `disallowedTools` | Allowlist / denylist (ver §4) |
-| `model`, `effort` | Override o `inherit` |
+| Field | Role |
+|-------|------|
+| `name` | Identifier → `subagent_type` |
+| `description` | **Critical for selection:** concrete "Use when…"; multiline with `\n` |
+| `tools` / `disallowedTools` | Allowlist / denylist (see §4) |
+| `model`, `effort` | Override or `inherit` |
 | `permissionMode` | default, acceptEdits, bypassPermissions, dontAsk, plan, auto |
-| `color` | Identidad UI (paletas fijadas en ref.) |
-| `maxTurns`, `background` | Límites y ejecución en segundo plano |
-| `memory` | `user` \| `project` \| `local` — ver §5 |
-| `isolation` | p. ej. `worktree` (git aislado, limpieza auto) |
-| `hooks` | Mismo esquema que [hooks.md](./hooks.md); alcance sesión del agente |
-| `mcpServers` | Referencias o inline HTTP/stdio |
-| `skills` | Nombres a precargar |
+| `color` | UI identity (fixed palettes in ref.) |
+| `maxTurns`, `background` | Limits and background execution |
+| `memory` | `user` \| `project` \| `local` — see §5 |
+| `isolation` | e.g. `worktree` (isolated git, auto-cleanup) |
+| `hooks` | Same schema as [hooks.md](./hooks.md); scoped to agent session |
+| `mcpServers` | Named references or inline HTTP/stdio |
+| `skills` | Names to preload |
 
-**Cuerpo:** system prompt tras el segundo `---`; si vacío → prompt genérico por defecto (en referencia).
-
----
-
-## 4. Resolución de herramientas (referencia)
-
-1. `tools` ausente → conjunto completo.  
-2. `tools: []` → ninguna.  
-3. `tools: ["*"]` → todas.  
-4. Lista explícita → solo esas.  
-5. `disallowedTools` encima de la allowlist.  
-6. Si `memory` activo + lista explícita → en ref. se **inyectan** Read/Write/Edit para gestionar memoria del agente.  
-7. Herramientas MCP del agente se **fusionan**.  
-8. Agentes async pueden quitar tools tipo UserInput.
-
-**Eco Go:** `agentprofile.ApplyToRegistry(base Registry) (*Registry, error)` coherente con `internal/tools`.
+**Body:** system prompt after the second `---`; if empty → generic default prompt (in reference).
 
 ---
 
-## 5. Memoria por agente vs MEMORY.md (§2.10)
+## 4. Tool resolution (reference)
 
-Tres **ámbitos** en referencia (directorios bajo `.claude/` en el análisis):
+1. `tools` absent → full set.  
+2. `tools: []` → none.  
+3. `tools: ["*"]` → all.  
+4. Explicit list → only those.  
+5. `disallowedTools` applies on top of the allowlist.  
+6. If `memory` active + explicit list → in ref. Read/Write/Edit are **injected** to manage agent memory.  
+7. Agent MCP tools are **merged**.  
+8. Async agents can remove tools like UserInput.
 
-| Scope | Ubicación típica | Notas |
-|-------|------------------|--------|
-| `user` | `~/.claude/agent-memory/<name>/` | Sin VCS obligatorio |
-| `project` | `<cwd>/.claude/agent-memory/<name>/` | Puede versionarse |
-| `local` | `…/agent-memory-local/<name>/` | Sin VCS |
-
-Flujo: crear dir si falta → cargar índice tipo `MEMORY.md` → añadir directrices de scope al prompt.
-
-**Snapshots:** equipo puede commitear baseline en `agent-memory-snapshots/` para hidratar agentes nuevos.
-
-**Eco Go:** reutilizar paquete `memory/` con **prefijo de ruta** por agente y scope; no mezclar con el índice global del usuario en §2.10 sin decisión explícita (**D19**).
+**Go mapping:** `agentprofile.ApplyToRegistry(base Registry) (*Registry, error)` consistent with `internal/tools`.
 
 ---
 
-## 6. Invocación (tool Agent)
+## 5. Per-agent memory vs MEMORY.md
 
-Campos conceptuales: `description`, `prompt`, `subagent_type`, `model`, `run_in_background`, `name`, `team_name`, `mode`, `isolation`, `cwd` (contextos avanzados).
+Three **scopes** in reference (directories under `.claude/` in the analysis):
 
-**Fork vs fresh (referencia):** sin `subagent_type` puede heredar contexto padre; con tipo definido → prompt/tools propios y ventana fresca.
+| Scope | Typical location | Notes |
+|-------|-----------------|-------|
+| `user` | `~/.claude/agent-memory/<name>/` | No required VCS |
+| `project` | `<cwd>/.claude/agent-memory/<name>/` | Can be versioned |
+| `local` | `…/agent-memory-local/<name>/` | No VCS |
 
----
+Flow: create dir if missing → load `MEMORY.md`-style index → add scope guidelines to prompt.
 
-## 7. Agentes en plugins (restricciones, referencia)
+**Snapshots:** team can commit a baseline in `agent-memory-snapshots/` to hydrate new agents.
 
-Panorama del empaquetado: [plugins.md](./plugins.md). En modo restrictivo del producto analizado, agentes definidos por plugin **no** pueden: escalar `permissionMode`, registrar **hooks** custom arbitrarios, declarar **mcpServers** propios. Nombre con namespace `plugin:agent`.
-
-**Eco Go:** `TrustLevel` del plugin + validación en loader.
-
----
-
-## 8. No está en `settings.json` (referencia)
-
-Los agentes **no** se declaran dentro del schema de settings; son ficheros o JSON `--agents`.
+**Go mapping:** reuse the `memory/` package with a **path prefix** per agent and scope; do not conflate with the user's global index without an explicit decision (**D19**).
 
 ---
 
-## 9. `/agents` (producto completo)
+## 6. Invocation (Agent tool)
 
-UI interactiva: listar por fuente, ver detalle, crear asistente (wizard), editar/borrar user/project. **goclaw hoy:** carga agentes Markdown desde disco (`~/.goclaw/agents/`, `.goclaw/agents/`), `/profile`, hot-reload — **sin** UI tipo `/agents` del producto de referencia.
+Conceptual fields: `description`, `prompt`, `subagent_type`, `model`, `run_in_background`, `name`, `team_name`, `mode`, `isolation`, `cwd` (advanced contexts).
+
+**Fork vs fresh (reference):** without `subagent_type` can inherit parent context; with a defined type → own prompt/tools and fresh window.
 
 ---
 
-## 10. Eco Go (resumen)
+## 7. Agents in plugins (restrictions, reference)
 
-| Pieza | Ubicación sugerida |
-|-------|---------------------|
-| Descubrimiento y merge prioridades | `internal/agentprofile` (`discover.go`, `resolve.go`) |
-| Tipo `CustomAgentDef` | Parse frontmatter + cuerpo; tests con `testdata/agents/*.md` |
-| Construcción de system prompt | `internal/prompt` capas: cuerpo → memoria agente → env/CWD → AGENTS.md opcional |
-| Hooks por agente | Delegado en `internal/hooks` con scope `agentID` |
-| Worktree isolation | `internal/tools/git` o wrapper; flag **D19** |
+Packaging overview: [plugins.md](./plugins.md). In the analyzed product's restrictive mode, plugin-defined agents **cannot**: escalate `permissionMode`, register arbitrary custom **hooks**, or declare their own **mcpServers**. Name uses `plugin:agent` namespace.
 
-**Estado:** agentes custom + prioridades merge + hooks/MCP en frontmatter están **alineados** con lo descrito para D19 en [roadmap.md](../goclaw/roadmap.md) Tier 6 y [CLAUDE.md](../../goclaw/CLAUDE.md); la UI `/agents` interactiva de la referencia **no está implementada**.
+**Go mapping:** plugin `TrustLevel` + validation in loader.
+
+---
+
+## 8. Not in `settings.json` (reference)
+
+Agents are **not** declared inside the settings schema; they are files or `--agents` JSON.
+
+---
+
+## 9. `/agents` (full product)
+
+Interactive UI: list by source, view details, create assistant (wizard), edit/delete user/project agents. **goclaw today:** loads Markdown agents from disk (`~/.goclaw/agents/`, `.goclaw/agents/`), `/profile`, hot-reload — **without** the `/agents` UI of the reference product.
+
+---
+
+## 10. Go mapping (summary)
+
+| Piece | Suggested location |
+|-------|-------------------|
+| Discovery and priority merge | `internal/agents` (`discover.go`, `resolve.go`) |
+| `CustomAgentDef` type | Parse frontmatter + body; tests with `testdata/agents/*.md` |
+| System prompt construction | `internal/orchestrator` layers: body → agent memory → env/CWD → optional CLAUDE.md |
+| Per-agent hooks | Delegated to `internal/hooks` with `agentID` scope |
+| Worktree isolation | `internal/tools/git` or wrapper; **D19** flag |
+
+**Status:** custom agents + priority merge + hooks/MCP in frontmatter are **aligned** with D19 in [roadmap.md](../goclaw/roadmap.md) Tier 6 and [CLAUDE.md](../../goclaw/CLAUDE.md); the interactive `/agents` UI from the reference product is **not implemented**.
 
 ---
 
 ## 11. Changelog
 
-| Fecha | Cambio |
-|-------|--------|
-| 2026-04-07 | Creación: tipos, prioridad, frontmatter, tools, memoria agente, MCP/hooks, plugins, eco Go, enlace helmcode §20 |
+| Date | Change |
+|------|--------|
+| 2026-04-07 | Created: types, priority, frontmatter, tools, agent memory, MCP/hooks, plugins, Go mapping, helmcode §20 link |
+| 2026-04-12 | Translated from Spanish to English |

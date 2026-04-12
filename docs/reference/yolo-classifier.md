@@ -1,97 +1,97 @@
-# Clasificador de auto-modo (“YOLO Classifier”) — referencia y eco Go
+# Auto-mode classifier ("YOLO Classifier") — reference and Go mapping
 
 **Status in goclaw:** **Rule-based risk scoring** (0–100) and optional `yolo_threshold` auto-approval live in [`goclaw/internal/permissions/risk.go`](../../goclaw/internal/permissions/risk.go) — not a separate lateral LLM call as in the reference product. See **D17** in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md).
 
-Profundidad ligada a [CLAUDE.md](../../goclaw/CLAUDE.md) (D17 risk) y **§2.4**. Referencia (terceros, análisis de Claude Code): [YOLO Classifier — claude-code-explain](https://claude-code-explain.helmcode.com/yolo-classifier).
+Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D17 risk) and **§2.4**. Reference (third-party, Claude Code analysis): [YOLO Classifier — claude-code-explain](https://claude-code-explain.helmcode.com/yolo-classifier).
 
-**Por qué es capa esencial:** en modo automático el modelo puede encadenar muchas herramientas sin pausa humana. Un **monitor que no es el mismo razonamiento del agente** reduce **daño accidental, scope creep, inyección de prompt vía herramientas** y **acciones irreversibles** (deploy a prod, `rm -rf`, exfiltración, etc.).
+**Why this is an essential layer:** in automatic mode the model can chain many tools without a human pause. A **monitor that is not the agent's own reasoning** reduces **accidental damage, scope creep, prompt injection via tools**, and **irreversible actions** (prod deploy, `rm -rf`, exfiltration, etc.).
 
-Nombre “YOLO” aquí es **jerga del producto analizado**; en nuestros docs equivale a **clasificador de seguridad previo a ejecutar `tool_use` en auto-modo**.
-
----
-
-## 1. Consulta lateral, no razonamiento inline
-
-- El clasificador hace **otra llamada** al LLM con **system prompt dedicado** y un **transcript reducido**.
-- No sustituye al usuario en modo interactivo normal; encaja cuando la política es **Auto** / **aprobar sin preguntar** salvo bloqueo.
-
-**Eco Go:** `internal/classifier` (o subpaquete de `permissions`) que usa el mismo `internal/llm` con plantillas embebidas (`//go:embed`), no el system prompt del agente principal.
+The name "YOLO" here is **jargon from the analyzed product**; in our docs it means the **security classifier that runs before executing `tool_use` in auto mode**.
 
 ---
 
-## 2. Flujo alto nivel (referencia)
+## 1. Lateral call, not inline reasoning
 
-| Paso | Comprobación |
-|------|----------------|
-| 1 | ¿Reglas **always-deny**? → **DENY** inmediato |
-| 2 | ¿Reglas **always-allow**? → **ALLOW** inmediato |
-| 3 | ¿**Fast paths** (sin clasificador)? → **ALLOW** sin API lateral |
-| 4 | Si no → **clasificador en dos etapas** (XML) → ALLOW o DENY |
+- The classifier makes **another call** to the LLM with a **dedicated system prompt** and a **reduced transcript**.
+- It does not replace the user in normal interactive mode; it fits when the policy is **Auto** / approve without asking, except for blocks.
 
-Orden completo integrado con permisos del producto analizado está resumido al final de este doc (§10).
+**Go mapping:** `internal/classifier` (or sub-package of `permissions`) that uses the same `internal/llm` with embedded templates (`//go:embed`), not the main agent's system prompt.
 
 ---
 
-## 3. Protocolo XML de dos etapas
+## 2. High-level flow (reference)
 
-Solo una forma explícita libera la acción (fail-closed):
+| Step | Check |
+|------|-------|
+| 1 | **Always-deny** rules? → immediate **DENY** |
+| 2 | **Always-allow** rules? → immediate **ALLOW** |
+| 3 | **Fast paths** (no classifier)? → **ALLOW** without lateral API call |
+| 4 | Otherwise → **two-stage classifier** (XML) → ALLOW or DENY |
+
+Complete order integrated with the analyzed product's permissions is summarized at the end of this doc (§10).
+
+---
+
+## 3. Two-stage XML protocol
+
+Only one explicit form releases the action (fail-closed):
 
 ```text
-<!-- Permitido -->
+<!-- Allowed -->
 <block>no</block>
 
-<!-- Bloqueado -->
-<block>yes</block><reason>una frase corta</reason>
+<!-- Blocked -->
+<block>yes</block><reason>a short phrase</reason>
 ```
 
-- La respuesta **debe empezar** por `<block>` — sin preámbulo del modelo.
-- **Etapa 1 (“fast”):** decisión corta; `stop_sequences` típico para cerrar en `</block>` (modo `both`); pocos tokens de salida (p. ej. 64; en modo `fast` hasta ~256).
-- **Etapa 2 (“thinking”):** revisión con razonamiento; muchos más tokens de salida (p. ej. hasta ~4096); se dispara si etapa 1 bloquea o es **imparsable** (en modo `both`; en `fast` la imparsable → DENY).
-- **Modos:** `both` (defecto), `fast` (solo etapa 1), `thinking` (solo etapa 2).
+- The response **must start** with `<block>` — no model preamble.
+- **Stage 1 ("fast"):** short decision; typical `stop_sequences` to close at `</block>` (mode `both`); few output tokens (e.g. 64; in `fast` mode up to ~256).
+- **Stage 2 ("thinking"):** review with reasoning; many more output tokens (e.g. up to ~4096); fires if stage 1 blocks or is **unparseable** (in `both` mode; in `fast` mode an unparseable → DENY).
+- **Modes:** `both` (default), `fast` (stage 1 only), `thinking` (stage 2 only).
 
-**Eco Go:** tipos `Stage1Result`, parser XML estricto; temperatura **0**; timeouts; tests con respuestas malformadas → DENY.
-
----
-
-## 4. System prompt (estructura conceptual)
-
-En referencia se ensambla con plantillas (base + reglas de intención + plantilla de permisos). Bloques conceptuales:
-
-- **Base:** modelo de amenaza (prompt injection, scope creep, daño accidental); **solo** bloqueos de seguridad, no “calidad” ni eficiencia.
-- **Reglas de intención usuario vs acción agente** (consentimiento explícito, escalada, etc.).
-- **Plantilla BLOCK / ALLOW** (~**28** categorías BLOCK orientativas, ~**7** ALLOW) + contexto de entorno (dominios de confianza, etc.).
-
-**Reglas de evaluación** (ejemplos de las 12 de referencia): acciones compuestas como un todo; escribir script y ejecutarlo = ejecutar comandos; `npm run deploy` = ejecutar el script; bloquear intentos de **desactivar el clasificador**; cada acción se juzga **por sí sola** (aprobaciones previas no arrastran); sesgo a bloquear en **infra compartida**.
-
-Lista completa en el enlace helmcode; no duplicar aquí el catálogo propietario.
+**Go mapping:** `Stage1Result` types, strict XML parser; temperature **0**; timeouts; tests with malformed responses → DENY.
 
 ---
 
-## 5. Config “autoMode” y fuentes de verdad
+## 4. System prompt (conceptual structure)
 
-En referencia, `autoMode` en `settings.json` puede listar allow/soft_deny/environment — pero **`autoMode` desde ficheros del proyecto (p. ej. `.claude/settings.json`) se ignora** para evitar que un repo malicioso **inyecte** reglas que debiliten el clasificador.
+In the reference it is assembled from templates (base + intent rules + permissions template). Conceptual blocks:
 
-**Eco Go:** reglas ampliadas solo desde **config del usuario** (`~/.config/assistant/…`) o flags explícitos; nunca aplicar ciegamente políticas de **solo proyecto** para auto-aprobación sin revisión.
+- **Base:** threat model (prompt injection, scope creep, accidental damage); **only** security blocks, not "quality" or efficiency.
+- **User-intent vs agent-action rules** (explicit consent, escalation, etc.).
+- **BLOCK / ALLOW template** (~**28** illustrative BLOCK categories, ~**7** ALLOW) + environment context (trusted domains, etc.).
+
+**Evaluation rules** (examples from the 12 in the reference): compound actions evaluated as a whole; writing a script and running it = running commands; `npm run deploy` = running the script; block attempts to **disable the classifier**; each action judged **on its own** (prior approvals do not carry over); bias toward blocking on **shared infrastructure**.
+
+Full list at the helmcode link; do not duplicate the proprietary catalog here.
 
 ---
 
-## 6. Fast paths (evitar coste de API)
+## 5. "autoMode" config and sources of truth
 
-Orden conceptual (del más barato al más caro):
+In the reference, `autoMode` in `settings.json` can list allow/soft_deny/environment — but **`autoMode` from project files (e.g. `.claude/settings.json`) is ignored** to prevent a malicious repo from **injecting** rules that weaken the classifier.
 
-1. Tool devuelve **cadena vacía** en `ToClassifierInput` → “irrelevante para seguridad” → sin clasificador.
-2. **Safety check** que no es “classifier-approvable” → ir directo a **ASK** humano.
-3. Tool **requiere interacción** → prompt usuario.
-4. PowerShell sin feature flag (ref.) → prompt usuario.
-5. **acceptEdits:** simular política de edición; si pasaría en modo aceptar ediciones → ALLOW (excluye Agent/REPL en ref.).
-6. **Allowlist de herramientas seguras** (Read, Grep, Glob, ciertas Task*, AskUserQuestion, Sleep, etc. en ref.) → ALLOW directo.
+**Go mapping:** extended rules only from **user config** (`~/.goclaw/…`) or explicit flags; never blindly apply **project-only** policies for auto-approval without review.
 
-Write/Edit **no** suelen estar en la allowlist: pasan por acceptEdits o clasificador.
+---
 
-**Eco Go:** interfaz en cada herramienta:
+## 6. Fast paths (avoiding API cost)
+
+Conceptual order (cheapest to most expensive):
+
+1. Tool returns **empty string** in `ToClassifierInput` → "irrelevant to security" → no classifier.
+2. **Safety check** that is not "classifier-approvable" → go directly to **human ASK**.
+3. Tool **requires interaction** → user prompt.
+4. PowerShell without feature flag (ref.) → user prompt.
+5. **acceptEdits:** simulate edit policy; if it would pass in accept-edits mode → ALLOW (excludes Agent/REPL in ref.).
+6. **Safe tool allowlist** (Read, Grep, Glob, certain Task*, AskUserQuestion, Sleep, etc. in ref.) → direct ALLOW.
+
+Write/Edit are usually **not** on the allowlist: they go through acceptEdits or the classifier.
+
+**Go mapping:** interface on each tool:
 
 ```go
-// ClassifierInput devuelve "" si la tool declara que no necesita clasificador lateral.
+// ClassifierInput returns "" if the tool declares it does not need a lateral classifier call.
 type Tool interface {
     ToClassifierInput(args any) string
 }
@@ -99,104 +99,105 @@ type Tool interface {
 
 ---
 
-## 7. Construcción del transcript (anti auto-influence)
+## 7. Transcript construction (anti-self-influence)
 
-**Incluir**
+**Include:**
 
-- Mensajes de **usuario:** solo bloques de **texto** (no imágenes ni tool results).
-- Mensajes de **asistente:** solo bloques **`tool_use`** (lo que el modelo **hizo**, no lo que **dijo**).
-- Comandos en cola si aplica.
+- **User** messages: text blocks only (no images or tool results).
+- **Assistant** messages: `tool_use` blocks only (what the model **did**, not what it **said**).
+- Queued commands if applicable.
 
-**Excluir**
+**Exclude:**
 
-- **Texto libre del asistente** — para que no condicione al clasificador (“sesgo del narrador”).
+- **Assistant free text** — to prevent the classifier from being biased by the narrator's framing.
 
-Formato típico JSONL compacto por turno; reglas del proyecto pueden ir como prefijo cacheado aparte.
+Typical compact JSONL format per turn; project rules can go as a separately cached prefix.
 
-**Eco Go:** `session.BuildClassifierTranscript()` reutilizable por compactación; límites de tamaño; si transcript demasiado largo → en ref. CLI pregunta; headless puede **abortar**.
-
----
-
-## 8. Patrones peligrosos y endurecimiento al entrar en auto-modo
-
-- Listas de prefijos/comandos (bash, interpreters, `npm run`, `ssh`, `curl`, PowerShell, …) para **heurísticas** y para **retirar temporalmente** reglas “allow” del usuario que coincidan con patrones peligrosos al activar auto-modo (**strip**), restaurando al salir (**restore**).
-
-**Eco Go:** tabla en `internal/permissions/patterns.go`; tests por plataforma (Unix vs Windows).
+**Go mapping:** `session.BuildClassifierTranscript()` reusable for compaction; size limits; if transcript is too long → in ref. CLI asks; headless can **abort**.
 
 ---
 
-## 9. Contadores de denegación y fail-closed por defecto
+## 8. Dangerous patterns and hardening on entering auto mode
 
-| Concepto | Valor típico (ref.) |
-|----------|---------------------|
-| Denegaciones **consecutivas** max | 3 → volver a humano (CLI) o abortar (headless) |
-| Denegaciones **totales** por sesión | 20 |
-| Cualquier ALLOW | resetea consecutivas |
+- Lists of prefixes/commands (bash, interpreters, `npm run`, `ssh`, `curl`, PowerShell, …) for **heuristics** and for **temporarily removing** user "allow" rules that match dangerous patterns when entering auto mode (**strip**), restoring them on exit (**restore**).
 
-| Fallo | Comportamiento (ref.) |
-|--------|------------------------|
-| Error API clasificador | Por defecto **DENY** (“iron gate” cerrada); opción **ASK** si se abre la compuerta |
-| Respuesta imparsable | Modo `both`: escalar a etapa 2; `fast` o etapa 2 falla → **DENY** |
-| Cancelación usuario | DENY / bloqueado |
-
-**Principios** (síntesis de los 10 de referencia): denegación por defecto; solo **`<block>no</block>`** explícito permite; **asistente texto fuera** del transcript; reglas peligrosas retiradas en auto; **settings de proyecto** no deben debilitar política global; dos etapas para falsos positivos; **caché** en prefijos repetidos (system + reglas + última acción) para coste.
+**Go mapping:** table in `internal/permissions/patterns.go`; tests per platform (Unix vs Windows).
 
 ---
 
-## 10. Codificación por herramienta (`toAutoClassifierInput`)
+## 9. Denial counters and fail-closed default
 
-Cada tool expone qué ve el clasificador: comando bash, ruta+contenido en edición, URL+prompt en fetch, query de búsqueda, delegación Agent con tipo y prompt, etc. Cadena vacía → salto del clasificador.
+| Concept | Typical value (ref.) |
+|---------|----------------------|
+| Max **consecutive** denials | 3 → return to human (CLI) or abort (headless) |
+| Max **total** denials per session | 20 |
+| Any ALLOW | resets consecutive counter |
 
-**Eco Go:** matriz tool → string en el **contrato de herramientas** (anexo o `tool-contract.md` cuando exista); misma función usada para logs auditables (sin datos sensibles sin mascarar).
+| Failure | Behavior (ref.) |
+|---------|-----------------|
+| Classifier API error | Default **DENY** ("iron gate" closed); optional **ASK** if gate opens |
+| Unparseable response | Mode `both`: escalate to stage 2; `fast` or stage 2 fail → **DENY** |
+| User cancellation | DENY / blocked |
 
----
-
-## 11. Coste y modelo del clasificador
-
-- Cada `tool_use` que no cae en fast path ⇒ **1–2 llamadas** extra con transcript potencialmente largo.
-- Etapa 2 puede ser cara en tokens de salida.
-- En referencia el modelo del clasificador suele alinearse con el del bucle principal (o override por config/env).
-
-**Con Ollama:** segunda llamada al mismo host es viable; hay que valorar latencia y si un modelo **más pequeño** basta para etapa 1 (**D17**).
-
----
-
-## 12. Eco Go (paquetes y fases)
-
-| Pieza | Ubicación sugerida |
-|-------|---------------------|
-| Orquestación deny/ask/allow antes de tool | `internal/permissions` (ya previsto) |
-| Llamada lateral + parser XML + etapas | `internal/classifier` **o** `internal/permissions/classifier` |
-| Patrones peligrosos + strip/restore | `internal/permissions` + tests |
-| Transcript seguro | `internal/session` helper compartido con observabilidad |
-| Plantillas system | `embeds/classifier/*.txt` + `//go:embed` |
-
-**Dependencias:** `classifier` → `llm`; `orchestrator` → `permissions` → opcionalmente `classifier`; evitar `classifier` → `orchestrator`.
-
-**Roadmap alineado [roadmap.md](../goclaw/roadmap.md):**
-
-| Ámbito | Clasificador |
-|------|----------------|
-| **goclaw (shipped)** | **D17** — reglas locales + puntuación 0–100 en `internal/permissions/risk.go`; `yolo_threshold` (por defecto off); auto-aprobación solo de lecturas en umbral 0; convive con **D5** (modos) y hooks **D18** |
-| **Referencia (producto analizado)** | Clasificador LLM en dos etapas XML, iron gate, cachés — distinto implementación |
-| **No implementado en goclaw** | Llamada lateral a un LLM dedicado “clasificador” como en la referencia |
+**Principles** (synthesis of the 10 in the reference): deny by default; only explicit **`<block>no</block>`** permits; **assistant text outside** the transcript; dangerous rules removed in auto; **project settings** must not weaken global policy; two stages for false positives; **cache** on repeated prefixes (system + rules + last action) for cost.
 
 ---
 
-## 13. Relación con otros docs
+## 10. Per-tool encoding (`toAutoClassifierInput`)
 
-- **[retry-logic.md](./retry-logic.md):** las llamadas al modelo del clasificador deben usar política de reintentos **acotada**; en fallos repetidos aplica el **iron gate** (§9), no un backoff ilimitado.
-- **[coordinator-mode.md](./coordinator-mode.md):** delegar a sub-agentes debe pasar por evaluación de intención (reglas de sub-agent en referencia).
-- **[agent-profiles.md](./agent-profiles.md):** modo `dontAsk` sin clasificador sólido es **peligroso**; alinear con Auto.
-- **§2.4 shell:** el clasificador es **complemento** de validación sintáctica/sandbox, no sustituto.
-- **[hooks.md](./hooks.md):** `PreToolUse` / `PermissionRequest` pueden bloquear o mutar antes del pipeline YOLO; el **orden** hooks vs fast paths vs API lateral se fija en **D17 + D18** y en el pseudocódigo de permisos.
+Each tool exposes what the classifier sees: bash command, path+content for edits, URL+prompt for fetch, search query, Agent delegation with type and prompt, etc. Empty string → classifier skip.
+
+**Go mapping:** tool → string matrix in the **tool contract** (`tool-contract.md`); same function used for auditable logs (without unmasked sensitive data).
+
+---
+
+## 11. Classifier cost and model
+
+- Each `tool_use` that does not hit a fast path ⇒ **1–2 extra calls** with a potentially long transcript.
+- Stage 2 can be expensive in output tokens.
+- In the reference the classifier model usually aligns with the main loop model (or config/env override).
+
+**With Ollama:** a second call to the same host is viable; evaluate latency and whether a **smaller model** suffices for stage 1 (**D17**).
+
+---
+
+## 12. Go mapping (packages and phases)
+
+| Piece | Suggested location |
+|-------|--------------------|
+| Orchestrate deny/ask/allow before tool | `internal/permissions` (already planned) |
+| Lateral call + XML parser + stages | `internal/classifier` **or** `internal/permissions/classifier` |
+| Dangerous patterns + strip/restore | `internal/permissions` + tests |
+| Safe transcript | `internal/session` helper shared with observability |
+| System templates | `embeds/classifier/*.txt` + `//go:embed` |
+
+**Dependencies:** `classifier` → `llm`; `orchestrator` → `permissions` → optionally `classifier`; avoid `classifier` → `orchestrator`.
+
+**Aligned roadmap [roadmap.md](../goclaw/roadmap.md):**
+
+| Area | Classifier |
+|------|------------|
+| **goclaw (shipped)** | **D17** — local rules + 0–100 scoring in `internal/permissions/risk.go`; `yolo_threshold` (default off); auto-approve reads at threshold 0; coexists with **D5** (modes) and **D18** hooks |
+| **Reference (analyzed product)** | Two-stage XML LLM classifier, iron gate, caches — different implementation |
+| **Not implemented in goclaw** | Lateral call to a dedicated "classifier" LLM as in the reference |
+
+---
+
+## 13. Relation to other docs
+
+- **[retry-logic.md](./retry-logic.md):** classifier model calls must use a **bounded** retry policy; on repeated failures the **iron gate** applies (§9), not unlimited backoff.
+- **[coordinator-mode.md](./coordinator-mode.md):** delegating to sub-agents must pass intent evaluation (sub-agent rules in reference).
+- **[agent-profiles.md](./agent-profiles.md):** `dontAsk` mode without a solid classifier is **dangerous**; align with Auto.
+- **§2.4 shell:** the classifier is a **complement** to syntactic/sandbox validation, not a substitute.
+- **[hooks.md](./hooks.md):** `PreToolUse` / `PermissionRequest` can block or mutate before the YOLO pipeline; the **order** of hooks vs fast paths vs lateral API is fixed in **D17 + D18** and the permissions pseudocode.
 
 ---
 
 ## 14. Changelog
 
-| Fecha | Cambio |
-|-------|--------|
-| 2026-04-07 | Creación: flujo, XML dos etapas, fast paths, transcript, fail-closed, eco Go, enlace helmcode §17 |
-| 2026-04-07 | §13: interacción con [hooks.md](./hooks.md) y D18 (orden de pipeline). |
-| 2026-04-07 | §13: [retry-logic.md](./retry-logic.md) y reintentos del clasificador. |
+| Date | Change |
+|------|--------|
+| 2026-04-07 | Created: flow, two-stage XML, fast paths, transcript, fail-closed, Go mapping, helmcode §17 link |
+| 2026-04-07 | §13: interaction with [hooks.md](./hooks.md) and D18 (pipeline order) |
+| 2026-04-07 | §13: [retry-logic.md](./retry-logic.md) and classifier retries |
+| 2026-04-12 | Translated from Spanish to English |

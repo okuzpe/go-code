@@ -17,21 +17,15 @@ func wrapNestedWorkerSink(inner orchestrator.StreamSink) orchestrator.StreamSink
 }
 
 func (n *nestedWorkerStreamSink) OnTextDelta(text string) {
-	if n.inner != nil && text != "" {
-		n.inner.OnTextDelta(text)
-	}
+	n.inner.OnTextDelta(text)
 }
 
 func (n *nestedWorkerStreamSink) OnToolUse(name, inputPreview string) {
-	if n.inner != nil {
-		n.inner.OnToolUse(name, inputPreview)
-	}
+	n.inner.OnToolUse(name, inputPreview)
 }
 
-func (n *nestedWorkerStreamSink) OnToolResult(name string, resultBytes int, isError bool) {
-	if n.inner != nil {
-		n.inner.OnToolResult(name, resultBytes, isError)
-	}
+func (n *nestedWorkerStreamSink) OnToolResult(name string, content string, isError bool) {
+	n.inner.OnToolResult(name, content, isError)
 }
 
 func (n *nestedWorkerStreamSink) OnDone(string) {}
