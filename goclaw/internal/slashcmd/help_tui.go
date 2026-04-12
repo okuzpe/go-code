@@ -40,8 +40,7 @@ Shortcuts
   /copy              copy plain session text to the system clipboard
   /export path.txt   save plain session text to a file
 
-Mouse: mouse reporting is off — select text normally with the mouse. Scroll with
-  PgUp/PgDn, j/k, Ctrl+U/Ctrl+D. Use /copy or /export for the full session.
+Transcript scroll: PgUp/PgDn (wheel disabled so the terminal can select/copy with the mouse). /copy or /export for the full session.
 
 Prefix input (single line; same permissions as tools — see docs/goclaw/prefix-input-modes.md)
   !cmd               run bash tool (allowlisted shell)

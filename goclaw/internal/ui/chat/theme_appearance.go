@@ -19,7 +19,7 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 		UserLabel:      "",
 		UserEmoji:      ">",
 		AssistantEmoji: "●",
-		InputPrompt:    "",
+		InputPrompt:    "> ",
 		mdGlamourStyle: p.GlamourStyle,
 		appearance:     p.Appearance,
 

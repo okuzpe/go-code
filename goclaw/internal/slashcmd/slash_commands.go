@@ -29,6 +29,7 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/in", "Focus a worker by task id prefix (same as /focus)"},
 	{"/init", "Create .goclaw/settings.json with coding defaults if missing"},
 	{"/memory", "list | add | delete durable memory entries"},
+	{"/model", "Show or set default LLM id for this session (Ollama / openai_compatible)"},
 	{"/new", "Start a new session (saves current)"},
 	{"/parent", "Return to coordinator (same as /detach)"},
 	{"/plan", "path | init | save | template for .goclaw/plan.md"},

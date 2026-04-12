@@ -67,10 +67,14 @@ func formatKnownToolPreview(toolName, input string) string {
 		}
 	case "bash":
 		var v struct {
-			Command string `json:"command"`
-			Cwd     string `json:"cwd"`
+			Command     string `json:"command"`
+			Cwd         string `json:"cwd"`
+			Description string `json:"description"`
 		}
 		if json.Unmarshal([]byte(input), &v) == nil {
+			if desc := strings.TrimSpace(v.Description); desc != "" {
+				return desc
+			}
 			cmd := strings.TrimSpace(v.Command)
 			if cwd := strings.TrimSpace(v.Cwd); cwd != "" {
 				return cmd + " (cwd " + cwd + ")"

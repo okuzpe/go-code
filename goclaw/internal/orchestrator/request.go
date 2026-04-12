@@ -85,13 +85,17 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		sys = sys + hint
 	}
 
-	return llm.Request{
+	req := llm.Request{
 		Model:     model,
 		System:    sys,
 		Messages:  o.session.Messages,
 		Tools:     llmTools,
 		MaxTokens: 4096,
 	}
+	if o.cfg.Provider == "ollama" && o.cfg.OllamaNumCtx > 0 {
+		req.NumCtx = o.cfg.OllamaNumCtx
+	}
+	return req
 }
 
 func stripToolName(specs []tools.ToolSpec, name string) []tools.ToolSpec {

@@ -25,6 +25,7 @@ func (m *Model) openToolLog() {
 	m.toolLogDetail = false
 	m.toolLogOpen = true
 	m.refreshToolLogOverlay()
+	m.syncViewportKeyMapForOverlay()
 	m.layout()
 	m.viewport.GotoTop()
 }
@@ -34,6 +35,7 @@ func (m *Model) closeToolLog() {
 	m.toolLogOpen = false
 	m.toolLogDetail = false
 	m.toolLogText = ""
+	m.syncViewportKeyMapForCompose()
 	m.layout()
 	m.viewport.GotoBottom()
 }
@@ -90,7 +92,7 @@ func (m *Model) refreshToolLogOverlay() {
 			b.WriteString(th.FooterDim.Render("… output truncated (>64 KB)"))
 		}
 		b.WriteString("\n\n")
-		b.WriteString(th.FooterDim.Render("Esc back to list · scroll · Ctrl+C quit"))
+		b.WriteString(th.FooterDim.Render("Esc back to list · Ctrl+C quit"))
 		m.toolLogText = b.String()
 		return
 	}

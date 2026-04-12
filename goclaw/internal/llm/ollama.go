@@ -11,8 +11,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -26,6 +28,16 @@ type OllamaClient struct {
 	// toolsUnsupportedOnce logs once when we fall back to chat-only after Ollama rejects tools.
 	// Use Debug (not Warn): writing stderr during Bubble Tea alt-screen corrupts the TUI on some terminals (e.g. Windows).
 	toolsUnsupportedOnce sync.Once
+
+	// functionToolsDropped is set when Ollama returns "does not support tools" and we retry without wire tools.
+	functionToolsDropped atomic.Bool
+}
+
+// FunctionToolsDropped reports whether this client ever fell back to HTTP /api/chat without
+// the tools JSON field because the model rejected tool calling. The UI can surface this once
+// per session (e.g. footer) so users know read_file / web_search are not available on the wire.
+func (c *OllamaClient) FunctionToolsDropped() bool {
+	return c.functionToolsDropped.Load()
 }
 
 // NewOllama creates a client. host defaults to http://localhost:11434.
@@ -132,8 +144,12 @@ func (c *OllamaClient) streamWithWireTools(ctx context.Context, req Request, out
 		msg := parseOllamaErrorMessage(errBody)
 		if wireTools && len(req.Tools) > 0 && ollamaReportsToolsUnsupported(resp.StatusCode, msg) {
 			c.toolsUnsupportedOnce.Do(func() {
-				slog.Debug("ollama: model does not support tool calling; using chat-only requests (no agent tools). For read_file/bash/etc. use a tools-capable model such as qwen2.5-coder:7b")
+				slog.Warn("ollama: model rejected tool calling — falling back to text-only (no read_file/bash/etc.). "+
+					"Use a tools-capable model (e.g. qwen2.5-coder:7b) or update Ollama. "+
+					"Set ollama_num_ctx in settings.json (default 8192) if context is too small for tool schemas. "+
+					"Ollama error: "+msg)
 			})
+			c.functionToolsDropped.Store(true)
 			return c.streamWithWireTools(ctx, req, out, false)
 		}
 		return fmt.Errorf("ollama %d: %s", resp.StatusCode, msg)
@@ -147,6 +163,11 @@ func (c *OllamaClient) streamWithWireTools(ctx context.Context, req Request, out
 	return c.streamWithTools(scanner, out, req.Tools)
 }
 
+// ollamaTextOnlyToolingNote is appended when Ollama retries without wire tools but the session
+// still had tool specs (model rejected tools). Stops small models from promising web/repo tools
+// or echoing "no tool call" meta while the base prompt still describes tools.
+const ollamaTextOnlyToolingNote = "[OLLAMA TEXT-ONLY FALLBACK: this HTTP request has no function tools. You cannot invoke web_search, read_file, bash, etc. here. Answer from general knowledge; for live internet/news or reading their project, say clearly you cannot do that in this mode (in the user's language). Do not mention tool calls, tool_use, or APIs — speak like a normal assistant.]"
+
 func buildOllamaChatRequest(req Request, wireTools bool) ollamaRequest {
 	body := ollamaRequest{
 		Model:  req.Model,
@@ -155,10 +176,17 @@ func buildOllamaChatRequest(req Request, wireTools bool) ollamaRequest {
 	if req.MaxTokens > 0 {
 		body.Options.NumPredict = req.MaxTokens
 	}
+	if req.NumCtx > 0 {
+		body.Options.NumCtx = req.NumCtx
+	}
 	if req.System != "" {
+		sys := req.System
+		if !wireTools && len(req.Tools) > 0 {
+			sys = strings.TrimSpace(sys) + "\n\n" + ollamaTextOnlyToolingNote
+		}
 		body.Messages = append(body.Messages, ollamaMessage{
 			Role:    "system",
-			Content: req.System,
+			Content: sys,
 		})
 	}
 	for _, m := range req.Messages {
@@ -221,6 +249,98 @@ func (c *OllamaClient) streamTextOnly(scanner *bufio.Scanner, out chan<- Event) 
 	return nil
 }
 
+// proseToolNameAliases map hallucinated tool labels from local models to registry names.
+// Only targets that exist in the current request's ToolSpec list are emitted.
+var proseToolNameAliases = map[string]string{
+	"glob_file_search":    "glob",
+	"analyze_file_search": "glob",
+	"file_search":         "glob",
+	"codebase_search":     "glob",
+	"list_dir":            "glob",
+	"search_files":        "glob",
+}
+
+// toolCallDirectiveRE matches a whole line like "TOOL CALL: read_file" (case-insensitive).
+var toolCallDirectiveRE = regexp.MustCompile(`(?i)^\s*tool call:\s*(\S+)\s*$`)
+
+func allowedToolNamesLower(specs []ToolSpec) map[string]string {
+	m := make(map[string]string, len(specs))
+	for _, sp := range specs {
+		k := strings.ToLower(strings.TrimSpace(sp.Name))
+		if k != "" {
+			m[k] = sp.Name
+		}
+	}
+	return m
+}
+
+// resolveProseToolName maps a model-supplied token to a concrete tool name in specs.
+func resolveProseToolName(raw string, byLower map[string]string) (string, bool) {
+	t := strings.TrimSpace(raw)
+	if t == "" {
+		return "", false
+	}
+	low := strings.ToLower(t)
+	if canon, ok := proseToolNameAliases[low]; ok {
+		low = strings.ToLower(canon)
+	}
+	if exact, ok := byLower[low]; ok {
+		return exact, true
+	}
+	return "", false
+}
+
+// defaultInputForProseToolDirective returns JSON input when the model emitted only a name (no JSON).
+// Only safe defaults are supported; unknown tools return false.
+func defaultInputForProseToolDirective(toolName string) (string, bool) {
+	switch toolName {
+	case "glob":
+		return `{"pattern":"*"}`, true
+	default:
+		return "", false
+	}
+}
+
+// tryProseToolDirective detects lines like "TOOL CALL: foo" and converts them to a native ToolUse
+// when the resolved tool is in specs and has a safe default input (see defaultInputForProseToolDirective).
+func tryProseToolDirective(full string, specs []ToolSpec) (prose string, tu ToolUse, ok bool) {
+	full = strings.TrimSpace(full)
+	if full == "" || len(specs) == 0 {
+		return "", ToolUse{}, false
+	}
+	byLower := allowedToolNamesLower(specs)
+	lines := strings.Split(full, "\n")
+	for i, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
+		sub := toolCallDirectiveRE.FindStringSubmatch(line)
+		if len(sub) != 2 {
+			continue
+		}
+		resolved, okName := resolveProseToolName(sub[1], byLower)
+		if !okName {
+			return "", ToolUse{}, false
+		}
+		input, okIn := defaultInputForProseToolDirective(resolved)
+		if !okIn {
+			return "", ToolUse{}, false
+		}
+		var parts []string
+		if b := strings.TrimSpace(strings.Join(lines[:i], "\n")); b != "" {
+			parts = append(parts, b)
+		}
+		if a := strings.TrimSpace(strings.Join(lines[i+1:], "\n")); a != "" {
+			parts = append(parts, a)
+		}
+		proseOut := strings.TrimSpace(strings.Join(parts, "\n"))
+		return proseOut, ToolUse{
+			ID:    "ollama-prose-0",
+			Name:  resolved,
+			Input: input,
+		}, true
+	}
+	return "", ToolUse{}, false
+}
+
 // streamWithTools buffers all assistant content until the stream ends, then decides
 // whether the content is a tool call or plain text. If it's a tool call, only the
 // ToolUse event is emitted (no raw JSON in the chat). If it's text, it's emitted as
@@ -262,6 +382,12 @@ func (c *OllamaClient) streamWithTools(scanner *bufio.Scanner, out chan<- Event,
 					out <- tu
 					emittedTool = true
 				} else if tu, _, ok := extractEmbeddedToolCall(fullContent, specs); ok {
+					out <- tu
+					emittedTool = true
+				} else if prose, tu, ok := tryProseToolDirective(fullContent, specs); ok {
+					if strings.TrimSpace(prose) != "" {
+						out <- TextDelta{Text: prose}
+					}
 					out <- tu
 					emittedTool = true
 				}

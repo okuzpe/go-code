@@ -38,6 +38,10 @@ type SlashEnv struct {
 	Focus *coordinator.FocusRouter
 	// ChatSubtitle optional; after profile switches returns window subtitle (e.g. provider · model · profile).
 	ChatSubtitle func() string
+	// SessionModel returns the process default model id for the active provider (optional; for /model).
+	SessionModel func() string
+	// SetSessionModel updates the in-process default model id where supported (optional; for /model).
+	SetSessionModel func(id string) error
 	// ToolLog optional; returns formatted tool history text for the /tools command (readline mode only).
 	ToolLog func(n int) string
 }
@@ -107,6 +111,29 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 			return true, "", false, "", derr
 		}
 		return true, out, false, "", nil
+
+	case "model":
+		if env.SetSessionModel == nil || env.SessionModel == nil {
+			return true, "", false, "", fmt.Errorf("/model: not available in this mode")
+		}
+		if len(fields) < 2 {
+			return true, fmt.Sprintf("current model: %s\nusage: /model <id>", env.SessionModel()), false, "", nil
+		}
+		id := strings.TrimSpace(strings.Join(fields[1:], " "))
+		if id == "" {
+			return true, "", false, "", fmt.Errorf("usage: /model <id>")
+		}
+		if err := env.SetSessionModel(id); err != nil {
+			return true, "", false, "", err
+		}
+		sub := ""
+		if env.ChatSubtitle != nil {
+			sub = env.ChatSubtitle()
+		}
+		if orch != nil {
+			setWelcomeHints(hintsOut, orch.ProfileName(), sub)
+		}
+		return true, fmt.Sprintf("model set to %q (this session)", id), false, "", nil
 
 	case "tools":
 		if env.ToolLog == nil {
@@ -579,7 +606,7 @@ use /workers to list interactive worker ids`)
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview]   /btw   /copy   /export   /init   /memory   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /resume   /clear   /quit\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview]   /btw   /copy   /export   /init   /memory   /model   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /resume   /clear   /quit\n")
 	b.WriteString("Prefix input (see docs/goclaw/prefix-input-modes.md):  !cmd   @path   &task\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
@@ -638,6 +665,9 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /memory delete <file.md> — remove one file (see list for basename)\n")
 	b.WriteString("  /agents [name]   — list agents or switch (arrow picker when bare in readline TTY)\n")
 	b.WriteString("  /profile <name>  — switch agent profile (same as /agents <name>)\n")
+	if env.SetSessionModel != nil && env.SessionModel != nil {
+		b.WriteString("  /model [id]      — show or set the default model for this session (Ollama / openai_compatible)\n")
+	}
 	b.WriteString("  /theme [preset]  — show or set TUI ui_appearance (restart TUI to apply)\n")
 	b.WriteString("  /workers — list workers; /focus or /in <prefix> — jump into worker; /back or /detach — return to coordinator\n")
 	b.WriteString("  /plan path|init|save|template — default plan path, create from template, save last message, or print template\n")

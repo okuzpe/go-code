@@ -1,16 +1,19 @@
 ---
-description: Development workflow for goclaw — how to test, what to avoid, and phase order.
+description: Development workflow for goclaw — build locally; tests only when the user asks (CI otherwise).
 alwaysApply: true
 ---
 
 # GoClaw — Development workflow
 
-## Before any change
+## Before / after edits (local workflow)
+
+- **`go build ./...`** — run after substantive edits so the module compiles; fix compile errors before stacking more work.
+- **`go test`** — in agent sessions, **do not run** and **do not add or expand** `*_test.go` unless the **user explicitly asks** for tests. (Full suite can be slow or awkward on Windows with Bubble Tea linked paths.) **CI** ([`.github/workflows/goclaw-ci.yml`](../../../.github/workflows/goclaw-ci.yml)) remains the default gate for `go test`.
+
 ```bash
-go build ./...   # must pass clean
-go test ./...    # must pass clean
+go build ./...   # recommended after edits that affect compilation
+# go test ...     # only when the user requests tests
 ```
-Fix failures before adding new code.
 
 ## Testing without spending API tokens
 
@@ -52,8 +55,7 @@ All phases are **done**. The project has: 10 tools, BubbleTea TUI, readline fall
 3. Enforce output limits from the tool contract (`limits.go`)
 4. Apply security (path boundary + symlinks / SSRF / allowlist) — see `security.mdc`
 5. Register in **`internal/app/chat_wiring.go`** inside `PrepareChatRuntime` (not `cmd/goclaw/main.go`): builtin tools in the `if !disableTools` block; MCP servers use the same file’s `cfg.MCPServers` loop (`mcp.StartStdioSession` or `mcp.NewHTTPSession` + `mcp.RegisterSessionTools`)
-6. Add `internal/tools/<name>_test.go`
-7. `go build ./... && go test ./...`
+6. `go build ./...` (optional: `internal/tools/<name>_test.go` **only if the user asks** for tests)
 
 ## Adding an agent profile
 1. Read `internal/agents/profile.go`

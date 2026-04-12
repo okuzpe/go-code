@@ -8,6 +8,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestWelcomeDashboardLines_fitsVeryNarrowTerminal(t *testing.T) {
+	t.Parallel()
+	th := DefaultTheme()
+	opt := WelcomeOptions{
+		Version:  "dev",
+		Subtitle: "goclaw · model",
+		Workdir:  "C:\\proj",
+	}
+	termW := 28
+	lines := WelcomeDashboardLines(th, opt, termW)
+	require.NotEmpty(t, lines)
+	m := maxLineWidth(lines)
+	require.LessOrEqual(t, m, termW+4, "frame should not exceed terminal by more than border padding: got %d for term %d", m, termW)
+}
+
 func TestWelcomeDashboardLines_fitsNarrowTerminal(t *testing.T) {
 	th := DefaultTheme()
 	opt := WelcomeOptions{

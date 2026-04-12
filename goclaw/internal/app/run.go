@@ -15,6 +15,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/hooks"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/slashcmd"
+	"github.com/okuzpe/goclaw/internal/tuilog"
 	"github.com/spf13/cobra"
 )
 
@@ -139,7 +140,12 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 			return errors.New("goclaw: TUI mode requires a fullscreen runner (cmd wiring bug)")
 		}
 		signal.Reset(os.Interrupt)
-		err := fullscreen.RunFullscreenChat(ctx, rt)
+		var err error
+		{
+			restoreSlog := tuilog.AttachSlogForTUI(rt.Cfg.UserConfigDir)
+			defer restoreSlog()
+			err = fullscreen.RunFullscreenChat(ctx, rt)
+		}
 		slog.Info("saving session", "id", rt.Sess.ID, "messages", rt.Sess.Len())
 		if saveErr := rt.Store.Save(rt.Sess); saveErr != nil {
 			slog.Error("failed to save session", "err", saveErr)

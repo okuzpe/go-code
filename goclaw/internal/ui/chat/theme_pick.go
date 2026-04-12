@@ -75,6 +75,7 @@ func (m *Model) openThemePicker() {
 	}
 	m.themePickOpen = true
 	m.refreshThemePickOverlay()
+	m.syncViewportKeyMapForOverlay()
 	m.layout()
 	m.viewport.GotoTop()
 }
@@ -82,6 +83,7 @@ func (m *Model) openThemePicker() {
 func (m *Model) closeThemePicker() {
 	m.themePickOpen = false
 	m.themePickFullText = ""
+	m.syncViewportKeyMapForCompose()
 	m.layout()
 	m.viewport.GotoBottom()
 }

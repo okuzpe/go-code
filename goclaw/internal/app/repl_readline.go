@@ -278,6 +278,23 @@ func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrat
 	repl.slashEnv.ChatSubtitle = func() string {
 		return FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName())
 	}
+	repl.slashEnv.SessionModel = func() string { return rt.Cfg.Model() }
+	repl.slashEnv.SetSessionModel = func(id string) error {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return fmt.Errorf("model id is empty")
+		}
+		switch strings.ToLower(strings.TrimSpace(rt.Cfg.Provider)) {
+		case "ollama":
+			rt.Cfg.OllamaModel = id
+		case "openai_compatible":
+			rt.Cfg.OpenAICompatModel = id
+		default:
+			return fmt.Errorf("/model applies to provider ollama or openai_compatible only (current: %s)", rt.Cfg.Provider)
+		}
+		orch.SetConfig(rt.Cfg)
+		return nil
+	}
 	repl.run(rl, intCh)
 
 	slog.Info("saving session", "id", rt.Sess.ID, "messages", rt.Sess.Len())

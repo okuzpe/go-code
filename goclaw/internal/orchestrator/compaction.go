@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/llm"
 )
 
@@ -91,6 +92,9 @@ func (o *Orchestrator) compactToTailWithLLM(ctx context.Context, preserve int) {
 			llm.PlainMessage("user", "Summarize this conversation:\n\n"+excerpt.String()),
 		},
 		MaxTokens: 512,
+	}
+	if o.cfg.Provider == "ollama" && o.cfg.OllamaNumCtx > 0 {
+		req.NumCtx = o.cfg.OllamaNumCtx
 	}
 
 	events, errc := o.llm.Stream(ctx, req)
@@ -182,6 +186,39 @@ func sessionTokenEstimate(msgs []llm.Message, provider string) int {
 	default:
 		return (c + 3) / 4
 	}
+}
+
+// SessionMessagesTokenEstimate is a rough context-size hint from stored message payloads (not billed API usage).
+// Same heuristics as compaction; safe for TUI footers and status lines.
+func SessionMessagesTokenEstimate(msgs []llm.Message, provider string) int {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	return sessionTokenEstimate(msgs, p)
+}
+
+// SessionCompactionFillPercent estimates how full the session is relative to the auto-compaction
+// trigger (same context budget and char heuristic as maybeCompact). It does not call Anthropic
+// count_tokens. Returns (percent, true) when auto_compact_threshold > 0; otherwise (0, false).
+func SessionCompactionFillPercent(msgs []llm.Message, cfg config.Config) (int, bool) {
+	if cfg.AutoCompactThreshold <= 0 {
+		return 0, false
+	}
+	budget := contextBudgetTokens(cfg.Provider, cfg.ModelContextTokens)
+	if budget <= 0 {
+		return 0, false
+	}
+	limit := int(float64(budget) * cfg.AutoCompactThreshold)
+	if limit <= 0 {
+		return 0, false
+	}
+	tok := SessionMessagesTokenEstimate(msgs, cfg.Provider)
+	p := int(int64(tok) * 100 / int64(limit))
+	if p < 0 {
+		p = 0
+	}
+	if p > 999 {
+		p = 999
+	}
+	return p, true
 }
 
 func sessionCharEstimate(msgs []llm.Message) int {

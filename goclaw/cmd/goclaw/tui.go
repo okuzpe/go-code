@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/okuzpe/goclaw/internal/app"
@@ -34,6 +35,23 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		},
 	}
 	sess := rt.Sess
+	slashEnv.SessionModel = func() string { return rt.Cfg.Model() }
+	slashEnv.SetSessionModel = func(id string) error {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return fmt.Errorf("model id is empty")
+		}
+		switch strings.ToLower(strings.TrimSpace(rt.Cfg.Provider)) {
+		case "ollama":
+			rt.Cfg.OllamaModel = id
+		case "openai_compatible":
+			rt.Cfg.OpenAICompatModel = id
+		default:
+			return fmt.Errorf("/model applies to provider ollama or openai_compatible only (current: %s)", rt.Cfg.Provider)
+		}
+		orch.SetConfig(rt.Cfg)
+		return nil
+	}
 	slashEnv.ChatSubtitle = func() string {
 		return app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName())
 	}
@@ -74,6 +92,32 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 	return chat.RunApp(ctx, chat.Options{
 		Title:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
 		SessionID:          rt.Sess.ID,
+		FooterStats: func() string {
+			if rt.Sess == nil {
+				return ""
+			}
+			n := rt.Sess.Len()
+			if n <= 0 {
+				return ""
+			}
+			tok := orchestrator.SessionMessagesTokenEstimate(rt.Sess.Messages, rt.Cfg.Provider)
+			var base string
+			if n == 1 {
+				base = "1 msg"
+			} else {
+				base = fmt.Sprintf("%d msgs", n)
+			}
+			if tok >= 1 {
+				base = fmt.Sprintf("%s · ~%d tokens", base, tok)
+			}
+			if pct, ok := orchestrator.SessionCompactionFillPercent(rt.Sess.Messages, rt.Cfg); ok {
+				base = fmt.Sprintf("%s · compact~%d%%", base, pct)
+			}
+			if app.OllamaFunctionToolsDropped(rt) {
+				return base + " · Ollama text-only"
+			}
+			return base
+		},
 		Workdir:            rt.Workdir,
 		UserConfigDir:      rt.Cfg.UserConfigDir,
 		UserAgentsDir:      rt.UserAgentsDir,

@@ -167,10 +167,10 @@ reg := tools.New()
 reg.Register(&ReadFileTool{})
 ```
 
-## Linting (run before every commit)
+## Linting (optional before commit; CI covers the rest)
 
 ```bash
 go vet ./...
 staticcheck ./...       # go install honnef.co/go/tools/cmd/staticcheck@latest
-go test -race ./...
+# go test -race ./...   # when you choose to run tests locally; agents skip unless the user asks
 ```

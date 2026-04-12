@@ -14,6 +14,7 @@ type settingsFile struct {
 	Provider                  *string             `json:"provider"`
 	OllamaHost                *string             `json:"ollama_host"`
 	OllamaModel               *string             `json:"ollama_model"`
+	OllamaNumCtx              *int                `json:"ollama_num_ctx,omitempty"`
 	CompactionModel           *string             `json:"compaction_model,omitempty"`
 	TaskModelRouter           *string             `json:"task_model_router,omitempty"`
 	TaskModels                map[string]string   `json:"task_models,omitempty"`
@@ -105,6 +106,9 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.OllamaModel != nil {
 		cfg.OllamaModel = *sf.OllamaModel
+	}
+	if sf.OllamaNumCtx != nil && *sf.OllamaNumCtx >= 0 {
+		cfg.OllamaNumCtx = *sf.OllamaNumCtx
 	}
 	if sf.CompactionModel != nil && strings.TrimSpace(*sf.CompactionModel) != "" {
 		cfg.CompactionModel = strings.TrimSpace(*sf.CompactionModel)

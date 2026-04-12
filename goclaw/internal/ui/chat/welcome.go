@@ -19,7 +19,7 @@ type WelcomeOptions struct {
 // defaultWelcomeWrap is used when terminal width is not known yet (before first WindowSizeMsg).
 const defaultWelcomeWrap = 72
 
-// welcomeWideMinCols enables a two-column dashboard (Claude Code–style) when the terminal is wide enough.
+// welcomeWideMinCols enables a two-column dashboard when the terminal is wide enough.
 const welcomeWideMinCols = 86
 
 // WelcomeDashboardLines returns a framed home panel before the transcript.
@@ -37,8 +37,9 @@ func WelcomeDashboardLines(th *Theme, opt WelcomeOptions, termWidth int) []strin
 	contentMax := defaultWelcomeWrap
 	if termWidth > 0 {
 		contentMax = termWidth - 4
-		if contentMax < 24 {
-			contentMax = 24
+		// Never wider than the terminal body; a floor of 24 caused clipping on narrow CMD windows.
+		if contentMax < 12 {
+			contentMax = 12
 		}
 	}
 
@@ -49,7 +50,7 @@ func WelcomeDashboardLines(th *Theme, opt WelcomeOptions, termWidth int) []strin
 }
 
 func welcomeBorderColor() lipgloss.TerminalColor {
-	return lipgloss.AdaptiveColor{Light: "#D1D5DB", Dark: "#4B5563"}
+	return lipgloss.AdaptiveColor{Light: "#C7CCD6", Dark: "#3D4450"}
 }
 
 // welcomeOSUser returns a short display name for "Welcome back …" (USER / USERNAME).
@@ -63,13 +64,28 @@ func welcomeOSUser() string {
 	return ""
 }
 
-// Claude Code–style center diamond (compact block).
+// welcomeBrandGlyphLines returns a compact terminal panda for the hero column (centered by callers).
+// Face is full-block art only: █ plus spaces (eyes and bridge are negative space).
 func welcomeBrandGlyphLines() []string {
 	return []string{
-		"      ▐▛███▜▌      ",
-		"     ▝▜█████▛▘     ",
-		"       ▘▘ ▝▝       ",
+		"     ██     ██     ",
+		"    ███████████    ",
+		"   ███   █   ███   ",
+		"    ███████████    ",
+		"     █████████     ",
+		"    ██     ██      ",
 	}
+}
+
+// welcomeBrandRibbon is a single-row wordmark with soft rules under the mascot.
+func welcomeBrandRibbon(th *Theme, columnWidth int) string {
+	if columnWidth < 10 {
+		return ""
+	}
+	dim := th.Dim
+	accent := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
+	inner := dim.Render("╌╌") + " " + accent.Render("goclaw") + " " + dim.Render("╌╌")
+	return lipgloss.PlaceHorizontal(columnWidth, lipgloss.Center, inner, lipgloss.WithWhitespaceChars(" "))
 }
 
 func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWidth int) []string {
@@ -81,12 +97,12 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	section := lipgloss.NewStyle().Bold(true).Foreground(th.ToolCardHead.GetForeground())
 
 	inner := termWidth - 2
-	if inner < 40 {
-		inner = 40
+	if inner < 1 {
+		inner = 1
 	}
 	mid := border.Render("│")
-	// Wider hero column, narrower tips column (Claude Code proportions).
-	rightW := 26
+	// Wider hero column, tips column wide enough for wrapped sentences (min 28 when room allows).
+	rightW := 28
 	if inner < 50 {
 		rightW = 22
 	}
@@ -114,13 +130,17 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	var leftLines []string
 	leftLines = append(leftLines, "")
 	if u := welcomeOSUser(); u != "" {
-		leftLines = append(leftLines, centerInLeft(welcomeHi.Render("Welcome back "+u+"!")))
+		leftLines = append(leftLines, centerInLeft(welcomeHi.Render("Welcome back, "+u)))
 	} else {
 		leftLines = append(leftLines, centerInLeft(welcomeHi.Render("Welcome to goclaw")))
 	}
 	leftLines = append(leftLines, "")
 	for _, ln := range welcomeBrandGlyphLines() {
 		leftLines = append(leftLines, centerInLeft(dim.Render(strings.TrimSpace(ln))))
+	}
+	leftLines = append(leftLines, "")
+	if ribbon := welcomeBrandRibbon(th, leftW); ribbon != "" {
+		leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(ribbon))
 	}
 	leftLines = append(leftLines, "")
 	if sub := strings.TrimSpace(opt.Subtitle); sub != "" {
@@ -187,10 +207,9 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 		rows = append(rows, fullRow)
 	}
 
-	// Claude Code top rule: ╭─── goclaw v… ───────────────────╮
 	titlePlain := "goclaw v" + version
-	topPrefix := "╭─── "
-	dashAfterTitle := termWidth - lipgloss.Width(topPrefix) - lipgloss.Width(titlePlain) - 2 // space + dashes + ╮
+	topPrefix := "╭── "
+	dashAfterTitle := termWidth - lipgloss.Width(topPrefix) - lipgloss.Width(titlePlain) - 2
 	if dashAfterTitle < 1 {
 		dashAfterTitle = 1
 	}
@@ -202,13 +221,19 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	return strings.Split(framed, "\n")
 }
 
-func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, _ int, contentMax int) []string {
+func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termWidth int, contentMax int) []string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
 	dim := th.Dim
 	accent := lipgloss.NewStyle().Bold(true).Foreground(th.ToolCardHead.GetForeground())
 
 	var body strings.Builder
-	body.WriteString(titleStyle.Render("goclaw v" + version))
+	if u := welcomeOSUser(); u != "" {
+		body.WriteString(titleStyle.Render("Welcome back, " + u))
+		body.WriteString("\n")
+		body.WriteString(dim.Render("goclaw v" + version))
+	} else {
+		body.WriteString(titleStyle.Render("goclaw v" + version))
+	}
 	if sub := strings.TrimSpace(opt.Subtitle); sub != "" {
 		body.WriteString("\n")
 		for _, ln := range wrapSubtitle(sub, contentMax) {
@@ -241,11 +266,32 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, _ int
 		body.WriteString(dim.Render("Coordinator mode — use /profile general-purpose to edit files directly."))
 	}
 
+	body.WriteString("\n")
+	for _, ln := range welcomeBrandGlyphLines() {
+		plain := strings.TrimSpace(ln)
+		centered := lipgloss.PlaceHorizontal(contentMax, lipgloss.Center, plain, lipgloss.WithWhitespaceChars(" "))
+		body.WriteString(dim.Render(centered))
+		body.WriteString("\n")
+	}
+
+	ribbonWidth := contentMax + 4
+	if termWidth > 0 && termWidth-4 < ribbonWidth {
+		ribbonWidth = termWidth - 4
+		if ribbonWidth < 12 {
+			ribbonWidth = 12
+		}
+	}
+	ribbon := welcomeBrandRibbon(th, ribbonWidth)
+	trimmed := strings.TrimSpace(body.String())
+	if ribbon != "" {
+		trimmed = trimmed + "\n" + ribbon
+	}
+
 	frame := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
+		Border(lipgloss.RoundedBorder()).
 		BorderForeground(welcomeBorderColor()).
 		Padding(0, 1).
-		Render(strings.TrimSpace(body.String()))
+		Render(trimmed)
 	return strings.Split(frame, "\n")
 }
 

@@ -21,6 +21,10 @@ type Config struct {
 	// Ollama settings
 	OllamaHost  string // default: http://localhost:11434
 	OllamaModel string // default: qwen2.5-coder:14b
+	// OllamaNumCtx sets the context window size sent to Ollama.
+	// 0 means use Ollama's model default (often 2048 — too small for tool schemas).
+	// Default: 8192. Set via settings.json "ollama_num_ctx".
+	OllamaNumCtx int
 
 	// CompactionModel overrides the model id for LLM-driven context compaction only (llm_compaction: true).
 	// Empty means use Model(). Set via settings.json "compaction_model" or GOCLAW_COMPACTION_MODEL.
@@ -184,6 +188,7 @@ func Default() Config {
 		Provider:                  "ollama",
 		OllamaHost:                envOr("OLLAMA_HOST", "http://localhost:11434"),
 		OllamaModel:               envOr("OLLAMA_MODEL", "qwen2.5-coder:14b"),
+		OllamaNumCtx:              8192,
 		CompactionModel:           envOr("GOCLAW_COMPACTION_MODEL", ""),
 		TaskModelRouter:           NormalizeTaskModelRouter(envOr("GOCLAW_TASK_MODEL_ROUTER", "")),
 		TaskModelRouterModel:      envOr("GOCLAW_TASK_MODEL_ROUTER_MODEL", ""),

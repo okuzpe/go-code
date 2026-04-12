@@ -71,7 +71,7 @@ func WithSkillsSnippet(s string) Option {
 // since they run on the orchestrator's goroutines.
 type StreamSink interface {
 	OnTextDelta(text string)
-	OnToolUse(name, inputPreview string)
+	OnToolUse(name, rawInput string)
 	// OnToolResult is called after each tool finishes. content is the full result
 	// string (may be large; callers may cap display to a reasonable limit).
 	OnToolResult(name string, content string, isError bool)
@@ -307,6 +307,11 @@ func (o *Orchestrator) ReplaceSession(s *session.Session) {
 // SetProfile switches the active agent profile (tool allowlist, read-only flag, system prompt suffix).
 func (o *Orchestrator) SetProfile(p agents.Profile) {
 	o.profile = p
+}
+
+// SetConfig replaces the orchestrator config snapshot (e.g. after /model in the REPL).
+func (o *Orchestrator) SetConfig(cfg config.Config) {
+	o.cfg = cfg
 }
 
 // ProfileName returns the active profile's name.

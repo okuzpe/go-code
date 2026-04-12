@@ -9,7 +9,7 @@ description: Use when starting a new development phase or asking what comes next
 
 ```bash
 go build ./...
-go test ./...
+# go test ./...   # only when the user asks — CI otherwise
 grep -rE "TODO (Phase|Fase)" ./internal/  # should be empty (legacy Spanish tag + English)
 ```
 

@@ -51,6 +51,19 @@ type ChatRuntime struct {
 	OrchOpts        []orchestrator.Option
 }
 
+// OllamaFunctionToolsDropped reports whether the Ollama HTTP client fell back to text-only
+// requests (model rejected wire tools). When true, agent tools are not invoked on the API.
+func OllamaFunctionToolsDropped(rt *ChatRuntime) bool {
+	if rt == nil || rt.DisableTools {
+		return false
+	}
+	oc, ok := rt.Client.(*llm.OllamaClient)
+	if !ok {
+		return false
+	}
+	return oc.FunctionToolsDropped()
+}
+
 // PrepareChatRuntime builds config, session, tools, hooks, and MCP for one interactive run.
 func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	profileFlag, err := cmd.Flags().GetString("profile")

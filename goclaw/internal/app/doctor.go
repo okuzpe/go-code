@@ -93,6 +93,12 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 		ollamaOK = probeOllama(ctx, ollamaHost)
 		lines = append(lines, checkLine("ollama host reachable", ollamaOK))
 		lines = append(lines, fmt.Sprintf("  - ollama host: %s", ollamaHost))
+		lines = append(lines, fmt.Sprintf("  - ollama_num_ctx: %d", cfg.OllamaNumCtx))
+		if OllamaFunctionToolsDropped(rt) {
+			lines = append(lines, "  ✗ ollama rejected tool calling — running text-only this session")
+		} else {
+			lines = append(lines, "  ✓ ollama tool calling active")
+		}
 	}
 
 	if rt.Store != nil {
@@ -103,7 +109,7 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 
 	lines = append(lines, mcpSummaryLines(rt)...)
 
-	hintLines := hintLines(cfg, ollamaOK, rt.DisableTools)
+	hintLines := hintLines(cfg, ollamaOK, rt.DisableTools, OllamaFunctionToolsDropped(rt))
 	hintLines = append(hintLines, profileHintLines(rt.Profile.Name)...)
 	hintLines = append(hintLines, mcpConnectionHintLines(cfg, rt)...)
 	if len(hintLines) > 0 {
@@ -298,7 +304,7 @@ func profileHintLines(profileName string) []string {
 	return nil
 }
 
-func hintLines(cfg config.Config, ollamaOK, toolsDisabled bool) []string {
+func hintLines(cfg config.Config, ollamaOK, toolsDisabled, ollamaToolsDropped bool) []string {
 	var hints []string
 	if cfg.Provider != "anthropic" && cfg.Provider != "openai_compatible" && !ollamaOK {
 		host := effectiveOllamaHost(cfg.OllamaHost)
@@ -316,6 +322,17 @@ func hintLines(cfg config.Config, ollamaOK, toolsDisabled bool) []string {
 		hints = append(hints,
 			"  Local Ollama models may still refuse to summarize news or pages even when web_search/web_fetch succeed.",
 			"  - Try a general instruct/chat model, or switch provider to anthropic for more reliable web summarization.",
+		)
+	}
+	if ollamaToolsDropped {
+		model := strings.TrimSpace(cfg.OllamaModel)
+		hints = append(hints,
+			"  Ollama rejected tool calling for model "+model+" — goclaw is running text-only (no read_file/bash/etc).",
+			"  Likely causes:",
+			"  1. Model too old — re-pull it:  ollama pull "+model,
+			"  2. Ollama version too old — update Ollama to v0.3+ (https://ollama.com)",
+			"  3. Context too small for tool schemas — set \"ollama_num_ctx\": 16384 in ~/.goclaw/settings.json",
+			fmt.Sprintf("  Current ollama_num_ctx: %d", cfg.OllamaNumCtx),
 		)
 	}
 	return hints

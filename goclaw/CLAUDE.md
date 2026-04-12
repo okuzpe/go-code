@@ -71,7 +71,7 @@ func join(prefix, suffix string) string { ... }
 
 **Before closing any development phase, run `/audit` to verify quality, security, and correctness.**
 
-Audit covers: build + tests pass, security checklist, error handling review, no TODOs left from previous phase, code coverage for new packages.
+Audit covers: clean build, security checklist, error handling review, no TODOs left from previous phase. In agent-led work, **do not** run `go test` or add `*_test.go` unless the user explicitly asks — rely on CI for the default test gate (and add tests/coverage when the user wants that scope).
 
 See the `audit` skill for the full checklist.
 
@@ -111,11 +111,13 @@ See the `audit` skill for the full checklist.
 ```
 goclaw/
 ├── cmd/goclaw/
-│   ├── main.go                  ← slog + `cli.NewRootCmd` wiring `app.RunChat` + `app.RunPrompt` + `fullscreenChat{}`
+│   ├── main.go                  ← slog (stderr + `loglevel.FromEnv`) + `cli.NewRootCmd` wiring `app.RunChat` + `app.RunPrompt` + `fullscreenChat{}`
 │   ├── tui.go                   ← Bubble Tea TUI (`FullscreenChatRunner`); keeps `internal/app` tests free of `ui/chat` import
 │   └── version.go               ← `Version` (ldflags)
 ├── internal/
 │   ├── cli/                     ← Cobra tree only (`root.go`: `NewRootCmd` with injected run funcs; tests avoid full UI link)
+│   ├── loglevel/                ← `GOCLAW_LOG` → `slog.Level` (`FromEnv`) for `cmd/goclaw` and `tuilog`
+│   ├── tuilog/                  ← `AttachSlogForTUI`: slog append to file during fullscreen TUI (avoids stderr corruption)
 │   ├── app/
 │   │   ├── run.go               ← `RunChat`, `RunListSessions`; default on TTY = Bubble Tea TUI via `FullscreenChatRunner`; readline when opted out (`--readline`, `GOCLAW_USE_TUI=0`, …); `printStartupBanner` only when not using fullscreen TUI
 │   │   ├── chat_wiring.go       ← `PrepareChatRuntime` (`ChatRuntime`): config, client, session, tools, MCP, plugins, skills, hooks, orchestrator options
@@ -193,7 +195,8 @@ goclaw/
 | `GOCLAW_MOCK_FAST` | (empty) | Set to `1` to remove pacing delays from `--mock` (CI / scripts) |
 | `BRAVE_SEARCH_API_KEY` | — | Brave Search API token when `web_search_backend` is `brave` (optional; can use `brave_search_api_key` in settings) |
 | `SERPAPI_API_KEY` | — | SerpAPI key when `web_search_backend` is `serpapi` (optional; can use `serpapi_api_key` in settings) |
-| `GOCLAW_LOG` | `info` | `debug` / `warn` / `error` for slog level |
+| `GOCLAW_LOG` | `info` | `debug` / `warn` / `error` for slog level. **Fullscreen TUI:** log lines go to `~/.goclaw/logs/goclaw.log` (or `GOCLAW_LOG_FILE`) instead of stderr so the Bubble Tea UI does not corrupt; readline and JSON automation still use stderr. |
+| `GOCLAW_LOG_FILE` | — | Optional path for TUI-session logs (append; parent dirs created). When unset during TUI, defaults to `~/.goclaw/logs/goclaw.log`. |
 | `GOCLAW_USE_TUI` | (empty) | `1` = force TUI; **`0` = opt out of default TUI** and use readline on a TTY |
 | `GOCLAW_USE_READLINE` | (empty) | Set to `1` to force readline REPL (disables default TUI) |
 | `GOCLAW_AGENT_PROFILE` | (empty) | When set, overrides `agent_profile` from settings (e.g. `general-purpose`); **`--profile` still wins** |
@@ -476,11 +479,13 @@ var _ llm.Client = (*AnthropicClient)(nil)
 
 ## How to test
 
+**Agent sessions:** do not run `go test` or create/expand `*_test.go` unless the user explicitly asks. The commands below are for humans, CI, or when the user requests verification.
+
 ```bash
 # Full build (must be clean)
 go build ./...
 
-# Unit tests
+# Unit tests (when you choose to run them locally or in CI)
 go test ./...
 
 # Race detector (requires CGO; on Windows use WSL/Linux CI or install a C toolchain)

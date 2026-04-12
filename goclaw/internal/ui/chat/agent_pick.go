@@ -86,6 +86,7 @@ func (m *Model) openAgentPicker() {
 	}
 	m.agentPickOpen = true
 	m.refreshAgentPickOverlay()
+	m.syncViewportKeyMapForOverlay()
 	m.layout()
 	m.viewport.GotoTop()
 }
@@ -93,6 +94,7 @@ func (m *Model) openAgentPicker() {
 func (m *Model) closeAgentPicker() {
 	m.agentPickOpen = false
 	m.agentPickFullText = ""
+	m.syncViewportKeyMapForCompose()
 	m.layout()
 	m.viewport.GotoBottom()
 }

@@ -1,0 +1,19 @@
+---
+description: Workspace overrides — no agent-driven tests unless the user asks; shell when useful.
+alwaysApply: true
+---
+
+# go-code workspace — agent preferences
+
+When anything here **conflicts** with generic Cursor User Rules, **prefer this file** for work under this workspace.
+
+## Tests
+
+- **Unless the user explicitly asks for tests:** do **not** run `go test` (any scope), and do **not** add or expand `*_test.go` files. Treat CI as the default full-suite gate.
+- **`go build`** (or `go build ./...` when a compile check is needed) is fine when it directly advances the task.
+- For `goclaw/`, follow `goclaw/.cursor/rules/workflow.mdc`; do not re-introduce stricter “always test” expectations here.
+
+## Shell / commands
+
+- Run terminal commands when they **directly advance** the task (build, one-off repro, user-requested check). Do **not** run tests as a default or end-of-task ritual unless the user asked for tests.
+- If a command failed once, retrying or trying an alternative is still fine when it helps the user.

@@ -22,6 +22,10 @@ func TestSessionTokenEstimateByProvider(t *testing.T) {
 	require.Equal(t, 40, sessionTokenEstimate(msgs, "anthropic"))
 	require.Equal(t, 30, sessionTokenEstimate(msgs, "ollama"))
 	require.Equal(t, 30, sessionTokenEstimate(msgs, "openai_compatible"))
+
+	require.Equal(t, 40, SessionMessagesTokenEstimate(msgs, "anthropic"))
+	require.Equal(t, 40, SessionMessagesTokenEstimate(msgs, "  ANTHROPIC  "))
+	require.Equal(t, 30, SessionMessagesTokenEstimate(msgs, "ollama"))
 }
 
 func TestContextBudgetTokens(t *testing.T) {

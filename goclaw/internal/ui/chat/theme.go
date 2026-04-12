@@ -84,9 +84,6 @@ func (t *Theme) RenderMarkdown(md string, termWidth int, prefixDisplayWidth int)
 	if wrap < 36 {
 		wrap = 36
 	}
-	if wrap > 120 {
-		wrap = 120
-	}
 
 	glamStyle := t.mdGlamourStyle
 	if glamStyle == "" {
@@ -122,19 +119,14 @@ func (t *Theme) RenderMarkdown(md string, termWidth int, prefixDisplayWidth int)
 	return strings.TrimRight(rendered, "\n")
 }
 
-// SeparatorLine renders a dim horizontal rule between turns (kept shorter than full width
-// so the transcript matches Claude Code–style breathing room).
+// SeparatorLine renders a dim horizontal rule between turns (full terminal width in cells).
 func (t *Theme) SeparatorLine(width int) string {
 	if width <= 0 {
 		width = 56
 	}
 	w := width
-	const maxRule = 72
-	if w > maxRule {
-		w = maxRule
-	}
-	if w < 24 {
-		w = 24
+	if w < 1 {
+		w = 1
 	}
 	return t.Separator.Render(strings.Repeat("─", w))
 }
@@ -148,9 +140,6 @@ func (t *Theme) RenderToolCard(toolLabel, summary string, isError bool, width in
 	cardW := width - 4
 	if cardW < 36 {
 		cardW = 36
-	}
-	if cardW > 88 {
-		cardW = 88
 	}
 
 	nameRendered := t.ToolCardHead.Render(" " + toolLabel + " ")
@@ -188,11 +177,7 @@ func (t *Theme) StatusBarRender(status string, width int) string {
 	if width <= 0 {
 		width = 60
 	}
-	w := width
-	if w > 100 {
-		w = 100
-	}
-	bar := t.Separator.Render(strings.Repeat("─", w))
+	bar := t.Separator.Render(strings.Repeat("─", width))
 	if strings.TrimSpace(status) == "" {
 		return bar
 	}

@@ -94,17 +94,17 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 // taskExplorationHint returns a per-turn system suffix that reinforces the tool-first rule
 // for any task type that requires accessing the codebase.
 func taskExplorationHint(role string) string {
+	const noNarration = " BANNED before any real tool_use: the literal substring TOOL CALL; phrases I'll/I will invoke/use/run; Let me / Vamos a; fenced ```tool / ```json tool stubs; <function_calls> or XML/JSON that only *describes* tools. " +
+		"Those lines do not execute — zero bytes read from disk. Your first emitted content in this turn must be a native API tool call (or, after tools finish, one short line only). Narrating tools = failure."
 	switch role {
 	case "code":
-		return "\n\n[THIS TURN: coding — call glob/grep/read_file FIRST. FIRST output = tool call. No text before it.]"
+		return "\n\n[THIS TURN: coding. IMMEDIATE first output = native tool_use (glob / grep / read_file / bash as needed)." + noNarration + "]"
 	case "reasoning", "explore":
-		return "\n\n[THIS TURN: analysis/plan — call glob/read_file/grep FIRST to read actual files. FIRST output = tool call. No text before it.]"
+		return "\n\n[THIS TURN: analysis. IMMEDIATE first output = native tool_use (glob / read_file / grep)." + noNarration + "]"
 	case "fast":
-		// Fast/trivial: no tool hint needed, but still suppress verbose output.
-		return "\n\n[THIS TURN: answer directly and briefly. No preamble.]"
+		return "\n\n[THIS TURN: answer directly and briefly in the user's language (same language they wrote). No preamble. If they still need repo facts, use tools first — same narration ban applies. Never say \"no tool call\" or similar meta to the user.]"
 	default:
-		// For any other non-chat role: remind to act first.
-		return "\n\n[THIS TURN: if tools are needed, FIRST output = tool call. No preamble, no explanation.]"
+		return "\n\n[THIS TURN: if the answer needs the repo or shell, IMMEDIATE first output = native tool_use." + noNarration + "]"
 	}
 }
 

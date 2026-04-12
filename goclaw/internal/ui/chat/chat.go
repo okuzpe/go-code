@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -34,6 +35,7 @@ type Model struct {
 	height int
 
 	lines      []string
+	lineMeta   []lineMeta // parallel to lines; used to reflow width-sensitive rows on resize
 	streaming  bool
 	statusLine string
 	// footerHint is a one-line reminder under the session footer (e.g. after /plan save); cleared on next send.
@@ -74,7 +76,8 @@ type Model struct {
 
 	sessionID string
 
-	focusLine func() string
+	focusLine   func() string
+	footerStats func() string
 
 	// preambleEnd is the exclusive line index after the static startup block (welcome dashboard
 	// including its trailing blank, or title+intro+ready when no welcome). Session transcript updates preserve lines[:preambleEnd].
@@ -109,6 +112,8 @@ type Model struct {
 	footerRendered string
 	// lastTranscript avoids redundant viewport.SetContent when only the footer/spinner changed (reduces flicker).
 	lastTranscript string
+	// lastReflowWidth is the terminal width used for the last transcript reflow (-1 = not yet).
+	lastReflowWidth int
 
 	// exitConfirmDeadline is the wall-clock instant until which a second Ctrl+C quits the TUI (double Ctrl+C).
 	exitConfirmDeadline time.Time
@@ -127,8 +132,8 @@ type pendingTool struct {
 // toolLogEntry is a completed tool call stored in the session-scoped tool history.
 type toolLogEntry struct {
 	name    string
-	summary string        // input preview (from OnToolUse)
-	content string        // full result string (from OnToolResult; capped at display)
+	summary string // input preview (from OnToolUse)
+	content string // full result string (from OnToolResult; capped at display)
 	isError bool
 	elapsed time.Duration
 }
@@ -171,6 +176,8 @@ type Options struct {
 	Welcome WelcomeOptions
 	// FocusLine optional; when non-nil, its return value is shown in the footer (e.g. worker focus).
 	FocusLine func() string
+	// FooterStats optional; when non-nil, its return value is shown in the idle footer (e.g. message count).
+	FooterStats func() string
 }
 
 // SlashHandler: if modelSubmit is non-empty, send that text to the model after displaying out (e.g. /edit).
@@ -220,6 +227,23 @@ func (b *ApprovalBroker) ToolApprover() orchestrator.ToolApprover {
 // inputMaxHeight is the maximum number of visible lines in the input textarea.
 const inputMaxHeight = 6
 
+// minComposeWidth is the smallest textarea width when the buffer is short (avoids a tiny box).
+const minComposeWidth = 28
+
+// syncInputComposeWidth sets the compose textarea to the usable terminal width so rules,
+// transcript, and input align edge-to-edge (soft-wrap still applies inside the widget).
+func (m *Model) syncInputComposeWidth() {
+	if m.width <= 4 {
+		m.input.SetWidth(0)
+		return
+	}
+	maxW := m.width - 2
+	if maxW < minComposeWidth {
+		maxW = minComposeWidth
+	}
+	m.input.SetWidth(maxW)
+}
+
 // maxSlashSuggestRows caps the TUI slash-command picker (single-line / buffer); keeps the UI compact.
 const maxSlashSuggestRows = 5
 
@@ -232,6 +256,59 @@ func placeholderForWidth(termWidth int) string {
 	return full
 }
 
+// composeViewportKeyMap avoids stealing Space, arrows, j/k/h/l, u, d, or b from the compose textarea.
+// Half-page keys avoid ctrl+u / ctrl+d (textarea delete before/after cursor). alt+pg* helps when PgUp
+// is not delivered by the host terminal. Plain PgUp/PgDn are routed to the transcript only (see Update).
+func composeViewportKeyMap() viewport.KeyMap {
+	km := viewport.DefaultKeyMap()
+	km.PageUp = key.NewBinding(
+		key.WithKeys("pgup", "shift+pgup", "alt+pgup"),
+		key.WithHelp("pgup", "page up"),
+	)
+	km.PageDown = key.NewBinding(
+		key.WithKeys("pgdown", "shift+pgdown", "alt+pgdown"),
+		key.WithHelp("pgdn", "page down"),
+	)
+	km.HalfPageUp = key.NewBinding(key.WithKeys("ctrl+shift+u"), key.WithHelp("ctrl+shift+u", "½ page up"))
+	km.HalfPageDown = key.NewBinding(key.WithKeys("ctrl+shift+d"), key.WithHelp("ctrl+shift+d", "½ page down"))
+	km.Up = key.NewBinding(key.WithKeys("alt+up"), key.WithHelp("alt+↑", "scroll up"))
+	km.Down = key.NewBinding(key.WithKeys("alt+down"), key.WithHelp("alt+↓", "scroll down"))
+	km.Left = key.NewBinding(key.WithDisabled())
+	km.Right = key.NewBinding(key.WithDisabled())
+	return km
+}
+
+// composeTranscriptScrollKey reports keys handled by the transcript viewport in compose mode that
+// must not reach the textarea (otherwise PgUp/PgDn move the editor cursor instead of scrolling).
+func composeTranscriptScrollKey(k string) bool {
+	switch k {
+	case "pgup", "pgdown",
+		"shift+pgup", "shift+pgdown",
+		"alt+pgup", "alt+pgdown",
+		"alt+up", "alt+down",
+		"ctrl+shift+u", "ctrl+shift+d":
+		return true
+	default:
+		return false
+	}
+}
+
+// overlayViewportKeyMap restores pager motion for full-screen overlays (help, pickers, tool detail).
+// Space is still not page-down so paste/typing in nested fields never scrolls the transcript.
+func overlayViewportKeyMap() viewport.KeyMap {
+	km := viewport.DefaultKeyMap()
+	km.PageDown = key.NewBinding(key.WithKeys("pgdown", "f"), key.WithHelp("f/pgdn", "page down"))
+	return km
+}
+
+func (m *Model) syncViewportKeyMapForCompose() {
+	m.viewport.KeyMap = composeViewportKeyMap()
+}
+
+func (m *Model) syncViewportKeyMapForOverlay() {
+	m.viewport.KeyMap = overlayViewportKeyMap()
+}
+
 func New(ctx context.Context, opts Options) Model {
 	th := opts.Theme
 	if th == nil {
@@ -239,18 +316,27 @@ func New(ctx context.Context, opts Options) Model {
 	}
 
 	vp := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
-	vp.MouseWheelEnabled = false // mouse mode is off; scroll via keyboard (PgUp/PgDn, j/k, Ctrl+U/D)
+	// Wheel requires MouseModeCellMotion, which breaks native click-drag selection in most terminals.
+	vp.MouseWheelEnabled = false
 	vp.SoftWrap = true
+	vp.KeyMap = composeViewportKeyMap()
 
 	// Use textarea for multi-line input support (modern CLI standard).
 	in := textarea.New()
 	in.Placeholder = placeholderForWidth(0)
 	in.Prompt = th.InputPrompt
+	if strings.TrimSpace(in.Prompt) == "" {
+		in.Prompt = "> "
+	}
 	in.ShowLineNumbers = false
 	in.SetHeight(1) // start compact, grows dynamically
 	in.SetWidth(0)
 	in.CharLimit = 0 // no char limit
 	in.Focus()
+	styles := in.Styles()
+	styles.Focused.Prompt = styles.Focused.Prompt.Foreground(th.UserTag.GetForeground())
+	styles.Blurred.Prompt = styles.Blurred.Prompt.Foreground(th.Dim.GetForeground())
+	in.SetStyles(styles)
 
 	// Enter is handled in handleKeyString (submit). Newline: Shift+Enter / Alt+Enter.
 	// Ctrl+J is omitted — many Windows/Git Bash terminals swallow it before Bubble Tea sees it.
@@ -270,36 +356,49 @@ func New(ctx context.Context, opts Options) Model {
 		spinner:             spin,
 		theme:               th,
 		lines:               nil,
+		lineMeta:            nil,
 		submitter:           new(submitRunner),
 		curAssistantLineIdx: -1,
 		sessionID:           strings.TrimSpace(opts.SessionID),
 		focusLine:           opts.FocusLine,
+		footerStats:         opts.FooterStats,
 		appVersion:          strings.TrimSpace(opts.Welcome.Version),
 		userConfigDir:       strings.TrimSpace(opts.UserConfigDir),
 		workdir:             strings.TrimSpace(opts.Workdir),
 		userAgentsDir:       strings.TrimSpace(opts.UserAgentsDir),
 		projectAgentsDir:    strings.TrimSpace(opts.ProjectAgentsDir),
 		activeAgentProfile:  strings.TrimSpace(opts.ActiveAgentProfile),
+		lastReflowWidth:     -1,
 	}
 	if strings.TrimSpace(opts.Welcome.Version) != "" {
 		if dash := WelcomeDashboardLines(th, opts.Welcome, 0); len(dash) > 0 {
 			m.welcomeOpts = opts.Welcome
-			m.lines = append(m.lines, dash...)
+			for _, ln := range dash {
+				m.lines = append(m.lines, ln)
+				m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindPlain})
+			}
 			m.lines = append(m.lines, "")
+			m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindPlain})
 			m.welcomeBlockEnd = len(m.lines)
 		}
 	}
 	if m.welcomeBlockEnd == 0 {
 		if strings.TrimSpace(opts.Title) != "" {
 			m.lines = append(m.lines, th.ModalTitle.Render(opts.Title))
+			m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindPlain})
 			m.lines = append(m.lines, th.SeparatorLine(0))
+			m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindSeparator})
 		}
 		intro := SessionIntroSystemText(opts.Workdir)
-		m.appendSystem(intro)
-		m.appendSystem("Ready.")
+		// Do not pin to bottom during startup — stick=true scrolls past a tall welcome panel.
+		m.appendSystemStick(intro, false)
+		m.appendSystemStick("Ready.", false)
+		m.viewport.GotoTop()
 	}
 	if m.welcomeBlockEnd > 0 {
 		m.preambleEnd = m.welcomeBlockEnd
+		// First layout() will SetContent; keep scroll intent at top until user scrolls or sends.
+		m.viewport.GotoTop()
 	} else {
 		m.preambleEnd = len(m.lines)
 	}
@@ -438,15 +537,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.input.SetWidth(m.width - 2) // leave room for border
 		m.syncInputPlaceholder()
 		m.rebuildWelcomeForWidth()
 		m.reflowTitleSeparator()
+		if m.toolLogOpen {
+			m.refreshToolLogOverlay()
+		}
 		if m.themePickOpen {
 			m.refreshThemePickOverlay()
 		}
 		if m.agentPickOpen {
 			m.refreshAgentPickOverlay()
+		}
+		if m.width > 0 && m.width != m.lastReflowWidth {
+			m.reflowTranscriptForWidth()
+			m.lastReflowWidth = m.width
+			m.lastTranscript = ""
 		}
 		m.layout()
 		var vcmd tea.Cmd
@@ -525,6 +631,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for i := len(m.lines) - 1; i >= 0; i-- {
 				if m.lines[i] == m.ctrlCMsgRendered {
 					m.lines = append(m.lines[:i], m.lines[i+1:]...)
+					if i < len(m.lineMeta) {
+						m.lineMeta = append(m.lineMeta[:i], m.lineMeta[i+1:]...)
+					}
 					break
 				}
 			}
@@ -593,6 +702,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 	if !m.toolLogOpen && !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok && composeTranscriptScrollKey(keyMsg.String()) {
+			m.resizeInput()
+			return m, tea.Batch(cmds...)
+		}
 		m.input, cmd = m.input.Update(msg)
 		cmds = append(cmds, cmd)
 		// Dynamic input height: grow textarea as user types more lines (up to inputMaxHeight).
@@ -638,6 +751,7 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 	switch k {
 	case "ctrl+l":
 		m.lines = nil
+		m.lineMeta = nil
 		m.toolWaitQueue = nil
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
@@ -772,6 +886,7 @@ func (m *Model) handleCtrlCExitConfirm() (tea.Model, tea.Cmd, bool) {
 	m.exitConfirmDeadline = expected
 	m.ctrlCMsgRendered = th.System.Render("Press Ctrl+C again within 3 seconds to quit.")
 	m.lines = append(m.lines, m.ctrlCMsgRendered)
+	m.appendPlainMeta()
 	m.setLinesContent(true)
 	m.layout()
 	return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg {
@@ -805,7 +920,9 @@ func (m *Model) resizeInput() {
 func (m *Model) setLinesContent(stickToBottom bool) {
 	joined := strings.Join(m.lines, "\n")
 	m.lastTranscript = joined
-	stick := stickToBottom || m.viewport.AtBottom()
+	// Empty viewport reports AtBottom() == true; do not jump to end on first paint (tall welcome
+	// in a short CMD window should start scrolled to the top).
+	stick := stickToBottom || (m.viewport.TotalLineCount() > 0 && m.viewport.AtBottom())
 	m.viewport.SetContent(joined)
 	if stick {
 		m.viewport.GotoBottom()
@@ -814,14 +931,6 @@ func (m *Model) setLinesContent(stickToBottom bool) {
 
 func (m *Model) syncInputPlaceholder() {
 	m.input.Placeholder = placeholderForWidth(m.width)
-}
-
-func (m *Model) footerBrand() string {
-	v := strings.TrimSpace(m.appVersion)
-	if v == "" {
-		return "goclaw"
-	}
-	return "goclaw v" + v
 }
 
 func (m *Model) footerPrimaryStatus() string {
@@ -856,9 +965,8 @@ func (m *Model) View() tea.View {
 	)
 	v := tea.NewView(content)
 	v.AltScreen = true
-	// MouseModeNone lets the terminal handle mouse events natively so the user can select and copy text
-	// without holding Shift. Scroll with PgUp/PgDn, j/k, Ctrl+U/Ctrl+D (or the wheel on terminals that
-	// deliver wheel events without mouse-reporting active, e.g. Windows Terminal in some configurations).
+	// MouseModeNone keeps the host terminal’s normal mouse selection and copy. In-app wheel scroll
+	// would require CellMotion and would steal those events — use PgUp/PgDn (see /help).
 	v.MouseMode = tea.MouseModeNone
 	return v
 }
@@ -894,8 +1002,17 @@ func (m *Model) rebuildTranscriptForSession(s *session.Session) {
 		th = DefaultTheme()
 	}
 	var head []string
+	var metaHead []lineMeta
 	if m.preambleEnd > 0 && m.preambleEnd <= len(m.lines) {
 		head = append([]string(nil), m.lines[:m.preambleEnd]...)
+		if m.preambleEnd <= len(m.lineMeta) {
+			metaHead = append([]lineMeta(nil), m.lineMeta[:m.preambleEnd]...)
+		} else {
+			m.syncLineMetaLen()
+			if m.preambleEnd <= len(m.lineMeta) {
+				metaHead = append([]lineMeta(nil), m.lineMeta[:m.preambleEnd]...)
+			}
+		}
 	}
 	body := strings.TrimSpace(s.PlainTranscript())
 	if body == "" {
@@ -904,6 +1021,7 @@ func (m *Model) rebuildTranscriptForSession(s *session.Session) {
 	msg := "Resumed session " + s.ID + " (" + strconv.Itoa(s.Len()) + " messages)\n" + body
 	m.sessionID = s.ID
 	m.lines = append(head, th.System.Render(msg))
+	m.lineMeta = append(metaHead, lineMeta{kind: lineKindPlain})
 	m.setLinesContent(true)
 }
 
@@ -923,11 +1041,26 @@ func (m *Model) rebuildWelcomeForWidth() {
 	}
 	newHead := append(append([]string(nil), dash...), "")
 	oldEnd := m.welcomeBlockEnd
+	newPlain := make([]lineMeta, len(newHead))
+	for i := range newPlain {
+		newPlain[i] = lineMeta{kind: lineKindPlain}
+	}
 	if len(newHead) != oldEnd {
 		tail := append([]string(nil), m.lines[oldEnd:]...)
 		m.lines = append(newHead, tail...)
+		var tailMeta []lineMeta
+		if oldEnd <= len(m.lineMeta) {
+			tailMeta = append([]lineMeta(nil), m.lineMeta[oldEnd:]...)
+		}
+		m.lineMeta = append(newPlain, tailMeta...)
 	} else {
 		copy(m.lines, newHead)
+		for len(m.lineMeta) < len(newHead) {
+			m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindPlain})
+		}
+		for i := 0; i < len(newHead); i++ {
+			m.lineMeta[i] = lineMeta{kind: lineKindPlain}
+		}
 	}
 	m.welcomeBlockEnd = len(newHead)
 }
@@ -937,6 +1070,10 @@ func (m *Model) reflowTitleSeparator() {
 	if m.width <= 0 || len(m.lines) < 2 {
 		return
 	}
+	// Welcome rows include "goclaw" in subtitles; replacing the next line would corrupt the panel.
+	if m.welcomeBlockEnd > 0 {
+		return
+	}
 	th := m.theme
 	if th == nil {
 		th = DefaultTheme()
@@ -944,13 +1081,16 @@ func (m *Model) reflowTitleSeparator() {
 	for idx := 0; idx < len(m.lines)-1; idx++ {
 		plain := strings.TrimSpace(stripANSI(m.lines[idx]))
 		if strings.HasPrefix(plain, "goclaw") {
+			m.syncLineMetaLen()
 			m.lines[idx+1] = th.SeparatorLine(m.width)
+			m.lineMeta[idx+1] = lineMeta{kind: lineKindSeparator}
 			return
 		}
 	}
 }
 
 func (m *Model) layout() {
+	m.syncInputComposeWidth()
 	foot := m.footerView()
 	m.footerRendered = foot
 	footerH := lipgloss.Height(foot)
@@ -982,7 +1122,9 @@ func (m *Model) layout() {
 	}
 	joined := strings.Join(m.lines, "\n")
 	if joined != m.lastTranscript {
-		stick := m.viewport.AtBottom()
+		// Same rule as setLinesContent: empty viewport must not count as "at bottom" or the first
+		// paint scrolls past a tall welcome (CMD short windows).
+		stick := m.viewport.TotalLineCount() > 0 && m.viewport.AtBottom()
 		m.viewport.SetContent(joined)
 		m.lastTranscript = joined
 		if stick {
@@ -1010,6 +1152,7 @@ func (m *Model) openHelpOverlay(replBody string) {
 	b.WriteString(strings.TrimSpace(replBody))
 	m.helpFullText = b.String()
 	m.helpOpen = true
+	m.syncViewportKeyMapForOverlay()
 	m.layout()
 	m.viewport.GotoTop()
 }
@@ -1017,6 +1160,7 @@ func (m *Model) openHelpOverlay(replBody string) {
 func (m *Model) closeHelpOverlay() {
 	m.helpOpen = false
 	m.helpFullText = ""
+	m.syncViewportKeyMapForCompose()
 	m.layout()
 	m.viewport.GotoBottom()
 }
@@ -1029,7 +1173,7 @@ func (m *Model) footerView() string {
 	if m.toolLogOpen {
 		var line string
 		if m.toolLogDetail {
-			line = "Esc back · scroll · Ctrl+C quit"
+			line = "Esc back · Ctrl+C quit"
 		} else {
 			line = "↑↓ move · Enter view · Esc close · Ctrl+C quit"
 		}
@@ -1039,7 +1183,7 @@ func (m *Model) footerView() string {
 		return th.FooterDim.Render(line)
 	}
 	if m.helpOpen {
-		line := "Esc · scroll · Ctrl+C quit"
+		line := "Esc · Ctrl+C quit"
 		if m.width > 4 {
 			return th.FooterDim.Width(m.width).Render(line)
 		}
@@ -1062,12 +1206,11 @@ func (m *Model) footerView() string {
 
 	fw := m.width
 	primary := strings.TrimSpace(m.footerPrimaryStatus())
-	toolHint := ""
-	if len(m.toolLog) > 0 && !m.streaming {
-		toolHint = fmt.Sprintf(" · Ctrl+T tools (%d)", len(m.toolLog))
+	stats := ""
+	if m.footerStats != nil {
+		stats = strings.TrimSpace(m.footerStats())
 	}
-	hints := m.footerBrand() + " · Esc · double Ctrl+C to quit · PgUp/PgDn scroll" + toolHint
-	session := footerline.HintsWithSession(hints, m.sessionID, m.width)
+	session := footerline.AlignedHintsSession("", stats, "", "", m.width)
 
 	var b strings.Builder
 
@@ -1080,10 +1223,12 @@ func (m *Model) footerView() string {
 		}
 		b.WriteString("\n")
 	}
-	if fw > 4 {
-		b.WriteString(th.FooterDim.Width(fw).Render(session))
-	} else {
-		b.WriteString(th.FooterDim.Render(session))
+	if strings.TrimSpace(session) != "" {
+		if fw > 4 {
+			b.WriteString(th.FooterDim.Width(fw).Render(session))
+		} else {
+			b.WriteString(th.FooterDim.Render(session))
+		}
 	}
 
 	if fh := strings.TrimSpace(m.footerHint); fh != "" {
@@ -1115,11 +1260,14 @@ func (m *Model) footerView() string {
 		b.WriteString(m.approvalStripView())
 	}
 
+	// One line break before compose so hints/approval do not run into the input strip.
+	b.WriteString("\n")
+
 	inputView := m.input.View()
 	if m.width > 4 {
-		inputView = th.InputBorder.Width(m.width - 2).Render(inputView)
+		// Do not use Width() here: it pads the line with spaces to the terminal edge.
+		inputView = th.InputBorder.Render(inputView)
 	}
-	b.WriteString("\n")
 	b.WriteString(inputView)
 	return b.String()
 }
@@ -1359,16 +1507,22 @@ func (m *Model) appendSeparator() {
 		th = DefaultTheme()
 	}
 	m.lines = append(m.lines, th.SeparatorLine(m.width))
+	m.appendSeparatorMeta()
 	m.setLinesContent(true)
 }
 
 func (m *Model) appendSystem(s string) {
+	m.appendSystemStick(s, true)
+}
+
+func (m *Model) appendSystemStick(s string, stickToBottom bool) {
 	th := m.theme
 	if th == nil {
 		th = DefaultTheme()
 	}
 	m.lines = append(m.lines, th.System.Render(s))
-	m.setLinesContent(true)
+	m.appendPlainMeta()
+	m.setLinesContent(stickToBottom)
 }
 
 func (m *Model) appendError(s string) {
@@ -1377,6 +1531,7 @@ func (m *Model) appendError(s string) {
 		th = DefaultTheme()
 	}
 	m.lines = append(m.lines, th.ErrorStyle.Render(s))
+	m.appendPlainMeta()
 	m.setLinesContent(true)
 }
 
@@ -1386,6 +1541,7 @@ func (m *Model) appendUser(s string) {
 		th = DefaultTheme()
 	}
 	m.lines = append(m.lines, fmt.Sprintf("%s %s", th.UserPrefix(), renderAtRefChips(s, th)))
+	m.appendPlainMeta()
 	m.setLinesContent(true)
 }
 
@@ -1426,6 +1582,7 @@ func (m *Model) appendAssistant(s string) {
 		th = DefaultTheme()
 	}
 	m.lines = append(m.lines, fmt.Sprintf("%s %s", th.AssistantPrefix(), s))
+	m.appendPlainMeta()
 	m.setLinesContent(true)
 }
 
@@ -1436,6 +1593,7 @@ func (m *Model) appendAssistantDim(s string) {
 	}
 	dim := th.Dim.Render(s)
 	m.lines = append(m.lines, fmt.Sprintf("%s %s", th.AssistantPrefix(), dim))
+	m.appendPlainMeta()
 	m.setLinesContent(false)
 }
 
@@ -1452,6 +1610,9 @@ func (m *Model) stripAssistantPlaceholderLine() {
 	pfx := th.AssistantPlainPrefix()
 	if isAssistantDimPlaceholderLine(plain, pfx) {
 		m.lines = m.lines[:len(m.lines)-1]
+		if len(m.lineMeta) == len(m.lines)+1 {
+			m.lineMeta = m.lineMeta[:len(m.lineMeta)-1]
+		}
 		m.setLinesContent(false)
 	}
 }
@@ -1476,7 +1637,15 @@ func (m *Model) toolQueueStatusLine() string {
 	if len(m.toolWaitQueue) == 0 {
 		return ""
 	}
-	base := orchestrator.ToolWorkingPhrase(m.toolWaitQueue[0].name)
+	job := m.toolWaitQueue[0]
+	base := orchestrator.ToolWorkingPhrase(job.name)
+	if summary := strings.TrimSpace(job.summary); summary != "" {
+		const maxSummaryCols = 55
+		if len([]rune(summary)) > maxSummaryCols {
+			summary = string([]rune(summary)[:maxSummaryCols]) + "…"
+		}
+		base = base + " · " + summary
+	}
 	if !m.toolWaitStartedAt.IsZero() {
 		secs := int(time.Since(m.toolWaitStartedAt).Seconds())
 		if secs >= 1 {
@@ -1509,6 +1678,7 @@ func (m *Model) appendToolDoneLine(toolName, summary, content string, isError bo
 	}
 	card := th.RenderToolCard(label, truncatedSummary, isError, m.width)
 	m.lines = append(m.lines, card)
+	m.appendToolCardMeta(toolName, summary, isError)
 	m.setLinesContent(false)
 	m.appendToToolLog(toolName, summary, content, isError)
 }
@@ -1529,6 +1699,7 @@ func (m *Model) refreshAssistantLine() {
 	} else {
 		// Start a new assistant line.
 		m.lines = append(m.lines, rendered)
+		m.appendPlainMeta()
 		m.curAssistantLineIdx = len(m.lines) - 1
 	}
 	m.setLinesContent(false)
@@ -1620,33 +1791,18 @@ func (m *Model) finalizeCurrentSegment() {
 
 	prefix := th.AssistantPrefix()
 	prefixW := lipgloss.Width(prefix)
-	// Render markdown in the column width that fits next to the assistant gutter.
-	rendered := th.RenderMarkdown(raw, m.width, prefixW)
-
-	mdLines := strings.Split(rendered, "\n")
-	mdLines = normalizeAssistantMarkdownLines(mdLines)
-	mdLines = dropLeadingBlankLines(mdLines)
-	mdLines = dropTrailingBlankLines(mdLines)
-	if len(mdLines) == 0 {
+	finalRendered := renderAssistantMarkdownSegment(th, raw, m.width, prefix, prefixW)
+	if strings.TrimSpace(finalRendered) == "" {
 		return
 	}
-	// Align continuation lines with the visual width of the styled prefix + one space.
-	padStr := strings.Repeat(" ", prefixW+1)
-	var finalLines []string
-	for i, line := range mdLines {
-		if i == 0 {
-			finalLines = append(finalLines, fmt.Sprintf("%s %s", prefix, line))
-		} else {
-			finalLines = append(finalLines, padStr+line)
-		}
-	}
-	finalRendered := strings.Join(finalLines, "\n")
 
 	// Replace the tracked streaming line with the markdown version.
 	if m.curAssistantLineIdx >= 0 && m.curAssistantLineIdx < len(m.lines) {
 		m.lines[m.curAssistantLineIdx] = finalRendered
+		m.setAssistantMDMetaAt(m.curAssistantLineIdx, raw)
 	} else {
 		m.lines = append(m.lines, finalRendered)
+		m.appendAssistantMDMeta(raw)
 	}
 	m.curAssistantLineIdx = -1
 	m.setLinesContent(false)

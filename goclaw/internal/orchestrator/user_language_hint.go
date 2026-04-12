@@ -190,6 +190,13 @@ func scoreSpanish(text, lower, norm string) int {
 	if strings.Contains(lower, "por favor") || strings.Contains(lower, "por qué") || strings.Contains(lower, "porque") {
 		n += 2
 	}
+	// Common spoken Spanish without accents (models/users often omit tildes).
+	if strings.Contains(norm, " que tal ") || strings.Contains(norm, " qué tal ") {
+		n += 4
+	}
+	if strings.Contains(norm, " como estas ") || strings.Contains(norm, " cómo estás ") {
+		n += 3
+	}
 	if utf8.RuneCountInString(strings.TrimSpace(lower)) <= 6 && norm == " hola " {
 		n += 4
 	}

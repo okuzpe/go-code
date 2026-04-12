@@ -10,6 +10,9 @@ type Request struct {
 	Messages []Message
 	Tools    []ToolSpec
 	MaxTokens int
+	// NumCtx overrides the Ollama context window size for this request.
+	// 0 = use provider/model default.
+	NumCtx int
 }
 
 // ToolSpec describes a tool exposed to the model.

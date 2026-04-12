@@ -36,6 +36,7 @@ func TestClassifyUserLanguage(t *testing.T) {
 		{"", ""},
 		{"refactor the auth module", ""},
 		{"hola", "es"},
+		{"hola que tal?", "es"},
 		{"¡Hola! ¿Qué tal?", "es"},
 		{"Gracias por la ayuda", "es"},
 		{"bonjour et merci", "fr"},
@@ -56,6 +57,9 @@ func TestUserLanguageSystemSuffix(t *testing.T) {
 	s := userLanguageSystemSuffix("hola", cfg)
 	if s == "" || !strings.Contains(s, "Runtime user-language hint") || !strings.Contains(s, "Spanish") {
 		t.Fatalf("unexpected suffix: %q", s)
+	}
+	if s := userLanguageSystemSuffix("hola que tal?", cfg); s == "" || !strings.Contains(s, "Spanish") {
+		t.Fatalf("expected Spanish hint for colloquial greeting: %q", s)
 	}
 	if userLanguageSystemSuffix("ok", cfg) != "" {
 		t.Fatal("expected no hint for ambiguous short message")

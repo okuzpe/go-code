@@ -7,22 +7,27 @@ description: Use at the end of any development phase, before closing a milestone
 
 Run this checklist before closing any development phase. Fix every failing item before marking the phase done.
 
+**Default for coding agents:** run **build + vet** (and staticcheck when asked). **Skip `go test` and skip adding `*_test.go`** unless the user explicitly wants tests — CI is the usual full-suite gate (see repo `.cursor/rules` / `CLAUDE.md`).
+
 ---
 
-### 1. Build & Tests
+### 1. Build & vet (required when auditing locally)
 
 ```bash
 # Must pass with zero errors and zero warnings
 go build ./...
-
-# Must pass — including race detector
-go test -race ./...
 
 # Vet — must be clean
 go vet ./...
 ```
 
 If any of these fail, stop the audit and fix first.
+
+**Tests (only if the user asks for a test pass during this audit):**
+
+```bash
+go test -race ./...
+```
 
 ---
 
@@ -122,14 +127,17 @@ grep -n "return err$" --include="*.go" -r .
 
 ---
 
-### 7. Test Coverage
+### 7. Test coverage (skip unless the user wants tests)
+
+When the user explicitly asks for tests or coverage as part of this audit:
+
 - [ ] Each new package has at least one test file
 - [ ] Each new `Tool` has at least: happy path + invalid input + boundary case
 - [ ] Mock server scenarios updated if new LLM interactions added
 
 ```bash
 go test -cover ./...
-# Target: >70% coverage on internal/ packages
+# Target: >70% coverage on internal/ packages (when measuring coverage)
 ```
 
 ---
@@ -151,12 +159,12 @@ go test -cover ./...
 
 ### Audit Sign-off
 
-Phase is considered **done** when all checkboxes above pass.
+Phase is considered **done** when all checkboxes above pass (for sections you are applying — skip section 7 if the user did not ask for tests).
 
 ```
 Audit date:    ___________
 Phase:         ___________
-go test -race: PASS / FAIL
+go test -race: PASS / FAIL / N/A (user did not request tests)
 staticcheck:   PASS / FAIL
 Security:      PASS / FAIL
 Notes:         ___________

@@ -45,6 +45,9 @@ Definitions:
 			{Role: "user", Content: userMsg},
 		},
 	}
+	if cfg.Provider == "ollama" && cfg.OllamaNumCtx > 0 {
+		req.NumCtx = cfg.OllamaNumCtx
+	}
 
 	events, errc := client.Stream(ctx, req)
 	var b strings.Builder

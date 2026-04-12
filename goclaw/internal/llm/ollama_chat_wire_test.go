@@ -86,6 +86,50 @@ func TestOllamaChatRequestPassesNumPredictFromMaxTokens(t *testing.T) {
 }
 
 // TestOllamaNativeToolCallsStream emits ToolUse from streamed tool_calls on final chunk.
+func TestOllamaFunctionToolsDroppedAfterWireToolRejection(t *testing.T) {
+	t.Parallel()
+	var n int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		n++
+		if n == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"error":"does not support tools"}`)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		_, _ = io.WriteString(w, `{"model":"m","message":{"role":"assistant","content":"hi"},"done":true}`+"\n")
+	}))
+	defer srv.Close()
+
+	client := NewOllama(srv.URL)
+	if client.FunctionToolsDropped() {
+		t.Fatal("expected FunctionToolsDropped false before stream")
+	}
+	req := Request{
+		Model:    "m",
+		System:   "s",
+		Messages: []Message{PlainMessage("user", "x")},
+		Tools: []ToolSpec{{
+			Name:        "glob",
+			Description: "g",
+			InputSchema: map[string]any{"type": "object"},
+		}},
+	}
+	events, errc := client.Stream(context.Background(), req)
+	for range events {
+	}
+	if err := <-errc; err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("want 2 HTTP round-trips, got %d", n)
+	}
+	if !client.FunctionToolsDropped() {
+		t.Fatal("expected FunctionToolsDropped true after fallback")
+	}
+}
+
 func TestOllamaNativeToolCallsStream(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-ndjson")
@@ -118,6 +162,9 @@ func TestOllamaNativeToolCallsStream(t *testing.T) {
 	}
 	if !saw {
 		t.Fatal("expected ToolUse event")
+	}
+	if client.FunctionToolsDropped() {
+		t.Fatal("unexpected FunctionToolsDropped when wire tools succeed")
 	}
 }
 
