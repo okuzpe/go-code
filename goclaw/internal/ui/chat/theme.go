@@ -149,16 +149,26 @@ func (t *Theme) RenderMarkdown(md string, termWidth int, prefixDisplayWidth int)
 	return strings.TrimRight(rendered, "\n")
 }
 
-// SeparatorLine renders a dim horizontal rule between turns (full terminal width in cells).
+// SeparatorLine renders a dim horizontal rule between turns.
+// It uses a short centered section (40 % of terminal width, min 8, max 40 cells)
+// flanked by spaces so the eye reads it as a divider rather than a page break.
+// This lighter treatment matches modern CLI design (e.g. GitHub CLI, lazygit)
+// where turn breaks are visible but do not compete with message content.
 func (t *Theme) SeparatorLine(width int) string {
 	if width <= 0 {
 		width = separatorDefaultWidth
 	}
-	w := width
-	if w < 1 {
-		w = 1
+	// Rule spans roughly 40 % of the terminal, capped so it stays compact.
+	ruleW := width * 2 / 5
+	if ruleW < 8 {
+		ruleW = 8
 	}
-	return t.Separator.Render(strings.Repeat("─", w))
+	if ruleW > 40 {
+		ruleW = 40
+	}
+	rule := t.Separator.Render(strings.Repeat("─", ruleW))
+	// Left-pad with two spaces to indent slightly from the gutter.
+	return "  " + rule
 }
 
 // RenderToolCard builds a compact card for a completed tool call (claw-code style).
@@ -166,6 +176,9 @@ func (t *Theme) SeparatorLine(width int) string {
 //	╭─ read_file ──────────────
 //	│  src/main.go
 //	╰─ ✓
+//
+// The │ bar uses the tool accent color to give each card a left-accent visual
+// similar to VS Code diagnostic panels.
 func (t *Theme) RenderToolCard(toolLabel, summary string, isError bool, width int) string {
 	cardW := toolCardInnerWidth(width)
 
@@ -185,7 +198,8 @@ func (t *Theme) RenderToolCard(toolLabel, summary string, isError bool, width in
 	b.WriteString(header)
 	if s := strings.TrimSpace(summary); s != "" {
 		b.WriteString("\n  ")
-		b.WriteString(t.ToolCardBorder.Render("│"))
+		// Tool-accent color on the vertical bar creates a clear left-accent for the card.
+		b.WriteString(t.ToolTag.Render("│"))
 		b.WriteString("  ")
 		b.WriteString(t.ToolCardBody.Render(s))
 	}
@@ -221,7 +235,8 @@ func (t *Theme) RenderToolInProgressRow(toolLabel, summary string, elapsedSec in
 	if s := strings.TrimSpace(summary); s != "" {
 		s = text.TruncateRunes(s, toolInProgressSummaryMaxRunes)
 		b.WriteString("\n  ")
-		b.WriteString(t.ToolCardBorder.Render("│"))
+		// Tool-accent color on the vertical bar: matches the completed-card style.
+		b.WriteString(t.ToolTag.Render("│"))
 		b.WriteString("  ")
 		b.WriteString(t.ToolCardBody.Render(s))
 	}
@@ -243,19 +258,21 @@ func (t *Theme) StatusBarRender(status string, width int) string {
 }
 
 // UserPrefix renders the left gutter for a user message (Claude Code style: ">").
+// The glyph is always rendered in the user accent color so it stands out from plain text.
 func (t *Theme) UserPrefix() string {
 	if strings.TrimSpace(t.UserLabel) == "" {
-		return t.UserEmoji
+		return t.UserTag.Render(t.UserEmoji)
 	}
-	return fmt.Sprintf("%s %s", t.UserEmoji, t.UserTag.Render(t.UserLabel))
+	return fmt.Sprintf("%s %s", t.UserTag.Render(t.UserEmoji), t.UserTag.Render(t.UserLabel))
 }
 
 // AssistantPrefix renders the assistant gutter (Claude Code style: "●").
+// The glyph is always rendered in the AI accent color for consistent visual hierarchy.
 func (t *Theme) AssistantPrefix() string {
 	if strings.TrimSpace(t.AssistantName) == "" {
-		return t.AssistantEmoji
+		return t.Assistant.Render(t.AssistantEmoji)
 	}
-	return fmt.Sprintf("%s %s", t.AssistantEmoji, t.Assistant.Render(t.AssistantName))
+	return fmt.Sprintf("%s %s", t.Assistant.Render(t.AssistantEmoji), t.Assistant.Render(t.AssistantName))
 }
 
 // AssistantPlainPrefix is the visible prefix without ANSI (for strip/compare logic).

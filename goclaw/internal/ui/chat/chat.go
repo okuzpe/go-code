@@ -269,12 +269,14 @@ const minComposeWidth = 28
 
 // syncInputComposeWidth sets the compose textarea to the usable terminal width so rules,
 // transcript, and input align edge-to-edge (soft-wrap still applies inside the widget).
+// The InputBorder style uses a full rounded border (1 left-border + 1 left-pad + content +
+// 1 right-pad + 1 right-border = content + 4), so subtract 4 from the terminal width.
 func (m *Model) syncInputComposeWidth() {
 	if m.width <= 4 {
 		m.input.SetWidth(0)
 		return
 	}
-	maxW := m.width - 2
+	maxW := m.width - 4
 	if maxW < minComposeWidth {
 		maxW = minComposeWidth
 	}
@@ -1405,64 +1407,81 @@ func (m *Model) footerView() string {
 	if m.footerStats != nil {
 		stats = strings.TrimSpace(m.footerStats())
 	}
-	session := footerline.AlignedHintsSession("", stats, "", "", m.width)
 
 	var b strings.Builder
 
-	// Show primary status (spinner/thinking) only when active; skip the extra line when idle.
+	// Status row: spinner/thinking indicator with accent label, right-aligned stats.
+	// Shown only while active so idle UI does not grow an extra blank line.
 	if primary != "" {
-		if fw > 4 {
-			b.WriteString(th.FooterDim.Width(fw).Render(primary))
+		var statusRow string
+		if stats != "" && fw > 40 {
+			// Right-align stats next to the primary status when there is room.
+			statW := lipgloss.Width(stats)
+			primW := lipgloss.Width(primary)
+			gap := fw - primW - statW
+			if gap < 2 {
+				gap = 2
+			}
+			statusRow = primary + strings.Repeat(" ", gap) + th.FooterDim.Render(stats)
 		} else {
-			b.WriteString(th.FooterDim.Render(primary))
+			statusRow = primary
+		}
+		if fw > 4 {
+			b.WriteString(th.FooterDim.Width(fw).Render(statusRow))
+		} else {
+			b.WriteString(th.FooterDim.Render(statusRow))
 		}
 		b.WriteString("\n")
-	}
-	if strings.TrimSpace(session) != "" {
-		if fw > 4 {
-			b.WriteString(th.FooterDim.Width(fw).Render(session))
-		} else {
-			b.WriteString(th.FooterDim.Render(session))
+	} else if stats != "" {
+		// Idle: show stats (context %, session id) on their own line.
+		session := footerline.AlignedHintsSession("", stats, "", "", fw)
+		if strings.TrimSpace(session) != "" {
+			if fw > 4 {
+				b.WriteString(th.FooterDim.Width(fw).Render(session))
+			} else {
+				b.WriteString(th.FooterDim.Render(session))
+			}
+			b.WriteString("\n")
 		}
 	}
 
 	if fh := strings.TrimSpace(m.footerHint); fh != "" {
-		b.WriteString("\n")
 		if fw > 4 {
 			b.WriteString(th.FooterDim.Width(fw).Render(fh))
 		} else {
 			b.WriteString(th.FooterDim.Render(fh))
 		}
+		b.WriteString("\n")
 	}
 	if sh := strings.TrimSpace(m.idleTranscriptHint); sh != "" {
-		b.WriteString("\n")
 		if fw > 4 {
 			b.WriteString(th.FooterDim.Width(fw).Render(sh))
 		} else {
 			b.WriteString(th.FooterDim.Render(sh))
 		}
+		b.WriteString("\n")
 	}
 	if m.transcriptBrowse {
 		line := "Browse: ↑↓ j/k PgUp · Ctrl+B editor · Esc back"
 		if m.tuiMouseScroll {
 			line += " · wheel"
 		}
-		b.WriteString("\n")
 		if fw > 4 {
 			b.WriteString(th.FooterDim.Width(fw).Render(line))
 		} else {
 			b.WriteString(th.FooterDim.Render(line))
 		}
+		b.WriteString("\n")
 	}
 
 	if m.focusLine != nil {
 		if fh := strings.TrimSpace(m.focusLine()); fh != "" {
-			b.WriteString("\n")
 			if fw > 4 {
 				b.WriteString(th.FooterDim.Width(fw).Render(fh))
 			} else {
 				b.WriteString(th.FooterDim.Render(fh))
 			}
+			b.WriteString("\n")
 		}
 	}
 

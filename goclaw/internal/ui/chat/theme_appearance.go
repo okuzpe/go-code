@@ -13,7 +13,6 @@ func NewThemeForAppearance(raw string) *Theme {
 }
 
 func newThemeFromPalette(p terminalstyle.Palette) *Theme {
-	topRule := lipgloss.Border{Top: "─"}
 	return &Theme{
 		AssistantName:  "",
 		UserLabel:      "",
@@ -41,10 +40,14 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 		ToolSpinner:   lipgloss.NewStyle().Foreground(p.ToolFG).Italic(true),
 		ToolResultOk:  lipgloss.NewStyle().Foreground(p.AccentUser),
 		ToolResultErr: lipgloss.NewStyle().Foreground(p.ErrorFG),
+		// Rounded border on all four sides gives the input area the feel of a modern
+		// terminal input widget (vs. a plain top-rule). Width must be reduced by 4
+		// cells in syncInputComposeWidth (1 left-border + 1 left-pad + content +
+		// 1 right-pad + 1 right-border).
 		InputBorder: lipgloss.NewStyle().
-			Border(topRule, true, false, false, false).
+			Border(lipgloss.RoundedBorder(), true, true, true, true).
 			BorderForeground(p.InputBorder).
-			Padding(0, 0, 0, 2),
+			Padding(0, 1),
 
 		ToolCardBorder: lipgloss.NewStyle().Foreground(p.SepFG),
 		ToolCardHead:   lipgloss.NewStyle().Bold(true).Foreground(p.ToolFG),
