@@ -25,6 +25,18 @@ func TruncateRunesWithSuffix(s string, max int, suffix string) string {
 	return s
 }
 
+// TruncateRunesHard returns at most max runes of s with no suffix (compact IDs, prefixes).
+func TruncateRunesHard(s string, max int) string {
+	if max <= 0 || s == "" {
+		return s
+	}
+	rs := []rune(s)
+	if len(rs) <= max {
+		return s
+	}
+	return string(rs[:max])
+}
+
 // TruncateUTF8ByBytes returns a prefix of s with byte length <= maxBytes, never splitting a UTF-8 codepoint.
 func TruncateUTF8ByBytes(s string, maxBytes int) string {
 	if maxBytes <= 0 || len(s) <= maxBytes {

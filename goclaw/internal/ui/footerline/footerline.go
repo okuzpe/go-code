@@ -3,8 +3,17 @@ package footerline
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/okuzpe/goclaw/internal/text"
+)
+
+const (
+	sessionLabelFullMaxRunes  = 10
+	sessionLabelTruncRunes    = 8
+	footerJoinPrimaryMinCells = 8
+	footerAlignedMinLeftWidth = 20
 )
 
 // SessionLabel returns a compact session marker, or "" if id is empty.
@@ -14,11 +23,10 @@ func SessionLabel(id string) string {
 	if id == "" {
 		return ""
 	}
-	r := []rune(id)
-	if len(r) > 10 {
-		return "#" + string(r[:8]) + "…"
+	if utf8.RuneCountInString(id) > sessionLabelFullMaxRunes {
+		return "#" + text.TruncateRunesHard(id, sessionLabelTruncRunes) + "…"
 	}
-	return "#" + string(r)
+	return "#" + id
 }
 
 // Join appends the session label when there is room (width = terminal cells, or 0 = no trim).
@@ -37,7 +45,7 @@ func Join(primary, sessionID string, width int) string {
 	}
 	gapW := lipgloss.Width("  " + label)
 	maxPrimary := width - gapW
-	if maxPrimary < 8 {
+	if maxPrimary < footerJoinPrimaryMinCells {
 		return label
 	}
 	runes := []rune(line)
@@ -98,7 +106,7 @@ func TrimToMaxWidth(s string, max int) string {
 // when the row would be too crowded (session moves to the next line).
 func AlignedHintsSession(brand, stats, keys, sessionID string, width int) string {
 	label := SessionLabel(sessionID)
-	var parts []string
+	parts := make([]string, 0, 3)
 	if b := strings.TrimSpace(brand); b != "" {
 		parts = append(parts, b)
 	}
@@ -118,7 +126,7 @@ func AlignedHintsSession(brand, stats, keys, sessionID string, width int) string
 	rightW := lipgloss.Width(label)
 	const gapMin = 2
 	maxLeft := width - rightW - gapMin
-	if maxLeft < 20 {
+	if maxLeft < footerAlignedMinLeftWidth {
 		return HintsWithSession(left, sessionID, width)
 	}
 	leftShown := left

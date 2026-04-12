@@ -17,6 +17,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/slashcmd"
+	"github.com/okuzpe/goclaw/internal/text"
 )
 
 const (
@@ -33,10 +34,10 @@ func replPrompt(s *session.Session, focus *coordinator.FocusRouter) string {
 	if s == nil {
 		return "> "
 	}
-	id := truncateRunesHard(s.ID, replPromptIDMaxRunes)
+	id := text.TruncateRunesHard(s.ID, replPromptIDMaxRunes)
 	if focus != nil {
 		if w := strings.TrimSpace(focus.Current()); w != "" {
-			wid := truncateRunesHard(w, replPromptIDMaxRunes)
+			wid := text.TruncateRunesHard(w, replPromptIDMaxRunes)
 			return fmt.Sprintf("%s@w%s> ", id, wid)
 		}
 	}

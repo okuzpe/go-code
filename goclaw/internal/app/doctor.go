@@ -84,18 +84,19 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 	lines = append(lines, "")
 	lines = append(lines, "checks:")
 	var ollamaOK bool
-	if cfg.Provider == "anthropic" {
+	switch cfg.Provider {
+	case "anthropic":
 		lines = append(lines, checkLine("anthropic api key", strings.TrimSpace(cfg.APIKey) != ""))
 		mode := strings.ToLower(strings.TrimSpace(cfg.TokenCountMode))
 		if mode == "" {
 			mode = "auto"
 		}
 		lines = append(lines, fmt.Sprintf("token_count_mode: %s (auto uses count_tokens API near compaction threshold)", mode))
-	} else if cfg.Provider == "openai_compatible" {
+	case "openai_compatible":
 		lines = append(lines, checkLine("openai base url configured", strings.TrimSpace(cfg.OpenAICompatBaseURL) != ""))
 		lines = append(lines, checkLine("openai api key configured", strings.TrimSpace(cfg.OpenAICompatAPIKey) != ""))
 		lines = append(lines, checkLine("openai model configured", strings.TrimSpace(cfg.Model()) != ""))
-	} else {
+	default:
 		ollamaHost := effectiveOllamaHost(cfg.OllamaHost)
 		ollamaOK = probeOllama(ctx, ollamaHost)
 		lines = append(lines, checkLine("ollama host reachable", ollamaOK))

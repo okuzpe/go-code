@@ -20,6 +20,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/session"
+	"github.com/okuzpe/goclaw/internal/text"
 	"github.com/okuzpe/goclaw/internal/todos"
 	"github.com/okuzpe/goclaw/internal/tools"
 )
@@ -27,6 +28,9 @@ import (
 const (
 	defaultWorkerTimeoutSec = 120
 	maxWorkerTimeoutSec     = 600
+
+	workerNotificationShortIDRunes  = 8
+	workerFirstNonEmptyLineMaxRunes = 200
 )
 
 // WorkerNotification is the JSON result returned by spawn_agent.
@@ -53,7 +57,7 @@ type spawnInput struct {
 type SpawnAgentTool struct {
 	cfg     config.Config
 	client  llm.Client
-	reg     *tools.Registry    // worker registry (no spawn_agent — prevents nesting)
+	reg     *tools.Registry // worker registry (no spawn_agent — prevents nesting)
 	policy  *permissions.Policy
 	hookReg *hooks.Registry
 	profs   map[string]agents.Profile // nil = use agents.All()
@@ -343,20 +347,14 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 }
 
 func shortID(id string) string {
-	if len(id) > 8 {
-		return id[:8]
-	}
-	return id
+	return text.TruncateRunesHard(id, workerNotificationShortIDRunes)
 }
 
 func firstNonEmptyLine(s string) string {
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
-			if len([]rune(line)) > 200 {
-				return string([]rune(line)[:200]) + "…"
-			}
-			return line
+			return text.TruncateRunes(line, workerFirstNonEmptyLineMaxRunes)
 		}
 	}
 	return "(no output)"

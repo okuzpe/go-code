@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/okuzpe/goclaw/internal/agents"
+	"github.com/okuzpe/goclaw/internal/text"
 	"github.com/okuzpe/goclaw/internal/ui/terminalstyle"
 	"golang.org/x/term"
 )
@@ -183,20 +184,7 @@ func wrapPlain(text string, width int) string {
 }
 
 func truncate(s string, max int) string {
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	return string(r[:max]) + "…"
-}
-
-// truncateRunesHard returns at most max runes of s with no suffix (compact labels, e.g. REPL prompt IDs).
-func truncateRunesHard(s string, max int) string {
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	return string(r[:max])
+	return text.TruncateRunes(s, max)
 }
 
 // FormatChatWindowTitle keeps the TUI header on one line for typical terminal widths.

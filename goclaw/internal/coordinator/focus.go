@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/okuzpe/goclaw/internal/text"
 )
 
 const (
@@ -63,7 +65,7 @@ func (f *FocusRouter) Hint() string {
 	f.mu.Unlock()
 
 	if current != "" {
-		short := truncateRunesEllipsis(current, focusHintFocusedMaxRunes)
+		short := text.TruncateRunes(current, focusHintFocusedMaxRunes)
 		return "Inside worker " + short + " — /back or /detach returns to coordinator"
 	}
 
@@ -74,31 +76,9 @@ func (f *FocusRouter) Hint() string {
 	}
 	if n == 1 {
 		w := list[0]
-		prefix := truncateRunesHard(strings.TrimSpace(w.TaskID), focusHintBackgroundPrefixMaxRunes)
-		short := truncateRunesEllipsis(w.TaskID, focusHintBackgroundLabelMaxRunes)
+		prefix := text.TruncateRunesHard(strings.TrimSpace(w.TaskID), focusHintBackgroundPrefixMaxRunes)
+		short := text.TruncateRunes(w.TaskID, focusHintBackgroundLabelMaxRunes)
 		return fmt.Sprintf("Background worker %s — /focus %s · /workers", short, prefix)
 	}
 	return fmt.Sprintf("%d background workers — /workers · /focus <id prefix>", n)
-}
-
-func truncateRunesEllipsis(s string, max int) string {
-	if max <= 0 {
-		return ""
-	}
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	return string(r[:max]) + "…"
-}
-
-func truncateRunesHard(s string, max int) string {
-	if max <= 0 {
-		return ""
-	}
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	return string(r[:max])
 }

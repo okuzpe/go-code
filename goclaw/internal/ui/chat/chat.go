@@ -1954,17 +1954,6 @@ func (m *Model) replaceToolRunningWithCard(lineIdx int, toolName, summary, conte
 	m.appendToToolLog(toolName, summary, content, isError)
 }
 
-func (m *Model) appendAssistantDim(s string) {
-	th := m.theme
-	if th == nil {
-		th = DefaultTheme()
-	}
-	dim := th.Dim.Render(s)
-	m.lines = append(m.lines, fmt.Sprintf("%s %s", th.AssistantPrefix(), dim))
-	m.appendPlainMeta()
-	m.setLinesContent(false)
-}
-
 func (m *Model) stripAssistantPlaceholderLine() {
 	if len(m.lines) == 0 {
 		return
@@ -2105,12 +2094,13 @@ func normalizeAssistantMarkdownLines(lines []string) []string {
 func countLeadingASCIISpaces(s string) int {
 	n := 0
 	for _, r := range s {
-		if r == ' ' {
+		switch r {
+		case ' ':
 			n++
-		} else if r == '\t' {
+		case '\t':
 			n += mdTabIndentSpaces
-		} else {
-			break
+		default:
+			return n
 		}
 	}
 	return n

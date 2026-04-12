@@ -82,22 +82,6 @@ func renderOnboardingSecurityMarkdown(version, uiAppearance string, width int) s
 	return rule + "\n" + out
 }
 
-// printOnboardingSecurityWelcome prints the first-run security screen (Charm lipgloss + glamour on TTY).
-func printOnboardingSecurityWelcome(version, uiAppearance string) {
-	if !isTTY(os.Stdout) {
-		printOnboardingWelcomePlain(version)
-		return
-	}
-	rendered := renderOnboardingSecurityMarkdown(version, uiAppearance, 0)
-	if rendered == "" {
-		printOnboardingWelcomeLipglossFallback(version, uiAppearance)
-		return
-	}
-	fmt.Println()
-	fmt.Println(rendered)
-	fmt.Println()
-}
-
 const (
 	onbBulletModel = "Models can misunderstand or suggest unsafe steps. Read every reply before running shell commands or accepting edits."
 	onbBulletTrust = "Prompt injection: untrusted repos, dependencies, or pasted text can steer the agent. Use goclaw only on codebases and inputs you trust."
@@ -127,36 +111,4 @@ func onboardingWelcomePlainBlock(version string, width int) string {
 	o.WriteString(wrapPlain("Press Ctrl+C to exit", w))
 	o.WriteString("\n")
 	return o.String()
-}
-
-func printOnboardingWelcomePlain(version string) {
-	fmt.Print(onboardingWelcomePlainBlock(version, stdoutWrapWidth()))
-}
-
-func printOnboardingWelcomeLipglossFallback(version, uiAppearance string) {
-	w := stdoutWrapWidth()
-	p := terminalstyle.PaletteForAppearance(uiAppearance)
-	title := lipgloss.NewStyle().Bold(true).Foreground(p.TrustAccent).Render(onboardingWelcomeTitle(version))
-	rule := lipgloss.NewStyle().Foreground(p.Muted).Render(strings.Repeat("─", min(w, onboardingGlamourRuleMaxCols)))
-	sub := lipgloss.NewStyle().Bold(true).
-		Foreground(lipgloss.AdaptiveColor{Light: "#374151", Dark: "#E5E7EB"}).
-		Render("Before you start")
-	body := lipgloss.NewStyle().Foreground(p.ModalBody)
-	dim := lipgloss.NewStyle().Foreground(p.Muted).Italic(true)
-
-	fmt.Println()
-	fmt.Println(title)
-	fmt.Println(rule)
-	fmt.Println()
-	fmt.Println(sub)
-	fmt.Println()
-	fmt.Println(body.Render(wrapPlain("• "+onbBulletModel, w)))
-	fmt.Println()
-	fmt.Println(body.Render(wrapPlain("• "+onbBulletTrust, w)))
-	fmt.Println()
-	fmt.Println(body.Render(wrapPlain(securityDocURL()+" is a repo path, not a clickable link. Press s for the bundled full text.", w)))
-	fmt.Println()
-	fmt.Println(dim.Render("Press Enter or Esc to continue"))
-	fmt.Println(dim.Render("Press Ctrl+C to exit"))
-	fmt.Println()
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/llm"
+	"github.com/okuzpe/goclaw/internal/text"
 )
 
 const (
@@ -294,11 +295,7 @@ func (o *Orchestrator) compactToTail(preserve int) {
 		}
 		sb.WriteString(m.Role)
 		sb.WriteString(": ")
-		snip := m.Content
-		if len([]rune(snip)) > compactionSnippetRunes {
-			rs := []rune(snip)
-			snip = string(rs[:compactionSnippetRunes]) + "…"
-		}
+		snip := text.TruncateRunes(m.Content, compactionSnippetRunes)
 		sb.WriteString(snip)
 	}
 	o.session.ReplaceMessages(tail)
