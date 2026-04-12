@@ -211,35 +211,16 @@ func SessionMessagesTokenEstimateLive(msgs []llm.Message, provider string, extra
 	return sessionTokenEstimateFromChars(c, p)
 }
 
-// SessionCompactionFillPercent estimates how full the session is relative to the auto-compaction
-// trigger (same context budget and char heuristic as maybeCompact). It does not call Anthropic
-// count_tokens. Returns (percent, true) when auto_compact_threshold > 0; otherwise (0, false).
-func SessionCompactionFillPercent(msgs []llm.Message, cfg config.Config) (int, bool) {
-	if cfg.AutoCompactThreshold <= 0 {
-		return 0, false
-	}
-	budget := contextBudgetTokens(cfg.Provider, cfg.ModelContextTokens)
-	if budget <= 0 {
-		return 0, false
-	}
-	limit := int(float64(budget) * cfg.AutoCompactThreshold)
-	if limit <= 0 {
-		return 0, false
-	}
-	tok := SessionMessagesTokenEstimate(msgs, cfg.Provider)
-	p := int(int64(tok) * 100 / int64(limit))
-	if p < 0 {
-		p = 0
-	}
-	if p > 999 {
-		p = 999
-	}
-	return p, true
+// SessionCompactionFillPercentLive estimates how full the session is relative to the auto-compaction
+// trigger (same context budget and char heuristic as maybeCompact). extraChars adds in-flight UTF-8
+// bytes (e.g. assistant text still streaming). Does not call Anthropic count_tokens.
+// Returns (percent, true) when auto_compact_threshold > 0; otherwise (0, false).
+func SessionCompactionFillPercentLive(msgs []llm.Message, cfg config.Config, extraChars int) (int, bool) {
+	tok := SessionMessagesTokenEstimateLive(msgs, cfg.Provider, extraChars)
+	return sessionCompactionFillPercentFromTokenEstimate(cfg, tok)
 }
 
-// SessionCompactionFillPercentLive is like SessionCompactionFillPercent but includes extraChars in the token estimate
-// (e.g. assistant text still streaming into the session).
-func SessionCompactionFillPercentLive(msgs []llm.Message, cfg config.Config, extraChars int) (int, bool) {
+func sessionCompactionFillPercentFromTokenEstimate(cfg config.Config, tok int) (int, bool) {
 	if cfg.AutoCompactThreshold <= 0 {
 		return 0, false
 	}
@@ -251,7 +232,6 @@ func SessionCompactionFillPercentLive(msgs []llm.Message, cfg config.Config, ext
 	if limit <= 0 {
 		return 0, false
 	}
-	tok := SessionMessagesTokenEstimateLive(msgs, cfg.Provider, extraChars)
 	p := int(int64(tok) * 100 / int64(limit))
 	if p < 0 {
 		p = 0

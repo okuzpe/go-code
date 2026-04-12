@@ -101,12 +101,6 @@ func ResolveInteractiveTaskID(prefix string) (full string, ok bool) {
 	return matches[0], true
 }
 
-// InteractiveWorkerRunning reports whether the task id is an active interactive worker.
-func InteractiveWorkerRunning(taskID string) bool {
-	_, ok := loadInteractive(strings.TrimSpace(taskID))
-	return ok
-}
-
 // DeliverWorkerMessage enqueues one user turn for the worker and blocks until it finishes or ctx ends.
 func DeliverWorkerMessage(ctx context.Context, taskID, text string, sink orchestrator.StreamSink) error {
 	id := strings.TrimSpace(taskID)

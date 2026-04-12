@@ -3,8 +3,6 @@ package session
 import (
 	"fmt"
 	"strings"
-
-	"github.com/okuzpe/goclaw/internal/llm"
 )
 
 // PlainTranscript renders the in-memory session as plain UTF-8 text (roles, text,
@@ -43,10 +41,4 @@ func (s *Session) PlainTranscript() string {
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")
-}
-
-// PlainTranscriptFromMessages is like PlainTranscript but works on a slice (tests).
-func PlainTranscriptFromMessages(msgs []llm.Message) string {
-	s := &Session{Messages: msgs}
-	return s.PlainTranscript()
 }

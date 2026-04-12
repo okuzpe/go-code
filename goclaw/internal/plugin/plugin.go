@@ -4,7 +4,6 @@ package plugin
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -100,20 +99,4 @@ func RegisterHooksFromDirs(reg *hooks.Registry, dirs []string, workdir string, a
 		loaded = append(loaded, man.Name)
 	}
 	return loaded
-}
-
-// LoadManifest reads and validates a manifest file (for tests).
-func LoadManifest(path string) (Manifest, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return Manifest{}, err
-	}
-	var man Manifest
-	if err := json.Unmarshal(raw, &man); err != nil {
-		return Manifest{}, err
-	}
-	if strings.TrimSpace(man.Name) == "" {
-		return Manifest{}, fmt.Errorf("plugin: empty name")
-	}
-	return man, nil
 }
