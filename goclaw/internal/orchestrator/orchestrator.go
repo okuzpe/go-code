@@ -191,6 +191,9 @@ func (o *Orchestrator) RunStreamingToolTrace(ctx context.Context, userMessage st
 }
 
 func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink StreamSink, toolTrace *[]JSONToolCall) (string, error) {
+	if o.session != nil {
+		defer o.session.ClearStreamingAssistant()
+	}
 	o.session.Add("user", userMessage)
 
 	o.prepareTurnModel(ctx, userMessage)
@@ -215,6 +218,9 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			switch ev := e.(type) {
 			case llm.TextDelta:
 				response += ev.Text
+				if o.session != nil && ev.Text != "" {
+					o.session.AddStreamingAssistantChars(len(ev.Text))
+				}
 				if sink != nil && ev.Text != "" {
 					sink.OnTextDelta(ev.Text)
 				}

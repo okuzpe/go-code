@@ -172,6 +172,53 @@ func (t *Theme) RenderToolCard(toolLabel, summary string, isError bool, width in
 	return b.String()
 }
 
+// RenderThinkingRow is a single transcript line for the LLM phase before the first text delta or tool call.
+func (t *Theme) RenderThinkingRow(elapsedSec int, width int) string {
+	_ = width
+	label := "Thinking…"
+	if elapsedSec >= 1 {
+		label = fmt.Sprintf("Thinking (%ds)…", elapsedSec)
+	}
+	return "  " + t.FooterDim.Render(label)
+}
+
+// RenderToolInProgressRow is a compact IN block for a tool that has not returned yet.
+func (t *Theme) RenderToolInProgressRow(toolLabel, summary string, elapsedSec int, width int) string {
+	cardW := width - 4
+	if cardW < 36 {
+		cardW = 36
+	}
+	headText := toolLabel + " · IN"
+	if elapsedSec >= 1 {
+		headText = fmt.Sprintf("%s (%ds)", headText, elapsedSec)
+	}
+	nameRendered := t.ToolCardHead.Render(" " + headText + " ")
+	nameW := lipgloss.Width(nameRendered)
+	dashCount := cardW - nameW - 2
+	if dashCount < 3 {
+		dashCount = 3
+	}
+	header := t.ToolCardBorder.Render("╭─") + nameRendered + t.ToolCardBorder.Render(strings.Repeat("─", dashCount))
+	footer := t.ToolCardBorder.Render("╰─") + t.FooterDim.Render(" …")
+
+	var b strings.Builder
+	b.WriteString("  ")
+	b.WriteString(header)
+	if s := strings.TrimSpace(summary); s != "" {
+		const maxRunes = 120
+		if len([]rune(s)) > maxRunes {
+			s = string([]rune(s)[:maxRunes]) + "…"
+		}
+		b.WriteString("\n  ")
+		b.WriteString(t.ToolCardBorder.Render("│"))
+		b.WriteString("  ")
+		b.WriteString(t.ToolCardBody.Render(s))
+	}
+	b.WriteString("\n  ")
+	b.WriteString(footer)
+	return b.String()
+}
+
 // StatusBarRender renders a one-line status bar with separator and content.
 func (t *Theme) StatusBarRender(status string, width int) string {
 	if width <= 0 {

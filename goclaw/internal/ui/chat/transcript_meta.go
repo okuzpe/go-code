@@ -3,6 +3,7 @@ package chat
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
@@ -17,12 +18,16 @@ const (
 	lineKindSeparator
 	lineKindToolCard
 	lineKindAssistantMD
+	lineKindThinking
+	lineKindToolRunning
 )
 
 // lineMeta is parallel to Model.lines: same index, same length after mutations.
 type lineMeta struct {
 	kind lineMetaKind
-	// tool card (lineKindToolCard)
+	// startedAt is wall time when this row began (lineKindThinking, lineKindToolRunning).
+	startedAt time.Time
+	// tool card (lineKindToolCard) + tool running (lineKindToolRunning)
 	toolName    string
 	toolSummary string // full summary from OnToolUse; truncated on each render
 	toolError   bool
@@ -53,6 +58,19 @@ func (m *Model) appendToolCardMeta(toolName, summary string, isError bool) {
 		toolName:     toolName,
 		toolSummary: summary,
 		toolError:    isError,
+	})
+}
+
+func (m *Model) appendThinkingMeta(started time.Time) {
+	m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindThinking, startedAt: started})
+}
+
+func (m *Model) appendToolRunningMeta(toolName, summary string, started time.Time) {
+	m.lineMeta = append(m.lineMeta, lineMeta{
+		kind:         lineKindToolRunning,
+		toolName:     toolName,
+		toolSummary: summary,
+		startedAt:    started,
 	})
 }
 
@@ -102,6 +120,16 @@ func (m *Model) reflowTranscriptForWidth() {
 				truncatedSummary = text.TruncateRunes(s, 96)
 			}
 			m.lines[i] = th.RenderToolCard(label, truncatedSummary, meta.toolError, m.width)
+		case lineKindThinking:
+			meta := m.lineMeta[i]
+			elapsed := int(time.Since(meta.startedAt).Seconds())
+			m.lines[i] = th.RenderThinkingRow(elapsed, m.width)
+		case lineKindToolRunning:
+			meta := m.lineMeta[i]
+			elapsed := int(time.Since(meta.startedAt).Seconds())
+			label := orchestrator.ToolWorkingPhrase(meta.toolName)
+			sum := meta.toolSummary
+			m.lines[i] = th.RenderToolInProgressRow(label, sum, elapsed, m.width)
 		case lineKindAssistantMD:
 			raw := m.lineMeta[i].assistantRaw
 			m.lines[i] = renderAssistantMarkdownSegment(th, raw, m.width, prefix, prefixW)

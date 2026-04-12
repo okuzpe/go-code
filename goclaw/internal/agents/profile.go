@@ -153,6 +153,14 @@ func SortedKeys(profs map[string]Profile) []string {
 	return names
 }
 
+// JoinSortedProfileKeys returns SortedKeys joined with ", " for errors and slash-command hints.
+func JoinSortedProfileKeys(profs map[string]Profile) string {
+	if len(profs) == 0 {
+		return ""
+	}
+	return strings.Join(SortedKeys(profs), ", ")
+}
+
 // Summary is a single-line description for listings (/agents, docs).
 func (p Profile) Summary() string {
 	if s := strings.TrimSpace(p.Description); s != "" {
@@ -189,4 +197,87 @@ func (p Profile) Summary() string {
 		}
 		return "Custom agent profile."
 	}
+}
+
+// profileToolMatchesAllowlist mirrors orchestrator.toolMatchesAllowlist for static profile analysis.
+func profileToolMatchesAllowlist(name string, allow map[string]struct{}) bool {
+	if _, ok := allow[name]; ok {
+		return true
+	}
+	for pat := range allow {
+		if strings.HasSuffix(pat, "*") && len(pat) > 1 {
+			prefix := strings.TrimSuffix(pat, "*")
+			if strings.HasPrefix(name, prefix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// AllowsWorkspaceFileWrites reports whether write_file, edit_file, or patch can appear in the
+// tool list sent to the LLM (same rules as orchestrator.buildRequest).
+func (p Profile) AllowsWorkspaceFileWrites() bool {
+	if p.ReadOnly {
+		return false
+	}
+	writeTools := []string{"write_file", "edit_file", "patch"}
+	denied := make(map[string]struct{})
+	for _, n := range p.DisallowedTools {
+		n = strings.TrimSpace(n)
+		if n != "" {
+			denied[n] = struct{}{}
+		}
+	}
+	if p.ToolAllowlist == nil {
+		for _, w := range writeTools {
+			if _, blocked := denied[w]; !blocked {
+				return true
+			}
+		}
+		return false
+	}
+	if len(p.ToolAllowlist) == 0 {
+		return false
+	}
+	allow := make(map[string]struct{}, len(p.ToolAllowlist))
+	for _, n := range p.ToolAllowlist {
+		n = strings.TrimSpace(n)
+		if n != "" {
+			allow[n] = struct{}{}
+		}
+	}
+	for _, w := range writeTools {
+		if _, blocked := denied[w]; blocked {
+			continue
+		}
+		if profileToolMatchesAllowlist(w, allow) {
+			return true
+		}
+	}
+	return false
+}
+
+// AllowsSpawnAgentDelegation reports whether spawn_agent can appear on the model-visible tool list
+// for this profile (nil allowlist means full registry, which includes spawn_agent on the parent orchestrator).
+func (p Profile) AllowsSpawnAgentDelegation() bool {
+	if p.ToolAllowlist == nil {
+		return true
+	}
+	if len(p.ToolAllowlist) == 0 {
+		return false
+	}
+	allow := make(map[string]struct{}, len(p.ToolAllowlist))
+	for _, n := range p.ToolAllowlist {
+		n = strings.TrimSpace(n)
+		if n != "" {
+			allow[n] = struct{}{}
+		}
+	}
+	for _, n := range p.DisallowedTools {
+		if strings.TrimSpace(n) == "spawn_agent" {
+			return false
+		}
+	}
+	return profileToolMatchesAllowlist("spawn_agent", allow)
 }

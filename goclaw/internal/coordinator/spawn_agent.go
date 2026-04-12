@@ -126,20 +126,32 @@ func (t *SpawnAgentTool) Description() string {
 		"snippets, and a clear success criterion. The worker cannot see this conversation — every " +
 		"detail it needs must be in the task description. " +
 		"Set interactive: true to keep the worker running after this call; the user can send more input via /focus <task_id> in the REPL until /detach or stop_task. " +
-		"Profile guide: general-purpose — write/edit/create files or run commands (use for ALL coding tasks); " +
-		"explore — read-only search and codebase understanding; " +
-		"plan — produce a step-by-step plan (read-only output); " +
-		"verification — run tests and report PASS/FAIL."
+		"The profile field must be one of the configured worker profiles (see tool schema enum), typically general-purpose or a full-tool custom profile for coding; " +
+		"explore — read-only search; plan — read-only plan output; verification — PASS/FAIL checks."
+}
+
+func (t *SpawnAgentTool) effectiveProfiles() map[string]agents.Profile {
+	if t.profs != nil {
+		return t.profs
+	}
+	return agents.All()
 }
 
 func (t *SpawnAgentTool) InputSchema() any {
+	profs := t.effectiveProfiles()
+	enum := spawnWorkerProfileNames(profs)
+	if len(enum) == 0 {
+		enum = []string{"general-purpose", "explore", "plan", "verification"}
+	}
+	profileDesc := "Worker profile name. Spawnable profiles for this workspace: " + strings.Join(enum, ", ") +
+		". Prefer general-purpose or a full-tool coding profile for edits and shell; explore/plan for read-only work; verification for checks."
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"profile": map[string]any{
 				"type":        "string",
-				"description": "Worker agent profile: explore | plan | verification | general-purpose",
-				"enum":        []string{"explore", "plan", "verification", "general-purpose"},
+				"description": profileDesc,
+				"enum":        enum,
 			},
 			"task": map[string]any{
 				"type":        "string",
@@ -171,20 +183,20 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 		return tools.Result{Content: "task is required", IsError: true}, nil
 	}
 
-	profs := t.profs
-	if profs == nil {
-		profs = agents.All()
-	}
-	profile, ok := profs[in.Profile]
+	profs := t.effectiveProfiles()
+	profileKey := strings.ToLower(strings.TrimSpace(in.Profile))
+	profile, ok := profs[profileKey]
 	if !ok {
 		return tools.Result{
-			Content: fmt.Sprintf("unknown profile %q (valid: explore, plan, verification, general-purpose)", in.Profile),
+			Content: fmt.Sprintf("unknown profile %q (valid worker profiles: %s)", in.Profile, joinWorkerProfileHint(profs)),
 			IsError: true,
 		}, nil
 	}
-	// Prevent infinite nesting: coordinator workers cannot themselves be coordinators.
-	if profile.Name == "coordinator" {
-		return tools.Result{Content: "cannot spawn a coordinator worker", IsError: true}, nil
+	if hubDelegationOnly(profile) {
+		return tools.Result{
+			Content: fmt.Sprintf("cannot spawn hub-only profile %q as worker", profile.Name),
+			IsError: true,
+		}, nil
 	}
 
 	timeout := in.TimeoutSec
@@ -271,7 +283,7 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 		}
 		storeInteractive(iw)
 		if workerSink != nil {
-			workerSink.OnTextDelta("\n▶ Worker [" + shortID(taskID) + "] · " + in.Profile + " (interactive)\n")
+			workerSink.OnTextDelta("\n▶ Worker [" + shortID(taskID) + "] · " + profile.Name + " (interactive)\n")
 			workerSink.OnTextDelta("  " + firstNonEmptyLine(in.Task) + "\n\n")
 		}
 		go runInteractiveWorkerLoop(workerCtx, cancel, iw, orch, in.Task, workerSink)
@@ -299,7 +311,7 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 
 	// Emit worker start header to parent TUI.
 	if workerSink != nil {
-		workerSink.OnTextDelta("\n▶ Worker [" + shortID(taskID) + "] · " + in.Profile + "\n")
+		workerSink.OnTextDelta("\n▶ Worker [" + shortID(taskID) + "] · " + profile.Name + "\n")
 		workerSink.OnTextDelta("  " + firstNonEmptyLine(in.Task) + "\n\n")
 	}
 

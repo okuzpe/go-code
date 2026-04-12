@@ -175,24 +175,39 @@ func contextBudgetTokens(provider string, cfgTokens int) int {
 	}
 }
 
+// sessionTokenEstimateFromChars maps a UTF-8 byte count to an approximate token count (same divisors as compaction).
+func sessionTokenEstimateFromChars(chars int, providerLower string) int {
+	if chars < 0 {
+		chars = 0
+	}
+	switch providerLower {
+	case "anthropic":
+		return (chars + 2) / 3
+	case "openai_compatible":
+		return (chars + 3) / 4
+	default:
+		return (chars + 3) / 4
+	}
+}
+
 // sessionTokenEstimate approximates tokens from message text (chars ÷ divisor by provider).
 func sessionTokenEstimate(msgs []llm.Message, provider string) int {
+	p := strings.ToLower(strings.TrimSpace(provider))
 	c := sessionCharEstimate(msgs)
-	switch provider {
-	case "anthropic":
-		return (c + 2) / 3
-	case "openai_compatible":
-		return (c + 3) / 4
-	default:
-		return (c + 3) / 4
-	}
+	return sessionTokenEstimateFromChars(c, p)
 }
 
 // SessionMessagesTokenEstimate is a rough context-size hint from stored message payloads (not billed API usage).
 // Same heuristics as compaction; safe for TUI footers and status lines.
 func SessionMessagesTokenEstimate(msgs []llm.Message, provider string) int {
+	return sessionTokenEstimate(msgs, provider)
+}
+
+// SessionMessagesTokenEstimateLive includes extraChars (e.g. in-flight assistant UTF-8 bytes) in the estimate for UI hints.
+func SessionMessagesTokenEstimateLive(msgs []llm.Message, provider string, extraChars int) int {
 	p := strings.ToLower(strings.TrimSpace(provider))
-	return sessionTokenEstimate(msgs, p)
+	c := sessionCharEstimate(msgs) + extraChars
+	return sessionTokenEstimateFromChars(c, p)
 }
 
 // SessionCompactionFillPercent estimates how full the session is relative to the auto-compaction
@@ -211,6 +226,31 @@ func SessionCompactionFillPercent(msgs []llm.Message, cfg config.Config) (int, b
 		return 0, false
 	}
 	tok := SessionMessagesTokenEstimate(msgs, cfg.Provider)
+	p := int(int64(tok) * 100 / int64(limit))
+	if p < 0 {
+		p = 0
+	}
+	if p > 999 {
+		p = 999
+	}
+	return p, true
+}
+
+// SessionCompactionFillPercentLive is like SessionCompactionFillPercent but includes extraChars in the token estimate
+// (e.g. assistant text still streaming into the session).
+func SessionCompactionFillPercentLive(msgs []llm.Message, cfg config.Config, extraChars int) (int, bool) {
+	if cfg.AutoCompactThreshold <= 0 {
+		return 0, false
+	}
+	budget := contextBudgetTokens(cfg.Provider, cfg.ModelContextTokens)
+	if budget <= 0 {
+		return 0, false
+	}
+	limit := int(float64(budget) * cfg.AutoCompactThreshold)
+	if limit <= 0 {
+		return 0, false
+	}
+	tok := SessionMessagesTokenEstimateLive(msgs, cfg.Provider, extraChars)
 	p := int(int64(tok) * 100 / int64(limit))
 	if p < 0 {
 		p = 0

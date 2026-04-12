@@ -25,6 +25,11 @@ This repository includes:
 
 Switch profile in the REPL: `/profile stack-coder` (etc.). Copy these files to another project’s `.goclaw/` to reuse the stack.
 
+## Hub profile (`stack-coordinator`) vs direct coding
+
+- **`stack-coder`**, **`stack-base`**, and built-in **`general-purpose`** run the usual single-session agent loop: the model can call read/write/bash tools in your workspace.
+- **`stack-coordinator`** is a **hub** profile (like built-in `coordinator`): it only has `spawn_agent`, `stop_task`, and `todo_write`. It does **not** edit files in the main session; it must **delegate** self-contained sub-tasks to workers. For implementation work, spawn workers with **`general-purpose`** or **`stack-coder`** so they get full coding tools. The `spawn_agent` tool schema lists every **allowed worker profile name** for your install (built-ins plus custom `*.md` agents), excluding hub-only profiles.
+
 ## Settings keys
 
 | Key | Purpose |

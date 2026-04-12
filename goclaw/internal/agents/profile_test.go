@@ -26,3 +26,16 @@ func TestProfileListHint(t *testing.T) {
 	require.Contains(t, h, ", ")
 	require.Equal(t, strings.Join(SortedProfileNames(), ", "), h)
 }
+
+func TestProfile_AllowsWorkspaceFileWrites(t *testing.T) {
+	require.True(t, GeneralPurpose.AllowsWorkspaceFileWrites())
+	require.False(t, Explore.AllowsWorkspaceFileWrites())
+	require.False(t, Plan.AllowsWorkspaceFileWrites())
+	require.False(t, Coordinator.AllowsWorkspaceFileWrites())
+}
+
+func TestProfile_AllowsSpawnAgentDelegation(t *testing.T) {
+	require.True(t, GeneralPurpose.AllowsSpawnAgentDelegation())
+	require.True(t, Coordinator.AllowsSpawnAgentDelegation())
+	require.False(t, Explore.AllowsSpawnAgentDelegation())
+}

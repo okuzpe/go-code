@@ -71,6 +71,13 @@ type Model struct {
 	// toolWaitQueue pairs each OnToolUse with the following OnToolResult (same order).
 	toolWaitQueue []pendingTool
 
+	// toolRunLineIdx is parallel to toolWaitQueue (FIFO): transcript line index for each IN-flight tool row.
+	// Tool results replace rows in the same order; if server result order ever diverged from use order, correlate by tool_use_id (not done here).
+	toolRunLineIdx []int
+
+	// thinkingLineIdx is the transcript line showing LLM prefill timing (-1 when none).
+	thinkingLineIdx int
+
 	// toolWaitStartedAt is when the first pending tool in the queue began (for elapsed seconds in the footer).
 	toolWaitStartedAt time.Time
 
@@ -122,6 +129,9 @@ type Model struct {
 	lastTranscript string
 	// lastReflowWidth is the terminal width used for the last transcript reflow (-1 = not yet).
 	lastReflowWidth int
+
+	// messageQueue holds user texts submitted while streaming; drained after a successful turn (assistantDoneMsg, not aborted).
+	messageQueue []string
 
 	// exitConfirmDeadline is the wall-clock instant until which a second Ctrl+C quits the TUI (double Ctrl+C).
 	exitConfirmDeadline time.Time
@@ -408,6 +418,7 @@ func New(ctx context.Context, opts Options) Model {
 		lineMeta:            nil,
 		submitter:           new(submitRunner),
 		curAssistantLineIdx: -1,
+		thinkingLineIdx:     -1,
 		sessionID:           strings.TrimSpace(opts.SessionID),
 		focusLine:           opts.FocusLine,
 		footerStats:         opts.FooterStats,
@@ -456,10 +467,16 @@ func New(ctx context.Context, opts Options) Model {
 }
 
 func (m *Model) Init() tea.Cmd {
+	var cmds []tea.Cmd
 	if m.approval != nil {
-		return waitForApproval(m.approval.Requests)
+		cmds = append(cmds, waitForApproval(m.approval.Requests))
 	}
-	return nil
+	// Periodic tick refreshes footer stats when configured and updates thinking / IN-flight tool rows in the transcript.
+	cmds = append(cmds, footerStatsTickCmd())
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
 }
 
 func tickToolWait() tea.Cmd {
@@ -474,6 +491,11 @@ type ctrlCExitArmExpiredMsg struct {
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case footerTickMsg:
+		m.refreshThinkingTranscriptRow()
+		m.refreshToolRunningTranscriptRows()
+		m.layout()
+		return m, footerStatsTickCmd()
 	case spinner.TickMsg:
 		if !m.spinnerActive {
 			return m, nil
@@ -619,7 +641,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusLine = ""
 		m.curAssistant.Reset()
 		m.curAssistantLineIdx = -1
-		m.appendAssistantDim("…")
+		m.appendThinkingRow()
 		th := m.theme
 		if th == nil {
 			th = DefaultTheme()
@@ -629,13 +651,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			spinner.WithStyle(th.SpinnerAccentV2()),
 		)
 		m.spinnerActive = true
-		return m, func() tea.Msg { return m.spinner.Tick() }
+		return m, tea.Batch(func() tea.Msg { return m.spinner.Tick() }, footerStatsTickCmd())
 	case assistantDeltaMsg:
 		if !m.streaming {
 			// Drop stray deltas after completion (e.g. race with batching); avoids a second assistant row.
 			return m, nil
 		}
 		if m.assistantPlaceholder {
+			m.clearThinkingLine()
 			m.stripAssistantPlaceholderLine()
 			m.assistantPlaceholder = false
 			m.statusLine = ""
@@ -648,14 +671,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
 		m.statusLine = ""
+		m.clearThinkingLine()
 		rawLen := utf8.RuneCountInString(m.curAssistant.String())
 		// Finalize the current segment with markdown rendering.
 		m.finalizeCurrentSegment()
 		if rawLen >= idleTranscriptHintMinRunes {
 			m.idleTranscriptHint = m.transcriptScrollNavHint()
 		}
-		return m, nil
+		var drainCmd tea.Cmd
+		if !msg.aborted {
+			drainCmd = m.drainMessageQueue()
+		} else if n := len(m.messageQueue); n > 0 {
+			m.messageQueue = nil
+			m.appendSystem(fmt.Sprintf("(cleared %d queued message(s) after cancel)", n))
+		}
+		return m, drainCmd
 	case toolUseMsg:
+		m.clearThinkingLine()
 		// Finalize the pre-tool text with markdown rendering BEFORE resetting.
 		m.finalizeCurrentSegment()
 		// Reset buffer for the next assistant segment (post-tool).
@@ -667,6 +699,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toolWaitStartedAt = now
 			m.toolLogStart = now
 		}
+		m.appendToolRunningTranscriptRow(msg.name, msg.preview)
 		m.spinnerActive = true
 		m.statusLine = m.toolQueueStatusLine()
 		return m, tickToolWait()
@@ -675,6 +708,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toolWaitStartedAt = time.Time{}
 			return m, nil
 		}
+		m.refreshToolRunningTranscriptRows()
 		m.statusLine = m.toolQueueStatusLine()
 		return m, tickToolWait()
 	case ctrlCExitArmExpiredMsg:
@@ -702,7 +736,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !ok {
 			job = pendingTool{name: msg.name, summary: ""}
 		}
-		m.appendToolDoneLine(job.name, job.summary, msg.content, msg.isError)
+		if len(m.toolRunLineIdx) > 0 {
+			lineIdx := m.toolRunLineIdx[0]
+			m.toolRunLineIdx = m.toolRunLineIdx[1:]
+			if lineIdx >= 0 && lineIdx < len(m.lineMeta) && m.lineMeta[lineIdx].kind == lineKindToolRunning {
+				m.replaceToolRunningWithCard(lineIdx, job.name, job.summary, msg.content, msg.isError)
+			} else {
+				m.appendToolDoneLine(job.name, job.summary, msg.content, msg.isError)
+			}
+		} else {
+			m.appendToolDoneLine(job.name, job.summary, msg.content, msg.isError)
+		}
 		if len(m.toolWaitQueue) > 0 {
 			m.toolWaitStartedAt = time.Now()
 			m.statusLine = m.toolQueueStatusLine()
@@ -720,7 +764,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
 		m.statusLine = ""
+		m.clearThinkingLine()
+		m.toolRunLineIdx = nil
 		m.toolWaitQueue = nil
+		if n := len(m.messageQueue); n > 0 {
+			m.messageQueue = nil
+			m.appendSystem(fmt.Sprintf("(dropped %d queued message(s) after error)", n))
+		}
 		m.idleTranscriptHint = ""
 		m.stripAssistantPlaceholderLine()
 		m.appendError(fmt.Sprintf("✗ %v", msg.err))
@@ -821,7 +871,7 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 	}
 	switch k {
 	case "ctrl+b":
-		if m.streaming || m.pending != nil {
+		if m.pending != nil {
 			return m, nil, true
 		}
 		if m.transcriptBrowse {
@@ -913,48 +963,17 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 		}
 		m.footerHint = ""
 		m.idleTranscriptHint = ""
-		// Avoid overlapping RunStreaming calls on the same session (or sending while awaiting tools).
-		if m.streaming {
-			return m, nil, true
-		}
 		m.input.Reset()
 		m.resizeInput() // shrink back to 1 line after submit
 		m.appendSeparator()
 		m.appendUser(txt)
-		if bareThemeSlashInput(txt) && strings.TrimSpace(m.userConfigDir) != "" {
-			m.openThemePicker()
+		if m.streaming {
+			m.messageQueue = append(m.messageQueue, txt)
+			m.appendSystem("(queued — runs when this reply finishes)")
 			return m, nil, true
 		}
-		if bareAgentsSlashInput(txt) && m.slashHandle != nil {
-			m.openAgentPicker()
-			return m, nil, true
-		}
-		if m.slashHandle != nil {
-			handled, out, quit, modelSubmit, err, hints := m.slashHandle(txt)
-			if handled {
-				if err != nil {
-					m.appendError(fmt.Sprintf("error: %v", err))
-				} else if strings.TrimSpace(out) != "" {
-					if slashcmd.PlainHelpREPLRequest(txt) {
-						m.openHelpOverlay(out)
-					} else {
-						m.appendSystem(out)
-					}
-				}
-				m.applySlashHints(hints)
-				if strings.TrimSpace(modelSubmit) != "" && m.submitter != nil && m.submitter.fn != nil {
-					m.runModelSubmit(modelSubmit)
-				}
-				if quit {
-					return m, tea.Quit, true
-				}
-				return m, nil, true
-			}
-		}
-		if m.submitter != nil && m.submitter.fn != nil {
-			m.runModelSubmit(txt)
-		} else {
-			m.appendAssistant("(TUI wired; missing submit handler)")
+		if cmd := m.runDispatchAfterUserEcho(txt); cmd != nil {
+			return m, cmd, true
 		}
 		return m, nil, true
 	}
@@ -987,11 +1006,65 @@ func (m *Model) handleCtrlCExitConfirm() (tea.Model, tea.Cmd, bool) {
 	}), true
 }
 
+// runDispatchAfterUserEcho runs theme/agents/slash/model for a user line already appended to the transcript.
+// Returns tea.Quit when a slash handler requests exit (same as the Enter path).
+func (m *Model) runDispatchAfterUserEcho(txt string) tea.Cmd {
+	if bareThemeSlashInput(txt) && strings.TrimSpace(m.userConfigDir) != "" {
+		m.openThemePicker()
+		return nil
+	}
+	if bareAgentsSlashInput(txt) && m.slashHandle != nil {
+		m.openAgentPicker()
+		return nil
+	}
+	if m.slashHandle != nil {
+		handled, out, quit, modelSubmit, err, hints := m.slashHandle(txt)
+		if handled {
+			if err != nil {
+				m.appendError(fmt.Sprintf("error: %v", err))
+			} else if strings.TrimSpace(out) != "" {
+				if slashcmd.PlainHelpREPLRequest(txt) {
+					m.openHelpOverlay(out)
+				} else {
+					m.appendSystem(out)
+				}
+			}
+			m.applySlashHints(hints)
+			if strings.TrimSpace(modelSubmit) != "" && m.submitter != nil && m.submitter.fn != nil {
+				m.runModelSubmit(modelSubmit)
+			}
+			if quit {
+				return tea.Quit
+			}
+			return nil
+		}
+	}
+	if m.submitter != nil && m.submitter.fn != nil {
+		m.runModelSubmit(txt)
+	} else {
+		m.appendAssistant("(TUI wired; missing submit handler)")
+	}
+	return nil
+}
+
+func (m *Model) drainMessageQueue() tea.Cmd {
+	for len(m.messageQueue) > 0 && !m.streaming {
+		txt := m.messageQueue[0]
+		m.messageQueue = m.messageQueue[1:]
+		if cmd := m.runDispatchAfterUserEcho(txt); cmd != nil {
+			return cmd
+		}
+	}
+	return nil
+}
+
 func (m *Model) runModelSubmit(userText string) {
 	m.streaming = true
 	m.statusLine = ""
 	m.curAssistant.Reset()
 	m.curAssistantLineIdx = -1
+	m.toolRunLineIdx = nil
+	m.clearThinkingLine()
 	m.submitter.fn(userText)
 }
 
@@ -1008,18 +1081,26 @@ func (m *Model) resizeInput() {
 	m.layout()
 }
 
-// setLinesContent refreshes the transcript in the viewport. If stickToBottom is true or the user
-// was already at the bottom, scroll stays pinned to the latest output.
-func (m *Model) setLinesContent(stickToBottom bool) {
-	joined := strings.Join(m.lines, "\n")
-	m.lastTranscript = joined
+// viewportSetJoinedContent updates transcript content in the viewport, preserving scroll offset
+// when the user was not pinned to the bottom (so periodic refreshes do not yank the view).
+func (m *Model) viewportSetJoinedContent(joined string, stickToBottom bool) {
 	// Empty viewport reports AtBottom() == true; do not jump to end on first paint (tall welcome
 	// in a short CMD window should start scrolled to the top).
 	stick := stickToBottom || (m.viewport.TotalLineCount() > 0 && m.viewport.AtBottom())
+	preserveY := m.viewport.YOffset()
 	m.viewport.SetContent(joined)
+	m.lastTranscript = joined
 	if stick {
 		m.viewport.GotoBottom()
+	} else {
+		m.viewport.SetYOffset(preserveY)
 	}
+}
+
+// setLinesContent refreshes the transcript in the viewport. If stickToBottom is true or the user
+// was already at the bottom, scroll stays pinned to the latest output.
+func (m *Model) setLinesContent(stickToBottom bool) {
+	m.viewportSetJoinedContent(strings.Join(m.lines, "\n"), stickToBottom)
 }
 
 func (m *Model) syncInputPlaceholder() {
@@ -1219,14 +1300,7 @@ func (m *Model) layout() {
 	}
 	joined := strings.Join(m.lines, "\n")
 	if joined != m.lastTranscript {
-		// Same rule as setLinesContent: empty viewport must not count as "at bottom" or the first
-		// paint scrolls past a tall welcome (CMD short windows).
-		stick := m.viewport.TotalLineCount() > 0 && m.viewport.AtBottom()
-		m.viewport.SetContent(joined)
-		m.lastTranscript = joined
-		if stick {
-			m.viewport.GotoBottom()
-		}
+		m.viewportSetJoinedContent(joined, false)
 	}
 }
 
@@ -1704,6 +1778,161 @@ func (m *Model) appendAssistant(s string) {
 	m.setLinesContent(true)
 }
 
+func (m *Model) widthOrDefault() int {
+	if m.width > 0 {
+		return m.width
+	}
+	return 80
+}
+
+func (m *Model) appendThinkingRow() {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	now := time.Now()
+	idx := len(m.lines)
+	m.lines = append(m.lines, th.RenderThinkingRow(0, m.widthOrDefault()))
+	m.appendThinkingMeta(now)
+	m.thinkingLineIdx = idx
+	m.setLinesContent(false)
+}
+
+func (m *Model) removeTranscriptLineAt(at int) {
+	if at < 0 || at >= len(m.lines) {
+		return
+	}
+	for i := range m.toolRunLineIdx {
+		if m.toolRunLineIdx[i] > at {
+			m.toolRunLineIdx[i]--
+		}
+	}
+	if m.curAssistantLineIdx > at {
+		m.curAssistantLineIdx--
+	}
+	if m.thinkingLineIdx == at {
+		m.thinkingLineIdx = -1
+	} else if m.thinkingLineIdx > at {
+		m.thinkingLineIdx--
+	}
+	m.lines = append(m.lines[:at], m.lines[at+1:]...)
+	if at < len(m.lineMeta) {
+		m.lineMeta = append(m.lineMeta[:at], m.lineMeta[at+1:]...)
+	}
+}
+
+func (m *Model) clearThinkingLine() {
+	if m.thinkingLineIdx < 0 {
+		return
+	}
+	idx := m.thinkingLineIdx
+	if idx >= len(m.lines) || idx >= len(m.lineMeta) {
+		m.thinkingLineIdx = -1
+		return
+	}
+	if m.lineMeta[idx].kind != lineKindThinking {
+		m.thinkingLineIdx = -1
+		return
+	}
+	m.removeTranscriptLineAt(idx)
+	m.thinkingLineIdx = -1
+	m.setLinesContent(false)
+}
+
+func (m *Model) refreshThinkingTranscriptRow() {
+	if m.thinkingLineIdx < 0 || !m.assistantPlaceholder {
+		return
+	}
+	idx := m.thinkingLineIdx
+	if idx < 0 || idx >= len(m.lines) || idx >= len(m.lineMeta) {
+		return
+	}
+	if m.lineMeta[idx].kind != lineKindThinking {
+		return
+	}
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	elapsed := int(time.Since(m.lineMeta[idx].startedAt).Seconds())
+	m.lines[idx] = th.RenderThinkingRow(elapsed, m.widthOrDefault())
+	m.setLinesContent(false)
+}
+
+func (m *Model) refreshToolRunningTranscriptRows() {
+	if len(m.toolRunLineIdx) == 0 || len(m.toolWaitQueue) == 0 {
+		return
+	}
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	changed := false
+	for i := range m.toolRunLineIdx {
+		if i >= len(m.toolWaitQueue) {
+			break
+		}
+		lineIdx := m.toolRunLineIdx[i]
+		if lineIdx < 0 || lineIdx >= len(m.lines) || lineIdx >= len(m.lineMeta) {
+			continue
+		}
+		if m.lineMeta[lineIdx].kind != lineKindToolRunning {
+			continue
+		}
+		job := m.toolWaitQueue[i]
+		elapsed := int(time.Since(m.lineMeta[lineIdx].startedAt).Seconds())
+		label := orchestrator.ToolWorkingPhrase(job.name)
+		m.lines[lineIdx] = th.RenderToolInProgressRow(label, job.summary, elapsed, m.widthOrDefault())
+		changed = true
+	}
+	if changed {
+		m.setLinesContent(false)
+	}
+}
+
+func (m *Model) appendToolRunningTranscriptRow(toolName, preview string) {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	now := time.Now()
+	lineIdx := len(m.lines)
+	label := orchestrator.ToolWorkingPhrase(toolName)
+	m.lines = append(m.lines, th.RenderToolInProgressRow(label, preview, 0, m.widthOrDefault()))
+	m.appendToolRunningMeta(toolName, preview, now)
+	m.toolRunLineIdx = append(m.toolRunLineIdx, lineIdx)
+	m.setLinesContent(false)
+}
+
+func (m *Model) replaceToolRunningWithCard(lineIdx int, toolName, summary, content string, isError bool) {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	label := orchestrator.ToolFinishedPhrase(toolName)
+	truncatedSummary := ""
+	if s := strings.TrimSpace(summary); s != "" {
+		truncatedSummary = text.TruncateRunes(s, 96)
+	}
+	if lineIdx < 0 || lineIdx >= len(m.lines) {
+		m.appendToolDoneLine(toolName, summary, content, isError)
+		return
+	}
+	card := th.RenderToolCard(label, truncatedSummary, isError, m.widthOrDefault())
+	m.lines[lineIdx] = card
+	m.syncLineMetaLen()
+	if lineIdx < len(m.lineMeta) {
+		m.lineMeta[lineIdx] = lineMeta{
+			kind:         lineKindToolCard,
+			toolName:     toolName,
+			toolSummary: summary,
+			toolError:    isError,
+		}
+	}
+	m.setLinesContent(false)
+	m.appendToToolLog(toolName, summary, content, isError)
+}
+
 func (m *Model) appendAssistantDim(s string) {
 	th := m.theme
 	if th == nil {
@@ -1943,7 +2172,10 @@ type assistantPlaceholderMsg struct{}
 
 type assistantDeltaMsg string
 
-type assistantDoneMsg struct{}
+// assistantDoneMsg ends one model submit turn. aborted is true when the submit goroutine exited with context.Canceled (Esc / Ctrl+C).
+type assistantDoneMsg struct {
+	aborted bool
+}
 
 type toolUseMsg struct {
 	name    string
@@ -1958,6 +2190,13 @@ type toolResultMsg struct {
 
 type errMsg struct {
 	err error
+}
+
+// footerTickMsg refreshes the footer (token/compact hints) on a timer so values update during long streams or tool waits.
+type footerTickMsg struct{}
+
+func footerStatsTickCmd() tea.Cmd {
+	return tea.Tick(600*time.Millisecond, func(time.Time) tea.Msg { return footerTickMsg{} })
 }
 
 type Submitter func(ctx context.Context, userText string, sink orchestrator.StreamSink) (string, error)
@@ -1984,7 +2223,7 @@ func RunApp(ctx context.Context, opts Options, approval *ApprovalBroker, submit 
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
 					// User pressed Ctrl+C — clear streaming state cleanly.
-					p.Send(assistantDoneMsg{})
+					p.Send(assistantDoneMsg{aborted: true})
 				} else {
 					p.Send(errMsg{err: err})
 				}

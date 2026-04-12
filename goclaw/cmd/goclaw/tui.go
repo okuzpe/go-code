@@ -90,9 +90,9 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		}
 	}
 	return chat.RunApp(ctx, chat.Options{
-		TUIMouseScroll:     rt.Cfg.TUIMouseScroll,
-		Title:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
-		SessionID:          rt.Sess.ID,
+		TUIMouseScroll: rt.Cfg.TUIMouseScroll,
+		Title:          app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
+		SessionID:      rt.Sess.ID,
 		FooterStats: func() string {
 			if rt.Sess == nil {
 				return ""
@@ -101,7 +101,8 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 			if n <= 0 {
 				return ""
 			}
-			tok := orchestrator.SessionMessagesTokenEstimate(rt.Sess.Messages, rt.Cfg.Provider)
+			live := rt.Sess.StreamingAssistantChars()
+			tok := orchestrator.SessionMessagesTokenEstimateLive(rt.Sess.Messages, rt.Cfg.Provider, live)
 			var base string
 			if n == 1 {
 				base = "1 msg"
@@ -111,7 +112,7 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 			if tok >= 1 {
 				base = fmt.Sprintf("%s · ~%d tokens", base, tok)
 			}
-			if pct, ok := orchestrator.SessionCompactionFillPercent(rt.Sess.Messages, rt.Cfg); ok {
+			if pct, ok := orchestrator.SessionCompactionFillPercentLive(rt.Sess.Messages, rt.Cfg, live); ok {
 				base = fmt.Sprintf("%s · compact~%d%%", base, pct)
 			}
 			if app.OllamaFunctionToolsDropped(rt) {
@@ -126,10 +127,12 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		ActiveAgentProfile: rt.Profile.Name,
 		Theme:              chat.NewThemeForAppearance(rt.Cfg.UIAppearance),
 		Welcome: chat.WelcomeOptions{
-			Version:  Version,
-			Subtitle: app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
-			Workdir:  rt.Workdir,
-			Profile:  rt.Profile.Name,
+			Version:              Version,
+			Subtitle:             app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
+			Workdir:              rt.Workdir,
+			Profile:              rt.Profile.Name,
+			FileWriteToolsHidden: !rt.Profile.AllowsWorkspaceFileWrites(),
+			HubDelegatesCoding:   rt.Profile.AllowsSpawnAgentDelegation(),
 		},
 		FocusLine: focus.Hint,
 	}, approval, submit, slash)

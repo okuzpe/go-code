@@ -14,6 +14,10 @@ type WelcomeOptions struct {
 	Subtitle string // e.g. provider · model · profile
 	Workdir  string
 	Profile  string // active profile name; used to show profile-specific tips
+	// FileWriteToolsHidden when true, show how to switch to a coding profile or delegate via spawn_agent.
+	FileWriteToolsHidden bool
+	// HubDelegatesCoding when true with FileWriteToolsHidden, hint mentions spawn_agent (coordinator-style profiles).
+	HubDelegatesCoding bool
 }
 
 // defaultWelcomeWrap is used when terminal width is not known yet (before first WindowSizeMsg).
@@ -179,10 +183,16 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	for _, ln := range wrapPlainWords("Multi-agent: /profile coordinator — delegate with spawn_agent; /workers and /focus for interactive workers.", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
-	if opt.Profile == "coordinator" {
+	if opt.FileWriteToolsHidden {
 		rightLines = append(rightLines, "")
-		for _, ln := range wrapPlainWords("Coordinator mode: use /profile general-purpose to edit files directly.", rightW-1) {
-			rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+		if opt.HubDelegatesCoding {
+			for _, ln := range wrapPlainWords("This profile hides write_file from the model — delegate coding with spawn_agent (e.g. profile general-purpose or stack-coder), or /profile general-purpose for direct edits.", rightW-1) {
+				rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+			}
+		} else {
+			for _, ln := range wrapPlainWords("Read-only profile: use /profile general-purpose to edit files in this session.", rightW-1) {
+				rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+			}
 		}
 	}
 	rightLines = append(rightLines, "")
@@ -261,9 +271,13 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 	body.WriteString(dim.Render("Ctrl+P — agent profile picker  ·  Plan: /profile plan → /plan save → /apply-plan --preview → /apply-plan"))
 	body.WriteString("\n")
 	body.WriteString(dim.Render("Multi-agent: /profile coordinator, /workers, /focus"))
-	if opt.Profile == "coordinator" {
+	if opt.FileWriteToolsHidden {
 		body.WriteString("\n")
-		body.WriteString(dim.Render("Coordinator mode — use /profile general-purpose to edit files directly."))
+		if opt.HubDelegatesCoding {
+			body.WriteString(dim.Render("This profile hides write tools — spawn_agent for coding, or /profile general-purpose for direct edits."))
+		} else {
+			body.WriteString(dim.Render("Read-only profile — /profile general-purpose for direct file edits."))
+		}
 	}
 
 	body.WriteString("\n")

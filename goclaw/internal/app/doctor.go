@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/mcp"
 	"github.com/okuzpe/goclaw/internal/permissions"
@@ -49,6 +50,7 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 		fmt.Sprintf("task_model_router: %s", config.NormalizeTaskModelRouter(cfg.TaskModelRouter)),
 		taskModelsLine,
 		fmt.Sprintf("profile:   %s", rt.Profile.Name),
+		fmt.Sprintf("file tools: %s", doctorFileToolsLine(rt.Profile)),
 		fmt.Sprintf("tools:     %s", enabledDisabled(!rt.DisableTools)),
 	}
 
@@ -110,7 +112,8 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 	lines = append(lines, mcpSummaryLines(rt)...)
 
 	hintLines := hintLines(cfg, ollamaOK, rt.DisableTools, OllamaFunctionToolsDropped(rt))
-	hintLines = append(hintLines, profileHintLines(rt.Profile.Name)...)
+	hintLines = append(hintLines, profileHintLines(rt.Profile)...)
+	hintLines = append(hintLines, writeToolApprovalHintLines(rt)...)
 	hintLines = append(hintLines, mcpConnectionHintLines(cfg, rt)...)
 	if len(hintLines) > 0 {
 		lines = append(lines, "")
@@ -293,12 +296,47 @@ func dedupeDoctorHints(lines []string) []string {
 	return out
 }
 
-func profileHintLines(profileName string) []string {
-	if profileName == "coordinator" {
+func doctorFileToolsLine(p agents.Profile) string {
+	if p.AllowsWorkspaceFileWrites() {
+		return "write_file / edit_file / patch exposed to model"
+	}
+	return "hidden (read-only or narrow tool_allowlist — model cannot call write tools)"
+}
+
+func profileHintLines(p agents.Profile) []string {
+	if p.AllowsWorkspaceFileWrites() {
+		return nil
+	}
+	out := []string{
+		"  This profile does not expose write_file, edit_file, or patch to the model.",
+	}
+	if p.AllowsSpawnAgentDelegation() {
+		out = append(out,
+			"  Hub-style profile: delegate coding with spawn_agent (e.g. profile general-purpose or stack-coder).",
+			"  Put file paths and acceptance criteria in the task field — workers do not see this chat.",
+			"  For direct edits in this same session: /profile general-purpose — or set \"agent_profile\": \"general-purpose\" in .goclaw/settings.json",
+		)
+	} else {
+		out = append(out,
+			"  For file edits and coding in this session: /profile general-purpose",
+			"  — or set \"agent_profile\": \"general-purpose\" in .goclaw/settings.json",
+		)
+	}
+	return out
+}
+
+func writeToolApprovalHintLines(rt *ChatRuntime) []string {
+	if rt == nil || rt.DisableTools || !rt.Profile.AllowsWorkspaceFileWrites() || rt.Policy == nil {
+		return nil
+	}
+	if rt.Policy.Evaluate("write_file") == permissions.DecisionDeny || rt.Policy.Evaluate("edit_file") == permissions.DecisionDeny {
 		return []string{
-			"  Profile is 'coordinator' (hub mode — delegates tasks via spawn_agent).",
-			"  - For direct file editing and coding, switch to: /profile general-purpose",
-			"  - Or set \"agent_profile\": \"general-purpose\" in .goclaw/settings.json",
+			"  tool_permissions sets write_file or edit_file to deny — the agent cannot persist those edits until you change settings.",
+		}
+	}
+	if rt.Policy.Evaluate("write_file") == permissions.DecisionAsk || rt.Policy.Evaluate("edit_file") == permissions.DecisionAsk {
+		return []string{
+			"  write_file / edit_file default to ask: approve prompts in the UI, or set tool_permissions.allow in settings for fewer interruptions.",
 		}
 	}
 	return nil

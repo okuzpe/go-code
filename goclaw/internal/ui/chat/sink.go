@@ -80,5 +80,5 @@ func (s *batchedProgramSink) OnToolResult(name string, content string, isError b
 
 func (s *batchedProgramSink) OnDone(_ string) {
 	s.flush()
-	s.p.Send(assistantDoneMsg{})
+	s.p.Send(assistantDoneMsg{aborted: false})
 }

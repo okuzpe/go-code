@@ -414,7 +414,8 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 			return true, "", false, "", fmt.Errorf("/profile requires a running agent")
 		}
 		if len(fields) < 2 {
-			return true, "", false, "", fmt.Errorf("usage: /profile <name>\nnames: %s", agents.ProfileListHint())
+			profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
+			return true, "", false, "", fmt.Errorf("usage: /profile <name>\nnames: %s", agents.JoinSortedProfileKeys(profs))
 		}
 		msg, err := switchOrchestratorProfile(orch, env, fields[1])
 		if err != nil {

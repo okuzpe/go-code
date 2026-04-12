@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/ui/terminalstyle"
 	"golang.org/x/term"
 )
@@ -29,7 +30,7 @@ var asciiLogo = `
 // printStartupBanner renders the ASCII header and session summary for the readline REPL path (and the
 // plain-text branch when stdout is not a TTY). Default fullscreen TUI does not call this — startup UX
 // lives in internal/ui/chat (welcome panel, footer).
-func printStartupBanner(version, provider, model, profileName, sessionID, workdir string, disableTools bool, uiAppearance string) {
+func printStartupBanner(version, provider, model, profileName, sessionID, workdir string, disableTools bool, uiAppearance string, profile agents.Profile) {
 	if !isTTY(os.Stdout) {
 		fmt.Printf("goclaw %s  provider=%s  model=%s  profile=%s  session=%s\n",
 			version, provider, model, profileName, sessionID)
@@ -38,6 +39,13 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 			fmt.Println("Tools disabled.")
 		} else {
 			fmt.Println("Tools in Ask mode — answer y/N. Ctrl+C to exit.")
+		}
+		if !profile.AllowsWorkspaceFileWrites() {
+			if profile.AllowsSpawnAgentDelegation() {
+				fmt.Println("Note: hub profile (write tools hidden) — use spawn_agent for coding or switch to profile general-purpose.")
+			} else {
+				fmt.Println("Note: read-only profile — use profile general-purpose for direct file edits.")
+			}
 		}
 		fmt.Println()
 		return
@@ -77,8 +85,12 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 	fmt.Println(sep)
 	fmt.Println(toolsNote)
 
-	if strings.EqualFold(strings.TrimSpace(profileName), "coordinator") {
-		fmt.Println(dim.Render("  Coordinator hub — /workers, /focus, /detach, /profile general-purpose"))
+	if !profile.AllowsWorkspaceFileWrites() {
+		if profile.AllowsSpawnAgentDelegation() {
+			fmt.Println(dim.Render("  Hub profile (no direct write tools) — delegate with spawn_agent or /profile general-purpose"))
+		} else {
+			fmt.Println(dim.Render("  Read-only profile — /profile general-purpose for direct file edits"))
+		}
 	}
 
 	fmt.Println(helpLine)

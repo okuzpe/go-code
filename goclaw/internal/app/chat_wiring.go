@@ -124,7 +124,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	profile, ok := profs[cfg.AgentProfile]
 	if !ok {
 		return nil, fmt.Errorf("unknown agent profile %q; valid profiles: %s (use --profile or \"agent_profile\" in settings.json)",
-			cfg.AgentProfile, agents.ProfileListHint())
+			cfg.AgentProfile, agents.JoinSortedProfileKeys(profs))
 	}
 
 	slog.Info("starting goclaw", "provider", cfg.Provider, "model", cfg.Model(), "profile", profile.Name)
