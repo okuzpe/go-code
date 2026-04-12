@@ -69,6 +69,57 @@ type editFileInput struct {
 	ReplaceAll bool   `json:"replace_all"`
 }
 
+// editNotFoundError builds an actionable error message when old_string has zero matches.
+// It looks for the first line of oldString in the file and, when found, returns a snippet
+// of surrounding context so the model can correct its old_string without another read_file call.
+func editNotFoundError(path, oldString, fileContent string) string {
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "old_string not found in %s (0 matches)\n", path)
+	builder.WriteString("Hint: do not include read_file line-number prefixes (e.g. \"   1\\t\") in old_string — copy only the raw file text.\n")
+
+	// Try to locate the first non-empty line of oldString in the file.
+	firstLine := ""
+	for _, line := range strings.Split(oldString, "\n") {
+		if strings.TrimSpace(line) != "" {
+			firstLine = line
+			break
+		}
+	}
+
+	if firstLine == "" {
+		return builder.String()
+	}
+
+	fileLines := strings.Split(fileContent, "\n")
+	foundIndex := -1
+	for i, line := range fileLines {
+		if strings.Contains(line, strings.TrimSpace(firstLine)) {
+			foundIndex = i
+			break
+		}
+	}
+
+	if foundIndex < 0 {
+		fmt.Fprintf(&builder, "(first line of old_string %q not found in file either — verify the exact text)", strings.TrimSpace(firstLine))
+		return builder.String()
+	}
+
+	const contextLines = 4
+	start := max(0, foundIndex-contextLines)
+	end := min(foundIndex+contextLines+1, len(fileLines))
+
+	fmt.Fprintf(&builder, "Nearest match found near line %d. Surrounding context:\n", foundIndex+1)
+	for i := start; i < end; i++ {
+		marker := "  "
+		if i == foundIndex {
+			marker = "> "
+		}
+		fmt.Fprintf(&builder, "%s%4d\t%s\n", marker, i+1, fileLines[i])
+	}
+	builder.WriteString("Copy the exact lines above (without the line-number prefix) into old_string.")
+	return builder.String()
+}
+
 // Execute implements Tool.
 //
 // Path resolution: uses resolveExistingPathUnderRoot — edit_file requires the target
@@ -105,7 +156,7 @@ func (t *EditFileTool) Execute(_ context.Context, input string) (Result, error) 
 	// strings.Count counts non-overlapping occurrences — consistent with strings.Replace behaviour.
 	count := strings.Count(content, in.OldString)
 	if count == 0 {
-		return Result{Content: fmt.Sprintf("old_string not found in %s (0 matches)", in.Path), IsError: true}, nil
+		return Result{Content: editNotFoundError(in.Path, in.OldString, content), IsError: true}, nil
 	}
 	if !in.ReplaceAll && count > 1 {
 		return Result{
