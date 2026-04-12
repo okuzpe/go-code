@@ -13,9 +13,9 @@ import (
 // ResilientConn wraps an MCP Conn and re-dials once when a tool call fails with a
 // recoverable transport error (EOF, broken pipe, connection reset, etc.).
 type ResilientConn struct {
-	mu   sync.Mutex
+	mu    sync.Mutex
 	inner Conn
-	dial func(context.Context) (Conn, error)
+	dial  func(context.Context) (Conn, error)
 }
 
 // NewResilientConn dials once, runs Initialize, and returns a wrapper for runtime use.

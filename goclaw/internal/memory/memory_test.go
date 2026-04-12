@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
- 
+
 	"github.com/stretchr/testify/require"
 )
 

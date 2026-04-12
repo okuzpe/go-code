@@ -126,9 +126,9 @@ func tail(s string, n int) string {
 
 type fakeLangHintTool struct{}
 
-func (fakeLangHintTool) Name() string                       { return "read_file" }
-func (fakeLangHintTool) Description() string                 { return "fake" }
-func (fakeLangHintTool) InputSchema() any                    { return map[string]any{"type": "object"} }
+func (fakeLangHintTool) Name() string        { return "read_file" }
+func (fakeLangHintTool) Description() string { return "fake" }
+func (fakeLangHintTool) InputSchema() any    { return map[string]any{"type": "object"} }
 func (fakeLangHintTool) Execute(context.Context, string) (tools.Result, error) {
 	return tools.Result{}, nil
 }

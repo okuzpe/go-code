@@ -3,13 +3,13 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
-	"github.com/stretchr/testify/require"
 )
 
 func TestBashAllowEcho(t *testing.T) {

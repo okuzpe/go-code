@@ -125,7 +125,7 @@ func TestHTTPSessionSSEResponse(t *testing.T) {
 			line, _ := json.Marshal(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      msg["id"],
-				"result": map[string]any{"tools": []map[string]any{}},
+				"result":  map[string]any{"tools": []map[string]any{}},
 			})
 			_, _ = fmt.Fprintf(w, "data: %s\n\n", line)
 			if f, ok := w.(http.Flusher); ok {

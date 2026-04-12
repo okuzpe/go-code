@@ -2,7 +2,7 @@ package permissions
 
 import (
 	"testing"
- 
+
 	"github.com/stretchr/testify/require"
 )
 

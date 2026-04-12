@@ -51,19 +51,19 @@ func (c *OpenAICompatClient) Stream(ctx context.Context, req Request) (<-chan Ev
 }
 
 type openAIChatRequest struct {
-	Model       string              `json:"model"`
-	Messages    []openAIChatMessage `json:"messages"`
-	Stream      bool                `json:"stream"`
-	MaxTokens   int                 `json:"max_tokens,omitempty"`
-	Tools       []openAIToolDef     `json:"tools,omitempty"`
-	ToolChoice  any                 `json:"tool_choice,omitempty"`
+	Model      string              `json:"model"`
+	Messages   []openAIChatMessage `json:"messages"`
+	Stream     bool                `json:"stream"`
+	MaxTokens  int                 `json:"max_tokens,omitempty"`
+	Tools      []openAIToolDef     `json:"tools,omitempty"`
+	ToolChoice any                 `json:"tool_choice,omitempty"`
 }
 
 type openAIChatMessage struct {
-	Role       string `json:"role"`
-	Content    string `json:"content,omitempty"`
+	Role       string               `json:"role"`
+	Content    string               `json:"content,omitempty"`
 	ToolCalls  []openAIToolCallWire `json:"tool_calls,omitempty"`
-	ToolCallID string `json:"tool_call_id,omitempty"`
+	ToolCallID string               `json:"tool_call_id,omitempty"`
 }
 
 type openAIToolCallWire struct {
@@ -209,10 +209,10 @@ func toolResultOpenAIContent(tr ToolResultRecord) string {
 type openAIStreamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
+			Role      string `json:"role"`
+			Content   string `json:"content"`
 			ToolCalls []struct {
-				Index    int `json:"index"`
+				Index    int    `json:"index"`
 				ID       string `json:"id"`
 				Type     string `json:"type"`
 				Function struct {
@@ -230,11 +230,11 @@ type openAIStreamChunk struct {
 }
 
 type openAIToolAccum struct {
-	id       string
-	name     string
-	args     strings.Builder
-	hasID    bool
-	hasName  bool
+	id      string
+	name    string
+	args    strings.Builder
+	hasID   bool
+	hasName bool
 }
 
 func parseOpenAIEventStream(body io.Reader, out chan<- Event) error {

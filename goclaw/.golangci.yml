@@ -1,20 +1,39 @@
+# golangci-lint v2 — https://golangci-lint.run/docs/configuration/file/
+version: "2"
+
+run:
+  relative-path-mode: cfg
+
 linters:
+  default: none
   enable:
     - errcheck
     - govet
-    - staticcheck
     - ineffassign
+    - misspell
+    - staticcheck
+    - unconvert
     - unused
 
-linters-settings:
-  errcheck:
-    exclude-functions:
-      # BubbleTea Cmd returns are intentionally discarded in update loops.
-      - (github.com/charmbracelet/bubbletea.Model).Update
+  settings:
+    errcheck:
+      exclude-functions:
+        # BubbleTea Cmd returns are intentionally discarded in update loops.
+        - (github.com/charmbracelet/bubbletea.Model).Update
+    staticcheck:
+      checks:
+        - "SA*"
+        - "S1*"
+        - "ST*"
+        - "-ST1000"
+        - "-ST1020"
+        - "-ST1021"
 
-issues:
-  exclude-rules:
-    # internal/ui/chat uses BubbleTea patterns where errcheck is noisy.
-    - path: internal/ui/chat/
-      linters:
-        - errcheck
+  exclusions:
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+        path: internal/ui/chat/

@@ -23,7 +23,7 @@ func TestOllamaChatRequestContainsToolName(t *testing.T) {
 		b, _ := io.ReadAll(r.Body)
 		captured = b
 		w.Header().Set("Content-Type", "application/x-ndjson")
-		io.WriteString(w, `{"model":"m","message":{"role":"assistant","content":"ok"},"done":true}`+"\n")
+		_, _ = io.WriteString(w, `{"model":"m","message":{"role":"assistant","content":"ok"},"done":true}`+"\n")
 	}))
 	defer srv.Close()
 
@@ -135,13 +135,13 @@ func TestOllamaNativeToolCallsStream(t *testing.T) {
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		line1 := `{"model":"m","message":{"role":"assistant","content":"","tool_calls":[{"type":"function","function":{"name":"read_file","arguments":"{\"path\":\"a.txt\"}"}}]},"done":false}` + "\n"
 		line2 := `{"model":"m","message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":1,"eval_count":2}` + "\n"
-		io.Copy(w, strings.NewReader(line1+line2))
+		_, _ = io.Copy(w, strings.NewReader(line1+line2))
 	}))
 	defer srv.Close()
 
 	client := NewOllama(srv.URL)
 	req := Request{
-		Model: "m",
+		Model:    "m",
 		Messages: []Message{PlainMessage("user", "read a.txt")},
 		Tools: []ToolSpec{{Name: "read_file", InputSchema: map[string]any{
 			"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}},

@@ -152,7 +152,7 @@ func TestStoreRotation(t *testing.T) {
 
 	// The rotated file (.1.jsonl) must exist.
 	rotated := store.rotatedPath(sess.ID, 1)
-		if _, err := os.Stat(rotated); err != nil {
+	if _, err := os.Stat(rotated); err != nil {
 		t.Errorf("rotation file %s not found after rotation: %v", rotated, err)
 	}
 }

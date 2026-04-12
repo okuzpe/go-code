@@ -16,7 +16,7 @@ func TestParseApplyPlanRest(t *testing.T) {
 	require.True(t, preview)
 	require.Equal(t, "", path)
 
-	path, preview = parseApplyPlanRest("-preview")
+	_, preview = parseApplyPlanRest("-preview")
 	require.True(t, preview)
 
 	path, preview = parseApplyPlanRest("--preview notes/plan.md")

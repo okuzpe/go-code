@@ -200,10 +200,10 @@ type Options struct {
 	TUIMouseScroll bool
 }
 
-// SlashHandler: if modelSubmit is non-empty, send that text to the model after displaying out (e.g. /edit).
+// SlashHandler runs a slash command. If modelSubmit is non-empty, send that text to the model after displaying out (e.g. /edit).
 // When quit is true, err may be nil (caller normalizes /quit before the TUI).
 // hints describe optional UI updates (welcome bar, transcript reload); ignored by callers that do not render a transcript.
-type SlashHandler func(input string) (handled bool, out string, quit bool, modelSubmit string, err error, hints slashcmd.UIHints)
+type SlashHandler func(input string) (handled bool, out string, quit bool, modelSubmit string, hints slashcmd.UIHints, err error)
 
 type ApprovalRequest struct {
 	ToolName string
@@ -1034,7 +1034,7 @@ func (m *Model) runDispatchAfterUserEcho(txt string) tea.Cmd {
 		return nil
 	}
 	if m.slashHandle != nil {
-		handled, out, quit, modelSubmit, err, hints := m.slashHandle(txt)
+		handled, out, quit, modelSubmit, hints, err := m.slashHandle(txt)
 		if handled {
 			if err != nil {
 				m.appendError(fmt.Sprintf("error: %v", err))

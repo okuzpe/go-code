@@ -167,4 +167,3 @@ func grepOneFile(absPath, relSlash string, re *regexp.Regexp, emit func(string, 
 		}
 	}
 }
-

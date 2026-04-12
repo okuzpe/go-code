@@ -142,7 +142,7 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 		}
 		n := 0
 		if len(fields) >= 2 {
-			fmt.Sscan(fields[1], &n)
+			_, _ = fmt.Sscan(fields[1], &n)
 		}
 		return true, env.ToolLog(n), false, "", nil
 

@@ -9,8 +9,8 @@ import (
 
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/mcp"
-	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/memory"
+	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/tools"
 	"github.com/stretchr/testify/require"
@@ -147,9 +147,9 @@ func TestDoctorReportPluginSkillMemoryLines(t *testing.T) {
 			PluginDirs:       []string{filepath.Join(wd, "plugins")},
 			ProjectConfigDir: ".goclaw",
 		},
-		Workdir:     wd,
-		Sess:        session.New(),
-		MemStore:    mem,
+		Workdir:      wd,
+		Sess:         session.New(),
+		MemStore:     mem,
 		DisableTools: true,
 	}
 	report := DoctorReportFromRuntime(context.Background(), rt)

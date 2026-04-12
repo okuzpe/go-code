@@ -1,7 +1,7 @@
 # Convenience targets for goclaw (macOS, Linux, Git Bash on Windows).
 # Without make: use the same `go` commands shown under each target.
 
-.PHONY: build install test vet fmt lint race cover clean parity run run-code run-hub run-readline run-tui run-chat run-chat-cmd
+.PHONY: build install test vet fmt lint lint-tools lint-fmt staticcheck race cover clean parity run run-code run-hub run-readline run-tui run-chat run-chat-cmd
 
 CMD := ./cmd/goclaw
 
@@ -35,9 +35,22 @@ cover:
 clean:
 	rm -f goclaw coverage.out
 
-# Requires: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# Install golangci-lint v2 + staticcheck into $(shell go env GOPATH)/bin (add that directory to PATH).
+lint-tools:
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	go install honnef.co/go/tools/cmd/staticcheck@latest
+
+# Requires: make lint-tools (or install the same binaries another way); golangci-lint on PATH.
 lint:
 	golangci-lint run ./...
+
+# Standalone static analysis (subset overlaps golangci-lint staticcheck linter).
+staticcheck:
+	staticcheck ./...
+
+# Apply gofmt + gofumpt via golangci-lint (requires lint-tools).
+lint-fmt:
+	golangci-lint fmt ./...
 
 run:
 	go run $(CMD)

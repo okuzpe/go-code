@@ -144,10 +144,10 @@ func (c *OllamaClient) streamWithWireTools(ctx context.Context, req Request, out
 		msg := parseOllamaErrorMessage(errBody)
 		if wireTools && len(req.Tools) > 0 && ollamaReportsToolsUnsupported(resp.StatusCode, msg) {
 			c.toolsUnsupportedOnce.Do(func() {
-				slog.Warn("ollama: model rejected tool calling — falling back to text-only (no read_file/bash/etc.). "+
-					"Use a tools-capable model (e.g. qwen2.5-coder:7b) or update Ollama. "+
-					"Set ollama_num_ctx in settings.json (default 8192) if context is too small for tool schemas. "+
-					"Ollama error: "+msg)
+				slog.Warn("ollama: model rejected tool calling — falling back to text-only (no read_file/bash/etc.). " +
+					"Use a tools-capable model (e.g. qwen2.5-coder:7b) or update Ollama. " +
+					"Set ollama_num_ctx in settings.json (default 8192) if context is too small for tool schemas. " +
+					"Ollama error: " + msg)
 			})
 			c.functionToolsDropped.Store(true)
 			return c.streamWithWireTools(ctx, req, out, false)
@@ -678,11 +678,11 @@ func wrapOllamaDialErr(host string, err error) error {
 
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
-		return fmt.Errorf("Ollama at %s did not respond in time. Is the daemon running and reachable? Check VPN/firewall and OLLAMA_HOST — %w", host, err)
+		return fmt.Errorf("ollama at %s did not respond in time. Is the daemon running and reachable? Check VPN/firewall and OLLAMA_HOST — %w", host, err)
 	}
 
 	if strings.Contains(low, "no such host") || strings.Contains(low, "could not resolve") {
-		return fmt.Errorf("Ollama host %s could not be resolved (DNS). Check the host name in OLLAMA_HOST or settings.json — %w", host, err)
+		return fmt.Errorf("ollama host %s could not be resolved (DNS). Check the host name in OLLAMA_HOST or settings.json — %w", host, err)
 	}
 
 	if strings.Contains(low, "tls") || strings.Contains(low, "x509") || strings.Contains(low, "certificate") {

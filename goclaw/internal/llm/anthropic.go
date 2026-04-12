@@ -53,12 +53,12 @@ func (c *AnthropicClient) Stream(ctx context.Context, req Request) (<-chan Event
 
 // anthropicRequest is the JSON body sent to /v1/messages.
 type anthropicRequest struct {
-	Model     string                  `json:"model"`
-	MaxTokens int                     `json:"max_tokens"`
-	System    string                  `json:"system,omitempty"`
-	Messages  []anthropicWireMessage  `json:"messages"`
-	Tools     []anthropicTool         `json:"tools,omitempty"`
-	Stream    bool                    `json:"stream"`
+	Model     string                 `json:"model"`
+	MaxTokens int                    `json:"max_tokens"`
+	System    string                 `json:"system,omitempty"`
+	Messages  []anthropicWireMessage `json:"messages"`
+	Tools     []anthropicTool        `json:"tools,omitempty"`
+	Stream    bool                   `json:"stream"`
 }
 
 type anthropicTool struct {
@@ -69,10 +69,10 @@ type anthropicTool struct {
 
 // SSE event shapes from Anthropic streaming protocol.
 type sseEvent struct {
-	Type  string          `json:"type"`
-	Index int             `json:"index"`
-	Delta *sseDelta       `json:"delta,omitempty"`
-	Usage *sseUsage       `json:"usage,omitempty"`
+	Type  string    `json:"type"`
+	Index int       `json:"index"`
+	Delta *sseDelta `json:"delta,omitempty"`
+	Usage *sseUsage `json:"usage,omitempty"`
 	// content_block_start fields
 	ContentBlock *sseBlock `json:"content_block,omitempty"`
 }
@@ -90,9 +90,9 @@ type sseUsage struct {
 }
 
 type sseBlock struct {
-	Type  string `json:"type"` // "text" | "tool_use"
-	ID    string `json:"id"`
-	Name  string `json:"name"`
+	Type string `json:"type"` // "text" | "tool_use"
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 func (c *AnthropicClient) stream(ctx context.Context, req Request, out chan<- Event) error {

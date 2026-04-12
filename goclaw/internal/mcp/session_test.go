@@ -36,7 +36,7 @@ func runMockMCPServer(in io.Reader, out io.Writer) error {
 		case "initialize":
 			_ = enc.Encode(map[string]any{
 				"jsonrpc": "2.0",
-				"id":      json.RawMessage(msg.ID),
+				"id":      msg.ID,
 				"result": map[string]any{
 					"protocolVersion": ProtocolVersion,
 					"capabilities":    map[string]any{"tools": map[string]any{}},
@@ -48,7 +48,7 @@ func runMockMCPServer(in io.Reader, out io.Writer) error {
 		case "tools/list":
 			_ = enc.Encode(map[string]any{
 				"jsonrpc": "2.0",
-				"id":      json.RawMessage(msg.ID),
+				"id":      msg.ID,
 				"result": map[string]any{
 					"tools": []map[string]any{
 						{
@@ -67,7 +67,7 @@ func runMockMCPServer(in io.Reader, out io.Writer) error {
 		case "tools/call":
 			_ = enc.Encode(map[string]any{
 				"jsonrpc": "2.0",
-				"id":      json.RawMessage(msg.ID),
+				"id":      msg.ID,
 				"result": map[string]any{
 					"content": []map[string]any{
 						{"type": "text", "text": "hello from mock"},
@@ -78,7 +78,7 @@ func runMockMCPServer(in io.Reader, out io.Writer) error {
 		default:
 			_ = enc.Encode(map[string]any{
 				"jsonrpc": "2.0",
-				"id":      json.RawMessage(msg.ID),
+				"id":      msg.ID,
 				"error": map[string]any{
 					"code":    -32601,
 					"message": fmt.Sprintf("unknown method %s", msg.Method),
@@ -178,7 +178,7 @@ func TestServerInitiatedRequestGetsErrorResponse(t *testing.T) {
 		case "initialize":
 			_ = enc.Encode(map[string]any{
 				"jsonrpc": "2.0",
-				"id":      json.RawMessage(msg.ID),
+				"id":      msg.ID,
 				"result": map[string]any{
 					"protocolVersion": ProtocolVersion,
 					"capabilities":    map[string]any{"tools": map[string]any{}},
@@ -198,7 +198,7 @@ func TestServerInitiatedRequestGetsErrorResponse(t *testing.T) {
 			// Then send the real tools/list response.
 			_ = enc.Encode(map[string]any{
 				"jsonrpc": "2.0",
-				"id":      json.RawMessage(msg.ID),
+				"id":      msg.ID,
 				"result": map[string]any{
 					"tools": []map[string]any{
 						{"name": "echo", "description": "echo args", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},

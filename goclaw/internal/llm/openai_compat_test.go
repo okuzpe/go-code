@@ -44,8 +44,8 @@ func TestOpenAICompatStreamText(t *testing.T) {
 	client := NewOpenAICompat("test-key", srv.URL+"/v1")
 	ctx := context.Background()
 	req := Request{
-		Model:    "test-model",
-		Messages: []Message{PlainMessage("user", "ping")},
+		Model:     "test-model",
+		Messages:  []Message{PlainMessage("user", "ping")},
 		MaxTokens: 100,
 	}
 	events, errc := client.Stream(ctx, req)
@@ -127,7 +127,7 @@ func TestOpenAICompatStreamToolCalls(t *testing.T) {
 	client := NewOpenAICompat("k", srv.URL+"/v1")
 	ctx := context.Background()
 	req := Request{
-		Model: "m",
+		Model:    "m",
 		Messages: []Message{PlainMessage("user", "read a.go")},
 		Tools: []ToolSpec{
 			{Name: "read_file", Description: "read", InputSchema: map[string]any{"type": "object"}},

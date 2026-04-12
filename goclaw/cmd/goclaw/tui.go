@@ -46,15 +46,15 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		return app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName())
 	}
 
-	slash := func(input string) (handled bool, out string, quit bool, modelSubmit string, err error, hints slashcmd.UIHints) {
+	slash := func(input string) (handled bool, out string, quit bool, modelSubmit string, hints slashcmd.UIHints, err error) {
 		sc := slashcmd.SlashContext{SlashEnv: slashEnv, Mem: rt.MemStore, Orch: orch, Sess: &sess, Store: rt.Store}
 		var hi slashcmd.UIHints
 		h, o, q, ms, e := slashcmd.HandleSlash(ctx, sc, input, &hi)
 		rt.Sess = sess
 		if q && errors.Is(e, slashcmd.ErrReplQuit) {
-			return h, o, q, ms, nil, hi
+			return h, o, q, ms, hi, nil
 		}
-		return h, o, q, ms, e, hi
+		return h, o, q, ms, hi, e
 	}
 
 	submit := newChatSubmitter(rt, orch, focus)

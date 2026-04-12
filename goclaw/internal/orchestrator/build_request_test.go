@@ -18,9 +18,9 @@ type fakeTool struct {
 	name string
 }
 
-func (f fakeTool) Name() string                       { return f.name }
-func (f fakeTool) Description() string                 { return "fake" }
-func (f fakeTool) InputSchema() any                    { return map[string]any{"type": "object"} }
+func (f fakeTool) Name() string        { return f.name }
+func (f fakeTool) Description() string { return "fake" }
+func (f fakeTool) InputSchema() any    { return map[string]any{"type": "object"} }
 func (f fakeTool) Execute(context.Context, string) (tools.Result, error) {
 	return tools.Result{}, nil
 }

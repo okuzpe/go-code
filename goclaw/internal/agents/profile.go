@@ -27,7 +27,7 @@ type Profile struct {
 	// Applied after ToolAllowlist filtering. Useful to exclude a specific tool without
 	// redefining the full allowlist. Set via frontmatter "disallowed_tools".
 	DisallowedTools []string
-	ReadOnly        bool // if true, write/bash tools are blocked
+	ReadOnly        bool   // if true, write/bash tools are blocked
 	SystemPrompt    string // appended to the base system prompt
 	// MaxTurns caps the orchestrator loop for this profile (0 = use built-in default of 32).
 	// Set via frontmatter "max_turns". Values above the built-in default are clamped to it.

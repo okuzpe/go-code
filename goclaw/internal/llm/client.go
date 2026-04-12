@@ -5,10 +5,10 @@ import "context"
 
 // Request is the payload sent to the LLM.
 type Request struct {
-	Model    string
-	System   string
-	Messages []Message
-	Tools    []ToolSpec
+	Model     string
+	System    string
+	Messages  []Message
+	Tools     []ToolSpec
 	MaxTokens int
 	// NumCtx overrides the Ollama context window size for this request.
 	// 0 = use provider/model default.
@@ -26,9 +26,9 @@ type ToolSpec struct {
 type Event interface{ isEvent() }
 
 type TextDelta struct{ Text string }
-type ToolUse   struct{ ID, Name, Input string }
-type Usage     struct{ InputTokens, OutputTokens int }
-type Done      struct{}
+type ToolUse struct{ ID, Name, Input string }
+type Usage struct{ InputTokens, OutputTokens int }
+type Done struct{}
 
 func (TextDelta) isEvent() {}
 func (ToolUse) isEvent()   {}

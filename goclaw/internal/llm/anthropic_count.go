@@ -29,11 +29,7 @@ func (c *AnthropicClient) CountInputTokens(ctx context.Context, req Request) (in
 		Messages: wire,
 	}
 	for _, t := range req.Tools {
-		body.Tools = append(body.Tools, anthropicTool{
-			Name:        t.Name,
-			Description: t.Description,
-			InputSchema: t.InputSchema,
-		})
+		body.Tools = append(body.Tools, anthropicTool(t))
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
