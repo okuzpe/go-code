@@ -15,6 +15,7 @@ func (m *Model) openToolLog() {
 	if len(m.toolLog) == 0 {
 		return
 	}
+	m.exitTranscriptBrowse()
 	m.helpOpen = false
 	m.helpFullText = ""
 	m.themePickOpen = false

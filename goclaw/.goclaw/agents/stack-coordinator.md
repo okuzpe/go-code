@@ -1,6 +1,6 @@
 ---
 name: stack-coordinator
-model: mistral:latest
+model: qwen2.5-coder:7b
 tool_allowlist:
   - spawn_agent
   - stop_task

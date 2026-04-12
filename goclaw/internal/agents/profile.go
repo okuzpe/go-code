@@ -23,8 +23,22 @@ type Profile struct {
 	Description   string   // optional; custom agents from YAML frontmatter "description"
 	ModelOverride string   // empty = use global config model
 	ToolAllowlist []string // nil = all tools allowed
-	ReadOnly      bool     // if true, write/bash tools are blocked
-	SystemPrompt  string   // appended to the base system prompt
+	// DisallowedTools lists tool names that are removed from the effective allowlist.
+	// Applied after ToolAllowlist filtering. Useful to exclude a specific tool without
+	// redefining the full allowlist. Set via frontmatter "disallowed_tools".
+	DisallowedTools []string
+	ReadOnly        bool // if true, write/bash tools are blocked
+	SystemPrompt    string // appended to the base system prompt
+	// MaxTurns caps the orchestrator loop for this profile (0 = use built-in default of 32).
+	// Set via frontmatter "max_turns". Values above the built-in default are clamped to it.
+	MaxTurns int
+	// MemoryScope selects a per-agent memory directory instead of the global user memory store.
+	// Valid values: "user" (~/.goclaw/agent-memory/<name>/),
+	//               "project" (<workdir>/.goclaw/agent-memory/<name>/),
+	//               "local"   (<workdir>/.goclaw/agent-memory-local/<name>/).
+	// Empty (default) uses the global ~/.goclaw/memory/ store.
+	// Set via frontmatter "memory".
+	MemoryScope string
 }
 
 // Built-in profiles. Model overrides are intentionally empty so they

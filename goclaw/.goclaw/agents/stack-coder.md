@@ -1,6 +1,6 @@
 ---
 name: stack-coder
-model: qwen2.5-coder:7b
+model: qwen2.5-coder:14b
 description: Coding-focused profile (CODING stack) — edits, refactors, debugging.
 ---
 

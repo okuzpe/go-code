@@ -12,12 +12,18 @@ import (
 
 // customFrontmatter is the YAML structure parsed from a *.md agent file's frontmatter.
 type customFrontmatter struct {
-	Name          string   `yaml:"name"`
-	Description   string   `yaml:"description"`
-	ModelOverride string   `yaml:"model"`
-	ToolAllowlist []string `yaml:"tool_allowlist"`
-	ReadOnly      bool     `yaml:"read_only"`
-	SystemPrompt  string   `yaml:"system_prompt"`
+	Name            string   `yaml:"name"`
+	Description     string   `yaml:"description"`
+	ModelOverride   string   `yaml:"model"`
+	ToolAllowlist   []string `yaml:"tool_allowlist"`
+	DisallowedTools []string `yaml:"disallowed_tools"`
+	ReadOnly        bool     `yaml:"read_only"`
+	SystemPrompt    string   `yaml:"system_prompt"`
+	// MaxTurns caps the orchestrator loop for this agent (0 = built-in default 32).
+	MaxTurns int `yaml:"max_turns"`
+	// Memory selects a per-agent memory scope: "user", "project", or "local".
+	// Empty means use the global user memory store.
+	Memory string `yaml:"memory"`
 }
 
 // validAgentName accepts lowercase letters, digits, and hyphens only.
@@ -93,15 +99,29 @@ func parseAgentFile(path string) (Profile, bool) {
 	}
 
 	profile := Profile{
-		Name:          name,
-		Description:   strings.TrimSpace(fm.Description),
-		ModelOverride: strings.TrimSpace(fm.ModelOverride),
-		ToolAllowlist: fm.ToolAllowlist,
-		ReadOnly:      fm.ReadOnly,
-		SystemPrompt:  systemPrompt,
+		Name:            name,
+		Description:     strings.TrimSpace(fm.Description),
+		ModelOverride:   strings.TrimSpace(fm.ModelOverride),
+		ToolAllowlist:   fm.ToolAllowlist,
+		DisallowedTools: fm.DisallowedTools,
+		ReadOnly:        fm.ReadOnly,
+		SystemPrompt:    systemPrompt,
+		MaxTurns:        fm.MaxTurns,
+		MemoryScope:     normalizeMemoryScope(strings.TrimSpace(fm.Memory)),
 	}
 	slog.Debug("custom agent loaded", "name", name, "path", path)
 	return profile, true
+}
+
+// normalizeMemoryScope validates and returns a canonical memory scope value.
+// Valid values are "user", "project", "local"; anything else maps to "".
+func normalizeMemoryScope(raw string) string {
+	switch raw {
+	case "user", "project", "local":
+		return raw
+	default:
+		return ""
+	}
 }
 
 // splitFrontmatter splits a Markdown file into YAML frontmatter and body.

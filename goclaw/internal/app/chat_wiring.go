@@ -177,6 +177,27 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	}
 	memStore := memory.New(memDir)
 
+	// Per-agent memory: if the active profile declares a MemoryScope, replace the global
+	// user store with a scoped store so tool auto-capture and prompt injection stay isolated.
+	if profile.MemoryScope != "" {
+		agentMemDir := memory.PerAgentMemoryDir(profile.MemoryScope, profile.Name, cfg.UserConfigDir, workdir, cfg.ProjectConfigDir)
+		if err := os.MkdirAll(agentMemDir, 0o700); err != nil {
+			slog.Warn("per-agent memory dir create failed; using global store", "dir", agentMemDir, "err", err)
+		} else {
+			memStore = memory.New(agentMemDir)
+			slog.Debug("per-agent memory store attached", "profile", profile.Name, "scope", profile.MemoryScope, "dir", agentMemDir)
+		}
+	}
+
+	// Per-project memory (D14): .goclaw/memory/ — only attached when the directory already
+	// exists so we don't create it on every run. Users opt in by creating the directory.
+	var projectMemStore *memory.Store
+	projectMemDir := filepath.Join(workdir, cfg.ProjectConfigDir, "memory")
+	if info, err := os.Stat(projectMemDir); err == nil && info.IsDir() {
+		projectMemStore = memory.New(projectMemDir)
+		slog.Debug("project memory store attached", "dir", projectMemDir)
+	}
+
 	policy := permissions.NewPolicy()
 	if err := policy.ApplyConfigModes(cfg.PermissionModes); err != nil {
 		return nil, err
@@ -330,6 +351,9 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 
 	ideNotifier := ide.FromEnv()
 	orchOpts := []orchestrator.Option{orchestrator.WithMemoryStore(memStore)}
+	if projectMemStore != nil {
+		orchOpts = append(orchOpts, orchestrator.WithProjectMemoryStore(projectMemStore))
+	}
 	if workdir != "" {
 		orchOpts = append(orchOpts, orchestrator.WithWorkdir(workdir))
 		if projectCtx != "" {

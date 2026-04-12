@@ -43,6 +43,8 @@ type settingsFile struct {
 	PluginAllow               []string            `json:"plugin_allow,omitempty"`
 	PluginDeny                []string            `json:"plugin_deny,omitempty"`
 	MemoryAutoExtract         *bool               `json:"memory_auto_extract,omitempty"`
+	MemoryLLMSilentExtract    *bool               `json:"memory_llm_silent_extract,omitempty"`
+	TUIMouseScroll            *bool               `json:"tui_mouse_scroll,omitempty"`
 	UIAppearance              *string             `json:"ui_appearance,omitempty"`
 	APIKey                    *string             `json:"api_key,omitempty"`
 	OpenAIBaseURL             *string             `json:"openai_base_url,omitempty"`
@@ -198,6 +200,12 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.MemoryAutoExtract != nil && *sf.MemoryAutoExtract {
 		cfg.MemoryAutoExtract = true
+	}
+	if sf.MemoryLLMSilentExtract != nil && *sf.MemoryLLMSilentExtract {
+		cfg.MemoryLLMSilentExtract = true
+	}
+	if sf.TUIMouseScroll != nil {
+		cfg.TUIMouseScroll = *sf.TUIMouseScroll
 	}
 	if len(sf.ExternalHooks) > 0 {
 		cfg.ExternalHooks = append(cfg.ExternalHooks, sf.ExternalHooks...)

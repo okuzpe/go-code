@@ -48,6 +48,14 @@ func WithMemoryStore(mem *memory.Store) Option {
 	}
 }
 
+// WithProjectMemoryStore attaches a per-project memory store (.goclaw/memory/) whose recent entries
+// are injected separately from the user memory store (D14). Either store may be nil.
+func WithProjectMemoryStore(mem *memory.Store) Option {
+	return func(o *Orchestrator) {
+		o.projectMem = mem
+	}
+}
+
 // AfterToolHook is invoked after each tool finishes (before results are added to the session).
 // toolInput is the raw JSON arguments the model sent (may be empty).
 type AfterToolHook func(toolName string, toolInput string, resultBytes int, isError bool)
@@ -119,6 +127,7 @@ type Orchestrator struct {
 	profile           agents.Profile
 	approver          ToolApprover
 	mem               *memory.Store
+	projectMem        *memory.Store // per-project memory store (D14); nil if not present
 	afterTool         AfterToolHook
 	skillsPrompt      string
 	todoStore         *todos.Store
@@ -188,8 +197,12 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	defer func() { o.turnModel = ""; o.taskRole = "" }()
 
 	toolCalls := 0
+	iterLimit := maxIterations
+	if o.profile.MaxTurns > 0 && o.profile.MaxTurns < maxIterations {
+		iterLimit = o.profile.MaxTurns
+	}
 
-	for range maxIterations {
+	for range iterLimit {
 		o.maybeCompact(ctx)
 
 		streamStart := time.Now()
@@ -229,6 +242,15 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			o.session.AddAssistant(response, nil)
 			if sink != nil {
 				sink.OnDone(response)
+			}
+			if toolCalls == 0 {
+				extractModel := o.cfg.Model()
+				if mo := strings.TrimSpace(o.profile.ModelOverride); mo != "" {
+					extractModel = o.cfg.NormalizeModelForProvider(mo)
+				} else if tm := strings.TrimSpace(o.turnModel); tm != "" {
+					extractModel = tm
+				}
+				memory.ScheduleSilentTurnLLMExtract(o.cfg, o.llm, o.mem, extractModel, userMessage, response)
 			}
 			return response, nil
 		}
@@ -290,7 +312,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		o.session.AddToolResults(results)
 	}
 
-	return "", fmt.Errorf("iteration limit (%d) reached", maxIterations)
+	return "", fmt.Errorf("iteration limit (%d) reached", iterLimit)
 }
 
 // ReplaceSession switches the in-memory conversation to s (e.g. after /new in the REPL).

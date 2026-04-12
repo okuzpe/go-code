@@ -622,6 +622,7 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("Slash commands (after chat starts; not sent to the model):\n")
 	b.WriteString("  /help, help, ? — full list with session id and profile\n")
 	b.WriteString("  /capabilities — structured overview (what the agent can do; not sent to the model)\n")
+	b.WriteString("  TUI transcript scroll: PgUp/PgDn, Alt+arrows; mouse wheel opt-in (tui_mouse_scroll or GOCLAW_TUI_MOUSE_SCROLL=1)\n")
 	b.WriteString("  /plan path|init|save|template — workspace plan under .goclaw/plan.md\n")
 	b.WriteString("  /init — create .goclaw/settings.json with coding defaults if missing\n")
 	b.WriteString("  /apply-plan [--preview] [path] — preview plan on disk, or execute (switch to general-purpose, stream one turn)\n")
@@ -646,6 +647,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	var b strings.Builder
 	b.WriteString("Slash commands (not sent to the model):\n")
 	b.WriteString("  /help, help, ?   — this text\n")
+	b.WriteString("  TUI transcript: PgUp/PgDn · Alt+arrows · mouse wheel (default on; off via settings or GOCLAW_TUI_MOUSE_SCROLL=0)\n")
 	b.WriteString("  /capabilities    — what I can help with (overview; not sent to the model)\n")
 	b.WriteString("  /doctor          — health check (config, provider reachability, session paths)\n")
 	b.WriteString("  /session         — show full session id and message count\n")
@@ -680,6 +682,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  &<task>          — spawn_agent (general-purpose; requires spawn_agent on the active profile)\n")
 	b.WriteString("\nRestart CLI flags: --session <id>  --list-sessions  --no-tools  --readline  --profile <name>\n")
 	b.WriteString("Env: default UI on a TTY is fullscreen TUI; GOCLAW_USE_TUI=0 or GOCLAW_USE_READLINE=1 uses line readline.\n")
+	b.WriteString("Env: GOCLAW_TUI_MOUSE_SCROLL=1 enables mouse wheel on the TUI transcript (default off; see tui_mouse_scroll in settings).\n")
 	b.WriteString("Env: GOCLAW_AGENT_PROFILE overrides agent_profile from settings (e.g. general-purpose).\n")
 	b.WriteString("CLI subcommand: goclaw sessions list (same as --list-sessions)\n")
 	b.WriteString("Current session id: ")

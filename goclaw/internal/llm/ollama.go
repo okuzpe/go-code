@@ -164,9 +164,9 @@ func (c *OllamaClient) streamWithWireTools(ctx context.Context, req Request, out
 }
 
 // ollamaTextOnlyToolingNote is appended when Ollama retries without wire tools but the session
-// still had tool specs (model rejected tools). Stops small models from promising web/repo tools
-// or echoing "no tool call" meta while the base prompt still describes tools.
-const ollamaTextOnlyToolingNote = "[OLLAMA TEXT-ONLY FALLBACK: this HTTP request has no function tools. You cannot invoke web_search, read_file, bash, etc. here. Answer from general knowledge; for live internet/news or reading their project, say clearly you cannot do that in this mode (in the user's language). Do not mention tool calls, tool_use, or APIs — speak like a normal assistant.]"
+// still had tool specs (model rejected tools). Keeps the model honest about the wire while still
+// acting as a coding pair programmer (markdown patches, steps, fenced code the user can paste).
+const ollamaTextOnlyToolingNote = "[OLLAMA TEXT-ONLY FALLBACK: this HTTP request has no function tools on the wire — do not claim or simulate tool_use, read_file, bash, web_search, or any API/tool execution. You cannot read the user's repo or run commands in this request. Still help as a coding assistant: give concrete edits in fenced code blocks, ordered checklists, unified-style diffs, and file-by-file instructions the user can apply manually. If you need file contents, ask them to paste snippets or use @ paths in clients that expand them before send. For live web data or repo truth, say briefly (in the user's language) that this mode cannot fetch it here. Do not dwell on tooling mechanics.]"
 
 func buildOllamaChatRequest(req Request, wireTools bool) ollamaRequest {
 	body := ollamaRequest{

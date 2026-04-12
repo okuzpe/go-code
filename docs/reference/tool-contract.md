@@ -10,7 +10,7 @@
 
 | Tool (name sent to model) | Risk | Input (summary) | Output cap | Notes |
 |---------------------------|------|-----------------|------------|-------|
-| `read_file` | `read_only` | `path`; optional `offset_lines` / `limit_lines` | **512 KiB** or **200 lines** (whichever applies first) | Symlinks resolved; path outside workspace → error |
+| `read_file` | `read_only` | `path`; optional `offset_lines` / `limit_lines` | **512 KiB** or **400 lines** (whichever applies first) | Symlinks resolved; path outside workspace → error |
 | `glob` | `read_only` | `pattern` (basename or path with `/` for `path.Match`) | **500** paths max; paths use `/` separator | No `..` in pattern; walk starts at workspace root |
 | `grep` | `read_only` | `pattern` (regexp); optional `path` (file or directory) | **200** matches total; **512 KiB** read per file; binary files skipped | Workspace-scoped only |
 | `write_file` | `write` | `path`, `content` | — | Workspace-scoped; parent dir must exist; atomic write (temp+rename); **1 MiB** content cap; stripped from ReadOnly profiles |

@@ -90,6 +90,7 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		}
 	}
 	return chat.RunApp(ctx, chat.Options{
+		TUIMouseScroll:     rt.Cfg.TUIMouseScroll,
 		Title:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
 		SessionID:          rt.Sess.ID,
 		FooterStats: func() string {

@@ -140,6 +140,16 @@ type Config struct {
 	// MemoryAutoExtract when true: after successful write_file/edit_file, append a short project memory line (path only).
 	MemoryAutoExtract bool
 
+	// MemoryLLMSilentExtract when true: after a user turn with no tool calls, run a background LLM pass
+	// to optionally append one structured memory entry (see docs/reference/memory-system.md §6).
+	// JSON: memory_llm_silent_extract.
+	MemoryLLMSilentExtract bool
+
+	// TUIMouseScroll enables mouse-wheel scrolling on the fullscreen chat transcript (Bubble Tea cell motion).
+	// Default off so the terminal keeps normal selection / host scroll; set JSON tui_mouse_scroll true or
+	// env GOCLAW_TUI_MOUSE_SCROLL=1|true|yes|on to enable wheel on the transcript.
+	TUIMouseScroll bool
+
 	// UIAppearance selects TUI colors and markdown style: auto, dark, light, dark_colorblind, light_colorblind, dark_ansi, light_ansi.
 	// JSON key: ui_appearance. Empty or "auto" uses terminal-adaptive styling.
 	UIAppearance string
@@ -209,6 +219,7 @@ func Default() Config {
 		SerpAPIKey:                os.Getenv("SERPAPI_API_KEY"),
 		WebSearchFallbackDDG:      true,
 		TokenCountMode:            "auto",
+		TUIMouseScroll:            envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
 		UIAppearance:              "auto",
 	}
 }
@@ -316,6 +327,17 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// envTruthy reports whether key is set to a common affirmative (1, true, yes, on).
+func envTruthy(key string) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch v {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // NormalizePreferredResponseLanguage returns a canonical mode: auto, from_os, or a supported tag (es|en|fr|de|pt).

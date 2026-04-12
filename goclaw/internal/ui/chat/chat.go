@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -40,6 +41,13 @@ type Model struct {
 	statusLine string
 	// footerHint is a one-line reminder under the session footer (e.g. after /plan save); cleared on next send.
 	footerHint string
+	// idleTranscriptHint reminds how to scroll long replies (PgUp, Alt+arrows, optional wheel); cleared on next send.
+	idleTranscriptHint string
+
+	// tuiMouseScroll mirrors config: wheel scroll on transcript (requires cell mouse mode in View).
+	tuiMouseScroll bool
+	// transcriptBrowse (Ctrl+B): input blurred; arrows/j/k/PgUp scroll the transcript like a pager.
+	transcriptBrowse bool
 
 	// assistantPlaceholder is true while we show a dim "…" line before first token.
 	assistantPlaceholder bool
@@ -178,6 +186,8 @@ type Options struct {
 	FocusLine func() string
 	// FooterStats optional; when non-nil, its return value is shown in the idle footer (e.g. message count).
 	FooterStats func() string
+	// TUIMouseScroll enables mouse wheel on the transcript (see config.TUIMouseScroll).
+	TUIMouseScroll bool
 }
 
 // SlashHandler: if modelSubmit is non-empty, send that text to the model after displaying out (e.g. /edit).
@@ -227,6 +237,9 @@ func (b *ApprovalBroker) ToolApprover() orchestrator.ToolApprover {
 // inputMaxHeight is the maximum number of visible lines in the input textarea.
 const inputMaxHeight = 6
 
+// idleTranscriptHintMinRunes triggers a one-line scroll hint after long assistant replies (e.g. plans).
+const idleTranscriptHintMinRunes = 1200
+
 // minComposeWidth is the smallest textarea width when the buffer is short (avoids a tiny box).
 const minComposeWidth = 28
 
@@ -248,12 +261,39 @@ func (m *Model) syncInputComposeWidth() {
 const maxSlashSuggestRows = 5
 
 func placeholderForWidth(termWidth int) string {
-	const full = "Ask anything…  ! @ & /btw /help · Shift+Enter newline"
-	const narrow = "Ask anything…  /help"
+	const full = "Ask anything…  ! @ & /btw /help · Ctrl+B scroll · Shift+Enter newline"
+	const narrow = "Ask anything…  /help · Ctrl+B scroll"
 	if termWidth > 0 && termWidth < 60 {
 		return narrow
 	}
 	return full
+}
+
+// transcriptScrollNavHint is a short footer line for reading long assistant output in the TUI.
+func (m *Model) transcriptScrollNavHint() string {
+	s := "Transcript: Ctrl+B browse · PgUp/PgDn · Alt+arrows"
+	if m.tuiMouseScroll {
+		return s + " · mouse wheel"
+	}
+	return s
+}
+
+func (m *Model) exitTranscriptBrowse() {
+	if !m.transcriptBrowse {
+		return
+	}
+	m.transcriptBrowse = false
+	m.input.Focus()
+	m.syncViewportKeyMapForCompose()
+}
+
+func (m *Model) enterTranscriptBrowse() {
+	if m.transcriptBrowse {
+		return
+	}
+	m.transcriptBrowse = true
+	m.input.Blur()
+	m.syncViewportKeyMapForCompose()
 }
 
 // composeViewportKeyMap avoids stealing Space, arrows, j/k/h/l, u, d, or b from the compose textarea.
@@ -302,7 +342,16 @@ func overlayViewportKeyMap() viewport.KeyMap {
 }
 
 func (m *Model) syncViewportKeyMapForCompose() {
-	m.viewport.KeyMap = composeViewportKeyMap()
+	if m.transcriptBrowse {
+		m.viewport.KeyMap = transcriptBrowseViewportKeyMap()
+	} else {
+		m.viewport.KeyMap = composeViewportKeyMap()
+	}
+}
+
+// transcriptBrowseViewportKeyMap restores pager keys (arrows, j/k) while the compose textarea is blurred.
+func transcriptBrowseViewportKeyMap() viewport.KeyMap {
+	return viewport.DefaultKeyMap()
 }
 
 func (m *Model) syncViewportKeyMapForOverlay() {
@@ -316,8 +365,8 @@ func New(ctx context.Context, opts Options) Model {
 	}
 
 	vp := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
-	// Wheel requires MouseModeCellMotion, which breaks native click-drag selection in most terminals.
-	vp.MouseWheelEnabled = false
+	// Wheel requires MouseModeCellMotion in View(); off by default (see config TUIMouseScroll / tui_mouse_scroll).
+	vp.MouseWheelEnabled = opts.TUIMouseScroll
 	vp.SoftWrap = true
 	vp.KeyMap = composeViewportKeyMap()
 
@@ -369,6 +418,7 @@ func New(ctx context.Context, opts Options) Model {
 		projectAgentsDir:    strings.TrimSpace(opts.ProjectAgentsDir),
 		activeAgentProfile:  strings.TrimSpace(opts.ActiveAgentProfile),
 		lastReflowWidth:     -1,
+		tuiMouseScroll:      opts.TUIMouseScroll,
 	}
 	if strings.TrimSpace(opts.Welcome.Version) != "" {
 		if dash := WelcomeDashboardLines(th, opts.Welcome, 0); len(dash) > 0 {
@@ -563,6 +613,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pending = &r
 		return m, nil
 	case assistantPlaceholderMsg:
+		m.exitTranscriptBrowse()
 		m.streaming = true
 		m.assistantPlaceholder = true
 		m.statusLine = ""
@@ -597,8 +648,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
 		m.statusLine = ""
+		rawLen := utf8.RuneCountInString(m.curAssistant.String())
 		// Finalize the current segment with markdown rendering.
 		m.finalizeCurrentSegment()
+		if rawLen >= idleTranscriptHintMinRunes {
+			m.idleTranscriptHint = m.transcriptScrollNavHint()
+		}
 		return m, nil
 	case toolUseMsg:
 		// Finalize the pre-tool text with markdown rendering BEFORE resetting.
@@ -660,11 +715,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case errMsg:
+		m.exitTranscriptBrowse()
 		m.streaming = false
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
 		m.statusLine = ""
 		m.toolWaitQueue = nil
+		m.idleTranscriptHint = ""
 		m.stripAssistantPlaceholderLine()
 		m.appendError(fmt.Sprintf("✗ %v", msg.err))
 		m.curAssistantLineIdx = -1
@@ -675,6 +732,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if paste, isPaste := msg.(tea.PasteMsg); isPaste &&
 		!m.streaming && m.pending == nil &&
 		!m.toolLogOpen && !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
+		if m.transcriptBrowse {
+			m.exitTranscriptBrowse()
+			m.layout()
+		}
 		if tokens, ok := inputprefix.TryPasteAsAtPaths(m.workdir, paste.Content); ok {
 			// Insert a space before the token if cursor is right after non-space text.
 			row := m.input.Line()
@@ -703,6 +764,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds = append(cmds, cmd)
 	if !m.toolLogOpen && !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok && composeTranscriptScrollKey(keyMsg.String()) {
+			m.resizeInput()
+			return m, tea.Batch(cmds...)
+		}
+		if _, ok := msg.(tea.KeyMsg); ok && m.transcriptBrowse {
+			// Browse mode: pager keys go to the viewport; do not forward keys to the blurred textarea.
 			m.resizeInput()
 			return m, tea.Batch(cmds...)
 		}
@@ -746,19 +812,41 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 			m.submitter.cancel()
 			return m, nil, true
 		}
+		if m.transcriptBrowse {
+			m.exitTranscriptBrowse()
+			m.layout()
+			return m, nil, true
+		}
 		return m, tea.Quit, true
 	}
 	switch k {
+	case "ctrl+b":
+		if m.streaming || m.pending != nil {
+			return m, nil, true
+		}
+		if m.transcriptBrowse {
+			m.exitTranscriptBrowse()
+		} else {
+			m.enterTranscriptBrowse()
+		}
+		m.layout()
+		return m, nil, true
 	case "ctrl+l":
+		m.exitTranscriptBrowse()
 		m.lines = nil
 		m.lineMeta = nil
 		m.toolWaitQueue = nil
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
 		m.curAssistantLineIdx = -1
+		m.idleTranscriptHint = ""
 		m.setLinesContent(true)
 		return m, nil, true
 	case "tab":
+		if m.transcriptBrowse {
+			m.exitTranscriptBrowse()
+			m.layout()
+		}
 		if m.streaming || m.pending != nil {
 			return m, nil, false
 		}
@@ -815,11 +903,16 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 		m.openAgentPicker()
 		return m, nil, true
 	case "enter":
+		if m.transcriptBrowse {
+			m.exitTranscriptBrowse()
+			m.layout()
+		}
 		txt := strings.TrimSpace(m.input.Value())
 		if txt == "" {
 			return m, nil, true
 		}
 		m.footerHint = ""
+		m.idleTranscriptHint = ""
 		// Avoid overlapping RunStreaming calls on the same session (or sending while awaiting tools).
 		if m.streaming {
 			return m, nil, true
@@ -965,9 +1058,13 @@ func (m *Model) View() tea.View {
 	)
 	v := tea.NewView(content)
 	v.AltScreen = true
-	// MouseModeNone keeps the host terminal’s normal mouse selection and copy. In-app wheel scroll
-	// would require CellMotion and would steal those events — use PgUp/PgDn (see /help).
-	v.MouseMode = tea.MouseModeNone
+	if m.tuiMouseScroll {
+		// Enables wheel delivery to the bubbles viewport (selection behavior may change per terminal).
+		v.MouseMode = tea.MouseModeCellMotion
+	} else {
+		// MouseModeNone keeps the host terminal’s normal mouse selection and copy.
+		v.MouseMode = tea.MouseModeNone
+	}
 	return v
 }
 
@@ -1134,6 +1231,7 @@ func (m *Model) layout() {
 }
 
 func (m *Model) openHelpOverlay(replBody string) {
+	m.exitTranscriptBrowse()
 	m.exitConfirmDeadline = time.Time{}
 	m.themePickOpen = false
 	m.themePickFullText = ""
@@ -1239,6 +1337,26 @@ func (m *Model) footerView() string {
 			b.WriteString(th.FooterDim.Render(fh))
 		}
 	}
+	if sh := strings.TrimSpace(m.idleTranscriptHint); sh != "" {
+		b.WriteString("\n")
+		if fw > 4 {
+			b.WriteString(th.FooterDim.Width(fw).Render(sh))
+		} else {
+			b.WriteString(th.FooterDim.Render(sh))
+		}
+	}
+	if m.transcriptBrowse {
+		line := "Browse: ↑↓ j/k PgUp · Ctrl+B editor · Esc back"
+		if m.tuiMouseScroll {
+			line += " · wheel"
+		}
+		b.WriteString("\n")
+		if fw > 4 {
+			b.WriteString(th.FooterDim.Width(fw).Render(line))
+		} else {
+			b.WriteString(th.FooterDim.Render(line))
+		}
+	}
 
 	if m.focusLine != nil {
 		if fh := strings.TrimSpace(m.focusLine()); fh != "" {
@@ -1274,7 +1392,7 @@ func (m *Model) footerView() string {
 
 // prefixSuggestStripView shows @ path picks, / slash picks, or short ! / & hints above the input.
 func (m *Model) prefixSuggestStripView() string {
-	if m.toolLogOpen || m.helpOpen || m.themePickOpen || m.agentPickOpen || m.streaming || m.pending != nil {
+	if m.toolLogOpen || m.helpOpen || m.themePickOpen || m.agentPickOpen || m.streaming || m.pending != nil || m.transcriptBrowse {
 		return ""
 	}
 	if s := m.atSuggestStripView(); s != "" {

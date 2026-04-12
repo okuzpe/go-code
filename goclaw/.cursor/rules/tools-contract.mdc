@@ -32,7 +32,7 @@ type Result struct {
 Name:   "read_file"
 Input:  { "path": string, "offset_lines"?: int, "limit_lines"?: int }
 Output: file contents
-Cap:    512 KiB or 200 lines (whichever is smaller)
+Cap:    512 KiB or 400 lines (whichever is smaller)
 Risk:   read-only; workspace boundary + symlink resolution
 ```
 

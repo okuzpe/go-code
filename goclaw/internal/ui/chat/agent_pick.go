@@ -72,6 +72,7 @@ func agentProfileByName(m *Model, name string) (agents.Profile, bool) {
 }
 
 func (m *Model) openAgentPicker() {
+	m.exitTranscriptBrowse()
 	m.exitConfirmDeadline = time.Time{}
 	m.themePickOpen = false
 	m.themePickFullText = ""

@@ -93,7 +93,7 @@ Pattern from the reference product (summary):
 | Dedup | If the main agent already wrote memory in the session, skip re-extraction |
 | Cache | Share prompt cache with the parent session when the provider allows it |
 
-**Go mapping:** goroutine + `context`, **Explore**-style profile + writes scoped to the memory directory; configurable trigger policy.
+**Go mapping (goclaw):** `memory.ScheduleSilentTurnLLMExtract` — goroutine + 2-minute `context` timeout; one non-tool LLM JSON reply; writes via `memory.Store.Save` into the active store (global, per-agent, or worker store). Opt-in settings key **`memory_llm_silent_extract`** (default off). Trigger: end of a user turn where **no** tools ran and the user message is not a `/` slash command.
 
 ---
 
@@ -103,7 +103,7 @@ Pattern from the reference product (summary):
 |-------|---------|
 | Load index + fragments for the prompt | `internal/memory` + call from `internal/orchestrator` |
 | `memory_read` / `memory_write` tools (optional) | `internal/tools`, with **permissions** that restrict paths to the memory tree |
-| Background extractor | `internal/orchestrator` or `internal/memory/extractor.go` |
+| Background silent-turn extractor | [`internal/memory/extractor.go`](../../goclaw/internal/memory/extractor.go) (scheduled from `internal/orchestrator` after tool-free turns) |
 
 Dependencies: `orchestrator` → `memory`; `memory` **does not** import `orchestrator`.
 
@@ -118,3 +118,4 @@ Dependencies: `orchestrator` → `memory`; `memory` **does not** import `orchest
 | 2026-04-07 | §1: per-agent memory vs. global index → [custom-agents.md](./custom-agents.md) §5 |
 | 2026-04-07 | §3: link [practical-tips.md §8](./practical-tips.md) (index truncation) |
 | 2026-04-12 | Translated from Spanish to English |
+| 2026-04-12 | §6–§7: shipped silent-turn extractor (`memory_llm_silent_extract`) in `internal/memory/extractor.go` |

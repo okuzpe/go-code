@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -228,8 +230,19 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 	if t.projectCtx != "" {
 		workerOpts = append(workerOpts, orchestrator.WithProjectContext(t.projectCtx))
 	}
-	if t.mem != nil {
-		workerOpts = append(workerOpts, orchestrator.WithMemoryStore(t.mem))
+	// Per-agent memory: if the worker profile declares a MemoryScope, give it an isolated store
+	// instead of the parent (coordinator) store so each agent's memory stays scoped.
+	workerMem := t.mem
+	if profile.MemoryScope != "" {
+		agentMemDir := memory.PerAgentMemoryDir(profile.MemoryScope, profile.Name, t.cfg.UserConfigDir, t.workdir, t.cfg.ProjectConfigDir)
+		if err := os.MkdirAll(agentMemDir, 0o700); err != nil {
+			slog.Warn("per-agent memory dir create failed; using parent store", "dir", agentMemDir, "err", err)
+		} else {
+			workerMem = memory.New(agentMemDir)
+		}
+	}
+	if workerMem != nil {
+		workerOpts = append(workerOpts, orchestrator.WithMemoryStore(workerMem))
 	}
 	if t.skillsSnippet != "" {
 		workerOpts = append(workerOpts, orchestrator.WithSkillsSnippet(t.skillsSnippet))

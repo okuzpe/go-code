@@ -39,6 +39,19 @@ func (o *Orchestrator) buildRequest() llm.Request {
 			specs = filtered
 		}
 	}
+	if len(o.profile.DisallowedTools) > 0 {
+		denied := make(map[string]struct{}, len(o.profile.DisallowedTools))
+		for _, n := range o.profile.DisallowedTools {
+			denied[n] = struct{}{}
+		}
+		filtered := make([]tools.ToolSpec, 0, len(specs))
+		for _, s := range specs {
+			if _, blocked := denied[s.Name]; !blocked {
+				filtered = append(filtered, s)
+			}
+		}
+		specs = filtered
+	}
 	if o.profile.ReadOnly {
 		specs = stripToolName(specs, "bash")
 		specs = stripToolName(specs, "write_file")
@@ -69,6 +82,11 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	if o.mem != nil {
 		if block, err := o.mem.RecentContext(memorySnippetEntries); err == nil && block != "" {
 			sys = sys + "\n\n## Persistent memory (recent)\n" + block
+		}
+	}
+	if o.projectMem != nil {
+		if block, err := o.projectMem.RecentContext(memorySnippetEntries); err == nil && block != "" {
+			sys = sys + "\n\n## Project memory (.goclaw/memory)\n" + block
 		}
 	}
 	if o.todoStore != nil {

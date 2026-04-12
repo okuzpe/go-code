@@ -71,7 +71,7 @@ Sessions save as JSONL under `~/.goclaw/sessions/<id>.jsonl` on exit or `/save`.
 - **`/copy`** — copies the in-memory transcript (roles, text, tool calls/results) to the **system clipboard**. Very long sessions are truncated (see `/help`). If the clipboard fails (headless SSH, etc.), use **`/export`**.
 - **`/export path.txt`** — writes the same plain text to **`path.txt`**. If the path is relative and a workspace is set, it is resolved under that workspace; use an absolute path to write elsewhere.
 
-The fullscreen TUI turns **mouse reporting off** so many terminals still allow **normal click–drag selection** (sometimes with **Shift**). For “everything in the session”, prefer `/copy` or `/export` over selecting the screen.
+The fullscreen TUI keeps **normal terminal mouse behaviour** by default (wheel scrolling is **off** so click–drag selection works as your host terminal allows). Enable wheel-on-transcript with **`tui_mouse_scroll`**: `true` in settings or **`GOCLAW_TUI_MOUSE_SCROLL=1`**. Use **Ctrl+B** in the TUI to scroll the transcript with the keyboard without capturing the mouse. For “everything in the session”, prefer `/copy` or `/export` over selecting the screen.
 
 ```bash
 go run ./cmd/goclaw --list-sessions

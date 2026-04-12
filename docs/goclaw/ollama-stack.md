@@ -36,6 +36,10 @@ Switch profile in the REPL: `/profile stack-coder` (etc.). Copy these files to a
 
 Environment: `GOCLAW_COMPACTION_MODEL` overrides the default empty compaction model (same as `compaction_model` in JSON after merge).
 
+## Tool calling and text-only fallback
+
+For **autonomous agent** flows (read_file, bash, MCP, etc.), use a **tools-capable** model (for example `qwen2.5-coder:7b` or another entry from the table above) and keep **`ollama_num_ctx`** high enough for your tool schemas. If Ollama rejects tools on the wire, goclaw retries **without** function tools and the session runs in **text-only** mode for that HTTP path (`goclaw doctor` surfaces this). The runtime injects a short system note so the model stays honest about the wire while still helping with **manual** code edits (fenced blocks, steps); switching to a compatible model restores full tool use.
+
 ## Multiple models in memory (Ollama)
 
 Ollama can keep more than one model resident if RAM/VRAM allows. Many installs use **`OLLAMA_MAX_LOADED_MODELS`** (often default `1`); increasing it reduces reload latency when switching profiles that use different `model:` values. If memory is tight, Ollama unloads a model to load another—expect a slower first request after a profile switch.

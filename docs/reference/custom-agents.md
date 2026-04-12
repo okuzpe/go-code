@@ -92,7 +92,7 @@ Flow: create dir if missing → load `MEMORY.md`-style index → add scope guide
 
 **Snapshots:** team can commit a baseline in `agent-memory-snapshots/` to hydrate new agents.
 
-**Go mapping:** reuse the `memory/` package with a **path prefix** per agent and scope; do not conflate with the user's global index without an explicit decision (**D19**).
+**Go mapping (shipped):** YAML `memory: user|project|local` → `agents.Profile.MemoryScope` → `memory.PerAgentMemoryDir` → `memory.New(dir)` for the active session store in [`chat_wiring.go`](../../goclaw/internal/app/chat_wiring.go) and worker stores in [`spawn_agent.go`](../../goclaw/internal/coordinator/spawn_agent.go). Paths: `~/.goclaw/agent-memory/<name>/`, `<cwd>/.goclaw/agent-memory/<name>/`, `<cwd>/.goclaw/agent-memory-local/<name>/` respectively (**D19**).
 
 ---
 

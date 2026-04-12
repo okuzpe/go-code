@@ -19,7 +19,7 @@ if !strings.HasPrefix(resolved, workspaceRoot+string(filepath.Separator)) {
     return Result{IsError: true, Content: "symlink escapes workspace"}, nil
 }
 ```
-Limits: 512 KiB or 200 lines (read_file); 500 matches (glob); 200 matches / 512 KiB per file (grep).
+Limits: 512 KiB or 400 lines (read_file); 500 matches (glob); 200 matches / 512 KiB per file (grep).
 
 ## write_file / edit_file — write path safety
 ```go

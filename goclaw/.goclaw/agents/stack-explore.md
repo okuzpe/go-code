@@ -1,6 +1,6 @@
 ---
 name: stack-explore
-model: llama3:latest
+model: qwen2.5-coder:7b
 tool_allowlist:
   - read_file
   - glob
