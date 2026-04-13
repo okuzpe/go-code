@@ -10,14 +10,12 @@ import (
 	"testing"
 
 	"github.com/okuzpe/goclaw/internal/agents"
-	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/hooks"
-	"github.com/okuzpe/goclaw/internal/llm"
 	"github.com/okuzpe/goclaw/internal/memory"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/tools"
-	"github.com/okuzpe/goclaw/testutil/mockserver"
+	"github.com/okuzpe/goclaw/testutil/mockopenai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -65,10 +63,10 @@ func TestOrchestratorRunStreamingEventOrder(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("file-content"), 0o600))
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{
 			Match: "stream-test",
-			Tool:  &mockserver.ToolReply{Name: "read_file", Input: `{"path":"note.txt"}`},
+			Tool:  &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"note.txt"}`},
 		},
 		{Match: "file-content", Response: "all done"},
 	})
@@ -78,7 +76,7 @@ func TestOrchestratorRunStreamingEventOrder(t *testing.T) {
 	reg.Register(tools.NewReadFile(dir))
 
 	sink := &captureSink{}
-	orch := newOrchWithRegistry(t, llm.NewAnthropic("test-key", srv.URL), reg)
+	orch := newOrchWithRegistry(t, testOpenAIClient(srv), reg)
 
 	out, err := orch.RunStreaming(context.Background(), "stream-test", sink)
 	require.NoError(t, err)
@@ -107,13 +105,13 @@ func TestOrchestratorRunStreamingEventOrder(t *testing.T) {
 }
 
 func TestOrchestratorRunStreamingTextDeltas(t *testing.T) {
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{Match: "delta-test", Response: "hello world"},
 	})
 	defer srv.Close()
 
 	sink := &captureSink{}
-	orch := newOrch(t, llm.NewAnthropic("test-key", srv.URL))
+	orch := newOrch(t, testOpenAIClient(srv))
 
 	out, err := orch.RunStreaming(context.Background(), "delta-test", sink)
 	require.NoError(t, err)
@@ -131,10 +129,10 @@ func TestOrchestratorPreToolUseHookBlocks(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("sensitive"), 0o600))
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{
 			Match: "read-blocked",
-			Tool:  &mockserver.ToolReply{Name: "read_file", Input: `{"path":"secret.txt"}`},
+			Tool:  &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"secret.txt"}`},
 		},
 		// LLM sees the hook error in the tool_result and responds.
 		{Match: "pre_tool_use hook blocked", Response: "understood, skipping that file"},
@@ -152,14 +150,12 @@ func TestOrchestratorPreToolUseHookBlocks(t *testing.T) {
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
 
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 
 	policy := permissions.NewPolicy()
 	policy.Set("read_file", permissions.ModeAllow)
 
-	orch := New(cfg, llm.NewAnthropic("test-key", srv.URL),
+	orch := New(cfg, testOpenAIClient(srv),
 		session.New(), reg, policy, hookReg, agents.GeneralPurpose)
 
 	out, err := orch.Run(context.Background(), "read-blocked")
@@ -177,9 +173,9 @@ func TestOrchestratorPostToolUseHookReceivesOutput(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "data.txt"), []byte("tool-output"), 0o600))
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{Match: "post-hook-test",
-			Tool: &mockserver.ToolReply{Name: "read_file", Input: `{"path":"data.txt"}`}},
+			Tool: &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"data.txt"}`}},
 		{Match: "tool-output", Response: "ok"},
 	})
 	defer srv.Close()
@@ -194,14 +190,12 @@ func TestOrchestratorPostToolUseHookReceivesOutput(t *testing.T) {
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
 
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 
 	policy := permissions.NewPolicy()
 	policy.Set("read_file", permissions.ModeAllow)
 
-	orch := New(cfg, llm.NewAnthropic("test-key", srv.URL),
+	orch := New(cfg, testOpenAIClient(srv),
 		session.New(), reg, policy, hookReg, agents.GeneralPurpose)
 
 	_, err := orch.Run(context.Background(), "post-hook-test")
@@ -224,18 +218,16 @@ func TestOrchestratorMemoryInjectedInSystemPrompt(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		// The mock server matches on the last user message, not the system prompt.
 		// We just verify the request reached the LLM and we got a response back.
 		{Match: "memory-check", Response: "I know about goclaw"},
 	})
 	defer srv.Close()
 
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 
-	orch := New(cfg, llm.NewAnthropic("test-key", srv.URL),
+	orch := New(cfg, testOpenAIClient(srv),
 		session.New(), tools.New(), testToolPolicy(), hooks.New(), agents.GeneralPurpose,
 		WithMemoryStore(memStore),
 	)
@@ -265,17 +257,15 @@ func TestOrchestratorMemoryPersistedAcrossTurns(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{Match: "turn-one", Response: "turn-one reply"},
 		{Match: "turn-two", Response: "turn-two reply"},
 	})
 	defer srv.Close()
 
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 
-	orch := New(cfg, llm.NewAnthropic("test-key", srv.URL),
+	orch := New(cfg, testOpenAIClient(srv),
 		session.New(), tools.New(), testToolPolicy(), hooks.New(), agents.GeneralPurpose,
 		WithMemoryStore(memStore),
 	)
@@ -297,21 +287,21 @@ func TestOrchestratorThreeIterationToolChain(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("content-A"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.txt"), []byte("content-B"), 0o600))
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		// Iteration 1: read the index
 		{
 			Match: "chain-start",
-			Tool:  &mockserver.ToolReply{ID: "call_1", Name: "read_file", Input: `{"path":"index.txt"}`},
+			Tool:  &mockopenai.ToolReply{ID: "call_1", Name: "read_file", Input: `{"path":"index.txt"}`},
 		},
 		// Iteration 2: read file a (LLM sees "list: a.txt b.txt" from previous result)
 		{
 			Match: "list: a.txt b.txt",
-			Tool:  &mockserver.ToolReply{ID: "call_2", Name: "read_file", Input: `{"path":"a.txt"}`},
+			Tool:  &mockopenai.ToolReply{ID: "call_2", Name: "read_file", Input: `{"path":"a.txt"}`},
 		},
 		// Iteration 3: LLM sees "content-A", reads b.txt
 		{
 			Match: "content-A",
-			Tool:  &mockserver.ToolReply{ID: "call_3", Name: "read_file", Input: `{"path":"b.txt"}`},
+			Tool:  &mockopenai.ToolReply{ID: "call_3", Name: "read_file", Input: `{"path":"b.txt"}`},
 		},
 		// Final: LLM sees "content-B", returns summary
 		{Match: "content-B", Response: "chain complete"},
@@ -321,7 +311,7 @@ func TestOrchestratorThreeIterationToolChain(t *testing.T) {
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
 
-	orch := newOrchWithRegistry(t, llm.NewAnthropic("test-key", srv.URL), reg)
+	orch := newOrchWithRegistry(t, testOpenAIClient(srv), reg)
 
 	out, err := orch.Run(context.Background(), "chain-start")
 	require.NoError(t, err)
@@ -343,10 +333,10 @@ func TestOrchestratorSetProfileChangesAllowlist(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "file.txt"), []byte("readable"), 0o600))
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{
 			Match: "read-with-general",
-			Tool:  &mockserver.ToolReply{Name: "read_file", Input: `{"path":"file.txt"}`},
+			Tool:  &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"file.txt"}`},
 		},
 		{Match: "readable", Response: "got the file"},
 		// After switching to ReadOnly profile, bash is stripped from the request.
@@ -358,7 +348,7 @@ func TestOrchestratorSetProfileChangesAllowlist(t *testing.T) {
 	reg.Register(tools.NewReadFile(dir))
 	reg.Register(tools.NewBash())
 
-	orch := newOrchWithRegistry(t, llm.NewAnthropic("test-key", srv.URL), reg)
+	orch := newOrchWithRegistry(t, testOpenAIClient(srv), reg)
 
 	// First turn with GeneralPurpose: read_file works.
 	out, err := orch.Run(context.Background(), "read-with-general")
@@ -380,10 +370,10 @@ func TestOrchestratorYoloAutoApproves(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "info.txt"), []byte("yolo-content"), 0o600))
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{
 			Match: "yolo-read",
-			Tool:  &mockserver.ToolReply{Name: "read_file", Input: `{"path":"info.txt"}`},
+			Tool:  &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"info.txt"}`},
 		},
 		{Match: "yolo-content", Response: "auto-approved"},
 	})
@@ -392,13 +382,11 @@ func TestOrchestratorYoloAutoApproves(t *testing.T) {
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
 
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 	cfg.YoloThreshold = 50 // auto-approve anything with risk score ≤ 50
 
 	// No ToolApprover set — if YOLO didn't kick in, this would fail with "no approver".
-	orch := New(cfg, llm.NewAnthropic("test-key", srv.URL),
+	orch := New(cfg, testOpenAIClient(srv),
 		session.New(), reg, permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose)
 
 	out, err := orch.Run(context.Background(), "yolo-read")
@@ -410,11 +398,11 @@ func TestOrchestratorYoloBlocksHighRisk(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "safe.txt"), []byte("ok"), 0o600))
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{
 			// bash with a destructive-looking command has a high risk score.
 			Match: "high-risk",
-			Tool:  &mockserver.ToolReply{Name: "bash", Input: `{"command":"rm -rf /tmp/all"}`},
+			Tool:  &mockopenai.ToolReply{Name: "bash", Input: `{"command":"rm -rf /tmp/all"}`},
 		},
 		// The orchestrator should return an error (no approver + YOLO threshold exceeded).
 	})
@@ -423,13 +411,11 @@ func TestOrchestratorYoloBlocksHighRisk(t *testing.T) {
 	reg := tools.New()
 	reg.Register(tools.NewBash())
 
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 	cfg.YoloThreshold = 10 // only auto-approve very low-risk operations
 
 	// No ToolApprover — YOLO threshold is too low to approve bash rm.
-	orch := New(cfg, llm.NewAnthropic("test-key", srv.URL),
+	orch := New(cfg, testOpenAIClient(srv),
 		session.New(), reg, permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose)
 
 	_, err := orch.Run(context.Background(), "high-risk")

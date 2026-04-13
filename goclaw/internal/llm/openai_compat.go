@@ -16,7 +16,8 @@ import (
 // maxOpenAISSELine caps bufio.Scanner token size for long SSE lines (tool arguments).
 const maxOpenAISSELine = 1024 * 1024
 
-// OpenAICompatClient implements Client against an OpenAI Chat Completions–compatible endpoint
+// OpenAICompatClient implements Client against an OpenAI Chat Completions–compatible HTTP API.
+// It is not wired into the goclaw CLI (Ollama-only product build); it remains for unit tests and mock servers.
 // (OpenRouter, Groq, LM Studio local server, vLLM, Azure OpenAI, etc.).
 type OpenAICompatClient struct {
 	apiKey  string

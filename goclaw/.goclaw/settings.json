@@ -1,0 +1,8 @@
+{
+  "provider": "ollama",
+  "ollama_model": "qwen2.5-coder:14b",
+  "ollama_num_ctx": 8192,
+  "model_context_tokens": 32000,
+  "task_model_router": "off",
+  "memory_llm_silent_extract": false
+}

@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/okuzpe/goclaw/internal/config"
-	"golang.org/x/term"
 )
 
 func runOnboardingReadline(version, workdir string, base config.Config) error {
@@ -59,88 +58,36 @@ func runOnboardingReadline(version, workdir string, base config.Config) error {
 	uiApp := parseAppearanceChoice(strings.TrimSpace(appearance))
 
 	fmt.Println()
-	fmt.Println(" Select how goclaw connects to the language model:")
-	fmt.Println()
-	fmt.Println("  1. Local Ollama — models on this machine")
-	fmt.Println("  2. Anthropic API — API key (Console / usage billing)")
-	fmt.Println("  3. Third-party cloud (Bedrock, Foundry, Vertex) — not available yet")
-	fmt.Print("\n Choose (1-3): ")
-	conn, err := readLine()
-	if err != nil {
-		return err
-	}
-	conn = strings.TrimSpace(conn)
-	for conn == "3" || (conn != "1" && conn != "2") {
-		if conn != "1" && conn != "2" && conn != "3" {
-			fmt.Println(" Invalid choice. Enter 1, 2, or 3.")
-		} else {
-			fmt.Println(" That option is not implemented yet. Choose 1 (Ollama) or 2 (Anthropic).")
-		}
-		fmt.Print("\n Choose (1-3): ")
-		conn, err = readLine()
-		if err != nil {
-			return err
-		}
-		conn = strings.TrimSpace(conn)
-	}
+	fmt.Println(" goclaw uses local Ollama by default. Configure host and model (Enter keeps the default).")
 
 	patch := map[string]any{
 		"ui_appearance": uiApp,
+		"provider":      "ollama",
 	}
-	var apiKey string
-
-	switch conn {
-	case "1":
-		patch["provider"] = "ollama"
-		fmt.Printf("\n Ollama host [%s]: ", base.OllamaHost)
-		host, err := readLine()
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(host) != "" {
-			patch["ollama_host"] = strings.TrimSpace(host)
-		} else {
-			patch["ollama_host"] = base.OllamaHost
-		}
-		fmt.Printf(" Ollama model [%s]: ", base.OllamaModel)
-		model, err := readLine()
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(model) != "" {
-			patch["ollama_model"] = strings.TrimSpace(model)
-		} else {
-			patch["ollama_model"] = base.OllamaModel
-		}
-	case "2":
-		patch["provider"] = "anthropic"
-		fmt.Print("\n Anthropic API key (input hidden): ")
-		fd := int(os.Stdin.Fd())
-		if !term.IsTerminal(fd) {
-			return fmt.Errorf("onboarding: stdin is not a terminal; cannot read API key safely")
-		}
-		keyBytes, err := term.ReadPassword(fd)
-		fmt.Println()
-		if err != nil {
-			return fmt.Errorf("read API key: %w", err)
-		}
-		apiKey = strings.TrimSpace(string(keyBytes))
-		if apiKey == "" {
-			return fmt.Errorf("onboarding: API key is required for Anthropic")
-		}
-	default:
-		return fmt.Errorf("onboarding: invalid connection choice %q", conn)
+	fmt.Printf("\n Ollama host [%s]: ", base.OllamaHost)
+	host, err := readLine()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(host) != "" {
+		patch["ollama_host"] = strings.TrimSpace(host)
+	} else {
+		patch["ollama_host"] = base.OllamaHost
+	}
+	fmt.Printf(" Ollama model [%s]: ", base.OllamaModel)
+	model, err := readLine()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(model) != "" {
+		patch["ollama_model"] = strings.TrimSpace(model)
+	} else {
+		patch["ollama_model"] = base.OllamaModel
 	}
 
 	userPath := config.UserSettingsPath(base.UserConfigDir)
 	if err := config.MergeWriteSettings(userPath, patch); err != nil {
 		return fmt.Errorf("write user settings: %w", err)
-	}
-	if apiKey != "" {
-		localPath := config.UserSettingsLocalPath(base.UserConfigDir)
-		if err := config.MergeWriteSettings(localPath, map[string]any{"api_key": apiKey}); err != nil {
-			return fmt.Errorf("write user local settings: %w", err)
-		}
 	}
 
 	fmt.Println()

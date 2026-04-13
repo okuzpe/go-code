@@ -66,7 +66,7 @@ Each worker orchestrator receives the same **workspace root**, **project context
 ## Tests and harness
 
 - Unit / integration tests: [`internal/coordinator/spawn_agent_test.go`](../internal/coordinator/spawn_agent_test.go), [`internal/coordinator/stop_task_test.go`](../internal/coordinator/stop_task_test.go).
-- Mock Anthropic: [`testutil/mockserver`](../testutil/mockserver/).
+- Mock OpenAI-compat LLM: [`testutil/mockopenai`](../testutil/mockopenai/).
 - Scripted checklist: [`scripts/run_mock_parity_harness.sh`](../scripts/run_mock_parity_harness.sh) and [`scripts/mock_parity_scenarios.json`](../scripts/mock_parity_scenarios.json).
 
 ## Changelog

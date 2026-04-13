@@ -212,28 +212,17 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	slog.Info("starting goclaw", "provider", cfg.Provider, "model", cfg.Model(), "profile", profile.Name)
 
 	var client llm.Client
-	switch cfg.Provider {
-	case "anthropic":
-		apiKey := strings.TrimSpace(cfg.APIKey)
-		if apiKey == "" {
-			return nil, fmt.Errorf("provider=anthropic requires an API key: set environment variable ANTHROPIC_API_KEY, or add \"api_key\" to ~/.goclaw/settings.json or your project .goclaw/settings.json (run \"goclaw doctor\" to verify)")
-		}
-		client = llm.NewAnthropic(apiKey, cfg.BaseURL)
-	case "openai_compatible":
-		baseURL := strings.TrimSpace(cfg.OpenAICompatBaseURL)
-		apiKey := strings.TrimSpace(cfg.OpenAICompatAPIKey)
-		if baseURL == "" {
-			return nil, fmt.Errorf("provider=openai_compatible requires a base URL: set OPENAI_BASE_URL or \"openai_base_url\" in settings (example: https://openrouter.ai/api/v1)")
-		}
-		if apiKey == "" {
-			return nil, fmt.Errorf("provider=openai_compatible requires an API key: set OPENAI_API_KEY or \"openai_api_key\" in settings")
-		}
-		if strings.TrimSpace(cfg.Model()) == "" {
-			return nil, fmt.Errorf("provider=openai_compatible requires a model id: set OPENAI_MODEL or \"openai_model\" in settings")
-		}
-		client = llm.NewOpenAICompat(apiKey, baseURL)
-	default:
+	p := strings.ToLower(strings.TrimSpace(cfg.Provider))
+	switch p {
+	case "", "ollama":
+		cfg.Provider = "ollama"
 		client = llm.NewOllama(cfg.OllamaHost)
+	case "anthropic":
+		return nil, fmt.Errorf("provider \"anthropic\" is no longer supported; set \"provider\" to \"ollama\" (default) and use a local model via ollama_model / OLLAMA_MODEL")
+	case "openai_compatible":
+		return nil, fmt.Errorf("provider \"openai_compatible\" is not supported; goclaw uses local Ollama only — set \"provider\" to \"ollama\", remove openai_* settings, and configure ollama_model / OLLAMA_MODEL")
+	default:
+		return nil, fmt.Errorf("unknown provider %q: only \"ollama\" is supported", cfg.Provider)
 	}
 
 	var sess *session.Session
@@ -410,11 +399,6 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 			ideNotifier.AfterTool(toolName, resultBytes, isError)
 			memory.MaybeAutoCaptureFromTool(cfg, memStore, sid, toolName, toolInput, isError)
 		}))
-	}
-	if cfg.Provider == "anthropic" && strings.ToLower(strings.TrimSpace(cfg.TokenCountMode)) != "heuristic" {
-		if ac, ok := client.(*llm.AnthropicClient); ok {
-			orchOpts = append(orchOpts, orchestrator.WithInputTokenCounter(ac))
-		}
 	}
 
 	return &ChatRuntime{

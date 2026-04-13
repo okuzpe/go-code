@@ -12,7 +12,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/llm"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/tools"
-	"github.com/okuzpe/goclaw/testutil/mockserver"
+	"github.com/okuzpe/goclaw/testutil/mockopenai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,24 +21,23 @@ func buildWorkerReg() *tools.Registry {
 	return tools.New()
 }
 
-func testCfg(serverURL string) config.Config {
+func testCfg() config.Config {
 	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
-	cfg.BaseURL = serverURL
+	cfg.Provider = "ollama"
+	cfg.OllamaModel = "mock-model"
 	return cfg
 }
 
 // TestSpawnAgentSuccess verifies that a successful worker run produces a
 // WorkerNotification with status "completed" and the expected result text.
 func TestSpawnAgentSuccess(t *testing.T) {
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{Match: "list all Go files", Response: "Found: main.go, run.go"},
 	})
 	defer srv.Close()
 
-	cfg := testCfg(srv.URL)
-	client := llm.NewAnthropic("test-key", srv.URL)
+	cfg := testCfg()
+	client := llm.NewOpenAICompat("test-key", srv.URL+"/v1")
 	workerReg := buildWorkerReg()
 	policy := permissions.NewPolicy()
 	hookReg := hooks.New()
@@ -74,9 +73,7 @@ func TestSpawnAgentSuccess(t *testing.T) {
 // without making any LLM calls.
 func TestSpawnAgentUnknownProfile(t *testing.T) {
 	// No mock server — any LLM call would panic/fail, proving no call is made.
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testCfg()
 
 	spawnTool := New(cfg, nil, buildWorkerReg(), permissions.NewPolicy(), hooks.New())
 
@@ -88,9 +85,7 @@ func TestSpawnAgentUnknownProfile(t *testing.T) {
 
 // TestSpawnAgentCoordinatorNesting verifies that spawning a coordinator worker is rejected.
 func TestSpawnAgentCoordinatorNesting(t *testing.T) {
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testCfg()
 
 	// Register coordinator profile temporarily for this test.
 	spawnTool := New(cfg, nil, buildWorkerReg(), permissions.NewPolicy(), hooks.New())
@@ -122,13 +117,13 @@ func TestSpawnAgentMissingTask(t *testing.T) {
 
 // TestSpawnAgentWorkerFailure verifies that an LLM error produces status "failed".
 func TestSpawnAgentWorkerFailure(t *testing.T) {
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{Match: "", StatusCode: 500},
 	})
 	defer srv.Close()
 
-	cfg := testCfg(srv.URL)
-	client := llm.NewAnthropic("test-key", srv.URL)
+	cfg := testCfg()
+	client := llm.NewOpenAICompat("test-key", srv.URL+"/v1")
 	spawnTool := New(cfg, client, buildWorkerReg(), permissions.NewPolicy(), hooks.New())
 
 	input := `{"profile":"explore","task":"do anything"}`

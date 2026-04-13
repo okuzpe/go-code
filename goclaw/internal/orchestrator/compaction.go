@@ -15,11 +15,8 @@ const (
 	compactPreserveTail    = 24
 	compactionSnippetRunes = 280 // max runes per removed message line in the compaction summary
 
-	// Per-provider context window estimates in tokens.
-	// Anthropic claude-sonnet-4-6 / claude-opus-4: 200k token context.
-	// Ollama default: conservative 32k (covers most local models; override via ModelContextTokens).
-	anthropicContextTokens = 200_000
-	ollamaContextTokens    = 32_000
+	// Default context window estimate when ModelContextTokens is unset (non-Ollama-num_ctx path; heuristic only).
+	ollamaContextTokens = 32_000
 
 	// compactedToolResult is the placeholder written over large tool-result payloads during phase-1 compaction.
 	compactedToolResult = "[compacted]"
@@ -139,29 +136,9 @@ func clearOldToolResults(msgs []llm.Message, preserve int) ([]llm.Message, bool)
 	return msgs, changed
 }
 
-// estimatedSessionTokens returns token count for compaction decisions. For Anthropic with
-// InputTokenCounter and token_count_mode auto, uses the count_tokens API once the heuristic
-// estimate reaches 70% of the compaction threshold.
-func (o *Orchestrator) estimatedSessionTokens(ctx context.Context, compactLimit int) int {
-	heuristic := sessionTokenEstimate(o.session.Messages, o.cfg.Provider)
-	if o.inputTokenCounter == nil || o.cfg.Provider != "anthropic" {
-		return heuristic
-	}
-	mode := strings.ToLower(strings.TrimSpace(o.cfg.TokenCountMode))
-	if mode == "heuristic" {
-		return heuristic
-	}
-	soft := int(float64(compactLimit) * 0.7)
-	if heuristic < soft {
-		return heuristic
-	}
-	req := o.buildRequest()
-	n, err := o.inputTokenCounter.CountInputTokens(ctx, req)
-	if err != nil || n <= 0 {
-		slog.Debug("count_tokens failed, using heuristic", "err", err)
-		return heuristic
-	}
-	return n
+// estimatedSessionTokens returns a heuristic token count for compaction decisions.
+func (o *Orchestrator) estimatedSessionTokens(_ context.Context, _ int) int {
+	return sessionTokenEstimate(o.session.Messages, o.cfg.Provider)
 }
 
 // contextBudgetTokens is kept for SessionCompactionFillPercentLive (TUI footer).
@@ -170,36 +147,22 @@ func contextBudgetTokens(provider string, cfgTokens int) int {
 	if cfgTokens > 0 {
 		return cfgTokens
 	}
-	switch provider {
-	case "anthropic":
-		return anthropicContextTokens
-	case "openai_compatible":
-		return ollamaContextTokens
-	default:
-		return ollamaContextTokens
-	}
+	return ollamaContextTokens
 }
 
-// sessionTokenEstimateFromChars maps a UTF-8 byte count to an approximate token count (same divisors as compaction).
-func sessionTokenEstimateFromChars(chars int, providerLower string) int {
+// sessionTokenEstimateFromChars maps a UTF-8 byte count to an approximate token count (char÷4 heuristic).
+func sessionTokenEstimateFromChars(chars int) int {
 	if chars < 0 {
 		chars = 0
 	}
-	switch providerLower {
-	case "anthropic":
-		return (chars + 2) / 3
-	case "openai_compatible":
-		return (chars + 3) / 4
-	default:
-		return (chars + 3) / 4
-	}
+	return (chars + 3) / 4
 }
 
-// sessionTokenEstimate approximates tokens from message text (chars ÷ divisor by provider).
+// sessionTokenEstimate approximates tokens from message text (chars ÷ 4 heuristic).
 func sessionTokenEstimate(msgs []llm.Message, provider string) int {
-	p := strings.ToLower(strings.TrimSpace(provider))
+	_ = provider
 	c := sessionCharEstimate(msgs)
-	return sessionTokenEstimateFromChars(c, p)
+	return sessionTokenEstimateFromChars(c)
 }
 
 // SessionMessagesTokenEstimate is a rough context-size hint from stored message payloads (not billed API usage).
@@ -210,14 +173,14 @@ func SessionMessagesTokenEstimate(msgs []llm.Message, provider string) int {
 
 // SessionMessagesTokenEstimateLive includes extraChars (e.g. in-flight assistant UTF-8 bytes) in the estimate for UI hints.
 func SessionMessagesTokenEstimateLive(msgs []llm.Message, provider string, extraChars int) int {
-	p := strings.ToLower(strings.TrimSpace(provider))
+	_ = provider
 	c := sessionCharEstimate(msgs) + extraChars
-	return sessionTokenEstimateFromChars(c, p)
+	return sessionTokenEstimateFromChars(c)
 }
 
 // SessionCompactionFillPercentLive estimates how full the session is relative to the auto-compaction
 // trigger (same context budget and char heuristic as maybeCompact). extraChars adds in-flight UTF-8
-// bytes (e.g. assistant text still streaming). Does not call Anthropic count_tokens.
+// bytes (e.g. assistant text still streaming).
 // Returns (percent, true) when auto_compact_threshold > 0; otherwise (0, false).
 func SessionCompactionFillPercentLive(msgs []llm.Message, cfg config.Config, extraChars int) (int, bool) {
 	tok := SessionMessagesTokenEstimateLive(msgs, cfg.Provider, extraChars)

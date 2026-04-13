@@ -2,7 +2,7 @@ package orchestrator
 
 import "testing"
 
-// TestMockParityHarness groups mock-Anthropic scenarios for scripted CI runs
+// TestMockParityHarness groups OpenAI-compatible mock scenarios for scripted CI runs
 // (see scripts/run_mock_parity_harness.sh and scripts/mock_parity_scenarios.json).
 func TestMockParityHarness(t *testing.T) {
 	scenarios := []struct {

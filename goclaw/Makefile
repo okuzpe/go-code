@@ -15,7 +15,7 @@ install:
 test:
 	go test ./...
 
-# Mock Anthropic parity bundle (no API keys; see scripts/MOCK_PARITY_HARNESS.md).
+# Mock LLM parity bundle (OpenAI-compat HTTP mock; no API keys; see scripts/MOCK_PARITY_HARNESS.md).
 parity:
 	go test ./internal/orchestrator ./internal/coordinator -count=1 -run '^TestMockParityHarness$$'
 

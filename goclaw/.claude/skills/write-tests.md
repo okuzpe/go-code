@@ -5,21 +5,21 @@ description: Use when the user asks to write tests, add coverage, or test a spec
 
 ## Writing tests in goclaw
 
-### Mock Anthropic server
+### Mock OpenAI-compatible server
 
-`testutil/mockserver/` implements `/v1/messages` SSE without API tokens.
+`testutil/mockopenai/` implements `/v1/chat/completions` SSE without API tokens.
 
 ```go
-import "github.com/okuzpe/goclaw/testutil/mockserver"
+import "github.com/okuzpe/goclaw/testutil/mockopenai"
 
 func TestExample(t *testing.T) {
-    srv := mockserver.New([]mockserver.Scenario{
+    srv := mockopenai.New([]mockopenai.Scenario{
         {Match: "hello", Response: "Hi there."},
         {Match: "", Response: "default"},
     })
     defer srv.Close()
 
-    client := llm.NewAnthropic("test-key", srv.URL)
+    client := llm.NewOpenAICompat("test-key", srv.URL+"/v1")
     // ...
 }
 ```
@@ -88,7 +88,7 @@ func TestReadFileTool(t *testing.T) {
 
 ### Orchestrator integration test shape
 
-See `internal/orchestrator/orchestrator_test.go` — `newOrch`, mock server URL in `cfg.BaseURL`, `permissions` + `tools` wired.
+See `internal/orchestrator/orchestrator_test.go` — `newOrch`, mock server URL in OpenAI-compat base URL, `permissions` + `tools` wired.
 
 ### Commands
 ```bash

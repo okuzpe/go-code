@@ -33,7 +33,7 @@ func shortSessionID(id string) string {
 
 func mockAssistantReplyBody(userText string) string {
 	return fmt.Sprintf(
-		"[mock] Canned reply from goclaw. Omit --mock and use a running provider (Ollama or Anthropic) for real answers.\n\nYou said:\n%s",
+		"[mock] Canned reply from goclaw. Omit --mock and use a running Ollama server for real answers.\n\nYou said:\n%s",
 		userText,
 	)
 }

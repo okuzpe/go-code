@@ -5,7 +5,7 @@
 - **Go module**: `github.com/okuzpe/goclaw`
 - **Go version**: 1.26
 - **Default provider**: local Ollama (`qwen2.5-coder:14b`)
-- **Alternative providers**: Anthropic API (`ANTHROPIC_API_KEY`); **OpenAI-compatible** HTTP APIs (`provider: "openai_compatible"`, e.g. OpenRouter, Groq, LM Studio local server — `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`)
+- **LLM backend**: **Ollama only** in the shipped CLI (`PrepareChatRuntime`). Legacy `anthropic` and `openai_compatible` values in `settings.json` are **rejected** with a migration hint. `internal/llm/openai_compat.go` + `testutil/mockopenai` remain for **unit tests** (mock HTTP), not for end-user configuration.
 - **Repo root**: clone path + `/goclaw` (module root for `go build` / `go test`)
 
 **Workspace note:** If the parent folder also contains `claw-code/`, treat it as **reference material only**. It is not part of this module, not covered by this roadmap, and must not be modified when implementing goclaw. All product code, tests, and phase work live under `goclaw/`.
@@ -102,7 +102,7 @@ See the `audit` skill for the full checklist.
 | **Team/Swarm (peer agents)** | **Minimal disk hub** — [`internal/swarm`](internal/swarm/): mailboxes under a user-chosen directory (tests + future tools). Not the same as `spawn_agent`; see [`swarm.md`](../docs/goclaw/swarm.md). |
 | **External orchestration** | Optional: wrap `goclaw` with your own scheduler/event bus (analogous in spirit to claw-code + clawhip + Discord). Not a goclaw dependency. |
 
-**Deferred until there is a concrete consumer:** structured worker lifecycle events (for external routers) and OAuth / `login` flows for Anthropic. Neither is required for the Ollama-first workflow; add them when an integration needs a stable event schema or token storage.
+**Deferred until there is a concrete consumer:** structured worker lifecycle events (for external routers) and OAuth / `login` flows for third-party LLM APIs. Neither is required for the Ollama-first workflow; add them when an integration needs a stable event schema or token storage.
 
 ---
 
@@ -127,14 +127,12 @@ goclaw/
 │   │   └── mock.go              ← canned assistant stream for `--mock` / UI wiring tests
 │   ├── slashcmd/                ← `/` slash handlers: `HandleSlash` (`slash.go`), `editor.go`, tests
 │   ├── ui/chat/                 ← Bubble Tea fullscreen TUI (`--tui` / `GOCLAW_USE_TUI`): `chat.go`, `sink.go`, `theme.go`
-│   ├── llm/                     ← Client interface + AnthropicClient + OllamaClient + OpenAICompatClient
+│   ├── llm/                     ← Client interface + OllamaClient (+ OpenAICompatClient for tests only)
 │   │   ├── client.go            ← Client interface, Request, ToolSpec, Event types
 │   │   ├── message.go           ← Message (text + ToolCalls / ToolResults)
-│   │   ├── anthropic_wire.go    ← Maps messages to Anthropic content blocks
 │   │   ├── ollama_wire.go       ← Expands tool turns for Ollama /api/chat
-│   │   ├── anthropic.go         ← SSE streaming to /v1/messages
 │   │   ├── ollama.go            ← NDJSON streaming to /api/chat
-│   │   ├── openai_compat.go     ← SSE streaming to /v1/chat/completions (OpenAI-compatible)
+│   │   ├── openai_compat.go     ← SSE /v1/chat/completions (used from tests + mocks, not CLI wiring)
 │   │   └── retry.go             ← HTTP retries / backoff (D22) for LLM POSTs
 │   ├── session/session.go       ← Session{ID, Messages[]}, Add / AddAssistant / AddToolResults
 │   ├── orchestrator/            ← main loop: user → LLM → tools → repeat (32 iter / 64 tool calls)
@@ -166,7 +164,7 @@ goclaw/
 │   ├── agents/profile.go        ← Profile{Name, ModelOverride, ToolAllowlist, ReadOnly, SystemPrompt}
 │   ├── memory/                  ← Filesystem store under ~/.goclaw/memory/, MEMORY.md index
 │   └── ...
-└── testutil/mockserver/         ← HTTP mock for Anthropic /v1/messages (tests without API tokens)
+└── testutil/mockopenai/         ← HTTP mock for OpenAI-style /v1/chat/completions SSE (tests without API tokens)
 ```
 
 **Topic docs (monorepo):** [`docs/goclaw/`](../docs/goclaw/) — coordinator wire format, MCP remote notes, swarm, QA checklists (listed in [README.md](README.md)).
@@ -185,12 +183,6 @@ goclaw/
 | `GOCLAW_TASK_MODEL_ROUTER` | — | Per-turn model routing: `off`, `rules` (heuristics), or `llm` (classifier call); needs non-empty **`task_models`** in merged settings; see [`docs/goclaw/model-routing.md`](../docs/goclaw/model-routing.md) |
 | `GOCLAW_TASK_MODEL_ROUTER_MODEL` | — | Model id for the `llm` router’s short JSON reply only; merged **`task_model_router_model`** overrides; empty uses **`ModelForCompaction()`** |
 | `GOCLAW_PREFERRED_RESPONSE_LANGUAGE` | — | Optional UI reply bias for runtime language hints: `auto`, `from_os`, or `es` / `en` / `fr` / `de` / `pt`; merged `preferred_response_language` in settings overrides |
-| `ANTHROPIC_API_KEY` | — | Required when `provider=anthropic` |
-| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Override for tests (mock server) |
-| `GOCLAW_MODEL` | `claude-sonnet-4-6` | Anthropic model when `provider=anthropic`; short aliases `opus`, `sonnet`, `haiku` resolve to full ids (see [`internal/config/config.go`](internal/config/config.go)) |
-| `OPENAI_BASE_URL` | — | Base URL including `/v1` when `provider=openai_compatible` (e.g. `https://openrouter.ai/api/v1`); or `openai_base_url` in settings |
-| `OPENAI_API_KEY` | — | API key for the OpenAI-compatible endpoint; or `openai_api_key` in settings |
-| `OPENAI_MODEL` | — | Model id for `provider=openai_compatible` (e.g. `openrouter/free`); or `openai_model` in settings |
 | `GOCLAW_DISABLE_TOOLS` | (empty) | Set to `1` to run without tools (same idea as `--no-tools`) |
 | `GOCLAW_MOCK_FAST` | (empty) | Set to `1` to remove pacing delays from `--mock` (CI / scripts) |
 | `BRAVE_SEARCH_API_KEY` | — | Brave Search API token when `web_search_backend` is `brave` (optional; can use `brave_search_api_key` in settings) |
@@ -209,13 +201,7 @@ goclaw/
 
 **Merge order:** `config.Default()` (includes env vars) → user `settings.json` → project `settings.json` → user `settings.local.json` → project `settings.local.json` (each step overrides overlapping keys). Then **`GOCLAW_AGENT_PROFILE`** if set. Then CLI: **`goclaw --profile <name>`** overrides `agent_profile` last; non-empty **`--task-model-router`** overrides merged **`task_model_router`**.
 
-**Provider and model (summary):**
-
-| `provider` | Model source | Custom agents (`model` in YAML frontmatter) |
-|------------|--------------|-----------------------------------------------|
-| `ollama` (default) | `OLLAMA_MODEL` / `ollama_model` | Overrides global model when non-empty |
-| `anthropic` | `GOCLAW_MODEL` / aliases | Overrides global model when non-empty |
-| `openai_compatible` | `OPENAI_MODEL` / `openai_model` | Overrides global model when non-empty |
+**Model (summary):** `OLLAMA_MODEL` / `ollama_model` (and per-agent `model` in custom agent YAML when set).
 
 **CLI (session / tools / UI):**
 - **`--session <id>`** — load history from `~/.goclaw/sessions/<id>.jsonl` (clear error if missing).
@@ -250,24 +236,23 @@ Example **`settings.json`:**
   },
   "web_search_backend": "brave",
   "brave_search_api_key": "your-token",
-  "web_search_fallback_ddg": true,
-  "token_count_mode": "auto"
+  "web_search_fallback_ddg": true
 }
 ```
 
-Optional keys: **`tui_mouse_scroll`** — when `true`, the fullscreen TUI enables **mouse wheel** scrolling on the transcript (Bubble Tea cell mouse mode; may reduce native terminal mouse selection); default off; `GOCLAW_TUI_MOUSE_SCROLL=1` / `true` / `yes` / `on` enables; **`memory_llm_silent_extract`** — when `true`, after a user turn with no tool calls the runtime may run one background LLM JSON extraction into the active memory store (same provider as the main chat; default off); **`preferred_response_language`** — `auto` (default), `from_os`, or `es` / `en` / `fr` / `de` / `pt` (steers runtime user-language hint; see [`docs/goclaw/i18n.md`](../docs/goclaw/i18n.md)); **`compaction_model`** — model id for LLM summarization when **`llm_compaction`** is true (smaller/faster model than the main turn); **`task_model_router`** / **`task_models`** / **`task_model_router_model`** — per-turn model selection (`off` \| `rules` \| `llm`); see [`model-routing.md`](../docs/goclaw/model-routing.md); **`web_search_backend`** (`ddg` \| `brave` \| `serpapi`), **`brave_search_api_key`**, **`serpapi_api_key`**, **`web_search_fallback_ddg`** (default true when using a non-DDG backend), **`token_count_mode`** (`auto` \| `heuristic`) for Anthropic compaction (`auto` uses the [count_tokens API](https://docs.anthropic.com/en/api/messages-count-tokens) once the heuristic estimate crosses 70% of the compaction threshold).
+Optional keys: **`tui_mouse_scroll`** — when `true`, the fullscreen TUI enables **mouse wheel** scrolling on the transcript (Bubble Tea cell mouse mode; may reduce native terminal mouse selection); default off; `GOCLAW_TUI_MOUSE_SCROLL=1` / `true` / `yes` / `on` enables; **`memory_llm_silent_extract`** — when `true`, after a user turn with no tool calls the runtime may run one background LLM JSON extraction into the active memory store (same provider as the main chat; default off); **`preferred_response_language`** — `auto` (default), `from_os`, or `es` / `en` / `fr` / `de` / `pt` (steers runtime user-language hint; see [`docs/goclaw/i18n.md`](../docs/goclaw/i18n.md)); **`compaction_model`** — model id for LLM summarization when **`llm_compaction`** is true (smaller/faster model than the main turn); **`task_model_router`** / **`task_models`** / **`task_model_router_model`** — per-turn model selection (`off` \| `rules` \| `llm`); see [`model-routing.md`](../docs/goclaw/model-routing.md); **`web_search_backend`** (`ddg` \| `brave` \| `serpapi`), **`brave_search_api_key`**, **`serpapi_api_key`**, **`web_search_fallback_ddg`** (default true when using a non-DDG backend).
 
-**Anthropic model routing (recommended):** assign faster/cheaper models to lightweight tasks and smarter models to coding. Requires `task_model_router: "rules"` and a `task_models` map:
+**Per-turn model routing (`task_models`):** assign different Ollama model tags to lightweight vs coding turns. Requires `task_model_router: "rules"` and a `task_models` map, for example:
 
 ```json
 {
-  "provider": "anthropic",
+  "provider": "ollama",
   "task_model_router": "rules",
   "task_models": {
-    "explore": "claude-haiku-4-5-20251001",
-    "fast":    "claude-haiku-4-5-20251001",
-    "code":    "claude-sonnet-4-6",
-    "default": "claude-sonnet-4-6"
+    "explore": "qwen2.5-coder:7b",
+    "fast":    "qwen2.5-coder:7b",
+    "code":    "qwen2.5-coder:14b",
+    "default": "qwen2.5-coder:14b"
   }
 }
 ```
@@ -275,18 +260,6 @@ Optional keys: **`tui_mouse_scroll`** — when `true`, the fullscreen TUI enable
 The `rules` router classifies each user turn using lightweight heuristics (no extra API call). Role `explore` matches read/search/grep tasks; `fast` matches short single-line prompts; `code` matches coding/refactor/debug requests; `default` is the fallback. Override any role's model with `GOCLAW_TASK_MODEL_ROUTER=rules` and a `task_models` map in your `settings.json`.
 
 **Open-weight stack (Ollama):** see [`docs/goclaw/ollama-stack.md`](../docs/goclaw/ollama-stack.md) for project template agents under `goclaw/.goclaw/agents/` and `OLLAMA_MAX_LOADED_MODELS` notes.
-
-**OpenAI-compatible example** (e.g. [OpenRouter](https://openrouter.ai); base URL must include `/v1`):
-
-```json
-{
-  "provider": "openai_compatible",
-  "openai_base_url": "https://openrouter.ai/api/v1",
-  "openai_api_key": "sk-or-v1-…",
-  "openai_model": "openrouter/free",
-  "model_context_tokens": 128000
-}
-```
 
 Optional key **`bash_timeout_sec`** (positive integer, max 3600): overrides the default bash tool timeout ([`internal/tools/limits.go`](internal/tools/limits.go) `BashTimeoutSec` = 30). Omitted or zero keeps the default.
 
@@ -305,7 +278,7 @@ Modes: `ask` (default; prompts on **stderr** — answer `y` / `yes`), `allow`, `
 - **Context**: all IO receives `context.Context` as first parameter
 - **Defer cleanup**: `defer resp.Body.Close()`, `defer cancel()` immediately after resource acquisition
 - **Tool names exposed to the model**: `snake_case` (read_file, web_fetch)
-- **Internal Go types**: `CamelCase` (ToolRegistry, AnthropicClient)
+- **Internal Go types**: `CamelCase` (ToolRegistry, OllamaClient)
 - **Interfaces**: base name or `-er` suffix (Client, Tool, Handler — not IClient, not ToolInterface)
 - **Keep interfaces small**: 1–3 methods max; split if larger
 
@@ -413,7 +386,7 @@ func Run() { globalClient.Stream(...) }
 ```go
 // Verify at compile time that the type implements the interface
 var _ Tool = (*ReadFileTool)(nil)
-var _ llm.Client = (*AnthropicClient)(nil)
+var _ llm.Client = (*OllamaClient)(nil)
 ```
 
 ---
@@ -437,9 +410,9 @@ var _ llm.Client = (*AnthropicClient)(nil)
 | `todo_write` | session_meta | merge, todos[] | 50 items; 500 runes/content | Session task list; snapshot in system prompt via `orchestrator.WithTodoStore`; cleared on `/new` |
 
 ### Message / tool protocol
-- Session messages use `llm.Message`: plain `role` + `content`, or assistant turns with `tool_calls`, or user turns with `tool_results` (Anthropic-style). The orchestrator records **all** tool calls from one assistant stream, then one user message with **all** matching results.
-- **Anthropic:** history maps to `tool_use` / `tool_result` content blocks (see `anthropic_wire.go`).
+- Session messages use `llm.Message`: plain `role` + `content`, or assistant turns with `tool_calls`, or user turns with `tool_results`. The orchestrator records **all** tool calls from one assistant stream, then one user message with **all** matching results.
 - **Ollama:** assistant turns use `tool_calls` with `type: "function"`; tool outputs must use the **`tool_name`** field on `role: "tool"` messages (not `name`). See [Ollama tool calling](https://docs.ollama.com/capabilities/tool-calling) — wrong field breaks the round-trip (model may print fake JSON instead of seeing results).
+- **Tests / mocks:** `openai_compat.go` implements Chat Completions streaming for `testutil/mockopenai` only.
 - **Recoverable failures** (permission deny, user decline, unknown tool, hook block, tool error): surfaced as `tool_result` with `is_error`, and the LLM loop continues.
 - **Fatal** errors: LLM stream failure, iteration limit, tool call budget, or missing approver when the policy requires Ask.
 
@@ -462,21 +435,21 @@ var _ llm.Client = (*AnthropicClient)(nil)
 
 | Decision | Actionable rule |
 |----------|----------------|
-| D1: Providers | Ollama = default. Anthropic and `openai_compatible` (OpenAI Chat Completions–compatible) = opt-in with credentials. Keep provider-specific code behind `llm.Client`. |
+| D1: Providers | **Ollama only** in the shipped CLI. Legacy `anthropic` / `openai_compatible` strings are rejected with a clear error. Keep the active client behind `llm.Client`. |
 | D4: Bash security | Allowlist (expanded binaries + git subcommands), not denylist. Single simple command: `rejectShellMetacharacters` blocks shell chaining that would bypass the allowlist. User confirmation always required in Ask mode. |
 | D5: Permissions | Default = ModeAsk (fail-closed). `bypassPermissions` intentionally not implemented — see **What NOT to do**. |
 | D6: MCP | **stdio + Streamable HTTP** (`internal/mcp`, `http.go`): subprocess **or** `mcp_servers[].url` (optional `headers`, optional **`bearer_token_file`** → `Authorization: Bearer` if no header set); tools as `mcp__server__tool`. HTTP URLs must be **loopback** unless `mcp_allow_remote_urls` is set in settings. **Not done:** OAuth, WebSocket, legacy HTTP+SSE-only servers. See [`mcp-remote.md`](../docs/goclaw/mcp-remote.md). |
 | D7: Config paths | `~/.goclaw/` (user), `.goclaw/` (project). Decided, do not change. |
 | D12: Dedicated tools | Prefer `read_file`/`glob`/`grep` over bash equivalents. Bash = last resort. |
 | D13: Memory | Filesystem at `~/.goclaw/memory/`. 4 types: user/feedback/project/reference. Opt-in **auto-capture** (`memory_auto_extract: true`): after successful `write_file` / `edit_file` / `patch`, one-line project entry (path only), capped per session — [`internal/memory/autocapture.go`](internal/memory/autocapture.go). Opt-in **silent-turn LLM extract** (`memory_llm_silent_extract: true`): after a user turn with **no** tool calls, a background model pass may append one structured entry — [`internal/memory/extractor.go`](internal/memory/extractor.go). Custom agents may set frontmatter **`memory: user|project|local`** for an isolated store — [`internal/memory/agentmem.go`](internal/memory/agentmem.go), wired in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go) and [`internal/coordinator/spawn_agent.go`](internal/coordinator/spawn_agent.go). |
-| D15: Compaction | Threshold as configurable fraction (default 0.85). Session size uses a **heuristic token estimate** (chars÷N by provider) against `model_context_tokens` / provider defaults. When `provider=anthropic` and `token_count_mode` is `auto` (default), goclaw calls Anthropic **`POST /v1/messages/count_tokens`** once the heuristic crosses 70% of the compaction threshold; on failure it falls back to the heuristic. |
+| D15: Compaction | Threshold as configurable fraction (default 0.85). Session size uses a **heuristic token estimate** (chars÷N by provider) against `model_context_tokens` / provider defaults. |
 | D16: Multi-agent | **Done** — `internal/coordinator`: `spawn_agent` and `stop_task` tools, `Coordinator` profile (allowlist: spawn_agent, stop_task, todo_write), isolated worker sessions via `session.New()`, `WorkerNotification` JSON result, nesting prevention. **Swarm** (separate): `internal/swarm` disk hub — [`swarm.md`](../docs/goclaw/swarm.md). |
 | D17: YOLO Classifier | **Implemented** in `internal/permissions/risk.go` — rule-based risk scorer (0–100); `yolo_threshold: -1` default (off); auto-approves reads at threshold 0. |
 | D18: Hooks | PreToolUse can block. PostToolUse is best-effort (non-fatal). |
 | D19: Custom agents | **Implemented** — Markdown + YAML frontmatter in `~/.goclaw/agents/*.md` and `.goclaw/agents/*.md`; fields: `name`, `model`, `tool_allowlist`, `read_only`, `system_prompt`; body appended to system prompt; hot-reload on `/profile`; project overrides user overrides built-in. See [`internal/agents/profile.go`](internal/agents/profile.go). |
 | D20: Plugins | **Shipped** — `internal/plugin`: each root contains `goclaw-plugin.json` (`name`, optional `hooks_file`); `plugin_dirs` in settings + `--plugin-dir` (repeatable); `plugin_allow` / `plugin_deny` (deny wins). Hooks load via same mechanism as `.goclaw/hooks.json`. Treat plugins as **executable config** (supply chain), like `trusted_workspace`. |
 | Skills (runtime) | **`internal/skills`** discovers `SKILL.md` under `.goclaw/skills/`, `.claude/skills/`, `~/.goclaw/skills/`, `~/.goclaw/.claude/skills/` (recursive under each root); content is injected under `## Loaded skills (SKILL.md)` in the system prompt (bounded size). |
-| D22: Retry | **Implemented** in [`internal/llm/retry.go`](internal/llm/retry.go): `doHTTPWithRetry` wraps Anthropic, Ollama, and OpenAI-compat POSTs — retries on **429**, **503**, **504** with `Retry-After` when present, else exponential backoff (base 500ms, ceiling 5min), up to **10** attempts; transient **network errors** retry with the same backoff. |
+| D22: Retry | **Implemented** in [`internal/llm/retry.go`](internal/llm/retry.go): `doHTTPWithRetry` wraps Ollama POSTs (and the OpenAI-compat client used in tests) — retries on **429**, **503**, **504** with `Retry-After` when present, else exponential backoff (base 500ms, ceiling 5min), up to **10** attempts; transient **network errors** retry with the same backoff. |
 
 ---
 
@@ -509,9 +482,6 @@ go test ./...
 # Race detector (requires CGO; on Windows use WSL/Linux CI or install a C toolchain)
 # go test -race ./...
 
-# Tests with mock server (no API tokens)
-ANTHROPIC_BASE_URL=http://localhost:PORT go test ./...
-
 # Manual run against local Ollama
 OLLAMA_HOST=http://localhost:11434 OLLAMA_MODEL=qwen2.5-coder:14b go run ./cmd/goclaw
 ```
@@ -526,17 +496,16 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 4. **JSON one-shot:** `printf 'hello\n' | go run ./cmd/goclaw --output-format json --no-tools` prints one JSON object on stdout (`--json-output` is equivalent; use `--mock` for a canned response without the provider). **Text one-shot:** `go run ./cmd/goclaw prompt "hello" --no-tools`.
 5. **Full REPL (manual, TTY):** run without `--no-tools`, press ↑ for history, trigger a tool in Ask mode; in **readline** mode confirm the `Allow execution?` prompt uses readline editing; in **TUI** confirm the approval modal above the input.
 
-**Mock server** in `testutil/mockserver/`:
-- Start with `mockserver.New(scenarios)` → returns `*Server` with `.URL`
-- Use `ANTHROPIC_BASE_URL=server.URL` to point the client at the mock
-- Scenarios match on the last message fingerprint (plain text or `tool_result` bodies); use `Tool` for one tool or `Tools` for multi-tool streams. See `internal/orchestrator/*_test.go` for examples.
+**Mock server** in `testutil/mockopenai/`:
+- Start with `mockopenai.New(scenarios)` → returns `*Server` with `.URL`
+- Point `NewOpenAICompat` at `server.URL + "/v1"` in tests (see `internal/orchestrator/*_test.go`).
 
 ---
 
 ## Roadmap — current status
 
 ```
-[DONE] Phase 0: go.mod, package layout, mock server, OllamaClient, AnthropicClient
+[DONE] Phase 0: go.mod, package layout, mock server, OllamaClient (+ OpenAI-compat client for tests)
 [DONE] Phase 1: Core loop — session UUID, JSONL store + rotation, REPL + slog, mock tests
 [DONE] Phase 2: Core tools — read_file (workspace), bash (allowlist), web_fetch (SSRF), web_search (DDG)
 [DONE] Phase 3: Ask prompt (stderr), `-profile`, `settings.json` loader, `tool_permissions` map
@@ -554,7 +523,7 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 2. ~~`web_search` backends~~ — `web_search_backend` (`ddg` \| `brave` \| `serpapi`), optional DDG fallback; keys in settings / env (`BRAVE_SEARCH_API_KEY`, `SERPAPI_API_KEY`).
 3. ~~Compaction + tests~~ — summary lists removed/tail counts; [`internal/orchestrator/estimate_test.go`](internal/orchestrator/estimate_test.go) and extra edge tests.
 4. ~~REPL slash UX~~ — `/help`, `/session`, `/sessions`, `/quit`/`/exit`, `/new`, `/save`, `/memory`, `/compact`; short id prompt.
-5. ~~Compaction threshold tokens~~ — heuristic + Anthropic `count_tokens` when `token_count_mode` is `auto` (see D15).
+5. ~~Compaction threshold tokens~~ — heuristic token estimate (see D15).
 6. ~~D22 HTTP retries~~ — [`internal/llm/retry.go`](internal/llm/retry.go) + tests.
 7. ~~README + hooks logging~~ — [`README.md`](README.md); post-tool hook handler errors logged with `slog.WarnContext` in [`internal/hooks/hooks.go`](internal/hooks/hooks.go).
 8. ~~`glob` / `grep` tools~~ — workspace-scoped ([`internal/tools/glob.go`](internal/tools/glob.go), [`grep.go`](internal/tools/grep.go)); explore/plan allowlists updated.

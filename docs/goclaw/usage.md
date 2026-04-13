@@ -95,23 +95,9 @@ go run ./cmd/goclaw prompt "status" --output-format json --no-tools
 
 **Mock regression bundle (no API key):** `make parity` or [scripts/MOCK_PARITY_HARNESS.md](../../goclaw/scripts/MOCK_PARITY_HARNESS.md).
 
-## Anthropic (optional)
+## Legacy providers (`anthropic`, `openai_compatible`)
 
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
-
-Set `"provider": "anthropic"` in `~/.goclaw/settings.json` or `.goclaw/settings.json` in the project.
-
-| `GOCLAW_MODEL` | Resolves to (anthropic only) |
-|----------------|------------------------------|
-| *(default)* | `claude-sonnet-4-6` |
-| `opus` | `claude-opus-4-6` |
-| `sonnet` | `claude-sonnet-4-6` |
-| `haiku` | `claude-haiku-4-5-20251213` |
-| any other string | sent as-is to the API |
-
-Ollama mode uses `ollama_model` / `OLLAMA_MODEL`; it does **not** use these aliases.
+Cloud Anthropic and OpenAI-compatible HTTP providers are **not supported** in the CLI. Use `"provider": "ollama"` (or omit it), `ollama_model` / `OLLAMA_MODEL`, and remove `openai_*` keys from settings if present.
 
 ## Configuration
 
@@ -124,7 +110,7 @@ defaults → ~/.goclaw/settings.json → .goclaw/settings.json
 
 Do not commit `settings.local.json`.
 
-**Common keys:** `provider`, `agent_profile`, `ollama_model`, `bash_timeout_sec`, `tool_permissions`, `mcp_servers` (stdio or HTTP; HTTP entries may set `bearer_token_file` for a static bearer token), `mcp_allow_remote_urls`, `trusted_workspace`, `external_hooks`, `plugin_dirs`, `plugin_allow`, `plugin_deny`, `memory_auto_extract`, `ide_bridge_mcp`. CLI: `--plugin-dir` (repeatable) appends plugin roots.
+**Common keys:** `provider` (must be `ollama` for a normal run; legacy values error at startup), `agent_profile`, `ollama_model`, `ollama_host`, `ollama_num_ctx`, `bash_timeout_sec`, `tool_permissions`, `mcp_servers` (stdio or HTTP; HTTP entries may set `bearer_token_file` for a static bearer token), `mcp_allow_remote_urls`, `trusted_workspace`, `external_hooks`, `plugin_dirs`, `plugin_allow`, `plugin_deny`, `memory_auto_extract`, `ide_bridge_mcp`. CLI: `--plugin-dir` (repeatable) appends plugin roots.
 
 Example:
 
@@ -275,10 +261,10 @@ Handled locally (not sent to the model). Run **`/help`** for the full list. Key 
 go vet ./...
 go test ./...
 go test -race ./...    # Linux CI; Windows needs CGO toolchain
-make parity            # mock Anthropic harness
+make parity            # mock OpenAI-compat harness (orchestrator + coordinator)
 ```
 
-Mock server: `testutil/mockserver/`. Windows: transient `*.exe` from tests are normal; see `.gitignore`.
+Mock server: `testutil/mockopenai/`. Windows: transient `*.exe` from tests are normal; see `.gitignore`.
 
 ## Troubleshooting
 

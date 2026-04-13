@@ -23,7 +23,7 @@ Fix failures before continuing.
 Touch:
 - `internal/session/session.go` — UUID + JSONL persistence
 - `cmd/goclaw/main.go` — `log/slog`, signal handling (Ctrl+C)
-- `testutil/mockserver/server.go` — Anthropic mock for tests
+- `testutil/mockopenai/` — OpenAI-style `/v1/chat/completions` mock for tests
 
 Deliverable: `go run ./cmd/goclaw` returns text via local Ollama.  
 Tests: mock scenarios (text-only, streaming, HTTP 500).

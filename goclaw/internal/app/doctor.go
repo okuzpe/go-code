@@ -58,6 +58,8 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 	lines = append(lines,
 		fmt.Sprintf("session:   %s", rt.Sess.ID),
 		fmt.Sprintf("provider:  %s", cfg.Provider),
+	)
+	lines = append(lines,
 		fmt.Sprintf("model:     %s", cfg.Model()),
 		fmt.Sprintf("task_model_router: %s", config.NormalizeTaskModelRouter(cfg.TaskModelRouter)),
 		taskModelsLine,
@@ -91,18 +93,11 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 	lines = append(lines, "")
 	lines = append(lines, "checks:")
 	var ollamaOK bool
-	switch cfg.Provider {
+	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
 	case "anthropic":
-		lines = append(lines, checkLine("anthropic api key", strings.TrimSpace(cfg.APIKey) != ""))
-		mode := strings.ToLower(strings.TrimSpace(cfg.TokenCountMode))
-		if mode == "" {
-			mode = "auto"
-		}
-		lines = append(lines, fmt.Sprintf("token_count_mode: %s (auto uses count_tokens API near compaction threshold)", mode))
+		lines = append(lines, "  ✗ provider \"anthropic\" is no longer supported — set \"provider\" to \"ollama\"")
 	case "openai_compatible":
-		lines = append(lines, checkLine("openai base url configured", strings.TrimSpace(cfg.OpenAICompatBaseURL) != ""))
-		lines = append(lines, checkLine("openai api key configured", strings.TrimSpace(cfg.OpenAICompatAPIKey) != ""))
-		lines = append(lines, checkLine("openai model configured", strings.TrimSpace(cfg.Model()) != ""))
+		lines = append(lines, "  ✗ provider \"openai_compatible\" is not supported — goclaw uses local Ollama only; set \"provider\" to \"ollama\" and use ollama_model")
 	default:
 		ollamaHost := effectiveOllamaHost(cfg.OllamaHost)
 		ollamaOK = probeOllama(ctx, ollamaHost)
@@ -378,7 +373,7 @@ func hintLines(cfg config.Config, ollamaOK, toolsDisabled, ollamaToolsDropped bo
 			"  - Disable with \"llm_compaction\": false if compaction latency is noticeable.",
 		)
 	}
-	if cfg.Provider != "anthropic" && cfg.Provider != "openai_compatible" && !ollamaOK {
+	if !ollamaOK {
 		host := effectiveOllamaHost(cfg.OllamaHost)
 		hints = append(hints,
 			fmt.Sprintf("  Ollama did not respond at %s within the probe timeout.", host),
@@ -390,10 +385,10 @@ func hintLines(cfg config.Config, ollamaOK, toolsDisabled, ollamaToolsDropped bo
 	if toolsDisabled {
 		hints = append(hints, "  Tools are disabled (--no-tools or GOCLAW_DISABLE_TOOLS=1); MCP servers were not started.")
 	}
-	if !toolsDisabled && cfg.Provider != "anthropic" && cfg.Provider != "openai_compatible" && ollamaOK {
+	if !toolsDisabled && ollamaOK {
 		hints = append(hints,
 			"  Local Ollama models may still refuse to summarize news or pages even when web_search/web_fetch succeed.",
-			"  - Try a general instruct/chat model, or switch provider to anthropic for more reliable web summarization.",
+			"  - Try a general instruct/chat model or a larger tag (e.g. pull a tool-capable variant).",
 		)
 	}
 	if ollamaToolsDropped {

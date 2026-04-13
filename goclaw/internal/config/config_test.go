@@ -13,63 +13,13 @@ func TestDefaultAgentProfileGeneralPurpose(t *testing.T) {
 	}
 }
 
-func TestResolveAnthropicModelName(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		in   string
-		want string
-	}{
-		{"sonnet", "claude-sonnet-4-6"},
-		{"SONNET", "claude-sonnet-4-6"},
-		{"opus", "claude-opus-4-6"},
-		{"haiku", "claude-haiku-4-5-20251213"},
-		{"claude-sonnet-4-6", "claude-sonnet-4-6"},
-		{"custom-model-id", "custom-model-id"},
-		{"", ""},
-	}
-	for _, tt := range tests {
-		if got := resolveAnthropicModelName(tt.in); got != tt.want {
-			t.Errorf("resolveAnthropicModelName(%q) = %q, want %q", tt.in, got, tt.want)
-		}
-	}
-}
-
-func TestConfigModel_AnthropicAliases(t *testing.T) {
-	t.Setenv("GOCLAW_MODEL", "haiku")
-	cfg := Default()
-	cfg.Provider = "anthropic"
-	if got := cfg.Model(); got != "claude-haiku-4-5-20251213" {
-		t.Fatalf("Model() = %q, want claude-haiku-4-5-20251213", got)
-	}
-}
-
-func TestConfigModel_OllamaIgnoresAnthropicAliasEnv(t *testing.T) {
-	t.Setenv("GOCLAW_MODEL", "sonnet")
+func TestConfigModel_OllamaIgnoresGOCLAWModelEnv(t *testing.T) {
+	t.Setenv("GOCLAW_MODEL", "ignored-for-ollama")
 	cfg := Default()
 	cfg.Provider = "ollama"
 	cfg.OllamaModel = "qwen2.5-coder:14b"
 	if got := cfg.Model(); got != "qwen2.5-coder:14b" {
 		t.Fatalf("Model() = %q, want ollama model unchanged", got)
-	}
-}
-
-func TestConfigModel_OpenAICompat(t *testing.T) {
-	t.Setenv("OPENAI_MODEL", "")
-	cfg := Default()
-	cfg.Provider = "openai_compatible"
-	cfg.OpenAICompatModel = "openrouter/free"
-	if got := cfg.Model(); got != "openrouter/free" {
-		t.Fatalf("Model() = %q, want openrouter/free", got)
-	}
-}
-
-func TestConfigModel_OpenAICompatEnvFallback(t *testing.T) {
-	t.Setenv("OPENAI_MODEL", "meta/llama:free")
-	cfg := Default()
-	cfg.Provider = "openai_compatible"
-	cfg.OpenAICompatModel = ""
-	if got := cfg.Model(); got != "meta/llama:free" {
-		t.Fatalf("Model() = %q, want env fallback", got)
 	}
 }
 
@@ -195,14 +145,9 @@ func TestConfigTaskModelRoutingActive(t *testing.T) {
 	}
 }
 
-func TestNormalizeModelForProvider_AnthropicAlias(t *testing.T) {
+func TestNormalizeModelForProviderTrims(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
-	cfg.Provider = "anthropic"
-	if got := cfg.NormalizeModelForProvider("haiku"); got != "claude-haiku-4-5-20251213" {
-		t.Fatalf("got %q", got)
-	}
-	cfg.Provider = "ollama"
 	if got := cfg.NormalizeModelForProvider("  my:tag  "); got != "my:tag" {
 		t.Fatalf("got %q", got)
 	}

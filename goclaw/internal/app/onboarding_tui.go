@@ -17,10 +17,8 @@ const (
 	obSecurity obStep = iota
 	obTrust
 	obTheme
-	obConn
 	obOllamaHost
 	obOllamaModel
-	obAnthropicKey
 	obDone
 )
 
@@ -35,15 +33,12 @@ type obModel struct {
 	base    config.Config
 
 	themeChoices []string
-	connChoices  []string
 
 	ti textinput.Model
 
 	appearance  string
-	provider    string
 	ollamaHost  string
 	ollamaModel string
-	apiKey      string
 
 	// Security step: s = full docs/goclaw/security.md in viewport (same as readline preflight gate).
 	secDoc bool
@@ -71,7 +66,6 @@ func runOnboardingTUI(version, workdir string, base config.Config) error {
 		workdir:      workdir,
 		base:         base,
 		themeChoices: themeLabels,
-		connChoices:  []string{"Local Ollama — models on this machine", "Anthropic API — API key (Console billing)", "Third-party cloud — not available yet"},
 		ti:           ti,
 		secVP:        secVP,
 		appearance:   config.UIAppearanceAuto,
@@ -102,7 +96,7 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.step == obSecurity && m.secDoc {
 			m.refreshSecurityDocViewport()
 		}
-		if m.step == obOllamaHost || m.step == obOllamaModel || m.step == obAnthropicKey {
+		if m.step == obOllamaHost || m.step == obOllamaModel {
 			var cmd tea.Cmd
 			m.ti, cmd = m.ti.Update(msg)
 			return m, cmd
@@ -195,39 +189,11 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "enter":
 				m.appearance = themeIndexToAppearance(m.cursor)
-				m.step = obConn
-				m.cursor = 0
-				return m, nil
-			}
-		case obConn:
-			switch msg.String() {
-			case "up", "k":
-				if m.cursor > 0 {
-					m.cursor--
-				}
-			case "down", "j":
-				if m.cursor < len(m.connChoices)-1 {
-					m.cursor++
-				}
-			case "enter":
-				switch m.cursor {
-				case 0:
-					m.provider = "ollama"
-					m.step = obOllamaHost
-					m.ti.SetValue(m.ollamaHost)
-					m.ti.EchoMode = textinput.EchoNormal
-					m.ti.Focus()
-					return m, textinput.Blink
-				case 1:
-					m.provider = "anthropic"
-					m.step = obAnthropicKey
-					m.ti.SetValue("")
-					m.ti.EchoMode = textinput.EchoPassword
-					m.ti.Focus()
-					return m, textinput.Blink
-				case 2:
-					// cannot select
-				}
+				m.step = obOllamaHost
+				m.ti.SetValue(m.ollamaHost)
+				m.ti.EchoMode = textinput.EchoNormal
+				m.ti.Focus()
+				return m, textinput.Blink
 			}
 		case obOllamaHost:
 			if msg.String() == "enter" {
@@ -256,19 +222,6 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.ti, cmd = m.ti.Update(msg)
 			return m, cmd
-		case obAnthropicKey:
-			if msg.String() == "enter" {
-				m.apiKey = strings.TrimSpace(m.ti.Value())
-				if m.apiKey == "" {
-					m.err = fmt.Errorf("onboarding: API key is required for Anthropic")
-					return m, tea.Quit
-				}
-				cmd := m.finish()
-				return m, cmd
-			}
-			var cmd tea.Cmd
-			m.ti, cmd = m.ti.Update(msg)
-			return m, cmd
 		case obDone:
 			if msg.String() == "enter" {
 				return m, tea.Quit
@@ -276,7 +229,7 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.step == obOllamaHost || m.step == obOllamaModel || m.step == obAnthropicKey {
+	if m.step == obOllamaHost || m.step == obOllamaModel {
 		var cmd tea.Cmd
 		m.ti, cmd = m.ti.Update(msg)
 		return m, cmd
@@ -285,25 +238,16 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *obModel) finish() tea.Cmd {
-	patch := map[string]any{"ui_appearance": m.appearance}
-	if m.provider == "ollama" {
-		patch["provider"] = "ollama"
-		patch["ollama_host"] = m.ollamaHost
-		patch["ollama_model"] = m.ollamaModel
-	} else {
-		patch["provider"] = "anthropic"
+	patch := map[string]any{
+		"ui_appearance": m.appearance,
+		"provider":      "ollama",
+		"ollama_host":   m.ollamaHost,
+		"ollama_model":  m.ollamaModel,
 	}
 	userPath := config.UserSettingsPath(m.base.UserConfigDir)
 	if err := config.MergeWriteSettings(userPath, patch); err != nil {
 		m.err = fmt.Errorf("write user settings: %w", err)
 		return tea.Quit
-	}
-	if m.apiKey != "" {
-		local := config.UserSettingsLocalPath(m.base.UserConfigDir)
-		if err := config.MergeWriteSettings(local, map[string]any{"api_key": m.apiKey}); err != nil {
-			m.err = fmt.Errorf("write user local settings: %w", err)
-			return tea.Quit
-		}
 	}
 	m.step = obDone
 	return nil
@@ -386,33 +330,12 @@ func (m *obModel) viewBody() string {
 			b.WriteString(fmt.Sprintf("%s%d. %s\n", prefix, i+1, label))
 		}
 		b.WriteString("\n ↑/↓ · Enter")
-	case obConn:
-		b.WriteString("\n Select model connection:\n\n")
-		for i, label := range m.connChoices {
-			prefix := "   "
-			if i == m.cursor {
-				prefix = "> "
-			}
-			disabled := ""
-			if i == 2 {
-				disabled = " (not available)"
-			}
-			b.WriteString(prefix)
-			b.WriteString(label)
-			b.WriteString(disabled)
-			b.WriteByte('\n')
-		}
-		b.WriteString("\n ↑/↓ · Enter")
 	case obOllamaHost:
 		b.WriteString("\n Ollama host:\n\n")
 		b.WriteString(m.ti.View())
 		b.WriteString("\n\n Enter to continue")
 	case obOllamaModel:
 		b.WriteString("\n Ollama model:\n\n")
-		b.WriteString(m.ti.View())
-		b.WriteString("\n\n Enter to finish setup")
-	case obAnthropicKey:
-		b.WriteString("\n Anthropic API key:\n\n")
 		b.WriteString(m.ti.View())
 		b.WriteString("\n\n Enter to finish setup")
 	case obDone:

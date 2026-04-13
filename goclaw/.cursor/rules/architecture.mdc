@@ -31,7 +31,7 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 | `internal/cli/` | Cobra tree (`NewRootCmd`); inject `RunChat` / `RunListSessions` for testability without linking TUI |
 | `internal/app/` | `RunChat`, `RunListSessions`, banner; default Bubble Tea TUI on TTY; readline with `--readline` / `GOCLAW_USE_TUI=0` |
 | `internal/slashcmd/` | REPL `/` slash command handlers + `$EDITOR` prompt |
-| `internal/llm/` | `Client` interface + Anthropic (SSE) + Ollama (NDJSON) + OpenAI-compat (SSE `/v1/chat/completions`) + HTTP retry |
+| `internal/llm/` | `Client` interface + Ollama (NDJSON) + HTTP retry; OpenAI-compat client exists for tests/mocks only |
 | `internal/session/` | In-memory history, JSONL serialization, store |
 | `internal/orchestrator/` | Main loop: user → LLM → tools → repeat (32 iter / 64 tool calls) |
 | `internal/tools/` | `Tool` interface + `Registry` + ten built-in tools + limits |
@@ -45,7 +45,7 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 | `internal/todos/` | Session-scoped task list store (`todo_write` tool backend) |
 | `internal/ide/` | Optional localhost POST notifier (`GOCLAW_IDE_NOTIFY_URL`) after each tool |
 | `internal/ui/chat/` | BubbleTea TUI model (viewport + text input + streaming + compact approval strip above input) |
-| `testutil/mockserver/` | HTTP mock for Anthropic tests without API tokens |
+| `testutil/mockopenai/` | HTTP mock for OpenAI-style chat completions tests without API tokens |
 
 ## Structure rules
 - Terminal / TUI output: follow `.cursor/rules/terminal-rendering.mdc` (Charm stack + `ui_appearance`; use `config.GlamourTermRendererOptions` from `app` instead of importing `ui/chat`).

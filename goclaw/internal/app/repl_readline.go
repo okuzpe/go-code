@@ -294,14 +294,10 @@ func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrat
 		if id == "" {
 			return fmt.Errorf("model id is empty")
 		}
-		switch strings.ToLower(strings.TrimSpace(rt.Cfg.Provider)) {
-		case "ollama":
-			rt.Cfg.OllamaModel = id
-		case "openai_compatible":
-			rt.Cfg.OpenAICompatModel = id
-		default:
-			return fmt.Errorf("/model applies to provider ollama or openai_compatible only (current: %s)", rt.Cfg.Provider)
+		if strings.ToLower(strings.TrimSpace(rt.Cfg.Provider)) != "ollama" {
+			return fmt.Errorf("/model applies to Ollama only (current provider: %s)", rt.Cfg.Provider)
 		}
+		rt.Cfg.OllamaModel = id
 		orch.SetConfig(rt.Cfg)
 		return nil
 	}

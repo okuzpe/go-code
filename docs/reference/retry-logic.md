@@ -48,7 +48,7 @@ The retry counter resets for each `doHTTPWithRetry` invocation. A session with t
 - **File:** [`goclaw/internal/llm/retry.go`](../../goclaw/internal/llm/retry.go)
 - **Function:** `doHTTPWithRetry(ctx context.Context, client *http.Client, build func() (*http.Request, error)) (*http.Response, error)`
 - The `build` function is called fresh on each attempt so the HTTP request body can be re-read (bodies are one-shot streams).
-- Both `AnthropicClient` (`anthropic.go`) and `OllamaClient` (`ollama.go`) use this function for their streaming POST calls.
+- `OllamaClient` (`ollama.go`) uses this function for streaming POSTs. `OpenAICompatClient` (`openai_compat.go`, tests/mocks only) uses the same helper.
 - Decision rationale: see D22 in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md).
 
 ---

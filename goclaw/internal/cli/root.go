@@ -22,7 +22,7 @@ type RunPromptFunc func(cmd *cobra.Command, args []string) error
 func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, listSessions RunListSessionsFunc, runDoctor RunDoctorFunc) *cobra.Command {
 	root := &cobra.Command{
 		Use:     "goclaw",
-		Short:   "Go CLI coding agent (Ollama or Anthropic)",
+		Short:   "Go CLI coding agent (local Ollama)",
 		Long:    "Local-first coding agent with tools, sessions, and REPL slash commands. Run with no arguments to start the chat REPL.",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {

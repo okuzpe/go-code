@@ -26,7 +26,7 @@
 
 **Other local code:** [claw-code/](../../claw-code/) (parity / Rust / TUI — see [roadmap.md — Future transport and scale](../goclaw/roadmap.md#future-transport-and-scale) and [CLAUDE.md](../../goclaw/CLAUDE.md)).
 
-- [Anthropic API documentation](https://docs.anthropic.com/en/api/getting-started)
+- [Ollama REST API](https://github.com/ollama/ollama/blob/main/docs/api.md) (local `/api/chat` used by the CLI)
 - [How Claude Code works](https://code.claude.com/docs/en/how-claude-code-works) (official product docs)
 - [Model Context Protocol specification](https://modelcontextprotocol.io/specification/2025-11-25)
 - [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk)

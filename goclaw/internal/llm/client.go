@@ -1,4 +1,4 @@
-// Package llm provides HTTP clients for Anthropic, Ollama, and OpenAI Chat Completions–compatible APIs.
+// Package llm provides HTTP clients for Ollama and OpenAI Chat Completions–compatible APIs.
 package llm
 
 import "context"
@@ -38,9 +38,4 @@ func (Done) isEvent()      {}
 // Client sends requests to an LLM provider and streams back events.
 type Client interface {
 	Stream(ctx context.Context, req Request) (<-chan Event, <-chan error)
-}
-
-// InputTokenCounter counts input tokens for a messages request (Anthropic Messages count_tokens API).
-type InputTokenCounter interface {
-	CountInputTokens(ctx context.Context, req Request) (int, error)
 }

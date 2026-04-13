@@ -17,7 +17,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/todos"
 	"github.com/okuzpe/goclaw/internal/tools"
-	"github.com/okuzpe/goclaw/testutil/mockserver"
+	"github.com/okuzpe/goclaw/testutil/mockopenai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,12 +29,21 @@ func testToolPolicy() *permissions.Policy {
 	return p
 }
 
+func testOpenAIClient(srv *mockopenai.Server) llm.Client {
+	return llm.NewOpenAICompat("test-key", srv.URL+"/v1")
+}
+
+func testOrchestratorConfig() config.Config {
+	cfg := config.Default()
+	cfg.Provider = "ollama"
+	cfg.OllamaModel = "mock-model"
+	return cfg
+}
+
 // newOrch builds a test orchestrator wired to the given LLM client.
 func newOrch(t *testing.T, client llm.Client) *Orchestrator {
 	t.Helper()
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 
 	return New(
 		cfg,
@@ -49,9 +58,7 @@ func newOrch(t *testing.T, client llm.Client) *Orchestrator {
 
 func newOrchWithRegistry(t *testing.T, client llm.Client, reg *tools.Registry) *Orchestrator {
 	t.Helper()
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 	return New(
 		cfg,
 		client,
@@ -66,12 +73,12 @@ func newOrchWithRegistry(t *testing.T, client llm.Client, reg *tools.Registry) *
 // --- Scenario 1: text-only response ---
 
 func TestOrchestratorTextOnly(t *testing.T) {
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{Match: "ping", Response: "pong"},
 	})
 	defer srv.Close()
 
-	orch := newOrch(t, llm.NewAnthropic("test-key", srv.URL))
+	orch := newOrch(t, testOpenAIClient(srv))
 
 	resp, err := orch.Run(context.Background(), "ping")
 	require.NoError(t, err)
@@ -81,14 +88,14 @@ func TestOrchestratorTextOnly(t *testing.T) {
 // --- Scenario 2: multi-turn conversation (streaming accumulates correctly) ---
 
 func TestOrchestratorMultiTurn(t *testing.T) {
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{Match: "first", Response: "this is the first reply"},
 		{Match: "second", Response: "this is the second reply"},
 		{Match: "", Response: "fallback"},
 	})
 	defer srv.Close()
 
-	client := llm.NewAnthropic("test-key", srv.URL)
+	client := testOpenAIClient(srv)
 	orch := newOrch(t, client)
 
 	r1, err := orch.Run(context.Background(), "first question")
@@ -103,12 +110,12 @@ func TestOrchestratorMultiTurn(t *testing.T) {
 // --- Scenario 3: server returns 500 → error propagated, no panic ---
 
 func TestOrchestratorServerError(t *testing.T) {
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{Match: "", StatusCode: http.StatusInternalServerError},
 	})
 	defer srv.Close()
 
-	orch := newOrch(t, llm.NewAnthropic("test-key", srv.URL))
+	orch := newOrch(t, testOpenAIClient(srv))
 
 	_, err := orch.Run(context.Background(), "anything")
 	require.Error(t, err)
@@ -124,16 +131,16 @@ func TestOrchestratorReadFileRoundTrip(t *testing.T) {
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{
 			Match: "phase-a",
-			Tool:  &mockserver.ToolReply{Name: "read_file", Input: `{"path":"note.txt"}`},
+			Tool:  &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"note.txt"}`},
 		},
 		{Match: "tool-content", Response: "ack"},
 	})
 	defer srv.Close()
 
-	orch := newOrchWithRegistry(t, llm.NewAnthropic("test-key", srv.URL), reg)
+	orch := newOrchWithRegistry(t, testOpenAIClient(srv), reg)
 
 	out, err := orch.Run(ctx, "phase-a please read")
 	require.NoError(t, err)
@@ -148,22 +155,20 @@ func TestOrchestratorAskRequiresApprover(t *testing.T) {
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{
 			Match: "phase-a",
-			Tool:  &mockserver.ToolReply{Name: "read_file", Input: `{"path":"note.txt"}`},
+			Tool:  &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"note.txt"}`},
 		},
 	})
 	defer srv.Close()
 
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 	cfg.YoloThreshold = -1 // disable auto-approval so Ask mode requires a real approver
 
 	orch := New(
 		cfg,
-		llm.NewAnthropic("test-key", srv.URL),
+		testOpenAIClient(srv),
 		session.New(),
 		reg,
 		permissions.NewPolicy(),
@@ -184,24 +189,22 @@ func TestOrchestratorUserDeclinesTool(t *testing.T) {
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{
 			Match: "phase-a",
-			Tool:  &mockserver.ToolReply{Name: "read_file", Input: `{"path":"note.txt"}`},
+			Tool:  &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"note.txt"}`},
 		},
 		{Match: "declined", Response: "understood, I will skip that read"},
 	})
 	defer srv.Close()
 
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 	cfg.YoloThreshold = -1 // disable auto-approval so the user decline is actually reached
 
 	decline := func(context.Context, string, string) (bool, error) { return false, nil }
 	orch := New(
 		cfg,
-		llm.NewAnthropic("test-key", srv.URL),
+		testOpenAIClient(srv),
 		session.New(),
 		reg,
 		permissions.NewPolicy(),
@@ -224,19 +227,21 @@ func TestOrchestratorMultiToolRoundTrip(t *testing.T) {
 	reg := tools.New()
 	reg.Register(tools.NewReadFile(dir))
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{
 			Match: "multi-read",
-			Tools: []*mockserver.ToolReply{
+			Tools: []*mockopenai.ToolReply{
 				{ID: "call_a", Name: "read_file", Input: `{"path":"a.txt"}`},
 				{ID: "call_b", Name: "read_file", Input: `{"path":"b.txt"}`},
 			},
 		},
+		// Second LLM call: mock fingerprint uses the last non-empty message content (tool results are "alpha" / "beta").
 		{Match: "alpha", Response: "done"},
+		{Match: "beta", Response: "done"},
 	})
 	defer srv.Close()
 
-	orch := newOrchWithRegistry(t, llm.NewAnthropic("test-key", srv.URL), reg)
+	orch := newOrchWithRegistry(t, testOpenAIClient(srv), reg)
 
 	out, err := orch.Run(ctx, "multi-read both files")
 	require.NoError(t, err)
@@ -244,14 +249,12 @@ func TestOrchestratorMultiToolRoundTrip(t *testing.T) {
 }
 
 func TestOrchestratorForceCompact(t *testing.T) {
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{Match: "", Response: "noop"},
 	})
 	defer srv.Close()
 
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 
 	sess := session.New()
 	for range 30 {
@@ -260,7 +263,7 @@ func TestOrchestratorForceCompact(t *testing.T) {
 
 	orch := New(
 		cfg,
-		llm.NewAnthropic("test-key", srv.URL),
+		testOpenAIClient(srv),
 		sess,
 		tools.New(),
 		testToolPolicy(),
@@ -283,14 +286,12 @@ func TestOrchestratorForceCompact(t *testing.T) {
 }
 
 func TestOrchestratorCompactionTrimsHead(t *testing.T) {
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{Match: "", Response: "pong"},
 	})
 	defer srv.Close()
 
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 	cfg.AutoCompactThreshold = 0.5
 	// Pin a small budget so 30 × 5 000-char messages (~50 k tokens) exceed the 0.5 limit.
 	cfg.ModelContextTokens = 60_000
@@ -302,7 +303,7 @@ func TestOrchestratorCompactionTrimsHead(t *testing.T) {
 
 	orch := New(
 		cfg,
-		llm.NewAnthropic("test-key", srv.URL),
+		testOpenAIClient(srv),
 		sess,
 		tools.New(),
 		testToolPolicy(),
@@ -367,14 +368,12 @@ func TestReplaceSessionClearsTodoStore(t *testing.T) {
 	store := todos.NewStore()
 	require.NoError(t, store.Apply(`{"merge":false,"todos":[{"id":"a","content":"task","status":"pending"}]}`))
 	require.NotEmpty(t, store.FormatForPrompt(), "precondition: todo store should be non-empty")
-	srv := mockserver.New([]mockserver.Scenario{{Match: "", Response: "ok"}})
+	srv := mockopenai.New([]mockopenai.Scenario{{Match: "", Response: "ok"}})
 	defer srv.Close()
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 	orch := New(
 		cfg,
-		llm.NewAnthropic("test-key", srv.URL),
+		testOpenAIClient(srv),
 		session.New(),
 		tools.New(),
 		testToolPolicy(),
@@ -408,14 +407,12 @@ func TestOrchestratorMCPRoundTripRecordsToolResultInSession(t *testing.T) {
 	pol := permissions.NewPolicy()
 	pol.Set("mcp__rt__echo", permissions.ModeAllow)
 
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.APIKey = "test-key"
+	cfg := testOrchestratorConfig()
 
-	srv := mockserver.New([]mockserver.Scenario{
+	srv := mockopenai.New([]mockopenai.Scenario{
 		{
 			Match: "invoke mcp",
-			Tool:  &mockserver.ToolReply{Name: "mcp__rt__echo", Input: `{}`},
+			Tool:  &mockopenai.ToolReply{Name: "mcp__rt__echo", Input: `{}`},
 		},
 		{Match: "mcp-rt-session-payload", Response: "saw mcp output"},
 	})
@@ -423,7 +420,7 @@ func TestOrchestratorMCPRoundTripRecordsToolResultInSession(t *testing.T) {
 
 	orch := New(
 		cfg,
-		llm.NewAnthropic("test-key", srv.URL),
+		testOpenAIClient(srv),
 		sess,
 		reg,
 		pol,

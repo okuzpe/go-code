@@ -2,14 +2,12 @@
 
 This repository’s **only active project** is **goclaw** (this Go module). Other trees at the repo root (for example `claw-code/`) are **reference only** — not part of `go.mod`, not covered by goclaw issues or roadmap.
 
-Go CLI coding agent — **local-first** with Ollama (`qwen2.5-coder:14b` by default), optional Anthropic API or any **OpenAI Chat Completions–compatible** endpoint (OpenRouter, Groq, LM Studio, etc.). No cloud required for the default path.
+Go CLI coding agent — **local-first** with Ollama (`qwen2.5-coder:14b` by default). The CLI talks only to your Ollama daemon; no bundled cloud LLM providers.
 
 ## Requirements
 
 - **Go** `1.26+` (see `go.mod`)
 - **Default stack:** [Ollama](https://ollama.com/) on `http://localhost:11434` with a model pulled (default model name in settings)
-- **Anthropic (optional):** `ANTHROPIC_API_KEY` and `"provider": "anthropic"` in settings
-- **OpenAI-compatible APIs (optional):** `"provider": "openai_compatible"` plus `OPENAI_BASE_URL` (include `/v1`, e.g. `https://openrouter.ai/api/v1`), `OPENAI_API_KEY`, and `OPENAI_MODEL` — or the same values as `openai_base_url`, `openai_api_key`, and `openai_model` in `settings.json` (see [CLAUDE.md](CLAUDE.md#environment-variables))
 
 ## Quick start
 
@@ -34,7 +32,7 @@ Details (modes, sessions, JSON output, troubleshooting): **[usage.md](../docs/go
 
 **Master index** (every path, audience, reading order, `docs/reference/` contracts): **[docs-map.md](../docs/docs-map.md)**.
 
-**Core links:** [CLAUDE.md](CLAUDE.md) (implementation) · [usage.md](../docs/goclaw/usage.md) (operators) · [documentation.md](../docs/goclaw/documentation.md) (where to add docs) · [code-adjustment-map.md](../docs/reference/code-adjustment-map.md) (docs ↔ `internal/*`). **Mock Anthropic harness:** [scripts/MOCK_PARITY_HARNESS.md](scripts/MOCK_PARITY_HARNESS.md) (`make parity`).
+**Core links:** [CLAUDE.md](CLAUDE.md) (implementation) · [usage.md](../docs/goclaw/usage.md) (operators) · [documentation.md](../docs/goclaw/documentation.md) (where to add docs) · [code-adjustment-map.md](../docs/reference/code-adjustment-map.md) (docs ↔ `internal/*`). **Mock LLM harness:** [scripts/MOCK_PARITY_HARNESS.md](scripts/MOCK_PARITY_HARNESS.md) (`make parity`).
 
 Everything else (roadmap, changelog, architecture hub, tool/MCP/hooks reference): use the tables in **docs-map.md** — from this directory, topic files live under `../docs/goclaw/<name>.md` or `../docs/reference/<name>.md`.
 
@@ -44,10 +42,6 @@ Everything else (roadmap, changelog, architecture hub, tool/MCP/hooks reference)
 - **Profiles** with tool allowlists (`explore`, `plan`, `coordinator`, …) via `--profile` or `settings.json`.
 - **Sessions** (JSONL) and **memory** (Markdown under `~/.goclaw/memory/`).
 - **Permissions** per tool (`ask` / `allow` / `deny`) and optional hooks.
-
-**Anthropic (optional):** set `ANTHROPIC_API_KEY`, add `"provider": "anthropic"` in `~/.goclaw/settings.json`. Model aliases: see [usage.md](../docs/goclaw/usage.md).
-
-**OpenAI-compatible (optional):** `"provider": "openai_compatible"` with base URL, API key, and model id — full matrix and custom-agent `model` overrides: [CLAUDE.md](CLAUDE.md#environment-variables).
 
 **Development:** `go test ./...`, `go vet ./...`, `make parity`. CI: [`.github/workflows/goclaw-ci.yml`](../.github/workflows/goclaw-ci.yml).
 

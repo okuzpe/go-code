@@ -682,7 +682,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /profile <name>  — switch agent profile (same as /agents <name>)\n")
 	b.WriteString("  /allow-writes    — auto-approve write_file, edit_file, patch for this session (no per-call prompts)\n")
 	if env.SetSessionModel != nil && env.SessionModel != nil {
-		b.WriteString("  /model [id]      — show or set the default model for this session (Ollama / openai_compatible)\n")
+		b.WriteString("  /model [id]      — show or set the Ollama model tag for this session\n")
 	}
 	b.WriteString("  /theme [preset]  — show or set TUI ui_appearance (restart TUI to apply)\n")
 	b.WriteString("  /workers — list workers; /focus or /in <prefix> — jump into worker; /back or /detach — return to coordinator\n")

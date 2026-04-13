@@ -21,7 +21,6 @@ type settingsFile struct {
 	TaskModels                map[string]string   `json:"task_models,omitempty"`
 	TaskModelRouterModel      *string             `json:"task_model_router_model,omitempty"`
 	PreferredResponseLanguage *string             `json:"preferred_response_language,omitempty"`
-	AnthropicBaseURL          *string             `json:"anthropic_base_url"`
 	AgentProfile              *string             `json:"agent_profile"`
 	AutoCompactThreshold      *float64            `json:"auto_compact_threshold"`
 	BashTimeoutSec            *int                `json:"bash_timeout_sec"`
@@ -40,7 +39,6 @@ type settingsFile struct {
 	BraveSearchAPIKey         *string             `json:"brave_search_api_key,omitempty"`
 	SerpAPIKey                *string             `json:"serpapi_api_key,omitempty"`
 	WebSearchFallbackDDG      *bool               `json:"web_search_fallback_ddg,omitempty"`
-	TokenCountMode            *string             `json:"token_count_mode,omitempty"`
 	PluginDirs                []string            `json:"plugin_dirs,omitempty"`
 	PluginAllow               []string            `json:"plugin_allow,omitempty"`
 	PluginDeny                []string            `json:"plugin_deny,omitempty"`
@@ -48,10 +46,6 @@ type settingsFile struct {
 	MemoryLLMSilentExtract    *bool               `json:"memory_llm_silent_extract,omitempty"`
 	TUIMouseScroll            *bool               `json:"tui_mouse_scroll,omitempty"`
 	UIAppearance              *string             `json:"ui_appearance,omitempty"`
-	APIKey                    *string             `json:"api_key,omitempty"`
-	OpenAIBaseURL             *string             `json:"openai_base_url,omitempty"`
-	OpenAIAPIKey              *string             `json:"openai_api_key,omitempty"`
-	OpenAIModel               *string             `json:"openai_model,omitempty"`
 	ToolWorkspaceRoot         *string             `json:"tool_workspace_root,omitempty"`
 }
 
@@ -141,9 +135,6 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	if sf.PreferredResponseLanguage != nil && strings.TrimSpace(*sf.PreferredResponseLanguage) != "" {
 		cfg.PreferredResponseLanguage = strings.TrimSpace(*sf.PreferredResponseLanguage)
 	}
-	if sf.AnthropicBaseURL != nil {
-		cfg.BaseURL = *sf.AnthropicBaseURL
-	}
 	if sf.AgentProfile != nil && *sf.AgentProfile != "" {
 		cfg.AgentProfile = *sf.AgentProfile
 	}
@@ -192,9 +183,6 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	if sf.WebSearchFallbackDDG != nil {
 		cfg.WebSearchFallbackDDG = *sf.WebSearchFallbackDDG
 	}
-	if sf.TokenCountMode != nil && strings.TrimSpace(*sf.TokenCountMode) != "" {
-		cfg.TokenCountMode = strings.TrimSpace(*sf.TokenCountMode)
-	}
 	if len(sf.PluginDirs) > 0 {
 		cfg.PluginDirs = append(cfg.PluginDirs, sf.PluginDirs...)
 	}
@@ -218,18 +206,6 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.UIAppearance != nil && strings.TrimSpace(*sf.UIAppearance) != "" {
 		cfg.UIAppearance = NormalizeUIAppearance(*sf.UIAppearance)
-	}
-	if sf.APIKey != nil && strings.TrimSpace(*sf.APIKey) != "" {
-		cfg.APIKey = strings.TrimSpace(*sf.APIKey)
-	}
-	if sf.OpenAIBaseURL != nil && strings.TrimSpace(*sf.OpenAIBaseURL) != "" {
-		cfg.OpenAICompatBaseURL = strings.TrimSpace(*sf.OpenAIBaseURL)
-	}
-	if sf.OpenAIAPIKey != nil && strings.TrimSpace(*sf.OpenAIAPIKey) != "" {
-		cfg.OpenAICompatAPIKey = strings.TrimSpace(*sf.OpenAIAPIKey)
-	}
-	if sf.OpenAIModel != nil && strings.TrimSpace(*sf.OpenAIModel) != "" {
-		cfg.OpenAICompatModel = strings.TrimSpace(*sf.OpenAIModel)
 	}
 	if sf.ToolWorkspaceRoot != nil {
 		cfg.ToolWorkspaceRoot = strings.TrimSpace(*sf.ToolWorkspaceRoot)

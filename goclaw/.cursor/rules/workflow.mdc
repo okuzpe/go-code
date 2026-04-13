@@ -18,13 +18,13 @@ go build ./...   # recommended after edits that affect compilation
 ## Testing without spending API tokens
 
 ```go
-// Use the mock server in testutil/mockserver/
-srv := mockserver.New([]mockserver.Scenario{
+// Use the mock server in testutil/mockopenai/
+srv := mockopenai.New([]mockopenai.Scenario{
     {Match: "ping", Response: "pong"},
 })
 defer srv.Close()
 
-client := llm.NewAnthropic("test-key", srv.URL)
+client := llm.NewOpenAICompat("test-key", srv.URL+"/v1")
 ```
 
 For Ollama, point `OLLAMA_HOST` at a local Ollama instance or an HTTP mock.
@@ -36,7 +36,7 @@ For Ollama, point `OLLAMA_HOST` at a local Ollama instance or an HTTP mock.
 | `bypassPermissions` | Unsafe without YOLO Classifier (v2+) |
 | Bash denylist | Narrow binary allowlist + `rejectShellMetacharacters` is safer |
 | Merging packages | Each `internal/X` owns one concern |
-| Hardcoding undocumented token APIs | Anthropic compaction may use official `POST /v1/messages/count_tokens` when `token_count_mode` is `auto`; Ollama still uses char÷N heuristic |
+| Hardcoding undocumented token APIs | Compaction uses the documented char÷N heuristic; do not add opaque provider-specific counting without a design pass |
 | `fmt.Println` for logs | Use `slog` |
 | Committing `.goclaw/settings.local.json` | Machine-local only |
 | Goroutines inside BubbleTea `Update()` | Use `tea.Cmd` for all async; raw goroutines break the Elm loop |

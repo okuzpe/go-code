@@ -109,7 +109,7 @@ flowchart LR
 
 | Primary doc | Secondary | Code |
 |-------------|-----------|------|
-| `CLAUDE.md` (D1, D22, wire) | [`retry-logic.md`](./retry-logic.md), [`local-models.md`](./local-models.md) | `client.go`, `anthropic*.go`, `ollama*.go`, `retry.go`, `message.go` |
+| `CLAUDE.md` (D1, D22, wire) | [`retry-logic.md`](./retry-logic.md), [`local-models.md`](./local-models.md) | `client.go`, `ollama*.go`, `openai_compat*.go`, `retry.go`, `message.go` |
 
 **Adjustment:** HTTP retries → extend [`internal/llm/retry.go`](../../goclaw/internal/llm/retry.go) only; avoid ad-hoc `http.Client.Do` in clients.
 

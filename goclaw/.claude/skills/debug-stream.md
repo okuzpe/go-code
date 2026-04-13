@@ -43,16 +43,11 @@ Ollama `/api/chat` supports tools. goclaw:
 #### 7. `iteration limit (32) reached`
 Session too long without a final assistant text, or model stuck in tools. Compaction reduces bulk; start a new session if needed.
 
-#### 8. Anthropic SSE
-Response must be `Content-Type: text/event-stream`. Parser in `anthropic.go` reads `data: ` JSON lines.
-
 ### Useful env
 ```bash
-ANTHROPIC_BASE_URL=http://127.0.0.1:PORT go run ./cmd/goclaw
-OLLAMA_MODEL=qwen2.5-coder:7b go run ./cmd/goclaw
+OLLAMA_HOST=http://127.0.0.1:11434 OLLAMA_MODEL=qwen2.5-coder:7b go run ./cmd/goclaw
 ```
 
 ### Key files
 - `internal/llm/ollama.go`, `ollama_wire.go`
-- `internal/llm/anthropic.go`, `anthropic_wire.go`
 - `internal/orchestrator/orchestrator.go`

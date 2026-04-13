@@ -16,30 +16,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSessionTokenEstimateByProvider(t *testing.T) {
+func TestSessionTokenEstimateHeuristic(t *testing.T) {
 	t.Parallel()
 	msgs := []llm.Message{llm.PlainMessage("user", strings.Repeat("a", 120))}
-	require.Equal(t, 40, sessionTokenEstimate(msgs, "anthropic"))
 	require.Equal(t, 30, sessionTokenEstimate(msgs, "ollama"))
-	require.Equal(t, 30, sessionTokenEstimate(msgs, "openai_compatible"))
 
-	require.Equal(t, 40, SessionMessagesTokenEstimate(msgs, "anthropic"))
-	require.Equal(t, 40, SessionMessagesTokenEstimate(msgs, "  ANTHROPIC  "))
 	require.Equal(t, 30, SessionMessagesTokenEstimate(msgs, "ollama"))
+	require.Equal(t, 30, SessionMessagesTokenEstimate(msgs, "  OLLAMA  "))
 }
 
 func TestContextBudgetTokens(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, anthropicContextTokens, contextBudgetTokens("anthropic", 0))
 	require.Equal(t, ollamaContextTokens, contextBudgetTokens("ollama", 0))
-	require.Equal(t, ollamaContextTokens, contextBudgetTokens("openai_compatible", 0))
 }
 
 func TestContextBudgetTokensOverride(t *testing.T) {
 	t.Parallel()
 	// model_context_tokens in settings.json overrides the provider default.
 	require.Equal(t, 8_000, contextBudgetTokens("ollama", 8_000))
-	require.Equal(t, 50_000, contextBudgetTokens("anthropic", 50_000))
+	require.Equal(t, 50_000, contextBudgetTokens("ollama", 50_000))
 }
 
 func TestClearOldToolResults(t *testing.T) {
@@ -95,77 +90,15 @@ func TestClearOldToolResultsIdempotent(t *testing.T) {
 	require.False(t, changed)
 }
 
-type stubTokenCounter struct {
-	value     int
-	err       error
-	callCount int
-}
-
-func (s *stubTokenCounter) CountInputTokens(_ context.Context, _ llm.Request) (int, error) {
-	s.callCount++
-	return s.value, s.err
-}
-
-func TestEstimatedSessionTokensSkipsAPIBelowSoftThreshold(t *testing.T) {
+func TestEstimatedSessionTokensHeuristicOnly(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.ModelContextTokens = 1000
-	cfg.AutoCompactThreshold = 0.85
-	cfg.TokenCountMode = "auto"
-
+	cfg.Provider = "ollama"
 	sess := session.New()
-	sess.Add("user", strings.Repeat("a", 100))
-
-	counter := &stubTokenCounter{value: 999}
-	orch := New(cfg, nil, sess, tools.New(), permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose,
-		WithInputTokenCounter(counter))
-
-	limit := int(float64(1000) * 0.85)
-	got := orch.estimatedSessionTokens(context.Background(), limit)
-	require.Equal(t, sessionTokenEstimate(sess.Messages, "anthropic"), got)
-	require.Zero(t, counter.callCount)
-}
-
-func TestEstimatedSessionTokensUsesCounterAboveSoftThreshold(t *testing.T) {
-	t.Parallel()
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.ModelContextTokens = 1000
-	cfg.AutoCompactThreshold = 0.85
-	cfg.TokenCountMode = "auto"
-
-	sess := session.New()
-	sess.Add("user", strings.Repeat("a", 2500))
-
-	counter := &stubTokenCounter{value: 812}
-	orch := New(cfg, nil, sess, tools.New(), permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose,
-		WithInputTokenCounter(counter))
-
-	limit := int(float64(1000) * 0.85)
-	got := orch.estimatedSessionTokens(context.Background(), limit)
-	require.Equal(t, 812, got)
-	require.Equal(t, 1, counter.callCount)
-}
-
-func TestEstimatedSessionTokensHeuristicMode(t *testing.T) {
-	t.Parallel()
-	cfg := config.Default()
-	cfg.Provider = "anthropic"
-	cfg.ModelContextTokens = 1000
-	cfg.TokenCountMode = "heuristic"
-
-	sess := session.New()
-	sess.Add("user", strings.Repeat("a", 2500))
-
-	counter := &stubTokenCounter{value: 812}
-	orch := New(cfg, nil, sess, tools.New(), permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose,
-		WithInputTokenCounter(counter))
-
-	limit := int(float64(1000) * 0.85)
-	got := orch.estimatedSessionTokens(context.Background(), limit)
-	require.Equal(t, sessionTokenEstimate(sess.Messages, "anthropic"), got)
-	require.Zero(t, counter.callCount)
+	sess.Add("user", strings.Repeat("a", 400))
+	orch := New(cfg, nil, sess, tools.New(), permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose)
+	got := orch.estimatedSessionTokens(context.Background(), 0)
+	require.Equal(t, sessionTokenEstimate(sess.Messages, "ollama"), got)
 }
 
 func TestMaybeCompactPhase1OnlyAvoidsPhase2(t *testing.T) {
@@ -173,7 +106,7 @@ func TestMaybeCompactPhase1OnlyAvoidsPhase2(t *testing.T) {
 	// Huge tool payloads outside the preserved tail should be cleared first; if that
 	// drops the estimated size below the threshold, phase-2 tail collapse must not run.
 	cfg := config.Default()
-	cfg.Provider = "anthropic"
+	cfg.Provider = "ollama"
 	cfg.AutoCompactThreshold = 0.85
 
 	sess := session.New()

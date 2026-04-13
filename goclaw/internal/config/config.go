@@ -12,10 +12,8 @@ import (
 
 // Config holds all runtime settings for goclaw.
 type Config struct {
-	// LLM provider — set Provider to select which client to build.
-	// "ollama"             → local Ollama (default)
-	// "anthropic"          → Anthropic API (requires APIKey)
-	// "openai_compatible"  → OpenAI Chat Completions–compatible HTTP API (OpenRouter, Groq, LM Studio, vLLM, …)
+	// Provider is always "ollama" at runtime. Non-ollama values from settings are rejected in app wiring
+	// (legacy "anthropic" / "openai_compatible" configs get a clear migration error).
 	Provider string
 
 	// Ollama settings
@@ -35,7 +33,7 @@ type Config struct {
 	// JSON: task_model_router; env: GOCLAW_TASK_MODEL_ROUTER; CLI: --task-model-router.
 	TaskModelRouter string
 
-	// TaskModels maps role names to model ids for the active provider (e.g. code, reasoning, fast, default).
+	// TaskModels maps role names to Ollama model tags (e.g. code, reasoning, fast, default).
 	// When TaskModelRouter is not off and this map is non-empty, the orchestrator resolves each turn to one role
 	// and uses the mapped model instead of Model() unless the agent profile sets model (ModelOverride).
 	// JSON: task_models (object).
@@ -50,16 +48,6 @@ type Config struct {
 	// "auto" (default when empty), "es", "en", "fr", "de", "pt", or "from_os" (use LANG/LC_* as fallback).
 	// JSON: preferred_response_language; env: GOCLAW_PREFERRED_RESPONSE_LANGUAGE.
 	PreferredResponseLanguage string
-
-	// Anthropic settings (only used when Provider == "anthropic")
-	APIKey  string // ANTHROPIC_API_KEY env var
-	BaseURL string // override for mock server
-
-	// OpenAI-compatible settings (only used when Provider == "openai_compatible")
-	// Base URL should include the /v1 prefix, e.g. https://openrouter.ai/api/v1 or http://localhost:1234/v1
-	OpenAICompatBaseURL string // OPENAI_BASE_URL
-	OpenAICompatAPIKey  string // OPENAI_API_KEY
-	OpenAICompatModel   string // OPENAI_MODEL
 
 	// Context & compaction
 	AutoCompactThreshold float64 // fraction of context used before compacting (e.g. 0.85)
@@ -87,12 +75,12 @@ type Config struct {
 	BashTimeoutSec int
 
 	// MaxResponseTokens caps the number of tokens the LLM may generate per turn.
-	// 0 (default) uses the built-in per-provider default (4096 for most, 8192 for Anthropic).
+	// 0 (default) uses the built-in per-provider default (4096 for most providers).
 	// Increase for long analysis or generation tasks; set via "max_response_tokens" in settings.json.
 	MaxResponseTokens int
 
 	// ModelContextTokens overrides the provider-default context window estimate used for compaction.
-	// 0 = use built-in default: anthropic=200_000, ollama and openai_compatible=32_000.
+	// 0 = use built-in default: OllamaNumCtx when > 0, else 8192.
 	// Set in settings.json as "model_context_tokens" when using a non-standard model or remote endpoint.
 	ModelContextTokens int
 
@@ -136,11 +124,6 @@ type Config struct {
 
 	// WebSearchFallbackDDG when true (default) retries via DuckDuckGo if the primary backend fails or returns no results.
 	WebSearchFallbackDDG bool
-
-	// TokenCountMode controls session size estimation for compaction when provider is anthropic.
-	// "auto" (default) uses the Anthropic count_tokens API once the heuristic estimate crosses 70% of the compact threshold.
-	// "heuristic" always uses the character-based estimate (legacy behavior).
-	TokenCountMode string
 
 	// PluginDirs lists absolute or relative plugin roots (manifest + optional hooks). Merged from settings; CLI can append.
 	PluginDirs []string
@@ -215,11 +198,6 @@ func Default() Config {
 		TaskModelRouter:           NormalizeTaskModelRouter(envOr("GOCLAW_TASK_MODEL_ROUTER", "")),
 		TaskModelRouterModel:      envOr("GOCLAW_TASK_MODEL_ROUTER_MODEL", ""),
 		PreferredResponseLanguage: envOr("GOCLAW_PREFERRED_RESPONSE_LANGUAGE", ""),
-		APIKey:                    os.Getenv("ANTHROPIC_API_KEY"),
-		BaseURL:                   envOr("ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
-		OpenAICompatBaseURL:       envOr("OPENAI_BASE_URL", ""),
-		OpenAICompatAPIKey:        envOr("OPENAI_API_KEY", ""),
-		OpenAICompatModel:         envOr("OPENAI_MODEL", ""),
 		AutoCompactThreshold:      0.85,
 		UserConfigDir:             filepath.Join(home, ".goclaw"),
 		ProjectConfigDir:          ".goclaw",
@@ -231,44 +209,14 @@ func Default() Config {
 		SerpAPIKey:                os.Getenv("SERPAPI_API_KEY"),
 		WebSearchFallbackDDG:      true,
 		AllowScript:               true,
-		TokenCountMode:            "auto",
 		TUIMouseScroll:            envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
 		UIAppearance:              "auto",
 	}
 }
 
-// anthropicModelAliases maps short CLI-style names to full Anthropic model ids
-// (aligned with common claw-code style aliases; unknown values pass through unchanged).
-var anthropicModelAliases = map[string]string{
-	"opus":   "claude-opus-4-6",
-	"sonnet": "claude-sonnet-4-6",
-	"haiku":  "claude-haiku-4-5-20251213",
-}
-
-func resolveAnthropicModelName(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return raw
-	}
-	if id, ok := anthropicModelAliases[strings.ToLower(raw)]; ok {
-		return id
-	}
-	return raw
-}
-
-// Model returns the model name to pass to the active provider.
+// Model returns the Ollama model name to pass to the API.
 func (c Config) Model() string {
-	switch c.Provider {
-	case "anthropic":
-		return resolveAnthropicModelName(envOr("GOCLAW_MODEL", "claude-sonnet-4-6"))
-	case "openai_compatible":
-		if m := strings.TrimSpace(c.OpenAICompatModel); m != "" {
-			return m
-		}
-		return envOr("OPENAI_MODEL", "")
-	default:
-		return c.OllamaModel
-	}
+	return strings.TrimSpace(c.OllamaModel)
 }
 
 // ModelForCompaction returns the model id for LLM compaction summaries. When CompactionModel is set,
@@ -280,16 +228,9 @@ func (c Config) ModelForCompaction() string {
 	return c.Model()
 }
 
-// NormalizeModelForProvider normalizes a user-supplied model id (aliases for Anthropic, trim otherwise).
+// NormalizeModelForProvider trims a user-supplied model id.
 func (c Config) NormalizeModelForProvider(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return raw
-	}
-	if c.Provider == "anthropic" {
-		return resolveAnthropicModelName(raw)
-	}
-	return raw
+	return strings.TrimSpace(raw)
 }
 
 // NormalizeTaskModelRouter returns off, rules, or llm. Unknown values become off.
@@ -329,17 +270,10 @@ func (c Config) EffectiveContextTokens() int {
 	if c.ModelContextTokens > 0 {
 		return c.ModelContextTokens
 	}
-	switch c.Provider {
-	case "anthropic":
-		return 200_000
-	case "ollama":
-		if c.OllamaNumCtx > 0 {
-			return c.OllamaNumCtx
-		}
-		return 8192
-	default:
-		return 32_000
+	if c.OllamaNumCtx > 0 {
+		return c.OllamaNumCtx
 	}
+	return 8192
 }
 
 // BashTimeoutSeconds returns the bash tool timeout in seconds (clamped to 1..3600).

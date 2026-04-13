@@ -1,6 +1,6 @@
-# Mock Anthropic parity harness
+# Mock LLM parity harness
 
-Reproducible subset of integration tests that drive the real orchestrator and coordinator against [`testutil/mockserver`](../testutil/mockserver/) (Anthropic-compatible HTTP). No `ANTHROPIC_API_KEY` required.
+Reproducible subset of integration tests that drive the real orchestrator and coordinator against [`testutil/mockopenai`](../testutil/mockopenai/) (OpenAI Chat Completions–compatible HTTP mock). No cloud API keys required.
 
 ## Artifacts
 

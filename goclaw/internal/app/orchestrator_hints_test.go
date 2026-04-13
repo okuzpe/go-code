@@ -35,12 +35,6 @@ func TestOrchestratorFailureHints_ollama404(t *testing.T) {
 	require.Contains(t, h[0], "ollama pull my-model")
 }
 
-func TestOrchestratorFailureHints_anthropic401(t *testing.T) {
-	h := orchestratorFailureHints("anthropic", "", errors.New("anthropic 401: invalid api key"))
-	require.Len(t, h, 1)
-	require.Contains(t, h[0], "ANTHROPIC_API_KEY")
-}
-
 func TestOrchestratorFailureHints_iterationLimit(t *testing.T) {
 	h := orchestratorFailureHints("ollama", "m", errors.New("iteration limit (32) reached"))
 	require.Len(t, h, 1)

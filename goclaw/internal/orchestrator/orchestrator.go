@@ -93,13 +93,6 @@ func WithTodoStore(s *todos.Store) Option {
 	}
 }
 
-// WithInputTokenCounter enables Anthropic count_tokens for compaction decisions (optional).
-func WithInputTokenCounter(c llm.InputTokenCounter) Option {
-	return func(o *Orchestrator) {
-		o.inputTokenCounter = c
-	}
-}
-
 // WithWorkdir injects the tool path root into the system prompt (read_file/glob/write scope).
 func WithWorkdir(dir string) Option {
 	return func(o *Orchestrator) {
@@ -138,8 +131,7 @@ type Orchestrator struct {
 	projectMem        *memory.Store // per-project memory store (D14); nil if not present
 	afterTool         AfterToolHook
 	skillsPrompt      string
-	todoStore         *todos.Store
-	inputTokenCounter llm.InputTokenCounter
+	todoStore *todos.Store
 
 	// workdir is the tool path root injected into the system prompt (optional).
 	workdir string

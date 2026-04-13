@@ -7,7 +7,7 @@ type ToolCallRecord struct {
 	Input string `json:"input"` // JSON object as string
 }
 
-// ToolResultRecord is a tool execution outcome sent back to the model (user role in Anthropic).
+// ToolResultRecord is a tool execution outcome sent back to the model (user role with tool results).
 // ToolName is used for Ollama "tool" role messages (function name).
 type ToolResultRecord struct {
 	ToolUseID string `json:"tool_use_id"`
@@ -19,7 +19,7 @@ type ToolResultRecord struct {
 // Message represents one turn in the conversation.
 // Simple text: set Role and Content only.
 // Assistant with tools: set ToolCalls (and optional Content for preceding text).
-// User with tool results: set ToolResults (Anthropic-style user message with tool_result blocks).
+// User with tool results: set ToolResults on the user message.
 type Message struct {
 	Role        string             `json:"role"`
 	Content     string             `json:"content,omitempty"`

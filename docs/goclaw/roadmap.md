@@ -55,7 +55,7 @@ These themes are **not** required for the checklist above; pick one when priorit
 ### 1c. Error messages — user-facing clarity
 
 - [x] Ollama dial / timeout / DNS / TLS / generic dial errors: actionable hints in `wrapOllamaDialErr` (`internal/llm/ollama.go`); tests in `ollama_err_test.go`
-- [x] Missing `ANTHROPIC_API_KEY` / `api_key`: clearer startup error in `PrepareChatRuntime` (env + user + project `settings.json` + `goclaw doctor`)
+- [x] Legacy LLM providers: `PrepareChatRuntime` rejects `anthropic` and `openai_compatible` with an Ollama-only migration hint (`goclaw doctor` uses the same runtime build path)
 - [x] Unknown profile: dynamic list via `agents.ProfileListHint()` in `chat_wiring.go`, `/profile` slash usage, and `--profile` flag help (`internal/cli/root.go`)
 
 ### 1d. Session persistence
@@ -167,7 +167,7 @@ These themes are **not** required for the checklist above; pick one when priorit
 - [x] **MCP `CallTool` per-request timeout**: already implemented — `adapter.go` wraps each `CallTool` in `context.WithTimeout(ctx, MCPToolCallTimeout=60s)`; `readLine` properly selects on `ctx.Done()`.
 - [x] **MCP server-initiated requests**: JSON-RPC messages with both `method` and `id` set (server → client requests) receive a JSON-RPC error response (-32601); covered by `internal/mcp/session_test.go`.
 - [x] **MCP dead connection**: `tools/call` surfaces EOF/closed connection explicitly (`session.go`); **one-shot reconnect** on recoverable transport errors via `mcp.ResilientConn` in `chat_wiring.go` (`resilient.go`, `resilient_test.go`)
-- [x] **Context budget is not model-aware**: replaced `defaultContextBudgetChars` with `anthropicContextTokens=200_000` / `ollamaContextTokens=32_000` per-provider constants. Configurable via `model_context_tokens` in settings.json for non-standard Ollama models.
+- [x] **Context budget is not model-aware**: replaced `defaultContextBudgetChars` with Ollama-oriented defaults (`ollamaContextTokens` heuristic, `EffectiveContextTokens` from `ollama_num_ctx`). Configurable via `model_context_tokens` in settings.json for non-standard models.
 - [x] **Tool-result clearing as first compaction stage**: `maybeCompact` now runs two phases — phase 1 clears `ToolResults[].Content` in old turns (replaces with `"[compacted]"`), phase 2 (`compactToTail`) only runs if phase 1 alone wasn't enough. Tests added to `estimate_test.go`.
 
 ## Tier 5 — Observability & CI (team-ready)
