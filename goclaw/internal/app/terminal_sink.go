@@ -83,6 +83,10 @@ func (s *terminalSink) OnDone(_ string) {
 	}
 }
 
+func (s *terminalSink) OnCompact(removed int) {
+	fmt.Fprintf(os.Stderr, "\n⟳ context compacted (%d messages summarized)\n", removed)
+}
+
 // capitalizeToolName converts "read_file" → "Read file", "bash" → "Bash".
 func capitalizeToolName(name string) string {
 	s := strings.ReplaceAll(name, "_", " ")

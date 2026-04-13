@@ -59,6 +59,8 @@ func (c *captureSink) OnDone(finalText string) {
 	c.doneMsg = finalText
 }
 
+func (c *captureSink) OnCompact(int) {}
+
 func TestOrchestratorRunStreamingEventOrder(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("file-content"), 0o600))

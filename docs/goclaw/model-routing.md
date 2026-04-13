@@ -55,7 +55,31 @@ Non-empty flag overrides the merged setting for that process.
 | `explore` | Locate code / repo navigation style prompts. |
 | `creative` | Brainstorming, marketing copy, prose. |
 
-Profile **bias** when heuristics are weak: `plan` → reasoning, `explore` → explore, `verification` → fast.
+Profile **bias** when heuristics are weak: `plan` → reasoning, `explore` → explore, `verification` → fast, **`code-review` → reasoning** (including for the large `/review` user message).
+
+## Review-heavy sessions and `code-review` profile
+
+When using [`/review`](./code-review-workflow.md), the injected message is a full **unified diff** — often long and better served by a **reasoning** or larger coding model than by a tiny “fast” model.
+
+**Suggested `task_models` layout:**
+
+```json
+{
+  "task_model_router": "rules",
+  "task_models": {
+    "default": "qwen2.5-coder:14b",
+    "code": "qwen2.5-coder:14b",
+    "reasoning": "qwen2.5-coder:14b",
+    "explore": "qwen2.5-coder:7b",
+    "fast": "qwen2.5-coder:7b",
+    "fix": "qwen2.5-coder:14b"
+  }
+}
+```
+
+With **`llm_compaction`** and **`compaction_model`** set, long review threads can summarize older turns without paying full price on the main model every time. See [`internal/orchestrator/compaction.go`](../../goclaw/internal/orchestrator/compaction.go) and [CLAUDE.md](../../goclaw/CLAUDE.md) (compaction / `compaction_model`).
+
+**Note:** The `rules` router maps the **`code-review`** profile to role **`reasoning`** for every user turn while that profile is active (see `classifyTaskRoleRules` in `task_model.go`), so a configured `task_models.reasoning` entry applies consistently to follow-up questions in the same review session.
 
 ## `rules` vs `llm`
 

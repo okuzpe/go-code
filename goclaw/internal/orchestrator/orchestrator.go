@@ -84,6 +84,9 @@ type StreamSink interface {
 	// string (may be large; callers may cap display to a reasonable limit).
 	OnToolResult(name string, content string, isError bool)
 	OnDone(finalText string)
+	// OnCompact is called after automatic context compaction removes messages.
+	// removed is the net reduction in message count after compaction.
+	OnCompact(removed int)
 }
 
 // WithTodoStore attaches a session-scoped task list; when non-nil, its snapshot is appended to the system prompt.
@@ -177,6 +180,14 @@ func New(
 	return o
 }
 
+// TaskRole returns the classified task role for the current turn (e.g. "fix", "code", "explore").
+// Returns "" between turns.
+func (o *Orchestrator) TaskRole() string { return o.taskRole }
+
+// TurnModel returns the model id resolved for the current turn.
+// Returns "" when the default model (cfg.Model()) is used.
+func (o *Orchestrator) TurnModel() string { return o.turnModel }
+
 // Run processes a single user message and returns the final assistant response.
 func (o *Orchestrator) Run(ctx context.Context, userMessage string) (string, error) {
 	return o.RunStreaming(ctx, userMessage, nil)
@@ -210,7 +221,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	}
 
 	for range iterLimit {
-		o.maybeCompact(ctx)
+		o.maybeCompact(ctx, sink)
 
 		streamStart := time.Now()
 		events, errc := o.llm.Stream(ctx, o.buildRequest())

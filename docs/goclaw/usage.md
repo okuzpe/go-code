@@ -242,7 +242,7 @@ Handled locally (not sent to the model). Run **`/help`** for the full list. Key 
 
 - **Session:** `/new`, `/save`, `/session`, `/sessions`, `/resume`, `/compact`
 - **Navigation:** `/focus <id>`, `/detach` (aliases: `/back`, `/hub`, `/parent`, `/in`), `/workers`
-- **Content:** `/copy`, `/export`, `/memory`, `/plan`, `/apply-plan`
+- **Content:** `/copy`, `/export`, `/memory`, `/plan`, `/apply-plan`, `/audit`, `/review` (see [code-review-workflow.md](./code-review-workflow.md))
 - **Config:** `/profile`, `/agents`, `/theme`, `/init`, `/doctor`
 - **UI:** `/clear` (same as Ctrl+L in readline), `/edit` (multiline via $EDITOR), `/capabilities`, `/help`
 

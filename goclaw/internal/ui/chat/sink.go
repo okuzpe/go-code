@@ -82,3 +82,7 @@ func (s *batchedProgramSink) OnDone(_ string) {
 	s.flush()
 	s.p.Send(assistantDoneMsg{aborted: false})
 }
+
+func (s *batchedProgramSink) OnCompact(removed int) {
+	s.p.Send(compactNoticeMsg{removed: removed})
+}

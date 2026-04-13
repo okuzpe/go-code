@@ -302,7 +302,9 @@ func parseOpenAIEventStream(body io.Reader, out chan<- Event) error {
 			ch := chunk.Choices[0]
 
 			if ch.Delta.Content != "" {
-				out <- TextDelta{Text: ch.Delta.Content}
+				if t := stripLeakedChatTemplateTokens(ch.Delta.Content); t != "" {
+					out <- TextDelta{Text: t}
+				}
 			}
 
 			for _, tc := range ch.Delta.ToolCalls {

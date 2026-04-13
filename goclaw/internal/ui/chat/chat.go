@@ -804,6 +804,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tickToolWait()
 		}
 		return m, nil
+	case compactNoticeMsg:
+		m.appendSystem(fmt.Sprintf("⟳ Context compacted — %d messages summarized", msg.removed))
+		return m, nil
 	case errMsg:
 		m.refreshFooterStatsCache()
 		m.exitTranscriptBrowse()
@@ -2367,6 +2370,9 @@ type toolResultMsg struct {
 	content string // full result string (used for tool log drill-down)
 	isError bool
 }
+
+// compactNoticeMsg is sent when automatic context compaction removes messages.
+type compactNoticeMsg struct{ removed int }
 
 type errMsg struct {
 	err error

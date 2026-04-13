@@ -139,7 +139,7 @@ flowchart LR
   MAP --> P["profs[name] → agents.Profile"]
 ```
 
-- **Built-in profiles** live in `internal/agents/profile.go` (`general-purpose`, `explore`, `plan`, `verification`, `guide`, `statusline`, **`coordinator`**).
+- **Built-in profiles** live in `internal/agents/profile.go` (`general-purpose`, `explore`, `plan`, `verification`, `code-review`, `guide`, `statusline`, **`coordinator`**).
 - **Custom profiles** are `*.md` under `~/.goclaw/agents/` and `<project>/.goclaw/agents/` with YAML frontmatter (`internal/agents/loader.go`). The merged map is passed to **`SpawnAgentTool`**, so **`spawn_agent`** can target **custom** profile names when they appear in that map (built-in workers still use the **worker** tool registry: builtins only, shared memory/skills/project context).
 - Each **`Profile`** supplies: optional **model override**, **tool allowlist** (nil = all registered tools), **read-only** flag, and **system prompt** fragment merged into the orchestrator’s system message.
 

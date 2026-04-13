@@ -249,7 +249,7 @@ These themes are **not** required for the checklist above; pick one when priorit
 | IDE localhost notifier (`GOCLAW_IDE_NOTIFY_URL`)                       | Done   |
 | CI: `go vet` + tests on Linux and Windows; `-race` on Linux only       | Done   |
 | CI: `golangci-lint` + 61% coverage threshold (`-coverpkg=./...`)       | Done   |
-| 7 built-in agent profiles (incl. `coordinator`)                        | Done   |
+| 8 built-in agent profiles (incl. `coordinator`, `code-review`)         | Done   |
 | Custom agent profiles (`~/.goclaw/agents/*.md`, `.goclaw/agents/*.md`) | Done   |
 | `script` tool (multi-line shell, opt-in via `allow_script: true`)      | Done   |
 | YOLO risk classifier (`yolo_threshold` in settings, default -1/off)    | Done   |

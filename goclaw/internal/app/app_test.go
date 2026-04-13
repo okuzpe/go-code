@@ -70,6 +70,7 @@ func (noopStreamSink) OnTextDelta(string)                {}
 func (noopStreamSink) OnToolUse(string, string)          {}
 func (noopStreamSink) OnToolResult(string, string, bool) {}
 func (noopStreamSink) OnDone(string)                     {}
+func (noopStreamSink) OnCompact(int)                     {}
 
 var _ orchestrator.StreamSink = noopStreamSink{}
 

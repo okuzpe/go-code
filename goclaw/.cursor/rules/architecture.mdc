@@ -38,7 +38,7 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 | `internal/permissions/` | `Policy.Evaluate(toolName)` + `ApplyConfigModes` for `tool_permissions` |
 | `internal/config/` | `Config`, `Default()`, hierarchical load (user → project → local) |
 | `internal/hooks/` | Go handler registry + external subprocess/HTTP hooks + project hooks file |
-| `internal/agents/` | Seven built-in profiles + `All()` lookup; custom agents from `~/.goclaw/agents` and `.goclaw/agents` |
+| `internal/agents/` | Built-in profiles in `profile.go` + `All()` lookup; custom agents from `~/.goclaw/agents` and `.goclaw/agents` |
 | `internal/memory/` | Filesystem store under `~/.goclaw/memory/`, MEMORY.md index |
 | `internal/mcp/` | Stdio JSON-RPC MCP client: process lifecycle, tool discovery, `mcp__id__name` naming |
 | `internal/planfile/` | Workspace `.goclaw/plan.md` path, template, size limits, handoff message |

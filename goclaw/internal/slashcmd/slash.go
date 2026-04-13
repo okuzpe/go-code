@@ -647,6 +647,50 @@ use /workers to list interactive worker ids`)
 		setWelcomeHints(hintsOut, orch, sub)
 		return true, notice, false, auditMsg, nil
 
+	case "review":
+		if orch == nil {
+			return true, "", false, "", fmt.Errorf("/review requires a running agent")
+		}
+		if env.Profs == nil {
+			return true, "", false, "", fmt.Errorf("/review: profile map not configured")
+		}
+		cp, ok := env.Profs["code-review"]
+		if !ok {
+			return true, "", false, "", fmt.Errorf("/review: code-review profile missing")
+		}
+		wd := strings.TrimSpace(env.Workdir)
+		if wd == "" {
+			return true, "", false, "", fmt.Errorf("/review: workspace directory not set")
+		}
+		argv, aerr := reviewGitDiffArgv(fields)
+		if aerr != nil {
+			return true, "", false, "", aerr
+		}
+		cmdLine, diffBody, rerr := runReviewGitDiff(ctx, wd, argv)
+		if rerr != nil {
+			return true, "", false, "", fmt.Errorf("/review: %w", rerr)
+		}
+		orch.SetProfile(cp)
+		for _, toolName := range []string{"read_file", "glob", "grep", "todo_write"} {
+			orch.SetToolPermission(toolName, permissions.ModeAllow)
+		}
+		reviewMsg := fmt.Sprintf(
+			"## Code review request\n\n"+
+				"Workspace: %q\n"+
+				"Git: %s\n\n"+
+				"Review the following unified diff. Do not use write_file, edit_file, or patch. "+
+				"Produce severity-tagged findings as described in your profile.\n\n"+
+				"## Diff\n\n%s\n",
+			wd, cmdLine, diffBody,
+		)
+		notice := fmt.Sprintf("switched to profile code-review; injected diff from: %s", cmdLine)
+		sub := ""
+		if env.ChatSubtitle != nil {
+			sub = env.ChatSubtitle()
+		}
+		setWelcomeHints(hintsOut, orch, sub)
+		return true, notice, false, reviewMsg, nil
+
 	default:
 		return true, "", false, "", fmt.Errorf("unknown command /%s — try /help", cmd)
 	}
@@ -656,7 +700,7 @@ use /workers to list interactive worker ids`)
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview]   /btw   /copy   /export   /init   /memory   /model   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /allow-writes   /resume   /clear   /quit\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview]   /review   /btw   /copy   /export   /init   /memory   /model   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /allow-writes   /resume   /clear   /quit\n")
 	b.WriteString("Prefix input (see docs/goclaw/prefix-input-modes.md):  !cmd   @path   &task\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
@@ -676,9 +720,10 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("  /plan path|init|save|template — workspace plan under .goclaw/plan.md\n")
 	b.WriteString("  /init — create .goclaw/settings.json with coding defaults if missing\n")
 	b.WriteString("  /apply-plan [--preview] [path] — preview plan on disk, or execute (switch to general-purpose, stream one turn)\n")
+	b.WriteString("  /review [args] — inject git diff, switch to code-review (see docs/goclaw/code-review-workflow.md)\n")
 	b.WriteString("  /memory list | add | delete — durable memory under ~/.goclaw/memory/\n")
 	b.WriteString("  /workers, /focus or /in <id>, /back or /detach — interactive spawn_agent workers\n")
-	b.WriteString("  /compact, /copy, /export, /edit, /init, /agents, /profile, /theme, /new, /save, /session, /sessions, /resume, /clear, /quit, /btw\n")
+	b.WriteString("  /compact, /copy, /export, /edit, /init, /agents, /profile, /theme, /new, /save, /session, /sessions, /resume, /clear, /quit, /btw, /audit, /review\n")
 	b.WriteString("Prefix: ! (bash), @ (read_file), & (spawn_agent) — single line; docs/goclaw/prefix-input-modes.md\n")
 	b.WriteString("Flags: --readline (line REPL), --no-tools, --session <id>, --profile <name>\n")
 	if strings.TrimSpace(workdir) != "" {
@@ -725,6 +770,8 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /workers — list workers; /focus or /in <prefix> — jump into worker; /back or /detach — return to coordinator\n")
 	b.WriteString("  /plan path|init|save|template — default plan path, create from template, save last message, or print template\n")
 	b.WriteString("  /apply-plan [--preview] [path] — preview plan on disk, or execute (switch to general-purpose, stream one turn)\n")
+	b.WriteString("  /audit [path]    — switch to general-purpose; audit-and-fix workflow on path (default: workspace)\n")
+	b.WriteString("  /review [args]   — inject git diff; switch to code-review (read-only; see docs/goclaw/code-review-workflow.md)\n")
 	b.WriteString("  /btw <text>      — side question: one user message with a brief-aside preamble (sent to the model)\n")
 	b.WriteString("  Ctrl+C           — exit (session is saved on shutdown)\n")
 	b.WriteString("\nPrefix input (before model; same tools and permissions; single line each; see docs/goclaw/prefix-input-modes.md):\n")

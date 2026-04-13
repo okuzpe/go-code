@@ -122,7 +122,7 @@ func TestMaybeCompactPhase1OnlyAvoidsPhase2(t *testing.T) {
 	}
 
 	orch := New(cfg, nil, sess, tools.New(), permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose)
-	orch.maybeCompact(context.Background())
+	orch.maybeCompact(context.Background(), nil)
 
 	require.Len(t, sess.Messages, 26, "phase 2 should not run")
 	require.Equal(t, compactedToolResult, sess.Messages[0].ToolResults[0].Content)

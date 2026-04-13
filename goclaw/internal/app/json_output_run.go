@@ -20,6 +20,7 @@ func (discardStreamSink) OnTextDelta(string)                {}
 func (discardStreamSink) OnToolUse(string, string)          {}
 func (discardStreamSink) OnToolResult(string, string, bool) {}
 func (discardStreamSink) OnDone(string)                     {}
+func (discardStreamSink) OnCompact(int)                     {}
 
 func automationOutputToolApprover(_ context.Context, toolName, _ string) (bool, error) {
 	return false, fmt.Errorf(

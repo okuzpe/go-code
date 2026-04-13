@@ -47,6 +47,9 @@ func normalizeTaskRole(r string) string {
 
 // classifyTaskRoleRules scores the user message with lightweight heuristics (no extra LLM calls).
 func classifyTaskRoleRules(msg string, profile agents.Profile) string {
+	if profile.Name == "code-review" {
+		return "reasoning"
+	}
 	m := strings.TrimSpace(msg)
 	if m == "" {
 		return profileFallbackRole(profile)
@@ -62,8 +65,19 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 		"find and fix", "gaps para", "propon", "propón", "proponer", "pulir", "pulirlo",
 		"puedes mejorar", "puedes arreglar", "puedes revisar", "y arregla", "y mejora",
 		"y propon", "y propón",
+		// Additional Spanish imperative / subjunctive forms.
+		"pulelo", "puledlo", "encuentres", "analices", "examina",
+		"revisalo", "revísalo", "busca gaps", "busca errores",
+		"arreglame", "arréglame", "encuentra y", "analiza y",
 	}
-	if containsAny(lower, fixKeywords) {
+	reasoningKeywords := []string{
+		"why ", "step by step", "prove ", "analiz", "analyze",
+		"trade-off", "tradeoff", "implic", "explain",
+	}
+	// Fix wins even when the message also has reasoning intent (e.g. "analiza y arregla").
+	hasFix := containsAny(lower, fixKeywords)
+	hasReasoning := containsAny(lower, reasoningKeywords)
+	if hasFix || (hasReasoning && containsAny(lower, []string{"arregl", "mejor", "fix", "refactor", "gaps"})) {
 		return "fix"
 	}
 
@@ -76,10 +90,6 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 		return "code"
 	}
 
-	reasoningKeywords := []string{
-		"why ", "step by step", "prove ", "analiz", "analyze",
-		"trade-off", "tradeoff", "implic", "explain",
-	}
 	if containsAny(lower, reasoningKeywords) {
 		return "reasoning"
 	}
@@ -116,7 +126,12 @@ func taskExplorationHint(role string) string {
 	case "code":
 		return "\n\n[THIS TURN: coding. IMMEDIATE first output = native tool_use (glob / grep / read_file / bash as needed)." + noNarration + "]"
 	case "fix":
-		return "\n\n[THIS TURN: review-and-fix task. MANDATORY sequence: (1) glob project tree, (2) read_file on at least 5 key files before forming any conclusion, (3) edit_file/write_file/patch changes, (4) bash/script to verify. NO text before first tool call. NO suggestion lists. NO 'I would...'. Do NOT stop after reading one file. Make the actual changes." + noNarration + "]"
+		return "\n\n[THIS TURN: review-and-fix. FIRST output must be a tool call (glob). " +
+			"Read files from several directories before deciding anything. " +
+			"After reading: apply every fix you find with edit_file or write_file, then verify with bash. " +
+			"You MUST produce a final short paragraph — do not end the turn silently. " +
+			"Do NOT produce a suggestion list instead of actual edits." +
+			noNarration + "]"
 	case "reasoning", "explore":
 		return "\n\n[THIS TURN: analysis. IMMEDIATE first output = native tool_use (glob / read_file / grep)." + noNarration + "]"
 	case "fast":
@@ -134,6 +149,8 @@ func profileFallbackRole(profile agents.Profile) string {
 		return "explore"
 	case "verification":
 		return "fast"
+	case "code-review":
+		return "reasoning"
 	case "general-purpose":
 		return "code"
 	default:

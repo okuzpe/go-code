@@ -15,8 +15,11 @@ import (
 
 func TestClassifyTaskRoleRules_CodeAndReasoning(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "code", classifyTaskRoleRules("fix the panic in main()", agents.GeneralPurpose))
+	// "fix" keywords take priority over code keywords — fix the panic is an action task.
+	require.Equal(t, "fix", classifyTaskRoleRules("fix the panic in main()", agents.GeneralPurpose))
+	// Pure code block with no fix/review intent → code role.
 	require.Equal(t, "code", classifyTaskRoleRules("```go\nfunc main(){}\n```", agents.GeneralPurpose))
+	// Reasoning with no fix intent → reasoning role.
 	require.Equal(t, "reasoning", classifyTaskRoleRules("why might this trade-off favor ACID over eventual consistency?", agents.GeneralPurpose))
 }
 
@@ -60,12 +63,14 @@ func TestPrepareTurnModel_UsesTaskMap(t *testing.T) {
 		profile: agents.GeneralPurpose,
 	}
 
-	o.prepareTurnModel(context.Background(), "refactor this function for clarity")
+	// "implement" triggers code role (not fix).
+	o.prepareTurnModel(context.Background(), "implement a function to parse JSON")
 	require.Equal(t, "coder:14b", o.turnModel)
 
+	// general-purpose profile fallback is "code", so vague messages use the code model.
 	o.turnModel = ""
 	o.prepareTurnModel(context.Background(), "synthetic vague message that matches no strong keyword")
-	require.Equal(t, "fallback:7b", o.turnModel)
+	require.Equal(t, "coder:14b", o.turnModel)
 }
 
 func TestBuildRequestTurnModelOverridesGlobal(t *testing.T) {

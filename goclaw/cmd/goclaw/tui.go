@@ -63,7 +63,7 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		TUIMouseScroll:     rt.Cfg.TUIMouseScroll,
 		Title:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
 		SessionID:          rt.Sess.ID,
-		FooterStats:        func() string { return tuiFooterStats(rt) },
+		FooterStats:        func() string { return tuiFooterStats(rt, orch) },
 		Workdir:            rt.Workdir,
 		UserConfigDir:      rt.Cfg.UserConfigDir,
 		UserAgentsDir:      rt.UserAgentsDir,
@@ -105,7 +105,7 @@ func welcomeOptions(rt *app.ChatRuntime) chat.WelcomeOptions {
 	}
 }
 
-func tuiFooterStats(rt *app.ChatRuntime) string {
+func tuiFooterStats(rt *app.ChatRuntime, orch *orchestrator.Orchestrator) string {
 	if rt.Sess == nil {
 		return ""
 	}
@@ -127,7 +127,18 @@ func tuiFooterStats(rt *app.ChatRuntime) string {
 		base = fmt.Sprintf("%s · compact~%d%%", base, pct)
 	}
 	if app.OllamaFunctionToolsDropped(rt) {
-		return base + " · Ollama text-only"
+		base += " · Ollama text-only"
+	}
+	if role := orch.TaskRole(); role != "" && role != "default" {
+		model := orch.TurnModel()
+		if model == "" {
+			model = rt.Cfg.Model()
+		}
+		tag := model
+		if i := strings.LastIndex(model, ":"); i >= 0 {
+			tag = model[i+1:]
+		}
+		base = fmt.Sprintf("%s · %s:%s", base, role, tag)
 	}
 	return base
 }

@@ -23,14 +23,15 @@ Select a profile with `-profile <name>` or set `agent_profile` in `settings.json
 
 ## Built-in Profiles
 
-Seven built-ins in [`goclaw/internal/agents/profile.go`](../../goclaw/internal/agents/profile.go). Custom Markdown agents can override names; see **Custom agents** below. **Default** `agent_profile` when unset in settings is **`general-purpose`** ([`config.Default()`](../../goclaw/internal/config/config.go)); use **`coordinator`** for hub-and-spoke delegation (`spawn_agent` on the parent only).
+Built-in profiles live in [`goclaw/internal/agents/profile.go`](../../goclaw/internal/agents/profile.go) (eight names, including `coordinator` and `code-review`). Custom Markdown agents can override names; see **Custom agents** below. **Default** `agent_profile` when unset in settings is **`general-purpose`** ([`config.Default()`](../../goclaw/internal/config/config.go)); use **`coordinator`** for hub-and-spoke delegation (`spawn_agent` on the parent only).
 
 | Profile | `-profile` value | Tool allowlist | Read-only | Default? |
 |---------|-----------------|----------------|-----------|----------|
 | General-Purpose | `general-purpose` | All tools | No | Yes |
 | Explore | `explore` | read_file, glob, grep, web_fetch, web_search, todo_write | Yes | — |
 | Plan | `plan` | read_file, glob, grep, web_search, todo_write | Yes | — |
-| Verification | `verification` | read_file, bash, todo_write | No | — |
+| Verification | `verification` | read_file, bash, script, todo_write | No | — |
+| Code review | `code-review` | read_file, glob, grep, bash, web_fetch, web_search, todo_write | No (writes omitted from allowlist) | — |
 | Guide | `guide` | (none) | Yes | — |
 | StatusLine | `statusline` | (none) | Yes | — |
 | Coordinator | `coordinator` | spawn_agent, stop_task, todo_write | Yes | — |
@@ -87,12 +88,25 @@ No bash, no web_fetch. Use when you want an architecture or implementation plan 
 
 ```
 Go var:        agents.Verification
-Tool allowlist: read_file, bash, todo_write
+Tool allowlist: read_file, bash, script, todo_write
 ReadOnly:      false
 SystemPrompt:  "You are a verifier. Return only PASS or FAIL with a brief reason."
 ```
 
-Can execute shell commands to run tests or check build output. Produces a verdict, not a discussion. Use at the end of a development phase to confirm correctness. Bash remains subject to allowlist + single-command syntax rules ([tool-contract.md](./tool-contract.md), [`bash.go`](../../goclaw/internal/tools/bash.go)).
+Can execute shell commands to run tests or check build output. Produces a verdict, not a discussion. Use at the end of a development phase to confirm correctness. Bash remains subject to allowlist + single-command syntax rules ([tool-contract.md](./tool-contract.md), [`bash.go`](../../goclaw/internal/tools/bash.go)). Use **`script`** when verification requires pipes or chaining.
+
+---
+
+### code-review
+
+```
+Go var:        agents.CodeReview
+Tool allowlist: read_file, glob, grep, bash, web_fetch, web_search, todo_write
+ReadOnly:      false (write tools omitted from allowlist — no workspace file writes)
+SystemPrompt:  Structured diff review; severity-tagged bullets; bash for non-destructive introspection only.
+```
+
+Use for **PR-style feedback** without edits. Prefer the REPL **`/review`** command to inject `git diff` output, then stay on this profile for follow-up questions. Details: [docs/goclaw/code-review-workflow.md](../goclaw/code-review-workflow.md).
 
 ---
 
@@ -133,7 +147,7 @@ SystemPrompt:  Delegation-first: break work into self-contained sub-tasks, call 
                results for the user; never use file or shell tools directly.
 ```
 
-Hub-and-spoke orchestration: the model only delegates to **worker** runs (`spawn_agent`) with profiles `general-purpose`, `explore`, `plan`, or `verification`. Each worker has its own `session.Session` and cannot nest another coordinator. Implementation: [`goclaw/internal/coordinator`](../../goclaw/internal/coordinator/).
+Hub-and-spoke orchestration: the model only delegates to **worker** runs (`spawn_agent`) with profiles such as `general-purpose`, `explore`, `plan`, `verification`, or `code-review` (full enum is derived from the merged profile map). Each worker has its own `session.Session` and cannot nest another coordinator. Implementation: [`goclaw/internal/coordinator`](../../goclaw/internal/coordinator/).
 
 ---
 
@@ -183,6 +197,7 @@ Permission modes (`ask`/`allow`/`deny`, configured in `tool_permissions`) are **
 | 2026-04-07 | Cross-links: memory extractor, coordinator-mode, yolo-classifier, custom-agents. |
 | 2026-04-08 | Updated goclaw section: real file paths; plan → execute workflow; D16 sketch link. |
 | 2026-04-09 | Seven built-in profiles (`coordinator`); D16 + custom `.md` agents documented; Team/Swarm → future/polish. |
+| 2026-04-14 | Added `code-review` profile and `/review` workflow pointer; verification allowlist includes `script`. |
 | 2026-04-08 | Translated to English; restructured around `profile.go` facts; reference-product analysis removed; exact system prompts included. |
 | 2026-04-08 | Shared `baseSystemPrompt` (**D12**), verification/bash policy pointer to [tool-contract.md](./tool-contract.md) and `bash.go`. |
 | 2026-04-08 | `todo_write` on explore/plan/verification; plan → execute workflow (`.goclaw/plan.md`, `/apply-plan`); D16 sketch: [docs/goclaw/coordinator.md](../goclaw/coordinator.md). |

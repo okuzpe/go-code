@@ -28,7 +28,7 @@ func (o *Orchestrator) ForceCompact() {
 	o.compactToTail(compactPreserveTail)
 }
 
-func (o *Orchestrator) maybeCompact(ctx context.Context) {
+func (o *Orchestrator) maybeCompact(ctx context.Context, sink StreamSink) {
 	if o.cfg.AutoCompactThreshold <= 0 {
 		return
 	}
@@ -47,10 +47,18 @@ func (o *Orchestrator) maybeCompact(ctx context.Context) {
 	}
 
 	// Phase 2: summarize and remove old messages.
+	before := len(o.session.Messages)
 	if o.cfg.LLMCompaction {
 		o.compactToTailWithLLM(ctx, compactPreserveTail)
 	} else {
 		o.compactToTail(compactPreserveTail)
+	}
+	if sink != nil {
+		removed := before - len(o.session.Messages)
+		if removed < 0 {
+			removed = 0
+		}
+		sink.OnCompact(removed)
 	}
 }
 

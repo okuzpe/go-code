@@ -30,4 +30,6 @@ func (n *nestedWorkerStreamSink) OnToolResult(name string, content string, isErr
 
 func (n *nestedWorkerStreamSink) OnDone(string) {}
 
+func (n *nestedWorkerStreamSink) OnCompact(int) {} // compaction is internal; do not surface to parent
+
 var _ orchestrator.StreamSink = (*nestedWorkerStreamSink)(nil)

@@ -233,7 +233,9 @@ func (c *OllamaClient) streamTextOnly(scanner *bufio.Scanner, out chan<- Event) 
 			continue
 		}
 		if chunk.Message.Content != "" {
-			out <- TextDelta{Text: chunk.Message.Content}
+			if t := stripLeakedChatTemplateTokens(chunk.Message.Content); t != "" {
+				out <- TextDelta{Text: t}
+			}
 		}
 		if chunk.Done {
 			out <- Usage{
@@ -475,8 +477,8 @@ func (c *OllamaClient) streamWithTools(scanner *bufio.Scanner, out chan<- Event,
 					out <- tu
 					emittedTool = true
 				} else if prose, tu, ok := tryProseToolDirective(fullContent, specs); ok {
-					if strings.TrimSpace(prose) != "" {
-						out <- TextDelta{Text: prose}
+					if ps := stripLeakedChatTemplateTokens(prose); strings.TrimSpace(ps) != "" {
+						out <- TextDelta{Text: ps}
 					}
 					out <- tu
 					emittedTool = true
@@ -485,7 +487,7 @@ func (c *OllamaClient) streamWithTools(scanner *bufio.Scanner, out chan<- Event,
 
 			// Only show the text to the user if it was NOT a tool call.
 			if !emittedTool {
-				if s := contentBuf.String(); s != "" {
+				if s := stripLeakedChatTemplateTokens(contentBuf.String()); strings.TrimSpace(s) != "" {
 					out <- TextDelta{Text: s}
 				}
 			}

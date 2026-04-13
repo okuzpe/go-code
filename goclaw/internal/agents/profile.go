@@ -1,4 +1,4 @@
-// Package agents defines the seven built-in agent profiles.
+// Package agents defines the built-in agent profiles (see All()).
 package agents
 
 import (
@@ -90,6 +90,26 @@ Delegation: use spawn_agent for 3+ independent subtasks. Include all file paths 
 		SystemPrompt:  "You are a verifier. Return only PASS or FAIL with a brief reason.",
 	}
 
+	// CodeReview is read-only for workspace files: no write_file, edit_file, or patch on the allowlist.
+	// ReadOnly is false so the orchestrator still exposes bash (required for non-hub read-only shell).
+	CodeReview = Profile{
+		Name:        "code-review",
+		Description: "Structured review of a git diff: read tools + bash; no workspace writes.",
+		ToolAllowlist: []string{
+			"read_file", "glob", "grep", "bash", "web_fetch", "web_search", "todo_write",
+		},
+		ReadOnly: false,
+		SystemPrompt: "You are a senior code reviewer. You cannot modify the repository: write_file, edit_file, and patch are not available.\n" +
+			"The user message includes a git diff (or states if the tree is clean).\n\n" +
+			"Output:\n" +
+			"1) Short summary (2–4 sentences).\n" +
+			"2) Findings as bullets. Each: severity (blocker / major / minor / nit), category (correctness / security / performance / maintainability / tests / docs), " +
+			"location (path or hunk), description, suggested fix in prose only.\n\n" +
+			"Use read_file or grep only when the diff lacks surrounding context.\n" +
+			"Use bash only for non-destructive introspection (e.g. git log, git show, go vet on one package). " +
+			"If the diff is empty, say so and suggest comparing refs (e.g. /review --staged, /review main HEAD).",
+	}
+
 	Guide = Profile{
 		Name:          "guide",
 		ToolAllowlist: []string{},
@@ -122,13 +142,14 @@ Delegation: use spawn_agent for 3+ independent subtasks. Include all file paths 
 			"- explore: read-only search, grep, or codebase understanding — no changes needed.\n" +
 			"- plan: produce a step-by-step implementation plan — read-only output.\n" +
 			"- verification: run tests or checks and report PASS/FAIL.\n" +
+			"- code-review: read-only review of a git diff (no file writes); use after the user runs /review or for PR-style feedback.\n" +
 			"When uncertain which profile: default to general-purpose.",
 	}
 )
 
 // All returns all built-in profiles indexed by name.
 func All() map[string]Profile {
-	profiles := []Profile{GeneralPurpose, Explore, Plan, Verification, Guide, StatusLine, Coordinator}
+	profiles := []Profile{GeneralPurpose, Explore, Plan, Verification, CodeReview, Guide, StatusLine, Coordinator}
 	m := make(map[string]Profile, len(profiles))
 	for _, p := range profiles {
 		m[p.Name] = p
@@ -181,6 +202,8 @@ func (p Profile) Summary() string {
 		return "Read-only planning: architecture and step-by-step plans."
 	case "verification":
 		return "Verifier: PASS/FAIL style checks with limited tools."
+	case "code-review":
+		return "Read-only review of a diff: no writes; bash for git/vet only."
 	case "guide":
 		return "Q&A about the codebase; no tools."
 	case "statusline":

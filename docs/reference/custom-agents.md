@@ -12,7 +12,7 @@ Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D19 custom agents) and [age
 
 | Document | Relation |
 |----------|----------|
-| [agent-profiles.md](./agent-profiles.md) §2 | The **7 built-in profiles** (incl. `coordinator`) are the built-in set; a custom with the **same name** can **override** the built-in in the reference (priority). |
+| [agent-profiles.md](./agent-profiles.md) §2 | The **8 built-in profiles** (incl. `coordinator`, `code-review`) are the built-in set; a custom with the **same name** can **override** the built-in in the reference (priority). |
 | [coordinator-mode.md](./coordinator-mode.md) | The **Agent** tool picks `subagent_type` → resolves custom or built-in definition. |
 | [hooks.md](./hooks.md) | Frontmatter **`hooks`**: registers **session** hooks when the sub-agent spawns; cleaned up on finish; `Stop` → `SubagentStop` in reference. |
 | [memory-system.md](./memory-system.md) | **Project** memory (`MEMORY.md`) ≠ **per-agent** memory (`memory: user|project|local` + dedicated directory); see §5 of this doc. |

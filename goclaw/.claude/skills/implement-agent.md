@@ -6,7 +6,7 @@ description: Use when the user asks to add, change, or define an agent profile i
 ## Add or change an agent profile
 
 ### Read first
-- `internal/agents/profile.go` — `Profile` and the seven built-ins
+- `internal/agents/profile.go` — `Profile` and the built-in profiles (see `All()`)
 - [`agent-profiles.md`](../../../docs/reference/agent-profiles.md) — full table and coordinator semantics
 
 ### Profile shape

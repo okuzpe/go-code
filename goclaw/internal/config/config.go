@@ -197,7 +197,7 @@ func Default() Config {
 		Provider:                  "ollama",
 		OllamaHost:                envOr("OLLAMA_HOST", "http://localhost:11434"),
 		OllamaModel:               envOr("OLLAMA_MODEL", "qwen2.5-coder:14b"),
-		OllamaNumCtx:              8192,
+		OllamaNumCtx:              32768,
 		CompactionModel:           envOr("GOCLAW_COMPACTION_MODEL", ""),
 		TaskModelRouter:           NormalizeTaskModelRouter(envOr("GOCLAW_TASK_MODEL_ROUTER", "rules")),
 		TaskModelRouterModel:      envOr("GOCLAW_TASK_MODEL_ROUTER_MODEL", ""),

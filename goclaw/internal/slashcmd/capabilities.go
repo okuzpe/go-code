@@ -49,7 +49,7 @@ Terminal & Commands
 
 Git & GitHub
   - Commits & PRs — via bash when permitted; paste diffs for review
-  - Code review — analyze changes and suggest improvements
+  - Code review — /review runs git diff in the workspace, switches to the code-review profile, and streams one structured review turn (see docs/goclaw/code-review-workflow.md)
 
 Research & Q&A
   - Web search — docs, articles, solutions (web_search)

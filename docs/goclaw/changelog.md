@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`code-review`** built-in agent profile (read-only on workspace writes via allowlist) and REPL **`/review`** slash command: runs `git diff` in the workspace, injects output for one review turn. Docs: [code-review-workflow.md](code-review-workflow.md), [verification-recipe.md](verification-recipe.md), [ide-pr-parity.md](ide-pr-parity.md). Optional skill: `goclaw/.claude/skills/code-review.md`.
+- **`task_models` routing:** while `code-review` is active, the rules router uses the **`reasoning`** role for every turn (see [model-routing.md](model-routing.md)); project template **`goclaw/.goclaw/verify.example.sh`** for a canonical verify entry point.
+
 ### Changed
 
 - **TUI:** welcome panel **Guided flows** (plan + multi-agent), **Ctrl+P** opens agent picker; footer hint after `/plan save` and `/apply-plan --preview`.

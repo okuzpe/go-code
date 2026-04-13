@@ -145,7 +145,7 @@ func (t *SpawnAgentTool) Description() string {
 		"detail it needs must be in the task description. " +
 		"Set interactive: true to keep the worker running after this call; the user can send more input via /focus <task_id> in the REPL until /detach or stop_task. " +
 		"The profile field must be one of the configured worker profiles (see tool schema enum), typically general-purpose or a full-tool custom profile for coding; " +
-		"explore — read-only search; plan — read-only plan output; verification — PASS/FAIL checks."
+		"explore — read-only search; plan — read-only plan output; verification — PASS/FAIL checks; code-review — read-only diff review (no writes)."
 }
 
 func (t *SpawnAgentTool) effectiveProfiles() map[string]agents.Profile {
@@ -159,10 +159,10 @@ func (t *SpawnAgentTool) InputSchema() any {
 	profs := t.effectiveProfiles()
 	enum := spawnWorkerProfileNames(profs)
 	if len(enum) == 0 {
-		enum = []string{"general-purpose", "explore", "plan", "verification"}
+		enum = []string{"general-purpose", "explore", "plan", "verification", "code-review"}
 	}
 	profileDesc := "Worker profile name. Spawnable profiles for this workspace: " + strings.Join(enum, ", ") +
-		". Prefer general-purpose or a full-tool coding profile for edits and shell; explore/plan for read-only work; verification for checks."
+		". Prefer general-purpose or a full-tool coding profile for edits and shell; explore/plan for read-only work; verification for checks; code-review for read-only diff review."
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{

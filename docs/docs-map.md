@@ -22,7 +22,7 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | MCP | stdio + streamable HTTP client — `mcp_servers` in merged settings ([`internal/mcp`](../goclaw/internal/mcp)); optional `bearer_token_file` per HTTP server; multi-server with per-server failure isolation |
 | IDE | **Partial** — lockfile MCP + best-effort POST to `GOCLAW_IDE_NOTIFY_URL` (localhost-only); extension contract §7 [ide-bridge.md](./reference/ide-bridge.md) |
 | Retries | `internal/llm/retry.go` — 10 attempts, 500 ms→5 min exp backoff, 429/503/504 (D22) |
-| Profiles | 7 built-in in `internal/agents/profile.go` (includes `coordinator`) |
+| Profiles | 8 built-in in `internal/agents/profile.go` (includes `coordinator`, `code-review`) |
 | V3 slice (partial vs full product docs) | Local plugins ([`internal/plugin`](../goclaw/internal/plugin)), SKILL.md runtime ([`internal/skills`](../goclaw/internal/skills)), swarm disk hub ([`internal/swarm`](../goclaw/internal/swarm)); **not** MCP OAuth/WS, remote marketplace, or full IDE UI |
 
 ---
@@ -59,6 +59,9 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | [`docs/goclaw/mcp-remote.md`](./goclaw/mcp-remote.md) | MCP bearer file, threats, future OAuth/WS | Contributor | Shipped + notes |
 | [`docs/goclaw/ollama-stack.md`](./goclaw/ollama-stack.md) | Local Ollama stack, `compaction_model`, templates | End-user | Shipped |
 | [`docs/goclaw/model-routing.md`](./goclaw/model-routing.md) | `task_models`, routers | End-user | Shipped |
+| [`docs/goclaw/code-review-workflow.md`](./goclaw/code-review-workflow.md) | `/review`, `code-review` profile, git-anchored review | End-user | Shipped |
+| [`docs/goclaw/verification-recipe.md`](./goclaw/verification-recipe.md) | `.goclaw/verify.sh` post-edit checks | End-user | Shipped |
+| [`docs/goclaw/ide-pr-parity.md`](./goclaw/ide-pr-parity.md) | IDE / PR parity vs Wave A–B roadmap | Contributor | Shipped |
 | [`docs/goclaw/manual-tui-checklist.md`](./goclaw/manual-tui-checklist.md) | Bubble Tea / readline QA | Maintainer | Shipped |
 | [`docs/goclaw/i18n.md`](./goclaw/i18n.md) | LLM language vs English UI | Contributor | Policy / planned |
 | [`docs/goclaw/prefix-input-modes.md`](./goclaw/prefix-input-modes.md) | `!` / `@` / `&` / `/btw` prefix input (TUI + readline) | End-user | Shipped — see also [usage.md](./goclaw/usage.md#prefix-input----btw) |
@@ -101,6 +104,7 @@ Edits to the documentation tree (index moves, link cleanups) are logged here so 
 
 | Date | Change |
 |------|--------|
+| 2026-04-14 | Added `code-review` profile, `/review`, and topic docs [code-review-workflow.md](./goclaw/code-review-workflow.md), [verification-recipe.md](./goclaw/verification-recipe.md), [ide-pr-parity.md](./goclaw/ide-pr-parity.md); [model-routing.md](./goclaw/model-routing.md) review-session section. |
 | 2026-04-11 | Expanded [architecture.md](./architecture.md) (Mermaid flows); linked from [documentation.md](./goclaw/documentation.md) and this map (intro, reading order row 3, index row). |
 | 2026-04-11 | **Release 1.3.0 (doc):** [roadmap.md](./goclaw/roadmap.md) shipped checklist Tiers 0–8 + optional follow-up waves; [changelog.md](./goclaw/changelog.md) **1.3.0**; [manual-tui-checklist.md](./goclaw/manual-tui-checklist.md) automated gate log; git tag `v1.3.0`. |
 | 2026-04-11 | Unified docs pass: normalized `docs/reference/` link labels to kebab-case filenames; replaced stale “ARCHITECTURE §” callouts with [CLAUDE.md](../goclaw/CLAUDE.md) / [roadmap.md](./goclaw/roadmap.md); language policy in [documentation.md](./goclaw/documentation.md); [README.md](../goclaw/README.md) defers detail to this map; shortened [architecture.md](./architecture.md) product blurb and “Entry point” row above; fixed [prefix-input-modes.md](./goclaw/prefix-input-modes.md) index row (shipped); [mcp-remote.md](./goclaw/mcp-remote.md) CLAUDE path corrected. |
