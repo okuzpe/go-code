@@ -125,12 +125,25 @@ type Model struct {
 	// footerRendered is built once in layout() so View() joins the same string as used for height math
 	// (avoids footer/sizing mismatch if textarea state differed between two footerView calls).
 	footerRendered string
+	// footerStatsLine caches opts.FooterStats() so we do not re-scan the full session on every keystroke
+	// (token estimate is O(n) in message count). Refreshed on footerTickMsg and stream/session events.
+	footerStatsLine string
+	// footerStatsStreamAt throttles cache refresh while streaming (live assistant bytes change often).
+	footerStatsStreamAt time.Time
+
+	// inputResizeLineCount avoids redundant layout() when textarea line count is unchanged (typing on one line).
+	inputResizeLineCount int
+
+	// @ path picker: throttle filesystem walks (WalkDir is too heavy to run every keypress).
+	atSuggestLastWalk time.Time
+	atSuggestLastOut  string
 	// lastTranscript avoids redundant viewport.SetContent when only the footer/spinner changed (reduces flicker).
 	lastTranscript string
 	// lastReflowWidth is the terminal width used for the last transcript reflow (-1 = not yet).
 	lastReflowWidth int
 
-	// messageQueue holds user texts submitted while streaming; drained after a successful turn (assistantDoneMsg, not aborted).
+	// messageQueue holds user texts submitted while the model is busy; shown above the compose box until
+	// assistantDoneMsg drains them (appendSeparator + appendUser + runDispatchAfterUserEcho in order).
 	messageQueue []string
 
 	// exitConfirmDeadline is the wall-clock instant until which a second Ctrl+C quits the TUI (double Ctrl+C).
@@ -286,6 +299,9 @@ func (m *Model) syncInputComposeWidth() {
 // maxSlashSuggestRows caps the TUI slash-command picker (single-line / buffer); keeps the UI compact.
 const maxSlashSuggestRows = 5
 
+// atSuggestWalkMinInterval limits how often TUI @ path suggestions rescan the workspace (WalkDir).
+const atSuggestWalkMinInterval = 180 * time.Millisecond
+
 func placeholderForWidth(termWidth int) string {
 	const full = "Ask anything…  ! @ & /btw /help · Ctrl+B scroll · Shift+Enter newline"
 	const narrow = "Ask anything…  /help · Ctrl+B scroll"
@@ -400,10 +416,7 @@ func New(ctx context.Context, opts Options) Model {
 	in := textarea.New()
 	in.Placeholder = placeholderForWidth(0)
 	in.Prompt = th.InputPrompt
-	if strings.TrimSpace(in.Prompt) == "" {
-		in.Prompt = "> "
-	}
-	in.ShowLineNumbers = false
+	in.ShowLineNumbers = true
 	in.SetHeight(1) // start compact, grows dynamically
 	in.SetWidth(0)
 	in.CharLimit = 0 // no char limit
@@ -411,6 +424,10 @@ func New(ctx context.Context, opts Options) Model {
 	styles := in.Styles()
 	styles.Focused.Prompt = styles.Focused.Prompt.Foreground(th.UserTag.GetForeground())
 	styles.Blurred.Prompt = styles.Blurred.Prompt.Foreground(th.Dim.GetForeground())
+	styles.Focused.LineNumber = styles.Focused.LineNumber.Foreground(th.FooterDim.GetForeground())
+	styles.Focused.CursorLineNumber = styles.Focused.CursorLineNumber.Foreground(th.UserTag.GetForeground())
+	styles.Blurred.LineNumber = styles.Blurred.LineNumber.Foreground(th.Dim.GetForeground())
+	styles.Blurred.CursorLineNumber = styles.Blurred.CursorLineNumber.Foreground(th.Dim.GetForeground())
 	in.SetStyles(styles)
 
 	// Enter is handled in handleKeyString (submit). Newline: Shift+Enter / Alt+Enter.
@@ -479,6 +496,7 @@ func New(ctx context.Context, opts Options) Model {
 	} else {
 		m.preambleEnd = len(m.lines)
 	}
+	m.refreshFooterStatsCache()
 	return m
 }
 
@@ -510,6 +528,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case footerTickMsg:
 		m.refreshThinkingTranscriptRow()
 		m.refreshToolRunningTranscriptRows()
+		m.refreshFooterStatsCache()
 		m.layout()
 		return m, footerStatsTickCmd()
 	case spinner.TickMsg:
@@ -651,6 +670,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pending = &r
 		return m, nil
 	case assistantPlaceholderMsg:
+		m.footerStatsStreamAt = time.Time{}
+		m.refreshFooterStatsCache()
 		m.exitTranscriptBrowse()
 		m.streaming = true
 		m.assistantPlaceholder = true
@@ -681,8 +702,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.curAssistant.WriteString(string(msg))
 		m.refreshAssistantLine()
+		// Throttle O(n) footer stats while tokens stream (footerStats scans session messages).
+		if m.footerStats != nil {
+			now := time.Now()
+			if m.footerStatsStreamAt.IsZero() || now.Sub(m.footerStatsStreamAt) >= 250*time.Millisecond {
+				m.footerStatsStreamAt = now
+				m.refreshFooterStatsCache()
+			}
+		}
 		return m, nil
 	case assistantDoneMsg:
+		m.refreshFooterStatsCache()
 		m.streaming = false
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
@@ -775,6 +805,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case errMsg:
+		m.refreshFooterStatsCache()
 		m.exitTranscriptBrowse()
 		m.streaming = false
 		m.assistantPlaceholder = false
@@ -792,6 +823,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appendError(fmt.Sprintf("✗ %v", msg.err))
 		m.curAssistantLineIdx = -1
 		return m, nil
+	}
+
+	// Windows CRLF: bubbles maps CR and LF to LF separately, so "\r\n" becomes "\n\n".
+	if p, ok := msg.(tea.PasteMsg); ok {
+		n := inputprefix.NormalizePasteNewlines(p.Content)
+		if n != p.Content {
+			msg = tea.PasteMsg{Content: n}
+		}
 	}
 
 	// Drag-and-drop interception: convert file/dir paths pasted from the OS into @relpath tokens.
@@ -977,17 +1016,25 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 		if txt == "" {
 			return m, nil, true
 		}
+		// Pasting the footer stats line (e.g. when copying the whole TUI) queues garbage; reject if it matches exactly.
+		if m.streaming {
+			if fs := strings.TrimSpace(m.footerStatsLine); fs != "" && txt == fs {
+				m.footerHint = "Not queued — that text is the footer stats line, not your message."
+				return m, nil, true
+			}
+		}
 		m.footerHint = ""
 		m.idleTranscriptHint = ""
 		m.input.Reset()
 		m.resizeInput() // shrink back to 1 line after submit
-		m.appendSeparator()
-		m.appendUser(txt)
 		if m.streaming {
+			// Keep pending sends out of the transcript until this turn finishes; list them above the input.
 			m.messageQueue = append(m.messageQueue, txt)
-			m.appendSystem("(queued — runs when this reply finishes)")
+			m.layout()
 			return m, nil, true
 		}
+		m.appendSeparator()
+		m.appendUser(txt)
 		if cmd := m.runDispatchAfterUserEcho(txt); cmd != nil {
 			return m, cmd, true
 		}
@@ -1067,6 +1114,8 @@ func (m *Model) drainMessageQueue() tea.Cmd {
 	for len(m.messageQueue) > 0 && !m.streaming {
 		txt := m.messageQueue[0]
 		m.messageQueue = m.messageQueue[1:]
+		m.appendSeparator()
+		m.appendUser(txt)
 		if cmd := m.runDispatchAfterUserEcho(txt); cmd != nil {
 			return cmd
 		}
@@ -1084,6 +1133,16 @@ func (m *Model) runModelSubmit(userText string) {
 	m.submitter.fn(userText)
 }
 
+// refreshFooterStatsCache recomputes the idle footer stats line (token / compact hints). Call after
+// session changes or on the periodic footer tick — not on every keystroke (see tuiFooterStats).
+func (m *Model) refreshFooterStatsCache() {
+	if m.footerStats == nil {
+		m.footerStatsLine = ""
+		return
+	}
+	m.footerStatsLine = strings.TrimSpace(m.footerStats())
+}
+
 // resizeInput dynamically adjusts the textarea height based on content.
 func (m *Model) resizeInput() {
 	lineCount := m.input.LineCount()
@@ -1093,6 +1152,10 @@ func (m *Model) resizeInput() {
 	if lineCount > inputMaxHeight {
 		lineCount = inputMaxHeight
 	}
+	if m.inputResizeLineCount == lineCount {
+		return
+	}
+	m.inputResizeLineCount = lineCount
 	m.input.SetHeight(lineCount)
 	m.layout()
 }
@@ -1403,10 +1466,7 @@ func (m *Model) footerView() string {
 
 	fw := m.width
 	primary := strings.TrimSpace(m.footerPrimaryStatus())
-	stats := ""
-	if m.footerStats != nil {
-		stats = strings.TrimSpace(m.footerStats())
-	}
+	stats := strings.TrimSpace(m.footerStatsLine)
 
 	var b strings.Builder
 
@@ -1493,6 +1553,10 @@ func (m *Model) footerView() string {
 		b.WriteString("\n")
 		b.WriteString(m.approvalStripView())
 	}
+	if qs := m.messageQueueStripView(); qs != "" {
+		b.WriteString("\n")
+		b.WriteString(qs)
+	}
 
 	// One line break before compose so hints/approval do not run into the input strip.
 	b.WriteString("\n")
@@ -1535,10 +1599,17 @@ func (m *Model) atSuggestStripView() string {
 	}
 	frag, _, ok := inputprefix.AtFragmentAtCursor(currentLine, col)
 	if !ok {
+		m.atSuggestLastWalk = time.Time{}
 		return ""
+	}
+	now := time.Now()
+	if !m.atSuggestLastWalk.IsZero() && now.Sub(m.atSuggestLastWalk) < atSuggestWalkMinInterval {
+		return m.atSuggestLastOut
 	}
 	sugs := inputprefix.TUIAtPathSuggestions(m.workdir, frag)
 	if len(sugs) == 0 {
+		m.atSuggestLastWalk = now
+		m.atSuggestLastOut = ""
 		return ""
 	}
 	th := m.theme
@@ -1592,7 +1663,10 @@ func (m *Model) atSuggestStripView() string {
 		b.WriteString("\n")
 		b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("… +%d more — keep typing", more)))
 	}
-	return b.String()
+	out := b.String()
+	m.atSuggestLastWalk = now
+	m.atSuggestLastOut = out
+	return out
 }
 
 // slashSuggestStripView renders filtered /commands above the input (single-line buffer only).
@@ -1678,6 +1752,82 @@ func (m *Model) bangAmpHintStripView() string {
 	default:
 		return ""
 	}
+}
+
+const maxMessageQueueStripLines = 5
+
+func queuePreviewOneLine(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.Join(strings.Fields(s), " ")
+	return strings.TrimSpace(s)
+}
+
+// messageQueueStripView lists pending sends above the compose box (FIFO) while the model is busy.
+func (m *Model) messageQueueStripView() string {
+	n := len(m.messageQueue)
+	if n == 0 {
+		return ""
+	}
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	ruleW := m.width
+	const maxPickRule = 52
+	if ruleW > maxPickRule {
+		ruleW = maxPickRule
+	}
+	fw := m.width
+	if fw <= 0 {
+		fw = defaultTerminalWidthFallback
+	}
+	maxW := fw - 4
+	if maxW < 16 {
+		maxW = fw
+	}
+
+	var b strings.Builder
+	b.WriteString(th.SeparatorLine(ruleW))
+	b.WriteString("\n")
+	msgWord := "messages"
+	if n == 1 {
+		msgWord = "message"
+	}
+	b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("Queued · %d %s · sent in order when idle", n, msgWord)))
+	b.WriteString("\n")
+
+	show := n
+	extra := 0
+	if show > maxMessageQueueStripLines {
+		extra = show - maxMessageQueueStripLines
+		show = maxMessageQueueStripLines
+	}
+	for i := 0; i < show; i++ {
+		preview := queuePreviewOneLine(m.messageQueue[i])
+		num := fmt.Sprintf("%d.", i+1)
+		budget := maxW - utf8.RuneCountInString(num) - 1
+		if budget < 8 {
+			budget = 8
+		}
+		line := num + " " + text.TruncateRunes(preview, budget)
+		if fw > 4 {
+			b.WriteString(th.FooterDim.Width(fw).Render(line))
+		} else {
+			b.WriteString(th.FooterDim.Render(line))
+		}
+		b.WriteString("\n")
+	}
+	if extra > 0 {
+		more := fmt.Sprintf("… and %d more", extra)
+		if fw > 4 {
+			b.WriteString(th.FooterDim.Width(fw).Render(more))
+		} else {
+			b.WriteString(th.FooterDim.Render(more))
+		}
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // approvalStripView renders the tool approval request above the input with a card-style border.

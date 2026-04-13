@@ -28,10 +28,11 @@ func classifyTaskRoleLLM(ctx context.Context, client llm.Client, userMsg string,
 	defer cancel()
 
 	system := `You route the user's message to one task category. Reply with ONLY a JSON object, no markdown, no other text.
-Shape: {"role":"ONE"} where ONE is exactly one of: default, reasoning, code, fast, explore, creative.
+Shape: {"role":"ONE"} where ONE is exactly one of: default, reasoning, code, fix, fast, explore, creative.
 Definitions:
-- code: programming, debugging, refactoring, tests, stack traces, implementation
-- reasoning: multi-step analysis, tradeoffs, architecture decisions, proofs
+- fix: review AND improve/fix/refactor code — any request that combines analysis with making changes (arregla, mejora, revisa y arregla, propose improvements, find and fix, pulir, audit and fix)
+- code: pure programming tasks — implement, debug, write tests, stack traces (no analysis+fix combo)
+- reasoning: multi-step analysis, tradeoffs, architecture decisions, proofs — without a fix/change request
 - fast: trivial or very short factual questions
 - explore: finding symbols, locating code in the repo, search/navigation questions
 - creative: prose, marketing copy, brainstorming, stories

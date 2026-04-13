@@ -102,8 +102,9 @@ type Config struct {
 	AllowScript bool
 
 	// YoloThreshold auto-approves tool calls with a risk score at or below this value.
-	// -1 (default) disables auto-approval; 0 auto-approves only pure reads.
-	// Range: -1..100.
+	// Default (60): auto-approves reads, bash, spawn_agent, and workspace-relative writes.
+	// Set to -1 to disable (prompt for everything). Set to 0 to approve only pure reads.
+	// Range: -1..100. High-risk operations (script=70, absolute-path writes=90) always prompt at 60.
 	YoloThreshold int
 
 	// LLMCompaction uses the active LLM to summarize compacted context instead of
@@ -187,6 +188,9 @@ type ExternalHookEntry struct {
 }
 
 // Default returns a Config that points to a local Ollama instance.
+// Multi-model routing is enabled by default: different Ollama models are selected per task role
+// so that fast/explore turns use a lighter model while coding and fix turns use the strongest one.
+// Any settings.json file can override individual task_models entries without replacing the whole map.
 func Default() Config {
 	home, _ := os.UserHomeDir()
 	return Config{
@@ -195,8 +199,9 @@ func Default() Config {
 		OllamaModel:               envOr("OLLAMA_MODEL", "qwen2.5-coder:14b"),
 		OllamaNumCtx:              8192,
 		CompactionModel:           envOr("GOCLAW_COMPACTION_MODEL", ""),
-		TaskModelRouter:           NormalizeTaskModelRouter(envOr("GOCLAW_TASK_MODEL_ROUTER", "")),
+		TaskModelRouter:           NormalizeTaskModelRouter(envOr("GOCLAW_TASK_MODEL_ROUTER", "rules")),
 		TaskModelRouterModel:      envOr("GOCLAW_TASK_MODEL_ROUTER_MODEL", ""),
+		TaskModels:                defaultTaskModels(),
 		PreferredResponseLanguage: envOr("GOCLAW_PREFERRED_RESPONSE_LANGUAGE", ""),
 		AutoCompactThreshold:      0.85,
 		UserConfigDir:             filepath.Join(home, ".goclaw"),
@@ -211,6 +216,28 @@ func Default() Config {
 		AllowScript:               true,
 		TUIMouseScroll:            envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
 		UIAppearance:              "auto",
+	}
+}
+
+// defaultTaskModels returns the built-in per-role model assignments used when task_model_router
+// is active. Settings files merge into this map (later entries override individual keys).
+//
+// Role → model rationale:
+//   - fix, code: strongest coder model — actual edits and code generation need maximum quality
+//   - reasoning, creative: qwen3.5 — better instruction following and analysis than coder models
+//   - explore, fast, default: qwen2.5-coder:7b — lighter model, sufficient for reads and quick answers
+//
+// Override any role in ~/.goclaw/settings.json under "task_models" without replacing the whole map.
+func defaultTaskModels() map[string]string {
+	main := envOr("OLLAMA_MODEL", "qwen2.5-coder:14b")
+	return map[string]string{
+		"fix":      main,
+		"code":     main,
+		"reasoning": "qwen3.5:latest",
+		"creative":  "qwen3.5:latest",
+		"explore":  "qwen2.5-coder:7b",
+		"fast":     "qwen2.5-coder:7b",
+		"default":  "qwen2.5-coder:7b",
 	}
 }
 

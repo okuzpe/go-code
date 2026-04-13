@@ -12,6 +12,7 @@ type SlashCommandSuggest struct {
 var slashCommandTable = []SlashCommandSuggest{
 	{"/agents", "List or switch agent profile (built-in + custom *.md)"},
 	{"/apply-plan", "Execute saved plan (see --preview); optional path; switches to general-purpose"},
+	{"/audit", "Scan project for gaps and auto-fix them (review-and-fix workflow). Optional: /audit <path>"},
 	{"/back", "Return to coordinator session (same as /detach)"},
 	{"/btw", "Side question: rewrite and send one user message to the model"},
 	{"/capabilities", "Print full capability guide (no model call)"},

@@ -18,7 +18,8 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 		UserLabel:      "",
 		UserEmoji:      ">",
 		AssistantEmoji: "●",
-		InputPrompt:    "> ",
+		// Empty: compose uses a line-number gutter instead of a per-line ">" prompt.
+		InputPrompt: "",
 		mdGlamourStyle: p.GlamourStyle,
 		appearance:     p.Appearance,
 

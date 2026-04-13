@@ -353,7 +353,7 @@ func writeToolApprovalHintLines(rt *ChatRuntime) []string {
 	}
 	if wf == permissions.DecisionAsk || ef == permissions.DecisionAsk {
 		return []string{
-			"  write_file / edit_file default to ask: approve prompts in the UI, or set tool_permissions.allow in settings for fewer interruptions.",
+			"  write_file / edit_file are on ask mode: workspace-relative writes (score 60) are auto-approved via yolo_threshold — only script and absolute-path writes require explicit approval.",
 		}
 	}
 	return nil

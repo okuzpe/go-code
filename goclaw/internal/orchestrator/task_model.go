@@ -25,6 +25,7 @@ var validTaskRoles = map[string]struct{}{
 	"fast":      {},
 	"explore":   {},
 	"creative":  {},
+	"fix":       {},
 }
 
 func containsAny(s string, keywords []string) bool {
@@ -52,8 +53,22 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 	}
 	lower := strings.ToLower(m)
 
+	// Review-and-fix tasks: checked FIRST — "analyze and improve" is a fix task, not pure reasoning.
+	// Any message that combines analysis intent with improvement/change intent → fix role.
+	fixKeywords := []string{
+		"revisa", "arregla", "arreglalo", "arreglarlo", "encuentra gaps", "find gaps",
+		"fix ", "review and fix", "audit and", "improve", "mejorar", "mejoras",
+		"refactor", "clean up", "find issues", "identify and fix", "diagnose", "detecta",
+		"find and fix", "gaps para", "propon", "propón", "proponer", "pulir", "pulirlo",
+		"puedes mejorar", "puedes arreglar", "puedes revisar", "y arregla", "y mejora",
+		"y propon", "y propón",
+	}
+	if containsAny(lower, fixKeywords) {
+		return "fix"
+	}
+
 	codeKeywords := []string{
-		"refactor", "implement", "debug", "panic", "fix ", "stack trace", "compil",
+		"implement", "debug", "panic", "stack trace", "compil",
 		"unit test", "typescript", "javascript", "golang", "python", "error:",
 		"stacktrace", "lint ", "pull request", "git commit", "commit message",
 	}
@@ -100,6 +115,8 @@ func taskExplorationHint(role string) string {
 	switch role {
 	case "code":
 		return "\n\n[THIS TURN: coding. IMMEDIATE first output = native tool_use (glob / grep / read_file / bash as needed)." + noNarration + "]"
+	case "fix":
+		return "\n\n[THIS TURN: review-and-fix task. MANDATORY sequence: (1) glob project tree, (2) read_file on at least 5 key files before forming any conclusion, (3) edit_file/write_file/patch changes, (4) bash/script to verify. NO text before first tool call. NO suggestion lists. NO 'I would...'. Do NOT stop after reading one file. Make the actual changes." + noNarration + "]"
 	case "reasoning", "explore":
 		return "\n\n[THIS TURN: analysis. IMMEDIATE first output = native tool_use (glob / read_file / grep)." + noNarration + "]"
 	case "fast":
@@ -117,6 +134,8 @@ func profileFallbackRole(profile agents.Profile) string {
 		return "explore"
 	case "verification":
 		return "fast"
+	case "general-purpose":
+		return "code"
 	default:
 		return "default"
 	}

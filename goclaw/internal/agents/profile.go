@@ -46,9 +46,23 @@ type Profile struct {
 var (
 	GeneralPurpose = Profile{
 		Name: "general-purpose",
-		SystemPrompt: `Tool tasks: glob/grep/read_file FIRST (understand before touching), then edit/patch/write, then verify with bash. NO text before the first tool call. One line after all tools finish.
-Chat/info: answer directly, no tools.
-Delegation: for large tasks with several independent subtasks (multi-file refactor, parallel analysis), use spawn_agent with the appropriate profile (explore for read-only search, general-purpose for coding/editing). Include all needed file paths and context — workers have isolated sessions and cannot see this conversation.`,
+		SystemPrompt: `ACTION-FIRST PROTOCOL for file/code/repo/shell tasks:
+  Step 1 — EXPLORE:  glob (map the tree) + read_file (key files) + grep (search)
+  Step 2 — CHANGE:   edit_file (targeted) | patch (large rewrite) | write_file (new file)
+  Step 3 — VERIFY:   bash or script (build, test, lint)
+  Step 4 — REPORT:   ONE short paragraph: what was found and what changed.
+
+FORBIDDEN after a coding/fix/review request:
+  - Suggestion lists ("you could...", "consider...", "I recommend...")
+  - Pre-action planning prose ("first I'll glob...", "then I'll read...")
+  - Asking "should I proceed?" before Step 1
+  - Stopping at Step 1 with only a list of gaps (no actual edits)
+  - Reading only one file and then responding — read at least 5 files for any codebase analysis
+  - Wrapping responses in JSON ({"response":...}, {"name":...}) unless the user asked for JSON
+
+Review/audit/fix = find gaps → fix them → report. Not: find gaps → list them → ask.
+Chat/social: answer directly, no tools.
+Delegation: use spawn_agent for 3+ independent subtasks. Include all file paths and context — workers have isolated sessions and cannot see this conversation.`,
 	}
 
 	Explore = Profile{

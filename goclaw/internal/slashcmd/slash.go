@@ -610,6 +610,43 @@ use /workers to list interactive worker ids`)
 		setFooterHint(hintsOut, "")
 		return true, notice, false, msg, nil
 
+	case "audit":
+		if orch == nil {
+			return true, "", false, "", fmt.Errorf("/audit requires a running agent")
+		}
+		if env.Profs == nil {
+			return true, "", false, "", fmt.Errorf("/audit: profile map not configured")
+		}
+		gp, ok := env.Profs["general-purpose"]
+		if !ok {
+			return true, "", false, "", fmt.Errorf("/audit: general-purpose profile missing")
+		}
+		target := strings.TrimSpace(strings.Join(fields[1:], " "))
+		if target == "" {
+			target = strings.TrimSpace(env.Workdir)
+		}
+		orch.SetProfile(gp)
+		for _, toolName := range []string{"read_file", "glob", "grep", "todo_write"} {
+			orch.SetToolPermission(toolName, permissions.ModeAllow)
+		}
+		auditMsg := fmt.Sprintf(
+			"Audit the project at %q. "+
+				"Step 1: run glob to map the project tree. "+
+				"Step 2: read_file on key source files to understand the codebase. "+
+				"Step 3: identify concrete gaps (missing error handling, missing tests, dead code, security issues, type safety, documentation). "+
+				"Step 4: for each gap found, apply the fix immediately with edit_file or write_file — do NOT produce a suggestion list. "+
+				"Step 5: run bash or script to verify the build or tests pass. "+
+				"Step 6: report one short paragraph summarizing what was found and what was changed.",
+			target,
+		)
+		notice := fmt.Sprintf("switched to profile general-purpose; starting project audit: %s", target)
+		sub := ""
+		if env.ChatSubtitle != nil {
+			sub = env.ChatSubtitle()
+		}
+		setWelcomeHints(hintsOut, orch, sub)
+		return true, notice, false, auditMsg, nil
+
 	default:
 		return true, "", false, "", fmt.Errorf("unknown command /%s — try /help", cmd)
 	}

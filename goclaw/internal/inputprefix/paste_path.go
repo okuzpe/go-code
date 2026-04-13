@@ -6,6 +6,18 @@ import (
 	"strings"
 )
 
+// NormalizePasteNewlines converts CRLF and lone CR to LF before paste is passed
+// to the textarea or path heuristics. The bubbles textarea sanitizer replaces
+// carriage return and newline independently with "\n", so raw "\r\n" from the
+// Windows clipboard becomes two newlines and inserts blank lines between pasted rows.
+func NormalizePasteNewlines(s string) string {
+	if !strings.Contains(s, "\r") {
+		return s
+	}
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.ReplaceAll(s, "\r", "\n")
+}
+
 // TryPasteAsAtPaths tries to interpret pasted text as one or more file/directory
 // paths (e.g. from a drag-and-drop into the terminal). If the entire paste content
 // consists of absolute paths that exist under workdir, it returns them as
@@ -13,7 +25,7 @@ import (
 //
 // Returns ("", false) when the paste looks like regular text rather than file paths.
 func TryPasteAsAtPaths(workdir, content string) (string, bool) {
-	content = strings.TrimSpace(content)
+	content = strings.TrimSpace(NormalizePasteNewlines(content))
 	if content == "" || strings.TrimSpace(workdir) == "" {
 		return "", false
 	}
