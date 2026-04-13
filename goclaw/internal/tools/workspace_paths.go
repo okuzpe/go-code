@@ -7,31 +7,66 @@ import (
 	"strings"
 )
 
-func relEscapesWorkspace(rel string) bool {
-	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+// PathScope configures path resolution for file tools:
+//   - Root: default directory tree for glob (no "under") and grep (no path, or path ".")
+//   - RelativeBase: directory used to resolve relative paths in read/write/edit/patch and in
+//     glob "under" / grep "path" when those are relative (typically goclaw's process cwd at start).
+// Absolute paths are passed through and cleaned; the OS enforces existence and permissions.
+type PathScope struct {
+	Root         string
+	RelativeBase string
 }
 
-// resolveExistingPathUnderRoot resolves userPath to an absolute path that exists under root,
-// following symlinks.
-//
-// Path resolution strategy (Issue #11):
-// - Accept either an absolute path or a path relative to the tool's workspace root.
-// - Clean the candidate path (so `a/../b` normalizes).
-// - Evaluate symlinks on the full path to obtain the real on-disk location.
-// - Evaluate symlinks on root as well (best-effort; if it fails, fall back to root).
-// - Enforce workspace scoping by checking `filepath.Rel(rootEval, eval)` does not escape.
-//
-// This prevents common symlink-escape tricks where a path appears to be inside the workspace
-// before resolving symlinks but points outside after resolution.
-//
-// Used by read_file, grep, edit_file, and patch for consistent boundary checks.
-func resolveExistingPathUnderRoot(root, userPath string) (string, error) {
-	candidate := userPath
-	if !filepath.IsAbs(candidate) {
-		candidate = filepath.Join(root, userPath)
+// NormalizePathScope cleans Root and RelativeBase to absolute paths when possible.
+func NormalizePathScope(s PathScope) PathScope {
+	root := strings.TrimSpace(s.Root)
+	if root != "" {
+		if abs, err := filepath.Abs(root); err == nil {
+			root = filepath.Clean(abs)
+		} else {
+			root = filepath.Clean(root)
+		}
 	}
-	candidate = filepath.Clean(candidate)
+	rb := strings.TrimSpace(s.RelativeBase)
+	if rb != "" {
+		if abs, err := filepath.Abs(rb); err == nil {
+			rb = filepath.Clean(abs)
+		} else {
+			rb = filepath.Clean(rb)
+		}
+	}
+	return PathScope{Root: root, RelativeBase: rb}
+}
 
+// RelBase returns RelativeBase when set, otherwise Root.
+func (s PathScope) RelBase() string {
+	if strings.TrimSpace(s.RelativeBase) != "" {
+		return s.RelativeBase
+	}
+	return s.Root
+}
+
+// ResolveReadExistingPath resolves an existing file or directory for read-only tools.
+func ResolveReadExistingPath(scope PathScope, userPath string) (string, error) {
+	scope = NormalizePathScope(scope)
+	return resolveExistingPathUnrestricted(scope.RelBase(), userPath)
+}
+
+func resolveExistingPathUnrestricted(relBase, userPath string) (string, error) {
+	userPath = strings.TrimSpace(userPath)
+	if userPath == "" {
+		return "", fmt.Errorf("path is required")
+	}
+	var candidate string
+	if filepath.IsAbs(userPath) {
+		candidate = filepath.Clean(userPath)
+	} else {
+		base, err := filepath.Abs(relBase)
+		if err != nil {
+			return "", fmt.Errorf("resolve base path: %w", err)
+		}
+		candidate = filepath.Clean(filepath.Join(base, userPath))
+	}
 	eval, err := filepath.EvalSymlinks(candidate)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -39,32 +74,30 @@ func resolveExistingPathUnderRoot(root, userPath string) (string, error) {
 		}
 		return "", fmt.Errorf("resolve symlinks: %w", err)
 	}
-
-	rootEval, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		rootEval = root
-	}
-
-	rel, err := filepath.Rel(rootEval, eval)
-	if err != nil {
-		return "", fmt.Errorf("path escapes workspace")
-	}
-	if relEscapesWorkspace(rel) {
-		return "", fmt.Errorf("path escapes workspace")
-	}
 	return eval, nil
 }
 
-// resolveWriteTargetUnderRoot validates and resolves a path for creating or overwriting a file
-// (write_file and patch when creating a new file). The target file may not exist yet.
-// Symlinks are evaluated on the parent directory only.
-func resolveWriteTargetUnderRoot(root, userPath string) (string, error) {
-	candidate := userPath
-	if !filepath.IsAbs(candidate) {
-		candidate = filepath.Join(root, userPath)
-	}
-	candidate = filepath.Clean(candidate)
+// ResolveWriteTargetPath resolves the target path for write_file, edit_file, and patch.
+func ResolveWriteTargetPath(scope PathScope, userPath string) (string, error) {
+	scope = NormalizePathScope(scope)
+	return resolveWriteTargetUnrestricted(scope.RelBase(), userPath)
+}
 
+func resolveWriteTargetUnrestricted(relBase, userPath string) (string, error) {
+	userPath = strings.TrimSpace(userPath)
+	if userPath == "" {
+		return "", fmt.Errorf("path is required")
+	}
+	var candidate string
+	if filepath.IsAbs(userPath) {
+		candidate = filepath.Clean(userPath)
+	} else {
+		base, err := filepath.Abs(relBase)
+		if err != nil {
+			return "", fmt.Errorf("resolve base path: %w", err)
+		}
+		candidate = filepath.Clean(filepath.Join(base, userPath))
+	}
 	parentDir := filepath.Dir(candidate)
 	evalParent, err := filepath.EvalSymlinks(parentDir)
 	if err != nil {
@@ -73,19 +106,15 @@ func resolveWriteTargetUnderRoot(root, userPath string) (string, error) {
 		}
 		return "", fmt.Errorf("resolve parent directory: %w", err)
 	}
-
-	rootEval, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		rootEval = root
-	}
-
-	rel, err := filepath.Rel(rootEval, evalParent)
-	if err != nil {
-		return "", fmt.Errorf("path escapes workspace")
-	}
-	if relEscapesWorkspace(rel) {
-		return "", fmt.Errorf("path escapes workspace")
-	}
-
 	return filepath.Join(evalParent, filepath.Base(candidate)), nil
+}
+
+// ResolveGlobWalkRoot returns the directory filepath.WalkDir should start from.
+func ResolveGlobWalkRoot(scope PathScope, under string) (string, error) {
+	scope = NormalizePathScope(scope)
+	under = strings.TrimSpace(under)
+	if under == "" {
+		return filepath.Clean(scope.Root), nil
+	}
+	return ResolveReadExistingPath(scope, under)
 }

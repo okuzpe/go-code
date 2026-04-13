@@ -35,7 +35,7 @@ func (o *Orchestrator) maybeCompact(ctx context.Context) {
 	if o.cfg.AutoCompactThreshold <= 0 {
 		return
 	}
-	budget := contextBudgetTokens(o.cfg.Provider, o.cfg.ModelContextTokens)
+	budget := o.cfg.EffectiveContextTokens()
 	limit := int(float64(budget) * o.cfg.AutoCompactThreshold)
 	if o.estimatedSessionTokens(ctx, limit) < limit {
 		return
@@ -60,6 +60,10 @@ func (o *Orchestrator) maybeCompact(ctx context.Context) {
 // compactToTailWithLLM summarizes the head of the conversation using the active LLM
 // instead of the heuristic placeholder. Falls back to compactToTail on any LLM error.
 func (o *Orchestrator) compactToTailWithLLM(ctx context.Context, preserve int) {
+	if o.llm == nil {
+		o.compactToTail(preserve)
+		return
+	}
 	msgs := o.session.Messages
 	if len(msgs) <= preserve {
 		return
@@ -160,8 +164,8 @@ func (o *Orchestrator) estimatedSessionTokens(ctx context.Context, compactLimit 
 	return n
 }
 
-// contextBudgetTokens returns the effective context window in estimated tokens.
-// cfgTokens > 0 overrides the per-provider default (set via ModelContextTokens in settings.json).
+// contextBudgetTokens is kept for SessionCompactionFillPercentLive (TUI footer).
+// New orchestrator code should use cfg.EffectiveContextTokens() instead.
 func contextBudgetTokens(provider string, cfgTokens int) int {
 	if cfgTokens > 0 {
 		return cfgTokens
@@ -224,7 +228,7 @@ func sessionCompactionFillPercentFromTokenEstimate(cfg config.Config, tok int) (
 	if cfg.AutoCompactThreshold <= 0 {
 		return 0, false
 	}
-	budget := contextBudgetTokens(cfg.Provider, cfg.ModelContextTokens)
+	budget := cfg.EffectiveContextTokens()
 	if budget <= 0 {
 		return 0, false
 	}

@@ -2,6 +2,7 @@ package permissions
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 )
 
@@ -31,7 +32,7 @@ const (
 //	bash (write category: git commit, make, go build) → 40
 //	mcp__* tools                                   → 50
 //	bash (unrecognized command)                    → 50
-//	write_file, edit_file, patch (workspace paths) → 60
+//	write_file, edit_file, patch (relative / typical paths) → 60
 //	script                                         → 70
 //	write_file, edit_file, patch (absolute/outside paths) → 90
 func RiskScore(toolName, toolInput string) int {
@@ -145,9 +146,11 @@ func fileWriteRiskScore(toolInput string) int {
 	}
 	if json.Unmarshal([]byte(toolInput), &parsed) == nil {
 		path := strings.TrimSpace(parsed.Path)
-		// Absolute paths outside cwd or paths traversing up are higher risk.
-		if strings.HasPrefix(path, "/") || strings.HasPrefix(path, `\`) ||
-			strings.HasPrefix(path, "..") {
+		// Absolute paths or explicit parent traversal are higher risk than normal workspace-relative writes.
+		// filepath.IsAbs catches Windows "C:\..." paths; explicit prefix checks handle Unix-style
+		// absolute paths ("/path") and UNC/root-relative paths ("\path") on Windows where
+		// filepath.IsAbs returns false for those forms.
+		if filepath.IsAbs(path) || strings.HasPrefix(path, "/") || strings.HasPrefix(path, `\`) || strings.HasPrefix(path, "..") {
 			return riskScoreFileAbs
 		}
 	}

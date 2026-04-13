@@ -55,7 +55,7 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 	codeKeywords := []string{
 		"refactor", "implement", "debug", "panic", "fix ", "stack trace", "compil",
 		"unit test", "typescript", "javascript", "golang", "python", "error:",
-		"stacktrace", "lint ", "pull request", "commit ",
+		"stacktrace", "lint ", "pull request", "git commit", "commit message",
 	}
 	if strings.Contains(m, "```") || containsAny(lower, codeKeywords) {
 		return "code"
@@ -63,7 +63,7 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 
 	reasoningKeywords := []string{
 		"why ", "step by step", "prove ", "analiz", "analyze",
-		"trade-off", "tradeoff", "implic",
+		"trade-off", "tradeoff", "implic", "explain",
 	}
 	if containsAny(lower, reasoningKeywords) {
 		return "reasoning"
@@ -75,15 +75,16 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 	}
 
 	findWithContext := strings.Contains(lower, "find ") &&
-		(strings.Contains(lower, "file") || strings.Contains(lower, "code") || strings.Contains(lower, "definition"))
+		(strings.Contains(lower, "file") || strings.Contains(lower, "code") || strings.Contains(lower, "symbol") || strings.Contains(lower, "definition"))
 	codebaseSearch := strings.Contains(lower, "codebase") && strings.Contains(lower, "search")
-	if strings.Contains(lower, "where is") || strings.Contains(lower, "navigate") || findWithContext || codebaseSearch {
+	searchFor := strings.Contains(lower, "search for") || strings.Contains(lower, "look for")
+	if strings.Contains(lower, "where is") || strings.Contains(lower, "navigate") || findWithContext || codebaseSearch || searchFor {
 		return "explore"
 	}
 
 	role := profileFallbackRole(profile)
 	// Short, single-line prompts: fast only when the profile fallback is still generic default.
-	if role == "default" && !strings.Contains(m, "\n") && utf8.RuneCountInString(m) < 90 &&
+	if role == "default" && !strings.Contains(m, "\n") && utf8.RuneCountInString(m) < 120 &&
 		!strings.Contains(lower, "architect") &&
 		!strings.Contains(lower, "design doc") {
 		return "fast"

@@ -48,7 +48,14 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 	lines := []string{
 		"goclaw doctor",
 		"",
-		fmt.Sprintf("workspace: %s", rt.Workdir),
+		fmt.Sprintf("tool path root (default project): %s", rt.Workdir),
+	}
+	if ld := strings.TrimSpace(rt.LaunchDir); ld != "" {
+		if wd := strings.TrimSpace(rt.Workdir); filepath.Clean(ld) != filepath.Clean(wd) {
+			lines = append(lines, fmt.Sprintf("launch cwd: %s (project .goclaw loads from here)", ld))
+		}
+	}
+	lines = append(lines,
 		fmt.Sprintf("session:   %s", rt.Sess.ID),
 		fmt.Sprintf("provider:  %s", cfg.Provider),
 		fmt.Sprintf("model:     %s", cfg.Model()),
@@ -57,7 +64,7 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 		fmt.Sprintf("profile:   %s", rt.Profile.Name),
 		fmt.Sprintf("file tools: %s", doctorFileToolsLine(rt.Profile)),
 		fmt.Sprintf("tools:     %s", enabledDisabled(!rt.DisableTools)),
-	}
+	)
 
 	lines = append(lines, "")
 	webBackend, webBackendOK := config.NormalizeWebSearchBackend(cfg.WebSearchBackend)
@@ -141,11 +148,11 @@ func pluginSkillMemorySection(rt *ChatRuntime) []string {
 	out = append(out, fmt.Sprintf("  plugin manifests (allowed): %d", countPluginManifests(rt)))
 	roots := skillRootsForDoctor(rt)
 	out = append(out, fmt.Sprintf("  skill search roots: %d", len(roots)))
-	// Only aggregate SKILL.md from workspace roots here — user home skill trees can be large;
+	// Only aggregate SKILL.md from the tool path root here — user home skill trees can be large;
 	// snippet size matches what startup injects from the repo, not the full merged prompt.
 	wsSkillRoots := workspaceSkillRootsOnly(rt)
 	snippet, _ := skills.Collect(wsSkillRoots, skillsMaxRunes)
-	out = append(out, fmt.Sprintf("  workspace skills snippet (approx): %d bytes", len(strings.TrimSpace(snippet))))
+	out = append(out, fmt.Sprintf("  project tree skills snippet (approx): %d bytes", len(strings.TrimSpace(snippet))))
 	memCount := 0
 	memIndex := false
 	if rt.MemStore != nil {
@@ -176,15 +183,23 @@ func skillRootsForDoctor(rt *ChatRuntime) []string {
 }
 
 func workspaceSkillRootsOnly(rt *ChatRuntime) []string {
-	wd := strings.TrimSpace(rt.Workdir)
-	if wd == "" {
+	tool := strings.TrimSpace(rt.Workdir)
+	if tool == "" {
 		return nil
 	}
 	cfg := rt.Cfg
-	return []string{
-		filepath.Join(wd, cfg.ProjectConfigDir, "skills"),
-		filepath.Join(wd, ".claude", "skills"),
+	launch := strings.TrimSpace(rt.LaunchDir)
+	add := func(wd string) []string {
+		return []string{
+			filepath.Join(wd, cfg.ProjectConfigDir, "skills"),
+			filepath.Join(wd, ".claude", "skills"),
+		}
 	}
+	out := add(tool)
+	if launch != "" && filepath.Clean(launch) != filepath.Clean(tool) {
+		out = append(out, add(launch)...)
+	}
+	return out
 }
 
 func countPluginManifests(rt *ChatRuntime) int {
@@ -351,6 +366,18 @@ func writeToolApprovalHintLines(rt *ChatRuntime) []string {
 
 func hintLines(cfg config.Config, ollamaOK, toolsDisabled, ollamaToolsDropped bool) []string {
 	var hints []string
+	if config.NormalizeTaskModelRouter(cfg.TaskModelRouter) == "llm" {
+		hints = append(hints,
+			"  task_model_router is \"llm\": adds ~2-3s per turn for LLM classification.",
+			"  - Use \"rules\" for zero-latency heuristic routing, or \"off\" to disable.",
+		)
+	}
+	if cfg.LLMCompaction {
+		hints = append(hints,
+			"  llm_compaction is enabled: each compaction fires an extra LLM call (slower on large sessions).",
+			"  - Disable with \"llm_compaction\": false if compaction latency is noticeable.",
+		)
+	}
 	if cfg.Provider != "anthropic" && cfg.Provider != "openai_compatible" && !ollamaOK {
 		host := effectiveOllamaHost(cfg.OllamaHost)
 		hints = append(hints,

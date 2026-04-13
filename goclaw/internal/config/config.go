@@ -68,6 +68,13 @@ type Config struct {
 	UserConfigDir    string // ~/.goclaw
 	ProjectConfigDir string // .goclaw (relative to cwd)
 
+	// ToolWorkspaceRoot sets the default project directory (see ResolveToolWorkspace): prompt
+	// context, default glob/grep tree when no narrower path is given, optional extra skill roots.
+	// It does not restrict absolute paths. Empty uses the launch working directory.
+	// Resolved with ResolveToolWorkspace(launchCwd, ToolWorkspaceRoot). JSON: tool_workspace_root.
+	// CLI --workspace and env GOCLAW_TOOL_WORKSPACE override this when set (see app package).
+	ToolWorkspaceRoot string
+
 	// AgentProfile is a key from agents.All() (e.g. coordinator, general-purpose, explore).
 	AgentProfile string
 
@@ -78,6 +85,11 @@ type Config struct {
 	// BashTimeoutSec caps bash tool execution; 0 means use internal/tools.BashTimeoutSec (default 30).
 	// Values above 3600 are clamped when BashTimeoutSeconds() is used.
 	BashTimeoutSec int
+
+	// MaxResponseTokens caps the number of tokens the LLM may generate per turn.
+	// 0 (default) uses the built-in per-provider default (4096 for most, 8192 for Anthropic).
+	// Increase for long analysis or generation tasks; set via "max_response_tokens" in settings.json.
+	MaxResponseTokens int
 
 	// ModelContextTokens overrides the provider-default context window estimate used for compaction.
 	// 0 = use built-in default: anthropic=200_000, ollama and openai_compatible=32_000.
@@ -98,7 +110,7 @@ type Config struct {
 	TrustedWorkspace bool
 
 	// AllowScript enables the script tool, which allows multi-line shell scripts with
-	// pipes, &&, and redirections. Default false (opt-in via allow_script: true).
+	// pipes, &&, and redirections. Default true; opt-out via allow_script: false in settings.
 	AllowScript bool
 
 	// YoloThreshold auto-approves tool calls with a risk score at or below this value.
@@ -218,6 +230,7 @@ func Default() Config {
 		BraveSearchAPIKey:         os.Getenv("BRAVE_SEARCH_API_KEY"),
 		SerpAPIKey:                os.Getenv("SERPAPI_API_KEY"),
 		WebSearchFallbackDDG:      true,
+		AllowScript:               true,
 		TokenCountMode:            "auto",
 		TUIMouseScroll:            envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
 		UIAppearance:              "auto",
@@ -307,6 +320,26 @@ func (c Config) RouterModelForLLM() string {
 		return c.NormalizeModelForProvider(m)
 	}
 	return c.ModelForCompaction()
+}
+
+// EffectiveContextTokens returns the context window size (in tokens) used for compaction decisions.
+// Priority: explicit ModelContextTokens > provider-aware default (Ollama uses OllamaNumCtx).
+// This ensures the compaction threshold matches the context actually sent to the model.
+func (c Config) EffectiveContextTokens() int {
+	if c.ModelContextTokens > 0 {
+		return c.ModelContextTokens
+	}
+	switch c.Provider {
+	case "anthropic":
+		return 200_000
+	case "ollama":
+		if c.OllamaNumCtx > 0 {
+			return c.OllamaNumCtx
+		}
+		return 8192
+	default:
+		return 32_000
+	}
 }
 
 // BashTimeoutSeconds returns the bash tool timeout in seconds (clamped to 1..3600).

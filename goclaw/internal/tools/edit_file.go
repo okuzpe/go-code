@@ -5,22 +5,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
 // EditFileTool replaces an exact string occurrence in a file (str_replace style).
 type EditFileTool struct {
-	root string // absolute, clean workspace root
+	scope PathScope
 }
 
-// NewEditFile returns an edit_file tool scoped to root.
+// NewEditFile returns edit_file with Root and RelativeBase both set to root.
 func NewEditFile(root string) *EditFileTool {
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		abs = root
+	return NewEditFileScope(PathScope{Root: root, RelativeBase: root})
+}
+
+// NewEditFileScope returns edit_file with explicit PathScope.
+func NewEditFileScope(scope PathScope) *EditFileTool {
+	s := NormalizePathScope(scope)
+	if strings.TrimSpace(s.RelativeBase) == "" {
+		s.RelativeBase = s.Root
 	}
-	return &EditFileTool{root: filepath.Clean(abs)}
+	return &EditFileTool{scope: s}
 }
 
 var _ Tool = (*EditFileTool)(nil)
@@ -42,7 +46,7 @@ func (EditFileTool) InputSchema() any {
 		"properties": map[string]any{
 			"path": map[string]any{
 				"type":        "string",
-				"description": "Path relative to workspace root, or absolute path inside the workspace",
+				"description": "Path relative to launch cwd, or absolute path to an existing file",
 			},
 			"old_string": map[string]any{
 				"type": "string",
@@ -122,7 +126,7 @@ func editNotFoundError(path, oldString, fileContent string) string {
 
 // Execute implements Tool.
 //
-// Path resolution: uses resolveExistingPathUnderRoot — edit_file requires the target
+// Path resolution: uses ResolveReadExistingPath — edit_file requires the target
 // file to already exist (it reads, replaces, and atomically rewrites it). EvalSymlinks
 // is called on the full path before reading; the atomic rewrite writes to the resolved
 // real path (not the symlink), preserving the original file permissions.
@@ -142,7 +146,7 @@ func (t *EditFileTool) Execute(_ context.Context, input string) (Result, error) 
 		return Result{Content: "old_string is required", IsError: true}, nil
 	}
 
-	resolved, err := resolveExistingPathUnderRoot(t.root, in.Path)
+	resolved, err := ResolveReadExistingPath(t.scope, in.Path)
 	if err != nil {
 		return Result{Content: err.Error(), IsError: true}, nil
 	}

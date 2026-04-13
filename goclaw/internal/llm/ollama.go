@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -260,8 +261,16 @@ var proseToolNameAliases = map[string]string{
 	"search_files":        "glob",
 }
 
-// toolCallDirectiveRE matches a whole line like "TOOL CALL: read_file" (case-insensitive).
-var toolCallDirectiveRE = regexp.MustCompile(`(?i)^\s*tool call:\s*(\S+)\s*$`)
+// toolCallDirectiveRE matches "TOOL CALL: tool_name [optional args]" on one line (case-insensitive).
+// Capture group 1 = tool name token; capture group 2 = optional trailing argument text.
+var toolCallDirectiveRE = regexp.MustCompile(`(?i)^\s*tool call:\s*(\S+)\s*(.*)$`)
+
+// toolCallHeaderRE matches a bare "TOOL CALL" line with no tool name (with or without trailing colon).
+// Used for the multiline format where the tool invocation follows on the next non-empty line.
+var toolCallHeaderRE = regexp.MustCompile(`(?i)^\s*tool\s+call:?\s*$`)
+
+// proseToolLineRE matches "tool_name [optional args]" — a snake_case identifier followed by anything.
+var proseToolLineRE = regexp.MustCompile(`^([a-z][a-z0-9_]*)\s*(.*)$`)
 
 func allowedToolNamesLower(specs []ToolSpec) map[string]string {
 	m := make(map[string]string, len(specs))
@@ -290,19 +299,64 @@ func resolveProseToolName(raw string, byLower map[string]string) (string, bool) 
 	return "", false
 }
 
-// defaultInputForProseToolDirective returns JSON input when the model emitted only a name (no JSON).
-// Only safe defaults are supported; unknown tools return false.
-func defaultInputForProseToolDirective(toolName string) (string, bool) {
+// buildInputForProseTool converts a tool name and a plain-text argument (or empty string)
+// into a JSON input string. It accepts tools that have a well-known primary argument.
+// Returns ("", false) when the tool is unknown or the argument is required but absent.
+func buildInputForProseTool(toolName, plainArg string) (string, bool) {
+	plainArg = strings.TrimSpace(plainArg)
+	// If the argument already looks like valid JSON, pass it through.
+	if strings.HasPrefix(plainArg, "{") {
+		var tmp json.RawMessage
+		if json.Unmarshal([]byte(plainArg), &tmp) == nil {
+			return plainArg, true
+		}
+	}
 	switch toolName {
 	case "glob":
-		return `{"pattern":"*"}`, true
-	default:
-		return "", false
+		if plainArg == "" {
+			plainArg = "*"
+		}
+		b, _ := json.Marshal(map[string]string{"pattern": plainArg})
+		return string(b), true
+	case "read_file":
+		if plainArg == "" {
+			return "", false
+		}
+		b, _ := json.Marshal(map[string]string{"path": plainArg})
+		return string(b), true
+	case "grep":
+		if plainArg == "" {
+			return "", false
+		}
+		b, _ := json.Marshal(map[string]string{"pattern": plainArg})
+		return string(b), true
+	case "bash":
+		if plainArg == "" {
+			return "", false
+		}
+		b, _ := json.Marshal(map[string]any{"command": plainArg, "description": ""})
+		return string(b), true
+	case "web_search":
+		if plainArg == "" {
+			return "", false
+		}
+		b, _ := json.Marshal(map[string]string{"query": plainArg})
+		return string(b), true
+	case "web_fetch":
+		if plainArg == "" {
+			return "", false
+		}
+		b, _ := json.Marshal(map[string]string{"url": plainArg})
+		return string(b), true
 	}
+	return "", false
 }
 
-// tryProseToolDirective detects lines like "TOOL CALL: foo" and converts them to a native ToolUse
-// when the resolved tool is in specs and has a safe default input (see defaultInputForProseToolDirective).
+// tryProseToolDirective detects model-emitted tool invocations written as prose and converts
+// them to a native ToolUse. Two formats are recognised:
+//
+//   - Single-line: "TOOL CALL: tool_name [optional args]"
+//   - Multiline:   "TOOL CALL\n\ntool_name [optional args]" (bare header, tool on next non-empty line)
 func tryProseToolDirective(full string, specs []ToolSpec) (prose string, tu ToolUse, ok bool) {
 	full = strings.TrimSpace(full)
 	if full == "" || len(specs) == 0 {
@@ -312,31 +366,67 @@ func tryProseToolDirective(full string, specs []ToolSpec) (prose string, tu Tool
 	lines := strings.Split(full, "\n")
 	for i, rawLine := range lines {
 		line := strings.TrimSpace(rawLine)
+
+		// Pattern 1: "TOOL CALL: tool_name [optional trailing args]" on a single line.
 		sub := toolCallDirectiveRE.FindStringSubmatch(line)
-		if len(sub) != 2 {
-			continue
+		if len(sub) == 3 {
+			resolved, okName := resolveProseToolName(sub[1], byLower)
+			if !okName {
+				return "", ToolUse{}, false
+			}
+			input, okIn := buildInputForProseTool(resolved, sub[2])
+			if !okIn {
+				return "", ToolUse{}, false
+			}
+			var parts []string
+			if b := strings.TrimSpace(strings.Join(lines[:i], "\n")); b != "" {
+				parts = append(parts, b)
+			}
+			if a := strings.TrimSpace(strings.Join(lines[i+1:], "\n")); a != "" {
+				parts = append(parts, a)
+			}
+			proseOut := strings.TrimSpace(strings.Join(parts, "\n"))
+			return proseOut, ToolUse{
+				ID:    "ollama-prose-0",
+				Name:  resolved,
+				Input: input,
+			}, true
 		}
-		resolved, okName := resolveProseToolName(sub[1], byLower)
-		if !okName {
-			return "", ToolUse{}, false
+
+		// Pattern 2: bare "TOOL CALL" header — look at the next non-empty line for "tool_name [args]".
+		if toolCallHeaderRE.MatchString(line) {
+			for j := i + 1; j < len(lines); j++ {
+				nextLine := strings.TrimSpace(lines[j])
+				if nextLine == "" {
+					continue
+				}
+				sub2 := proseToolLineRE.FindStringSubmatch(nextLine)
+				if len(sub2) != 3 {
+					break
+				}
+				resolved, okName := resolveProseToolName(sub2[1], byLower)
+				if !okName {
+					break
+				}
+				input, okIn := buildInputForProseTool(resolved, sub2[2])
+				if !okIn {
+					break
+				}
+				var parts []string
+				if b := strings.TrimSpace(strings.Join(lines[:i], "\n")); b != "" {
+					parts = append(parts, b)
+				}
+				if a := strings.TrimSpace(strings.Join(lines[j+1:], "\n")); a != "" {
+					parts = append(parts, a)
+				}
+				proseOut := strings.TrimSpace(strings.Join(parts, "\n"))
+				return proseOut, ToolUse{
+					ID:    "ollama-prose-1",
+					Name:  resolved,
+					Input: input,
+				}, true
+			}
 		}
-		input, okIn := defaultInputForProseToolDirective(resolved)
-		if !okIn {
-			return "", ToolUse{}, false
-		}
-		var parts []string
-		if b := strings.TrimSpace(strings.Join(lines[:i], "\n")); b != "" {
-			parts = append(parts, b)
-		}
-		if a := strings.TrimSpace(strings.Join(lines[i+1:], "\n")); a != "" {
-			parts = append(parts, a)
-		}
-		proseOut := strings.TrimSpace(strings.Join(parts, "\n"))
-		return proseOut, ToolUse{
-			ID:    "ollama-prose-0",
-			Name:  resolved,
-			Input: input,
-		}, true
 	}
 	return "", ToolUse{}, false
 }
@@ -516,16 +606,27 @@ func extractEmbeddedToolCall(body string, specs []ToolSpec) (ToolUse, string, bo
 	// Strip code fences if the whole body is wrapped.
 	stripped := stripCodeFences(body)
 
-	// Build a set of known tool names.
+	// Build a sorted list of known tool names (longest first for more-specific matching)
+	// and a lookup set. Sorted order makes the search deterministic across runs.
 	allowed := make(map[string]struct{}, len(specs))
 	for _, sp := range specs {
 		allowed[sp.Name] = struct{}{}
 	}
+	sortedNames := make([]string, 0, len(allowed))
+	for name := range allowed {
+		sortedNames = append(sortedNames, name)
+	}
+	sort.Slice(sortedNames, func(i, j int) bool {
+		if len(sortedNames[i]) != len(sortedNames[j]) {
+			return len(sortedNames[i]) > len(sortedNames[j]) // longer names first
+		}
+		return sortedNames[i] < sortedNames[j]
+	})
 
 	// Strategy 1: Search for {"name":"tool_name"...} JSON objects anywhere in the text.
 	// This catches models that emit the full call spec as JSON embedded in prose.
 	for _, candidate := range []string{stripped, body} {
-		for toolName := range allowed {
+		for _, toolName := range sortedNames {
 			// Look for {"name":"tool_name" pattern (with various quoting/spacing).
 			patterns := []string{
 				`"name":"` + toolName + `"`,
@@ -574,7 +675,7 @@ func extractEmbeddedToolCall(body string, specs []ToolSpec) (ToolUse, string, bo
 	}
 
 	// Strategy 2: Search for "tool_name {" or "tool_name({" pattern in the text.
-	for toolName := range allowed {
+	for _, toolName := range sortedNames {
 		for _, candidate := range []string{stripped, body} {
 			idx := strings.Index(candidate, toolName+" {")
 			if idx < 0 {

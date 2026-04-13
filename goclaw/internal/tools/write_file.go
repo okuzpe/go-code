@@ -9,18 +9,23 @@ import (
 	"strings"
 )
 
-// WriteFileTool creates or overwrites a UTF-8 text file inside the workspace.
+// WriteFileTool creates or overwrites a UTF-8 text file using PathScope for path resolution.
 type WriteFileTool struct {
-	root string // absolute, clean workspace root
+	scope PathScope
 }
 
-// NewWriteFile returns a write_file tool scoped to root.
+// NewWriteFile returns write_file with Root and RelativeBase both set to root.
 func NewWriteFile(root string) *WriteFileTool {
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		abs = root
+	return NewWriteFileScope(PathScope{Root: root, RelativeBase: root})
+}
+
+// NewWriteFileScope returns write_file with explicit PathScope.
+func NewWriteFileScope(scope PathScope) *WriteFileTool {
+	s := NormalizePathScope(scope)
+	if strings.TrimSpace(s.RelativeBase) == "" {
+		s.RelativeBase = s.Root
 	}
-	return &WriteFileTool{root: filepath.Clean(abs)}
+	return &WriteFileTool{scope: s}
 }
 
 var _ Tool = (*WriteFileTool)(nil)
@@ -28,7 +33,7 @@ var _ Tool = (*WriteFileTool)(nil)
 func (WriteFileTool) Name() string { return "write_file" }
 
 func (WriteFileTool) Description() string {
-	return "Create or overwrite a UTF-8 text file inside the workspace. " +
+	return "Create or overwrite a UTF-8 text file. " +
 		"The parent directory must already exist. Content is written atomically. " +
 		"Use edit_file for targeted line replacements; use write_file for new files or full rewrites."
 }
@@ -39,7 +44,7 @@ func (WriteFileTool) InputSchema() any {
 		"properties": map[string]any{
 			"path": map[string]any{
 				"type":        "string",
-				"description": "Path relative to workspace root, or absolute path inside the workspace",
+				"description": "Path relative to launch cwd, or absolute (parent directory must exist)",
 			},
 			"content": map[string]any{
 				"type":        "string",
@@ -59,9 +64,9 @@ type writeFileInput struct {
 //
 // Path resolution: uses resolveWriteTarget — the target file may not exist yet.
 // EvalSymlinks is called only on the parent directory (which must exist), and the
-// filename is appended afterward. This differs from resolveExistingPathUnderRoot,
+// filename is appended afterward. This differs from ResolveReadExistingPath,
 // which requires the full path to already exist. Use resolveWriteTarget for any tool
-// that creates or overwrites a file; use resolveExistingPathUnderRoot for read-only tools.
+// that creates or overwrites a file; use ResolveReadExistingPath for read-only tools.
 func (t *WriteFileTool) Execute(_ context.Context, input string) (Result, error) {
 	var in writeFileInput
 	if err := json.Unmarshal([]byte(input), &in); err != nil {
@@ -93,10 +98,9 @@ func (t *WriteFileTool) Execute(_ context.Context, input string) (Result, error)
 }
 
 // resolveWriteTarget validates and resolves the target path for writing.
-// Unlike resolveExistingPathUnderRoot, it evaluates symlinks on the parent directory
-// because the target file may not exist yet.
+// EvalSymlinks runs on the parent directory only because the target file may not exist yet.
 func (t *WriteFileTool) resolveWriteTarget(userPath string) (string, error) {
-	return resolveWriteTargetUnderRoot(t.root, userPath)
+	return ResolveWriteTargetPath(t.scope, userPath)
 }
 
 // atomicWriteFile writes data to targetPath atomically via a temp file in the same directory.

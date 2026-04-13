@@ -69,17 +69,17 @@ func TestReadFileOffsetLines(t *testing.T) {
 	require.Equal(t, "   3\tc\n   4\td\n   5\te", res.Content)
 }
 
-func TestReadFileRejectsEscape(t *testing.T) {
+func TestReadFileAbsoluteOutsideRoot(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	outside := t.TempDir()
 	tool := NewReadFile(dir)
 	target := filepath.Join(outside, "secret.txt")
-	_ = os.WriteFile(target, []byte("x"), 0o600)
+	require.NoError(t, os.WriteFile(target, []byte("hello-outside"), 0o600))
 
-	payload, _ := json.Marshal(map[string]string{"path": filepath.Join(outside, "secret.txt")})
+	payload, _ := json.Marshal(map[string]string{"path": target})
 	res, err := tool.Execute(ctx, string(payload))
 	require.NoError(t, err)
-	require.True(t, res.IsError)
-	require.NotEmpty(t, res.Content)
+	require.False(t, res.IsError, "content=%s", res.Content)
+	require.Contains(t, res.Content, "hello-outside")
 }

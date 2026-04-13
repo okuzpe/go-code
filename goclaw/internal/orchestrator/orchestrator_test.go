@@ -159,6 +159,7 @@ func TestOrchestratorAskRequiresApprover(t *testing.T) {
 	cfg := config.Default()
 	cfg.Provider = "anthropic"
 	cfg.APIKey = "test-key"
+	cfg.YoloThreshold = -1 // disable auto-approval so Ask mode requires a real approver
 
 	orch := New(
 		cfg,
@@ -195,6 +196,7 @@ func TestOrchestratorUserDeclinesTool(t *testing.T) {
 	cfg := config.Default()
 	cfg.Provider = "anthropic"
 	cfg.APIKey = "test-key"
+	cfg.YoloThreshold = -1 // disable auto-approval so the user decline is actually reached
 
 	decline := func(context.Context, string, string) (bool, error) { return false, nil }
 	orch := New(

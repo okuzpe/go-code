@@ -65,6 +65,7 @@ type SpawnAgentTool struct {
 	// Context injected into every worker orchestrator so workers have the same
 	// workspace awareness as the parent agent.
 	workdir       string
+	launchDir     string // process cwd; prompt + PerAgentMemoryDir project root
 	projectCtx    string
 	mem           *memory.Store
 	skillsSnippet string
@@ -97,10 +98,23 @@ func (t *SpawnAgentTool) WithProfiles(profs map[string]agents.Profile) *SpawnAge
 	return t
 }
 
-// WithWorkdir passes the workspace root to every spawned worker.
+// WithWorkdir passes the default project directory (tool path root) to every spawned worker.
 func (t *SpawnAgentTool) WithWorkdir(dir string) *SpawnAgentTool {
 	t.workdir = strings.TrimSpace(dir)
 	return t
+}
+
+// WithLaunchDir passes the process working directory (relative-path base) to workers.
+func (t *SpawnAgentTool) WithLaunchDir(dir string) *SpawnAgentTool {
+	t.launchDir = strings.TrimSpace(dir)
+	return t
+}
+
+func (t *SpawnAgentTool) workerLaunchDir() string {
+	if t.launchDir != "" {
+		return t.launchDir
+	}
+	return t.workdir
 }
 
 // WithProjectContext passes the project summary to every spawned worker.
@@ -242,6 +256,7 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 	// Inject workspace context so workers have the same project awareness as the parent agent.
 	if t.workdir != "" {
 		workerOpts = append(workerOpts, orchestrator.WithWorkdir(t.workdir))
+		workerOpts = append(workerOpts, orchestrator.WithLaunchDir(t.workerLaunchDir()))
 	}
 	if t.projectCtx != "" {
 		workerOpts = append(workerOpts, orchestrator.WithProjectContext(t.projectCtx))
@@ -250,7 +265,7 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 	// instead of the parent (coordinator) store so each agent's memory stays scoped.
 	workerMem := t.mem
 	if profile.MemoryScope != "" {
-		agentMemDir := memory.PerAgentMemoryDir(profile.MemoryScope, profile.Name, t.cfg.UserConfigDir, t.workdir, t.cfg.ProjectConfigDir)
+		agentMemDir := memory.PerAgentMemoryDir(profile.MemoryScope, profile.Name, t.cfg.UserConfigDir, t.workerLaunchDir(), t.cfg.ProjectConfigDir)
 		if err := os.MkdirAll(agentMemDir, 0o700); err != nil {
 			slog.Warn("per-agent memory dir create failed; using parent store", "dir", agentMemDir, "err", err)
 		} else {

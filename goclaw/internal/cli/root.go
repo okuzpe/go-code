@@ -50,6 +50,7 @@ func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, li
 	root.PersistentFlags().Bool("json-output", false, `shorthand for --output-format json with stdin automation (echo "hi" | goclaw --json-output); same JSON shape as --output-format json`)
 	root.PersistentFlags().StringSlice("plugin-dir", nil, `plugin root directories (each contains goclaw-plugin.json); repeat flag or comma-separated; merges with settings "plugin_dirs"`)
 	root.PersistentFlags().String("task-model-router", "", `per-turn model selection: "off", "rules" (heuristics), or "llm" (extra classifier call); requires task_models in settings`)
+	root.PersistentFlags().String("workspace", "", `default project directory for prompt/glob/grep defaults (absolute or relative to cwd); does not block absolute paths in file tools; overrides tool_workspace_root and GOCLAW_TOOL_WORKSPACE`)
 
 	sessionsCmd := &cobra.Command{
 		Use:   "sessions",

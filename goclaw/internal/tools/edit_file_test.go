@@ -105,15 +105,21 @@ func TestEditFileMultilineOldString(t *testing.T) {
 	require.Equal(t, "merged\nline3\n", string(got))
 }
 
-func TestEditFileRejectsEscapePath(t *testing.T) {
+func TestEditFileAbsoluteOutsideRoot(t *testing.T) {
 	dir := t.TempDir()
-	writeTestFile(t, dir, "f.txt", "x")
+	outside := t.TempDir()
+	target := filepath.Join(outside, "out.txt")
+	require.NoError(t, os.WriteFile(target, []byte("alpha"), 0o600))
 	tool := NewEditFile(dir)
 
-	input := mustJSON(t, map[string]any{"path": "../../outside.txt", "old_string": "x", "new_string": "y"})
+	input := mustJSON(t, map[string]any{"path": target, "old_string": "alpha", "new_string": "beta"})
 	res, err := tool.Execute(context.Background(), input)
 	require.NoError(t, err)
-	require.True(t, res.IsError)
+	require.False(t, res.IsError, "content=%s", res.Content)
+	got, err := os.ReadFile(target)
+	require.NoError(t, err)
+	require.Equal(t, "beta", string(got))
+	_ = dir
 }
 
 func TestEditFileFileNotFound(t *testing.T) {

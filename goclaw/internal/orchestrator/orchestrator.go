@@ -100,11 +100,19 @@ func WithInputTokenCounter(c llm.InputTokenCounter) Option {
 	}
 }
 
-// WithWorkdir injects the workspace root path into the system prompt so the agent
-// knows which directory it is operating in and uses correct relative paths.
+// WithWorkdir injects the tool path root into the system prompt (read_file/glob/write scope).
 func WithWorkdir(dir string) Option {
 	return func(o *Orchestrator) {
 		o.workdir = strings.TrimSpace(dir)
+	}
+}
+
+// WithLaunchDir injects the process working directory at agent start. Relative paths in
+// file tools resolve from here unless the model passes an absolute path. Optional; if
+// empty, buildRequest only describes the tool path root.
+func WithLaunchDir(dir string) Option {
+	return func(o *Orchestrator) {
+		o.launchDir = strings.TrimSpace(dir)
 	}
 }
 
@@ -133,8 +141,11 @@ type Orchestrator struct {
 	todoStore         *todos.Store
 	inputTokenCounter llm.InputTokenCounter
 
-	// workdir is the workspace root path injected into the system prompt (optional).
+	// workdir is the tool path root injected into the system prompt (optional).
 	workdir string
+
+	// launchDir is the cwd when goclaw started; injected for path-resolution hints (optional).
+	launchDir string
 
 	// projectContext is a brief project summary injected into the system prompt (optional).
 	projectContext string
@@ -191,9 +202,10 @@ func (o *Orchestrator) RunStreamingToolTrace(ctx context.Context, userMessage st
 }
 
 func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink StreamSink, toolTrace *[]JSONToolCall) (string, error) {
-	if o.session != nil {
-		defer o.session.ClearStreamingAssistant()
+	if o.session == nil {
+		return "", fmt.Errorf("orchestrator: session is required")
 	}
+	defer o.session.ClearStreamingAssistant()
 	o.session.Add("user", userMessage)
 
 	o.prepareTurnModel(ctx, userMessage)

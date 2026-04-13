@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	_ "embed"
+	"path/filepath"
 	"strings"
 
 	"github.com/okuzpe/goclaw/internal/llm"
@@ -11,7 +12,10 @@ import (
 //go:embed base_system_prompt.md
 var baseSystemPrompt string
 
-const memorySnippetEntries = 8
+const (
+	memorySnippetEntries = 4    // max memory entries injected per store
+	memoryMaxBytes       = 4096 // max bytes per memory block to prevent silent context bloat
+)
 
 func (o *Orchestrator) buildRequest() llm.Request {
 	model := o.cfg.Model()
@@ -71,7 +75,19 @@ func (o *Orchestrator) buildRequest() llm.Request {
 
 	sys := baseSystemPrompt + o.profile.SystemPrompt
 	if o.workdir != "" {
-		sys = sys + "\n\n## Workspace\n" + o.workdir + "\nUse relative paths in tool calls (e.g. go.mod, internal/tools/read_file.go)."
+		sys = sys + "\n\n## Workspace (tool path root)\n" + o.workdir
+		if ld := strings.TrimSpace(o.launchDir); ld != "" {
+			if filepath.Clean(ld) != filepath.Clean(o.workdir) {
+				sys = sys + "\nProcess started in: " + ld + " — relative paths in file tools resolve from this directory."
+			} else {
+				sys = sys + "\nRelative paths in file tools resolve from this directory unless you pass an absolute path."
+			}
+		}
+		sys = sys + "\n\n### Paths in tool arguments (read_file, glob, grep, write_file, edit_file, patch)\n" +
+			"- If the user pasted or named a **full absolute path** (Windows: `C:\\...` or `c:/...`; Unix: starts with `/`), put that **exact** string in the tool JSON. Do not replace it with only the last segment (e.g. do not use `docs` alone when they meant `c:/project/docs`).\n" +
+			"- **Relative** paths in file tools resolve from the **process / launch directory** (named above when it differs from the tool path root). They are not limited to the tool path root.\n" +
+			"- `glob` without `under` and `grep` without `path` (or with path `.`) search the **tool path root** tree above.\n" +
+			"- For `glob`, use optional `under` to walk a different directory (absolute or relative to launch cwd)."
 	}
 	if o.projectContext != "" {
 		sys = sys + "\n\n## Project context\n" + o.projectContext
@@ -81,11 +97,17 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	}
 	if o.mem != nil {
 		if block, err := o.mem.RecentContext(memorySnippetEntries); err == nil && block != "" {
+			if len(block) > memoryMaxBytes {
+				block = block[:memoryMaxBytes] + "\n[memory truncated]"
+			}
 			sys = sys + "\n\n## Persistent memory (recent)\n" + block
 		}
 	}
 	if o.projectMem != nil {
 		if block, err := o.projectMem.RecentContext(memorySnippetEntries); err == nil && block != "" {
+			if len(block) > memoryMaxBytes {
+				block = block[:memoryMaxBytes] + "\n[memory truncated]"
+			}
 			sys = sys + "\n\n## Project memory (.goclaw/memory)\n" + block
 		}
 	}
@@ -103,12 +125,16 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		sys = sys + hint
 	}
 
+	maxTokens := 4096
+	if o.cfg.MaxResponseTokens > 0 {
+		maxTokens = o.cfg.MaxResponseTokens
+	}
 	req := llm.Request{
 		Model:     model,
 		System:    sys,
 		Messages:  o.session.Messages,
 		Tools:     llmTools,
-		MaxTokens: 4096,
+		MaxTokens: maxTokens,
 	}
 	if o.cfg.Provider == "ollama" && o.cfg.OllamaNumCtx > 0 {
 		req.NumCtx = o.cfg.OllamaNumCtx

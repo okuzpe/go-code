@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,6 +26,7 @@ type settingsFile struct {
 	AutoCompactThreshold      *float64            `json:"auto_compact_threshold"`
 	BashTimeoutSec            *int                `json:"bash_timeout_sec"`
 	ModelContextTokens        *int                `json:"model_context_tokens"`
+	MaxResponseTokens         *int                `json:"max_response_tokens,omitempty"`
 	MCPServers                []MCPServerConfig   `json:"mcp_servers"`
 	TrustedWorkspace          *bool               `json:"trusted_workspace"`
 	ExternalHooks             []ExternalHookEntry `json:"external_hooks"`
@@ -50,6 +52,7 @@ type settingsFile struct {
 	OpenAIBaseURL             *string             `json:"openai_base_url,omitempty"`
 	OpenAIAPIKey              *string             `json:"openai_api_key,omitempty"`
 	OpenAIModel               *string             `json:"openai_model,omitempty"`
+	ToolWorkspaceRoot         *string             `json:"tool_workspace_root,omitempty"`
 }
 
 // Load merges JSON settings into base in this order (later wins for overlapping keys):
@@ -153,14 +156,17 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	if sf.ModelContextTokens != nil && *sf.ModelContextTokens > 0 {
 		cfg.ModelContextTokens = *sf.ModelContextTokens
 	}
+	if sf.MaxResponseTokens != nil && *sf.MaxResponseTokens > 0 {
+		cfg.MaxResponseTokens = *sf.MaxResponseTokens
+	}
 	if len(sf.MCPServers) > 0 {
 		cfg.MCPServers = mergeMCPServersByID(cfg.MCPServers, sf.MCPServers)
 	}
 	if sf.TrustedWorkspace != nil && *sf.TrustedWorkspace {
 		cfg.TrustedWorkspace = true
 	}
-	if sf.AllowScript != nil && *sf.AllowScript {
-		cfg.AllowScript = true
+	if sf.AllowScript != nil {
+		cfg.AllowScript = *sf.AllowScript
 	}
 	if sf.YoloThreshold != nil {
 		cfg.YoloThreshold = *sf.YoloThreshold
@@ -225,10 +231,10 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	if sf.OpenAIModel != nil && strings.TrimSpace(*sf.OpenAIModel) != "" {
 		cfg.OpenAICompatModel = strings.TrimSpace(*sf.OpenAIModel)
 	}
-
-	for k, v := range sf.ToolPermissions {
-		perms[k] = v
+	if sf.ToolWorkspaceRoot != nil {
+		cfg.ToolWorkspaceRoot = strings.TrimSpace(*sf.ToolWorkspaceRoot)
 	}
+	maps.Copy(perms, sf.ToolPermissions)
 	return nil
 }
 

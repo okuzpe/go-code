@@ -257,6 +257,23 @@ Example **`settings.json`:**
 
 Optional keys: **`tui_mouse_scroll`** — when `true`, the fullscreen TUI enables **mouse wheel** scrolling on the transcript (Bubble Tea cell mouse mode; may reduce native terminal mouse selection); default off; `GOCLAW_TUI_MOUSE_SCROLL=1` / `true` / `yes` / `on` enables; **`memory_llm_silent_extract`** — when `true`, after a user turn with no tool calls the runtime may run one background LLM JSON extraction into the active memory store (same provider as the main chat; default off); **`preferred_response_language`** — `auto` (default), `from_os`, or `es` / `en` / `fr` / `de` / `pt` (steers runtime user-language hint; see [`docs/goclaw/i18n.md`](../docs/goclaw/i18n.md)); **`compaction_model`** — model id for LLM summarization when **`llm_compaction`** is true (smaller/faster model than the main turn); **`task_model_router`** / **`task_models`** / **`task_model_router_model`** — per-turn model selection (`off` \| `rules` \| `llm`); see [`model-routing.md`](../docs/goclaw/model-routing.md); **`web_search_backend`** (`ddg` \| `brave` \| `serpapi`), **`brave_search_api_key`**, **`serpapi_api_key`**, **`web_search_fallback_ddg`** (default true when using a non-DDG backend), **`token_count_mode`** (`auto` \| `heuristic`) for Anthropic compaction (`auto` uses the [count_tokens API](https://docs.anthropic.com/en/api/messages-count-tokens) once the heuristic estimate crosses 70% of the compaction threshold).
 
+**Anthropic model routing (recommended):** assign faster/cheaper models to lightweight tasks and smarter models to coding. Requires `task_model_router: "rules"` and a `task_models` map:
+
+```json
+{
+  "provider": "anthropic",
+  "task_model_router": "rules",
+  "task_models": {
+    "explore": "claude-haiku-4-5-20251001",
+    "fast":    "claude-haiku-4-5-20251001",
+    "code":    "claude-sonnet-4-6",
+    "default": "claude-sonnet-4-6"
+  }
+}
+```
+
+The `rules` router classifies each user turn using lightweight heuristics (no extra API call). Role `explore` matches read/search/grep tasks; `fast` matches short single-line prompts; `code` matches coding/refactor/debug requests; `default` is the fallback. Override any role's model with `GOCLAW_TASK_MODEL_ROUTER=rules` and a `task_models` map in your `settings.json`.
+
 **Open-weight stack (Ollama):** see [`docs/goclaw/ollama-stack.md`](../docs/goclaw/ollama-stack.md) for project template agents under `goclaw/.goclaw/agents/` and `OLLAMA_MAX_LOADED_MODELS` notes.
 
 **OpenAI-compatible example** (e.g. [OpenRouter](https://openrouter.ai); base URL must include `/v1`):
@@ -411,6 +428,7 @@ var _ llm.Client = (*AnthropicClient)(nil)
 | `glob` | read_only | pattern | 500 paths | Workspace-scoped; no `..` |
 | `grep` | read_only | pattern, path? | 200 matches, 512 KiB/file | RE2 regex; skips binaries |
 | `bash` | shell | command, cwd? | 256 KiB truncated | Allowlist (D4); single simple command — `rejectShellMetacharacters` blocks pipes, `;`, `&&`, redirects, `$(...)`, unquoted `&`; timeout from `bash_timeout_sec` or default 30s |
+| `script` | shell | script, cwd? | 256 KiB truncated | Full shell: pipes (`\|`), `&&`, `\|\|`, redirections, multi-line. No binary allowlist — runs as-is under bash/sh (cmd.exe fallback on Windows). **On by default**; opt-out via `allow_script: false` in settings. Risk score 70 (above default YOLO threshold → user approval required). |
 | `write_file` | write | path, content | 1 MiB content | Atomic (temp+rename); parent dir must exist; stripped from ReadOnly |
 | `edit_file` | write | path, old_string, new_string, replace_all? | 1 MiB result | str_replace; exact match unless replace_all:true; preserves file mode; stripped from ReadOnly |
 | `patch` | write | path, diff | 1 MiB diff; 1 MiB result | Git/unified diff, exactly one file; `path` must match `a/` / `b/` headers; binary rejected; stripped from ReadOnly |

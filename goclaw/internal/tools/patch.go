@@ -13,18 +13,23 @@ import (
 	"github.com/bluekeyes/go-gitdiff/gitdiff"
 )
 
-// PatchTool applies a unified diff (git-style or standard unified) to one workspace file.
+// PatchTool applies a unified diff (git-style or standard unified) to one file.
 type PatchTool struct {
-	root string
+	scope PathScope
 }
 
-// NewPatch returns a patch tool scoped to root.
+// NewPatch returns patch with Root and RelativeBase both set to root.
 func NewPatch(root string) *PatchTool {
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		abs = root
+	return NewPatchScope(PathScope{Root: root, RelativeBase: root})
+}
+
+// NewPatchScope returns patch with explicit PathScope.
+func NewPatchScope(scope PathScope) *PatchTool {
+	s := NormalizePathScope(scope)
+	if strings.TrimSpace(s.RelativeBase) == "" {
+		s.RelativeBase = s.Root
 	}
-	return &PatchTool{root: filepath.Clean(abs)}
+	return &PatchTool{scope: s}
 }
 
 var _ Tool = (*PatchTool)(nil)
@@ -32,7 +37,7 @@ var _ Tool = (*PatchTool)(nil)
 func (PatchTool) Name() string { return "patch" }
 
 func (PatchTool) Description() string {
-	return "Apply a unified diff to a single workspace file. " +
+	return "Apply a unified diff to a single text file. " +
 		"The diff must change exactly one file; path must match the relative path in the --- a/... and +++ b/... headers. " +
 		"Binary patches are not supported. " +
 		"Prefer edit_file for small string replacements; use patch for multi-hunk or git-generated diffs. " +
@@ -53,7 +58,7 @@ func (PatchTool) InputSchema() any {
 		"properties": map[string]any{
 			"path": map[string]any{
 				"type":        "string",
-				"description": "Workspace-relative path to the file being patched (must match the single file in the diff)",
+				"description": "Path to the file being patched: relative to launch cwd, or absolute (must match the single file in the diff headers)",
 			},
 			"diff": map[string]any{
 				"type": "string",
@@ -129,14 +134,14 @@ func (t *PatchTool) Execute(_ context.Context, input string) (Result, error) {
 	switch {
 	case f.IsNew:
 		var resolveErr error
-		resolved, resolveErr = resolveWriteTargetUnderRoot(t.root, in.Path)
+		resolved, resolveErr = ResolveWriteTargetPath(t.scope, in.Path)
 		if resolveErr != nil {
 			return Result{Content: resolveErr.Error(), IsError: true}, nil
 		}
 		src = nil
 	case f.IsDelete:
 		var resolveErr error
-		resolved, resolveErr = resolveExistingPathUnderRoot(t.root, in.Path)
+		resolved, resolveErr = ResolveReadExistingPath(t.scope, in.Path)
 		if resolveErr != nil {
 			return Result{Content: resolveErr.Error(), IsError: true}, nil
 		}
@@ -147,7 +152,7 @@ func (t *PatchTool) Execute(_ context.Context, input string) (Result, error) {
 		src = raw
 	default:
 		var resolveErr error
-		resolved, resolveErr = resolveExistingPathUnderRoot(t.root, in.Path)
+		resolved, resolveErr = ResolveReadExistingPath(t.scope, in.Path)
 		if resolveErr != nil {
 			return Result{Content: resolveErr.Error(), IsError: true}, nil
 		}

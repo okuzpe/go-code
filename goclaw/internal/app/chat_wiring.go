@@ -38,7 +38,13 @@ const (
 // ChatRuntime holds shared subsystems built once for an interactive chat session.
 type ChatRuntime struct {
 	Cfg              config.Config
-	Workdir          string
+	// Workdir is the default project directory (orchestrator path hints, default glob/grep tree,
+	// project context snippet). File tools still accept absolute paths anywhere on disk.
+	Workdir string
+	// LaunchDir is the process working directory when goclaw started; project .goclaw settings,
+	// hooks, project agents, and resolution of relative paths in file tools use this path
+	// (may differ from Workdir when tool_workspace_root points at a subdirectory).
+	LaunchDir        string
 	Client           llm.Client
 	Sess             *session.Session
 	Store            *session.Store
@@ -133,12 +139,22 @@ func buildMCPServerDial(srv config.MCPServerConfig, workdir string, allowRemote 
 	}
 }
 
+// effectiveToolWorkspaceRoot returns the raw default-project-dir override: CLI --workspace, then
+// GOCLAW_TOOL_WORKSPACE, then settings.json tool_workspace_root (may be empty).
+func effectiveToolWorkspaceRoot(cfg config.Config, cmd *cobra.Command) string {
+	if cmd != nil {
+		if w, err := cmd.Flags().GetString("workspace"); err == nil && strings.TrimSpace(w) != "" {
+			return strings.TrimSpace(w)
+		}
+	}
+	if e := strings.TrimSpace(os.Getenv("GOCLAW_TOOL_WORKSPACE")); e != "" {
+		return e
+	}
+	return strings.TrimSpace(cfg.ToolWorkspaceRoot)
+}
+
 // PrepareChatRuntime builds config, session, tools, hooks, and MCP for one interactive run.
 func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
-	profileFlag, err := cmd.Flags().GetString("profile")
-	if err != nil {
-		return nil, err
-	}
 	sessionFlag, err := cmd.Flags().GetString("session")
 	if err != nil {
 		return nil, err
@@ -152,29 +168,22 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 		return nil, err
 	}
 
-	workdir, err := os.Getwd()
+	cfg, launchDir, err := loadMergedConfigForRun(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("get working directory: %w", err)
-	}
-
-	cfg := config.Default()
-	cfg, err = config.Load(cfg, workdir)
-	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
-	}
-	if ep := strings.TrimSpace(os.Getenv("GOCLAW_AGENT_PROFILE")); ep != "" {
-		cfg.AgentProfile = ep
-	}
-	if p := strings.TrimSpace(profileFlag); p != "" {
-		cfg.AgentProfile = p
+		return nil, err
 	}
 	if cmd != nil {
-		if vals, err := cmd.Flags().GetStringSlice("plugin-dir"); err == nil && len(vals) > 0 {
-			cfg.PluginDirs = append(cfg.PluginDirs, vals...)
-		}
 		if v, err := cmd.Flags().GetString("task-model-router"); err == nil && strings.TrimSpace(v) != "" {
 			cfg.TaskModelRouter = config.NormalizeTaskModelRouter(v)
 		}
+	}
+
+	toolRoot, err := config.ResolveToolWorkspace(launchDir, effectiveToolWorkspaceRoot(cfg, cmd))
+	if err != nil {
+		return nil, err
+	}
+	if toolRoot != launchDir {
+		slog.Info("tool path root differs from launch cwd", "tool_path_root", toolRoot, "launch_cwd", launchDir)
 	}
 
 	sessDir := filepath.Join(cfg.UserConfigDir, "sessions")
@@ -184,7 +193,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	}
 
 	userAgentsDir := filepath.Join(cfg.UserConfigDir, "agents")
-	projectAgentsDir := filepath.Join(workdir, cfg.ProjectConfigDir, "agents")
+	projectAgentsDir := filepath.Join(launchDir, cfg.ProjectConfigDir, "agents")
 	profs, err := agents.AllWithCustom(userAgentsDir, projectAgentsDir)
 	if err != nil {
 		slog.Warn("custom agent load error", "err", err)
@@ -253,7 +262,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	// Per-agent memory: if the active profile declares a MemoryScope, replace the global
 	// user store with a scoped store so tool auto-capture and prompt injection stay isolated.
 	if profile.MemoryScope != "" {
-		agentMemDir := memory.PerAgentMemoryDir(profile.MemoryScope, profile.Name, cfg.UserConfigDir, workdir, cfg.ProjectConfigDir)
+		agentMemDir := memory.PerAgentMemoryDir(profile.MemoryScope, profile.Name, cfg.UserConfigDir, launchDir, cfg.ProjectConfigDir)
 		if err := os.MkdirAll(agentMemDir, privateDirPerm); err != nil {
 			slog.Warn("per-agent memory dir create failed; using global store", "dir", agentMemDir, "err", err)
 		} else {
@@ -265,7 +274,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	// Per-project memory (D14): .goclaw/memory/ — only attached when the directory already
 	// exists so we don't create it on every run. Users opt in by creating the directory.
 	var projectMemStore *memory.Store
-	projectMemDir := filepath.Join(workdir, cfg.ProjectConfigDir, "memory")
+	projectMemDir := filepath.Join(launchDir, cfg.ProjectConfigDir, "memory")
 	if info, err := os.Stat(projectMemDir); err == nil && info.IsDir() {
 		projectMemStore = memory.New(projectMemDir)
 		slog.Debug("project memory store attached", "dir", projectMemDir)
@@ -289,11 +298,11 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 			hookReg.OnCommand(et, h.Command, h.Args...)
 		}
 	}
-	for _, name := range plugin.RegisterHooksFromDirs(hookReg, cfg.PluginDirs, workdir, cfg.PluginAllow, cfg.PluginDeny) {
+	for _, name := range plugin.RegisterHooksFromDirs(hookReg, cfg.PluginDirs, launchDir, cfg.PluginAllow, cfg.PluginDeny) {
 		slog.Info("plugin hooks registered", "name", name)
 	}
 	if cfg.TrustedWorkspace {
-		hookPath := filepath.Join(workdir, ".goclaw", "hooks.json")
+		hookPath := filepath.Join(launchDir, ".goclaw", "hooks.json")
 		if err := hooks.LoadHooksFile(hookReg, hookPath); err != nil {
 			slog.Warn("load project hooks", "path", hookPath, "err", err)
 		}
@@ -301,12 +310,18 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	_ = hookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionStart})
 
 	// Build project context and skills early so they can be shared with workers.
-	projectCtx := buildProjectContext(workdir)
+	projectCtx := buildProjectContext(toolRoot)
 	skillRoots := []string{
-		filepath.Join(workdir, cfg.ProjectConfigDir, "skills"),
-		filepath.Join(workdir, ".claude", "skills"),
+		filepath.Join(launchDir, cfg.ProjectConfigDir, "skills"),
+		filepath.Join(launchDir, ".claude", "skills"),
 		filepath.Join(cfg.UserConfigDir, "skills"),
 		filepath.Join(cfg.UserConfigDir, ".claude", "skills"),
+	}
+	if toolRoot != launchDir {
+		skillRoots = append([]string{
+			filepath.Join(toolRoot, cfg.ProjectConfigDir, "skills"),
+			filepath.Join(toolRoot, ".claude", "skills"),
+		}, skillRoots...)
 	}
 	skillSnippet, _ := skills.Collect(skillRoots, skillsMaxRunes)
 
@@ -323,14 +338,15 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	var todoStore *todos.Store
 	if !disableTools {
 		todoStore = todos.NewStore()
-		registerBuiltInTools(reg, workdir, cfg, todoStore)
+		registerBuiltInTools(reg, toolRoot, launchDir, cfg, todoStore)
 
 		// spawn_agent: worker registry excludes spawn_agent itself to prevent infinite nesting.
 		workerReg := tools.New()
-		registerBuiltInTools(workerReg, workdir, cfg, todos.NewStore())
+		registerBuiltInTools(workerReg, toolRoot, launchDir, cfg, todos.NewStore())
 		reg.Register(coordinator.New(cfg, client, workerReg, policy, hookReg).
 			WithProfiles(profs).
-			WithWorkdir(workdir).
+			WithWorkdir(toolRoot).
+			WithLaunchDir(launchDir).
 			WithProjectContext(projectCtx).
 			WithMemoryStore(memStore).
 			WithSkillsSnippet(skillSnippet))
@@ -345,7 +361,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 			if !hasURL && !hasCmd {
 				continue
 			}
-			dial, prepErr := buildMCPServerDial(srv, workdir, cfg.MCPServersAllowRemote)
+			dial, prepErr := buildMCPServerDial(srv, launchDir, cfg.MCPServersAllowRemote)
 			if prepErr != nil {
 				slog.Warn("mcp dial setup failed", "id", srv.ID, "err", prepErr)
 				continue
@@ -375,8 +391,11 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	if projectMemStore != nil {
 		orchOpts = append(orchOpts, orchestrator.WithProjectMemoryStore(projectMemStore))
 	}
-	if workdir != "" {
-		orchOpts = append(orchOpts, orchestrator.WithWorkdir(workdir))
+	if toolRoot != "" {
+		orchOpts = append(orchOpts, orchestrator.WithWorkdir(toolRoot))
+		if strings.TrimSpace(launchDir) != "" {
+			orchOpts = append(orchOpts, orchestrator.WithLaunchDir(launchDir))
+		}
 		if projectCtx != "" {
 			orchOpts = append(orchOpts, orchestrator.WithProjectContext(projectCtx))
 		}
@@ -400,7 +419,8 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 
 	return &ChatRuntime{
 		Cfg:              cfg,
-		Workdir:          workdir,
+		Workdir:          toolRoot,
+		LaunchDir:        launchDir,
 		Client:           client,
 		Sess:             sess,
 		Store:            store,
@@ -423,17 +443,21 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 // registerBuiltInTools registers the 10 built-in tools into r (plus optional script when allow_script is true).
 // It does NOT register spawn_agent — callers that need it do so separately.
 // This is the single source of truth for built-in tool registration.
-func registerBuiltInTools(r *tools.Registry, workdir string, cfg config.Config, todoStore *todos.Store) {
-	r.Register(tools.NewReadFile(workdir))
-	r.Register(tools.NewGlob(workdir))
-	r.Register(tools.NewGrep(workdir))
+func registerBuiltInTools(r *tools.Registry, toolRoot string, launchDir string, cfg config.Config, todoStore *todos.Store) {
+	pathScope := tools.PathScope{
+		Root:         toolRoot,
+		RelativeBase: launchDir,
+	}
+	r.Register(tools.NewReadFileScope(pathScope))
+	r.Register(tools.NewGlobScope(pathScope))
+	r.Register(tools.NewGrepScope(pathScope))
 	r.Register(tools.NewBashWithTimeout(cfg.BashTimeoutSeconds()))
 	if cfg.AllowScript {
 		r.Register(tools.NewScriptWithTimeout(cfg.BashTimeoutSeconds()))
 	}
-	r.Register(tools.NewWriteFile(workdir))
-	r.Register(tools.NewEditFile(workdir))
-	r.Register(tools.NewPatch(workdir))
+	r.Register(tools.NewWriteFileScope(pathScope))
+	r.Register(tools.NewEditFileScope(pathScope))
+	r.Register(tools.NewPatchScope(pathScope))
 	r.Register(tools.NewWebFetch())
 	webBackend, webBackendOK := config.NormalizeWebSearchBackend(cfg.WebSearchBackend)
 	if !webBackendOK && strings.TrimSpace(cfg.WebSearchBackend) != "" {

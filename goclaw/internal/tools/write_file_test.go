@@ -65,27 +65,21 @@ func TestWriteFileEmptyContent(t *testing.T) {
 	require.Len(t, got, 0)
 }
 
-func TestWriteFileRejectsEscapePath(t *testing.T) {
+func TestWriteFileAbsoluteOutsideRoot(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewWriteFile(dir)
 
-	input := mustJSON(t, map[string]any{"path": "../../outside.txt", "content": "x"})
-	res, err := tool.Execute(context.Background(), input)
-	require.NoError(t, err)
-	require.True(t, res.IsError)
-	require.Contains(t, res.Content, "workspace")
-}
-
-func TestWriteFileRejectsAbsoluteOutsidePath(t *testing.T) {
-	dir := t.TempDir()
-	tool := NewWriteFile(dir)
-
-	// Use a different temp dir as the "outside" path
 	outside := t.TempDir()
-	input := mustJSON(t, map[string]any{"path": filepath.Join(outside, "evil.txt"), "content": "x"})
+	target := filepath.Join(outside, "written.txt")
+	input := mustJSON(t, map[string]any{"path": target, "content": "ok"})
 	res, err := tool.Execute(context.Background(), input)
 	require.NoError(t, err)
-	require.True(t, res.IsError)
+	require.False(t, res.IsError, "content=%s", res.Content)
+
+	got, err := os.ReadFile(target)
+	require.NoError(t, err)
+	require.Equal(t, "ok", string(got))
+	_ = dir
 }
 
 func TestWriteFileExceedsSizeCap(t *testing.T) {

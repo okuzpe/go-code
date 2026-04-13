@@ -11,18 +11,23 @@ import (
 	"strings"
 )
 
-// ReadFileTool reads text files within a workspace root with size/line caps.
+// ReadFileTool reads text files with size/line caps using PathScope for path resolution.
 type ReadFileTool struct {
-	root string // absolute, clean workspace root
+	scope PathScope
 }
 
-// NewReadFile returns a read_file tool scoped to root (directory).
+// NewReadFile returns read_file with Root and RelativeBase both set to root (typical tests).
 func NewReadFile(root string) *ReadFileTool {
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		abs = root
+	return NewReadFileScope(PathScope{Root: root, RelativeBase: root})
+}
+
+// NewReadFileScope returns read_file with an explicit PathScope (see package comment).
+func NewReadFileScope(scope PathScope) *ReadFileTool {
+	s := NormalizePathScope(scope)
+	if strings.TrimSpace(s.RelativeBase) == "" {
+		s.RelativeBase = s.Root
 	}
-	return &ReadFileTool{root: filepath.Clean(abs)}
+	return &ReadFileTool{scope: s}
 }
 
 var _ Tool = (*ReadFileTool)(nil)
@@ -30,9 +35,9 @@ var _ Tool = (*ReadFileTool)(nil)
 func (ReadFileTool) Name() string { return "read_file" }
 
 func (ReadFileTool) Description() string {
-	return "Read a UTF-8 text file from the workspace, or list the contents of a directory. " +
+	return "Read a UTF-8 text file, or list the contents of a directory. " +
 		"Output includes line numbers (N⇥content) for reference — the numbers are not part of the file content. " +
-		"Symlinks are resolved; paths outside the workspace are rejected."
+		"Symlinks are resolved. Relative paths resolve from the process working directory at agent start; absolute paths are used as-is."
 }
 
 func (ReadFileTool) InputSchema() any {
@@ -41,7 +46,7 @@ func (ReadFileTool) InputSchema() any {
 		"properties": map[string]any{
 			"path": map[string]any{
 				"type":        "string",
-				"description": "Path relative to workspace, or absolute path inside the workspace",
+				"description": "File or directory path: relative to launch cwd, or absolute (any location the OS allows)",
 			},
 			"offset_lines": map[string]any{
 				"type":        "integer",
@@ -64,11 +69,9 @@ type readFileInput struct {
 
 // Execute implements Tool.
 //
-// Path resolution: uses resolveExistingPathUnderRoot — the target must already exist.
-// EvalSymlinks is called on the full path so the real location (after following symlinks)
-// is verified to be inside the workspace root. Use this strategy for any tool that reads
-// an existing file. For tools that write potentially non-existent files, use resolveWriteTarget
-// (defined in write_file.go), which only resolves the parent directory.
+// Path resolution: ResolveReadExistingPath — the target must already exist.
+// EvalSymlinks is applied to the resolved path. For writes to paths that may not exist yet,
+// use ResolveWriteTargetPath (write_file.go), which resolves only the parent directory.
 func (t *ReadFileTool) Execute(ctx context.Context, input string) (Result, error) {
 	_ = ctx
 	var in readFileInput
@@ -80,7 +83,7 @@ func (t *ReadFileTool) Execute(ctx context.Context, input string) (Result, error
 		return Result{Content: "path is required", IsError: true}, nil
 	}
 
-	resolved, err := resolveExistingPathUnderRoot(t.root, in.Path)
+	resolved, err := ResolveReadExistingPath(t.scope, in.Path)
 	if err != nil {
 		return Result{Content: err.Error(), IsError: true}, nil
 	}
@@ -169,7 +172,8 @@ var dirSkip = map[string]bool{
 }
 
 // listDirectory walks resolved (an absolute directory path) and returns a Result with one
-// workspace-relative slash path per line. Directories end with "/". Capped at MaxReadFileLines entries.
+// path per line relative to that directory (slash-separated). Directories end with "/".
+// Capped at MaxReadFileLines entries.
 func listDirectory(resolved, displayPath string) Result {
 	var entries []string
 	truncated := false

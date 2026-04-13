@@ -13,18 +13,23 @@ import (
 	"strings"
 )
 
-// GrepTool searches file contents under the workspace with a regular expression.
+// GrepTool searches file contents with a regular expression (RE2).
 type GrepTool struct {
-	root string
+	scope PathScope
 }
 
-// NewGrep returns a grep tool scoped to root (directory).
+// NewGrep returns grep with Root and RelativeBase both set to root.
 func NewGrep(root string) *GrepTool {
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		abs = root
+	return NewGrepScope(PathScope{Root: root, RelativeBase: root})
+}
+
+// NewGrepScope returns grep with explicit PathScope.
+func NewGrepScope(scope PathScope) *GrepTool {
+	s := NormalizePathScope(scope)
+	if strings.TrimSpace(s.RelativeBase) == "" {
+		s.RelativeBase = s.Root
 	}
-	return &GrepTool{root: filepath.Clean(abs)}
+	return &GrepTool{scope: s}
 }
 
 var _ Tool = (*GrepTool)(nil)
@@ -32,8 +37,9 @@ var _ Tool = (*GrepTool)(nil)
 func (GrepTool) Name() string { return "grep" }
 
 func (GrepTool) Description() string {
-	return "Search UTF-8 text files under the workspace for a regular expression (RE2 syntax). " +
-		"Returns path:line:content lines, capped for size."
+	return "Search UTF-8 text files for a regular expression (RE2 syntax). " +
+		"Returns path:line:content lines, capped for size. " +
+		"When path is omitted or \".\", searches the same default project tree as glob with no \"under\"."
 }
 
 func (GrepTool) InputSchema() any {
@@ -46,7 +52,7 @@ func (GrepTool) InputSchema() any {
 			},
 			"path": map[string]any{
 				"type":        "string",
-				"description": "Optional file or directory relative to workspace (default: entire workspace)",
+				"description": "Optional file or directory to search. Omit or use \".\" for the default project tree (same as glob with no \"under\"). Otherwise relative to launch cwd or absolute.",
 			},
 		},
 		"required": []string{"pattern"},
@@ -75,10 +81,13 @@ func (t *GrepTool) Execute(ctx context.Context, input string) (Result, error) {
 	}
 
 	target := strings.TrimSpace(in.Path)
-	if target == "" {
-		target = "."
+	var resolved string
+	var resErr error
+	if target == "" || target == "." {
+		resolved, resErr = ResolveGlobWalkRoot(t.scope, "")
+	} else {
+		resolved, resErr = ResolveReadExistingPath(t.scope, target)
 	}
-	resolved, resErr := resolveExistingPathUnderRoot(t.root, target)
 	if resErr != nil {
 		return Result{Content: resErr.Error(), IsError: true}, nil
 	}
@@ -102,6 +111,12 @@ func (t *GrepTool) Execute(ctx context.Context, input string) (Result, error) {
 	if err != nil {
 		return Result{Content: fmt.Sprintf("stat: %v", err), IsError: true}, nil
 	}
+	var searchRoot string
+	if info.IsDir() {
+		searchRoot = resolved
+	} else {
+		searchRoot = filepath.Dir(resolved)
+	}
 	if info.IsDir() {
 		err = filepath.WalkDir(resolved, func(path string, d fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
@@ -113,22 +128,16 @@ func (t *GrepTool) Execute(ctx context.Context, input string) (Result, error) {
 			if matchCount >= MaxGrepMatches {
 				return fs.SkipAll
 			}
-			relFile, err := filepath.Rel(t.root, path)
-			if err != nil {
-				return err
-			}
-			grepOneFile(path, filepath.ToSlash(relFile), re, emit)
+			relFile := grepRelPath(searchRoot, path)
+			grepOneFile(path, relFile, re, emit)
 			if matchCount >= MaxGrepMatches {
 				return fs.SkipAll
 			}
 			return nil
 		})
 	} else {
-		relFile, err := filepath.Rel(t.root, resolved)
-		if err != nil {
-			return Result{Content: err.Error(), IsError: true}, nil
-		}
-		grepOneFile(resolved, filepath.ToSlash(relFile), re, emit)
+		relFile := grepRelPath(searchRoot, resolved)
+		grepOneFile(resolved, relFile, re, emit)
 	}
 	if err != nil {
 		return Result{Content: fmt.Sprintf("grep: %v", err), IsError: true}, nil
@@ -141,6 +150,18 @@ func (t *GrepTool) Execute(ctx context.Context, input string) (Result, error) {
 		s += fmt.Sprintf("\n\n[truncated at %d matches]", MaxGrepMatches)
 	}
 	return Result{Content: s, IsError: false}, nil
+}
+
+// grepRelPath returns a slash path for grep output: relative to searchRoot when possible,
+// otherwise the absolute path.
+func grepRelPath(searchRoot, absPath string) string {
+	searchRoot = filepath.Clean(searchRoot)
+	absPath = filepath.Clean(absPath)
+	rel, err := filepath.Rel(searchRoot, absPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return filepath.ToSlash(absPath)
+	}
+	return filepath.ToSlash(rel)
 }
 
 func grepOneFile(absPath, relSlash string, re *regexp.Regexp, emit func(string, int, string) bool) {
