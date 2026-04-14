@@ -20,8 +20,8 @@ func (n *nestedWorkerStreamSink) OnTextDelta(text string) {
 	n.inner.OnTextDelta(text)
 }
 
-func (n *nestedWorkerStreamSink) OnThinkingStart() {
-	n.inner.OnThinkingStart()
+func (n *nestedWorkerStreamSink) OnThinkingStart(phase string) {
+	n.inner.OnThinkingStart(phase)
 }
 
 func (n *nestedWorkerStreamSink) OnToolProgress(name, partial string) {

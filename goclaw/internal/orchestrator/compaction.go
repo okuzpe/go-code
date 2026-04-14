@@ -16,7 +16,7 @@ const (
 	compactionSnippetRunes = 280 // max runes per removed message line in the compaction summary
 
 	// Default context window estimate when ModelContextTokens is unset (non-Ollama-num_ctx path; heuristic only).
-	ollamaContextTokens = 32_000
+	ollamaContextTokens = 8192
 
 	// compactedToolResult is the placeholder written over large tool-result payloads during phase-1 compaction.
 	compactedToolResult = "[compacted]"

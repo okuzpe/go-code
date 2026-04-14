@@ -61,7 +61,7 @@ staticcheck ./...
 - [ ] No `fmt.Println` in non-main packages
 - [ ] No `log.Fatal` / `log.Panic` outside of `cmd/`
 - [ ] All exported symbols have doc comments
-- [ ] No `TODO` or `FIXME` left from the current phase (previous phases are ok)
+
 
 ---
 

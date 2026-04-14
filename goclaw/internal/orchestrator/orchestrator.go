@@ -79,8 +79,8 @@ func WithSkillsSnippet(s string) Option {
 // since they run on the orchestrator's goroutines.
 type StreamSink interface {
 	// OnThinkingStart is called at the beginning of each LLM stream call (including
-	// between tool iterations). UIs can show a "Thinking…" indicator.
-	OnThinkingStart()
+	// between tool iterations). phase is a short English line from ThinkingPhaseLine (may be empty).
+	OnThinkingStart(phase string)
 	OnTextDelta(text string)
 	OnToolUse(name, rawInput string)
 	// OnToolResult is called after each tool finishes. content is the full result
@@ -264,7 +264,12 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		o.maybeCompact(ctx, sink)
 
 		if sink != nil {
-			sink.OnThinkingStart()
+			phase := ThinkingPhaseLine(iter, o.taskRole, PhaseContext{
+				HadToolRound:      hadToolRound,
+				WorkspaceWriteOK:  workspaceWriteOK,
+				LastBatchReadOnly: lastBatchReadOnly,
+			})
+			sink.OnThinkingStart(phase)
 		}
 
 		streamStart := time.Now()

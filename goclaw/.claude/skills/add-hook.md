@@ -7,6 +7,10 @@ description: Use when the user asks to add a hook, register a lifecycle handler,
 
 ### Read first
 - `internal/hooks/hooks.go` — `EventType`, `Event`, `Handler`, `Registry`
+- `internal/hooks/wire.go` — JSON payload for subprocess/HTTP hooks (`failure_kind` on failures)
+- `internal/orchestrator/tool_exec.go` — when `PostToolUse` vs `PostToolUseFailure` fires
+
+**Scope:** For behavior changes to hooks, touch the files above and keep [`docs/reference/hooks.md`](../../../docs/reference/hooks.md) in sync. Do not stop at a single skill or unrelated markdown file.
 
 ### Event types
 
@@ -40,7 +44,16 @@ func blockDangerousBash(ctx context.Context, e hooks.Event) error {
 }
 ```
 
-### Register in `main.go`
+### Post-tool failure (`PostToolUseFailure`)
+
+- `e.FailureKind == hooks.FailureExecuteError` — `Tool.Execute` returned a non-nil Go `error` (`Output` may be empty or partial depending on the tool).
+- `e.FailureKind == hooks.FailureErrorResult` — `Execute` succeeded but `Result.IsError` was true (`Output` is the tool error payload shown to the model).
+
+Subprocess/HTTP hooks receive the same classification as JSON field `failure_kind` (see `wire.go`).
+
+### Register in `PrepareChatRuntime` (`chat_wiring.go`)
+
+Default hook registration for the REPL/runtime is in [`internal/app/chat_wiring.go`](../../internal/app/chat_wiring.go) inside `PrepareChatRuntime`, not in `cmd/goclaw/main.go`. Pattern:
 
 ```go
 hookReg := hooks.New()
@@ -48,7 +61,7 @@ hookReg.On(hooks.PreToolUse, logToolUse)
 hookReg.On(hooks.PreToolUse, blockDangerousBash)
 ```
 
-### Behavior on error
+### Behavior on Error
 
 | Hook | Non-nil error |
 |------|----------------|

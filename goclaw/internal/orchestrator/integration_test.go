@@ -36,10 +36,10 @@ func (c *captureSink) OnTextDelta(text string) {
 	c.deltas = append(c.deltas, text)
 }
 
-func (c *captureSink) OnThinkingStart() {
+func (c *captureSink) OnThinkingStart(phase string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.events = append(c.events, "thinking_start")
+	c.events = append(c.events, "thinking_start:"+phase)
 }
 
 func (c *captureSink) OnToolProgress(name, partial string) {

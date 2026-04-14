@@ -47,6 +47,18 @@ var (
 	GeneralPurpose = Profile{
 		Name: "general-purpose",
 		SystemPrompt: `The embedded base system prompt already defines workflow, tool-first rules, review-and-fix, paths, parallel tools, and scope — follow it for all file/repo/shell work.
+Follow the cycle for any coding or fix request: EXPLORE (glob/grep/read_file) → APPLY (edit_file/write_file/patch) → VERIFY (bash/script: go build, go test, or project verify.sh). If verification fails, diagnose the error, fix it, and re-verify (max 2 retries). Report with evidence if still failing after retries.
+Use spawn_agent when you have 3+ independent subtasks suited to separate workers; each task description must be self-contained (absolute paths, symbols, acceptance criteria) because workers do not see this conversation.
+For single-threaded work, use tools directly; do not delegate trivial one-shot tasks.`,
+	}
+
+	// Builder is the default direct-coding profile: same full tool surface as general-purpose,
+	// with stronger bias toward short, action-first replies and immediate tool use.
+	Builder = Profile{
+		Name: "builder",
+		SystemPrompt: `Same tool surface as general-purpose: follow the base system prompt for workflow, tool-first rules, paths, and scope.
+Prefer acting over explaining — use read_file, glob, grep, bash, write_file, edit_file, and patch to deliver outcomes; keep user-visible prose minimal after tools run.
+Follow the cycle for any coding or fix request: EXPLORE (glob/grep/read_file) → APPLY (edit_file/write_file/patch) → VERIFY (bash/script: go build, go test, or project verify.sh). If verification fails, diagnose the error, fix it, and re-verify (max 2 retries). Report with evidence if still failing after retries.
 Use spawn_agent when you have 3+ independent subtasks suited to separate workers; each task description must be self-contained (absolute paths, symbols, acceptance criteria) because workers do not see this conversation.
 For single-threaded work, use tools directly; do not delegate trivial one-shot tasks.`,
 	}
@@ -130,18 +142,18 @@ For single-threaded work, use tools directly; do not delegate trivial one-shot t
 			"Do not claim you read a file unless a worker's output shows it — you have no direct read_file.\n" +
 			"Report worker results in 1-3 lines maximum. Do not re-describe what workers did — the tool cards show it.\n" +
 			"Profile selection guide:\n" +
-			"- general-purpose: any task that writes, edits, or creates files, runs commands, or implements code.\n" +
+			"- builder or general-purpose: any task that writes, edits, or creates files, runs commands, or implements code.\n" +
 			"- explore: read-only search, grep, or codebase understanding — no changes needed.\n" +
 			"- plan: produce a step-by-step implementation plan — read-only output.\n" +
 			"- verification: run tests or checks and report PASS/FAIL.\n" +
 			"- code-review: read-only review of a git diff (no file writes); use after the user runs /review or for PR-style feedback.\n" +
-			"When uncertain which profile: default to general-purpose.",
+			"When uncertain which profile: default to builder or general-purpose.",
 	}
 )
 
 // All returns all built-in profiles indexed by name.
 func All() map[string]Profile {
-	profiles := []Profile{GeneralPurpose, Explore, Plan, Verification, CodeReview, Guide, StatusLine, Coordinator}
+	profiles := []Profile{GeneralPurpose, Builder, Explore, Plan, Verification, CodeReview, Guide, StatusLine, Coordinator}
 	m := make(map[string]Profile, len(profiles))
 	for _, p := range profiles {
 		m[p.Name] = p
@@ -188,6 +200,8 @@ func (p Profile) Summary() string {
 	switch p.Name {
 	case "general-purpose":
 		return "Full tools; general coding and edits."
+	case "builder":
+		return "Full tools; action-first coding and edits (default session profile)."
 	case "explore":
 		return "Read-only explorer: read, search, web — no writes."
 	case "plan":

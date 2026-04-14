@@ -28,7 +28,7 @@ type Config struct {
 	OllamaModel string // default: DefaultOllamaModel (qwen2.5-coder:14b)
 	// OllamaNumCtx sets the context window size sent to Ollama.
 	// 0 means use Ollama's model default (often 2048 — too small for tool schemas).
-	// Default: 8192. Set via settings.json "ollama_num_ctx".
+	// Default: 16384. Set via settings.json "ollama_num_ctx". Lower to 8192 on low-VRAM hardware.
 	OllamaNumCtx int
 
 	// OllamaHTTPTimeoutSec is the net/http Client timeout for each Ollama request, including
@@ -76,7 +76,7 @@ type Config struct {
 	// CLI --workspace and env GOCLAW_TOOL_WORKSPACE override this when set (see app package).
 	ToolWorkspaceRoot string
 
-	// AgentProfile is a key from agents.All() (e.g. coordinator, general-purpose, explore).
+	// AgentProfile is a key from agents.All() (e.g. coordinator, builder, general-purpose, explore).
 	AgentProfile string
 
 	// PermissionModes maps tool name → mode string from JSON ("ask"|"allow"|"deny").
@@ -93,7 +93,7 @@ type Config struct {
 	MaxResponseTokens int
 
 	// ModelContextTokens overrides the provider-default context window estimate used for compaction.
-	// 0 = use built-in default: OllamaNumCtx when > 0, else 8192.
+	// 0 = use built-in default: OllamaNumCtx when > 0, else 16384.
 	// Set in settings.json as "model_context_tokens" when using a non-standard model or remote endpoint.
 	ModelContextTokens int
 
@@ -121,7 +121,7 @@ type Config struct {
 	YoloThreshold int
 
 	// LLMCompaction uses the active LLM to summarize compacted context instead of
-	// the heuristic placeholder. Default false (opt-in via llm_compaction: true).
+	// the heuristic placeholder. config.Default() enables it; set llm_compaction: false to opt out.
 	LLMCompaction bool
 
 	// AutoContinueActionRequests when true: after read-only tools, if the user message
@@ -216,8 +216,9 @@ type ExternalHookEntry struct {
 }
 
 // Default returns a Config that points to a local Ollama instance.
-// Multi-model routing is enabled by default: different Ollama models are selected per task role
-// so that fast/explore turns use a lighter model while coding and fix turns use the strongest one.
+// Multi-model routing is enabled by default: rules router + task_models map so fast/explore/default
+// turns use qwen2.5-coder:7b while code, fix, reasoning, and creative turns use the main coder model
+// (DefaultOllamaModel / OLLAMA_MODEL, default qwen2.5-coder:14b).
 // Any settings.json file can override individual task_models entries without replacing the whole map.
 func Default() Config {
 	home, _ := os.UserHomeDir()
@@ -225,8 +226,8 @@ func Default() Config {
 		Provider:                     "ollama",
 		OllamaHost:                   envOr("OLLAMA_HOST", "http://localhost:11434"),
 		OllamaModel:                  envOr("OLLAMA_MODEL", DefaultOllamaModel),
-		OllamaNumCtx:                 32768,
-		CompactionModel:              envOr("GOCLAW_COMPACTION_MODEL", ""),
+		OllamaNumCtx:                 16384,
+		CompactionModel:              envOr("GOCLAW_COMPACTION_MODEL", "qwen2.5-coder:7b"),
 		TaskModelRouter:              NormalizeTaskModelRouter(envOr("GOCLAW_TASK_MODEL_ROUTER", "rules")),
 		TaskModelRouterModel:         envOr("GOCLAW_TASK_MODEL_ROUTER_MODEL", ""),
 		TaskModels:                   defaultTaskModels(),
@@ -234,7 +235,8 @@ func Default() Config {
 		AutoCompactThreshold:         0.85,
 		UserConfigDir:                filepath.Join(home, ".goclaw"),
 		ProjectConfigDir:             ".goclaw",
-		AgentProfile:                 "general-purpose",
+		AgentProfile:                 "builder",
+		ModelContextTokens:           16384,
 		PermissionModes:              nil,
 		YoloThreshold:                60,
 		WebSearchBackend:             "ddg",
@@ -242,6 +244,7 @@ func Default() Config {
 		SerpAPIKey:                   os.Getenv("SERPAPI_API_KEY"),
 		WebSearchFallbackDDG:         true,
 		AllowScript:                  true,
+		LLMCompaction:                true,
 		AutoContinueActionRequests:   true,
 		TruthFooterNoWorkspaceWrites: true,
 		TUIMouseScroll:               envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
@@ -280,21 +283,23 @@ func (c Config) OllamaHTTPClientTimeout() time.Duration {
 // is active. Settings files merge into this map (later entries override individual keys).
 //
 // Role → model rationale:
-//   - fix, code: same as DefaultOllamaModel / OLLAMA_MODEL unless overridden — strongest Qwen 2.5 Coder tag for edits
-//   - reasoning, creative: qwen3.5 — better instruction following and analysis than coder models
-//   - explore, fast, default: qwen2.5-coder:7b — lighter reads and short prompts (override in task_models)
+//   - fix, code: same as DefaultOllamaModel / OLLAMA_MODEL unless overridden (default qwen2.5-coder:14b)
+//   - reasoning, creative: qwen2.5-coder:14b — stronger analysis and generation on those turns
+//   - explore, fast, default: qwen2.5-coder:7b — lighter latency for reads and short prompts
 //
 // Override any role in ~/.goclaw/settings.json under "task_models" without replacing the whole map.
 func defaultTaskModels() map[string]string {
 	main := envOr("OLLAMA_MODEL", DefaultOllamaModel)
+	const coderSmall = "qwen2.5-coder:7b"
+	const coderLarge = "qwen2.5-coder:14b"
 	return map[string]string{
 		"fix":       main,
 		"code":      main,
-		"reasoning": "qwen3.5:latest",
-		"creative":  "qwen3.5:latest",
-		"explore":   "qwen2.5-coder:7b",
-		"fast":      "qwen2.5-coder:7b",
-		"default":   "qwen2.5-coder:7b",
+		"reasoning": coderLarge,
+		"creative":  coderLarge,
+		"explore":   coderSmall,
+		"fast":      coderSmall,
+		"default":   coderSmall,
 	}
 }
 
@@ -357,7 +362,7 @@ func (c Config) EffectiveContextTokens() int {
 	if c.OllamaNumCtx > 0 {
 		return c.OllamaNumCtx
 	}
-	return 8192
+	return 16384
 }
 
 // BashTimeoutSeconds returns the bash tool timeout in seconds (clamped to 1..3600).

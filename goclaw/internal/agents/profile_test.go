@@ -9,12 +9,12 @@ import (
 
 func TestSortedProfileNames_coversAll(t *testing.T) {
 	names := SortedProfileNames()
-	require.GreaterOrEqual(t, len(names), 8)
+	require.GreaterOrEqual(t, len(names), 9)
 	seen := make(map[string]struct{}, len(names))
 	for _, n := range names {
 		seen[n] = struct{}{}
 	}
-	for _, want := range []string{"general-purpose", "explore", "coordinator", "code-review"} {
+	for _, want := range []string{"builder", "general-purpose", "explore", "coordinator", "code-review"} {
 		_, ok := seen[want]
 		require.True(t, ok, "missing profile %q", want)
 	}
@@ -29,6 +29,7 @@ func TestProfileListHint(t *testing.T) {
 
 func TestProfile_AllowsWorkspaceFileWrites(t *testing.T) {
 	require.True(t, GeneralPurpose.AllowsWorkspaceFileWrites())
+	require.True(t, Builder.AllowsWorkspaceFileWrites())
 	require.False(t, Explore.AllowsWorkspaceFileWrites())
 	require.False(t, Plan.AllowsWorkspaceFileWrites())
 	require.False(t, CodeReview.AllowsWorkspaceFileWrites())
@@ -37,6 +38,7 @@ func TestProfile_AllowsWorkspaceFileWrites(t *testing.T) {
 
 func TestProfile_AllowsSpawnAgentDelegation(t *testing.T) {
 	require.True(t, GeneralPurpose.AllowsSpawnAgentDelegation())
+	require.True(t, Builder.AllowsSpawnAgentDelegation())
 	require.True(t, Coordinator.AllowsSpawnAgentDelegation())
 	require.False(t, Explore.AllowsSpawnAgentDelegation())
 	require.False(t, CodeReview.AllowsSpawnAgentDelegation())

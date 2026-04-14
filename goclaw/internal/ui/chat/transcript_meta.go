@@ -27,6 +27,8 @@ type lineMeta struct {
 	kind lineMetaKind
 	// startedAt is wall time when this row began (lineKindThinking, lineKindToolRunning).
 	startedAt time.Time
+	// thinkingLabel is the orchestrator thinking-phase line (lineKindThinking only); empty defaults to "Thinking".
+	thinkingLabel string
 	// tool card (lineKindToolCard) + tool running (lineKindToolRunning)
 	toolName    string
 	toolSummary string // full summary from OnToolUse; truncated on each render
@@ -63,8 +65,8 @@ func (m *Model) appendToolCardMeta(toolName, summary, outcome string, isError bo
 	})
 }
 
-func (m *Model) appendThinkingMeta(started time.Time) {
-	m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindThinking, startedAt: started})
+func (m *Model) appendThinkingMeta(started time.Time, thinkingLabel string) {
+	m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindThinking, startedAt: started, thinkingLabel: thinkingLabel})
 }
 
 func (m *Model) appendToolRunningMeta(toolName, summary string, started time.Time) {
@@ -125,7 +127,7 @@ func (m *Model) reflowTranscriptForWidth() {
 		case lineKindThinking:
 			meta := m.lineMeta[i]
 			elapsed := int(time.Since(meta.startedAt).Seconds())
-			m.lines[i] = th.RenderThinkingRow(elapsed, m.width)
+			m.lines[i] = th.RenderThinkingRow(meta.thinkingLabel, elapsed, m.width)
 		case lineKindToolRunning:
 			meta := m.lineMeta[i]
 			elapsed := int(time.Since(meta.startedAt).Seconds())

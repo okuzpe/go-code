@@ -11,6 +11,8 @@ import (
 )
 
 func main() {
+	// Add your initialization code here
+
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: loglevel.FromEnv(),
 	})))

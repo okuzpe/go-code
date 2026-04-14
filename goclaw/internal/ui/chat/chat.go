@@ -79,6 +79,9 @@ type Model struct {
 	// thinkingLineIdx is the transcript line showing LLM prefill timing (-1 when none).
 	thinkingLineIdx int
 
+	// lastThinkingPhase is the latest orchestrator thinking-phase label for the streaming footer.
+	lastThinkingPhase string
+
 	// toolWaitStartedAt is when the first pending tool in the queue began (for elapsed seconds in the footer).
 	toolWaitStartedAt time.Time
 
@@ -682,9 +685,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streaming = true
 		m.assistantPlaceholder = true
 		m.statusLine = ""
+		m.lastThinkingPhase = ""
 		m.curAssistant.Reset()
 		m.curAssistantLineIdx = -1
-		m.appendThinkingRow()
+		m.appendThinkingRow("")
 		th := m.theme
 		if th == nil {
 			th = DefaultTheme()
@@ -723,6 +727,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
 		m.statusLine = ""
+		m.lastThinkingPhase = ""
 		m.clearThinkingLine()
 		rawAssistant := m.curAssistant.String()
 		rawLen := utf8.RuneCountInString(rawAssistant)
@@ -827,11 +832,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tickToolWait()
 		}
 		return m, nil
+	case thinkingPhaseMsg:
+		phase := strings.TrimSpace(msg.phase)
+		m.lastThinkingPhase = phase
+		if m.thinkingLineIdx >= 0 && m.thinkingLineIdx < len(m.lineMeta) && m.lineMeta[m.thinkingLineIdx].kind == lineKindThinking {
+			m.lineMeta[m.thinkingLineIdx].thinkingLabel = phase
+			m.refreshThinkingTranscriptRow()
+		}
+		return m, nil
 	case thinkingRestartMsg:
 		// Re-show thinking row between tool iterations (mid-turn LLM call).
 		if m.streaming {
 			m.assistantPlaceholder = true
-			m.appendThinkingRow()
+			m.appendThinkingRow(strings.TrimSpace(msg.phase))
 		}
 		return m, nil
 	case toolProgressMsg:
@@ -1192,6 +1205,7 @@ func (m *Model) drainMessageQueue() tea.Cmd {
 func (m *Model) runModelSubmit(userText string) {
 	m.streaming = true
 	m.statusLine = ""
+	m.lastThinkingPhase = ""
 	m.curAssistant.Reset()
 	m.curAssistantLineIdx = -1
 	m.toolRunLineIdx = nil
@@ -1263,7 +1277,11 @@ func (m *Model) footerPrimaryStatus() string {
 		base := strings.TrimSpace(status)
 		if base == "" {
 			if m.assistantPlaceholder {
-				base = th.StatusBarLabel.Render("Thinking") + th.FooterDim.Render("…")
+				lab := strings.TrimSpace(m.lastThinkingPhase)
+				if lab == "" {
+					lab = "Thinking"
+				}
+				base = th.StatusBarLabel.Render(lab) + th.FooterDim.Render("…")
 			} else {
 				base = th.StatusBarLabel.Render("Responding") + th.FooterDim.Render("…")
 			}
@@ -2061,15 +2079,15 @@ func (m *Model) findToolRunLineByName(name string) int {
 	return -1
 }
 
-func (m *Model) appendThinkingRow() {
+func (m *Model) appendThinkingRow(phaseLabel string) {
 	th := m.theme
 	if th == nil {
 		th = DefaultTheme()
 	}
 	now := time.Now()
 	idx := len(m.lines)
-	m.lines = append(m.lines, th.RenderThinkingRow(0, m.widthOrDefault()))
-	m.appendThinkingMeta(now)
+	m.lines = append(m.lines, th.RenderThinkingRow(phaseLabel, 0, m.widthOrDefault()))
+	m.appendThinkingMeta(now, phaseLabel)
 	m.thinkingLineIdx = idx
 	m.setLinesContent(false)
 }
@@ -2131,7 +2149,7 @@ func (m *Model) refreshThinkingTranscriptRow() {
 		th = DefaultTheme()
 	}
 	elapsed := int(time.Since(m.lineMeta[idx].startedAt).Seconds())
-	m.lines[idx] = th.RenderThinkingRow(elapsed, m.widthOrDefault())
+	m.lines[idx] = th.RenderThinkingRow(m.lineMeta[idx].thinkingLabel, elapsed, m.widthOrDefault())
 	m.setLinesContent(false)
 }
 
@@ -2253,6 +2271,9 @@ func (m *Model) toolQueueStatusLine() string {
 	}
 	job := m.toolWaitQueue[0]
 	base := orchestrator.ToolWorkingPhrase(job.name)
+	if cat := strings.TrimSpace(orchestrator.ToolPhaseHeadline(job.name)); cat != "" {
+		base = cat + " · " + base
+	}
 	if summary := strings.TrimSpace(job.summary); summary != "" {
 		summary = text.TruncateRunes(summary, toolQueueSummaryMaxRunes)
 		base = base + " · " + summary
@@ -2454,9 +2475,16 @@ type toolResultMsg struct {
 	isError bool
 }
 
+// thinkingPhaseMsg updates the streaming footer and the in-transcript thinking row label.
+type thinkingPhaseMsg struct {
+	phase string
+}
+
 // thinkingRestartMsg re-shows the "Thinking…" row between tool iterations
 // (the first iteration is handled by assistantPlaceholderMsg).
-type thinkingRestartMsg struct{}
+type thinkingRestartMsg struct {
+	phase string
+}
 
 // toolProgressMsg carries an incremental output chunk from a running tool (e.g. a bash stdout line).
 type toolProgressMsg struct {

@@ -17,16 +17,28 @@ const (
 	SessionEnd         EventType = "session_end"
 )
 
+// FailureKind values classify post_tool_use_failure (see Event.FailureKind).
+const (
+	// FailureExecuteError means Tool.Execute returned a non-nil error.
+	FailureExecuteError = "execute_error"
+	// FailureErrorResult means the tool ran but reported Result.IsError.
+	FailureErrorResult = "error_result"
+)
+
 // Event carries context about what triggered the hook.
 type Event struct {
-	Type     EventType
-	ToolName string
-	Input    string // JSON input passed to the tool
-	Output   string // JSON output (PostToolUse only)
+	Type        EventType
+	ToolName    string
+	Input       string // JSON input passed to the tool
+	// Output is the tool result body on post_tool_use / post_tool_use_failure.
+	// When FailureKind is FailureExecuteError, it is whatever the tool returned
+	// alongside the non-nil Execute error and may be empty or partial.
+	Output      string
+	FailureKind string // post_tool_use_failure only: FailureExecuteError or FailureErrorResult
 }
 
 // Handler processes a hook event. Returning an error blocks execution
-// (PreToolUse only); PostToolUse errors are logged but not fatal.
+// (PreToolUse only); PostToolUse / PostToolUseFailure errors are logged but not fatal.
 type Handler func(ctx context.Context, e Event) error
 
 // Registry holds per-event handler lists.
@@ -51,8 +63,11 @@ func (r *Registry) On(event EventType, h Handler) {
 }
 
 // Fire runs all handlers for the given event sequentially.
-// Returns the first blocking error (PreToolUse only).
-// PostToolUse / PostToolUseFailure handler errors are logged and ignored.
+// For PreToolUse, it returns the first handler error and does not run external hooks afterward.
+// For other event types, handler errors are logged with slog.WarnContext and execution continues;
+// the returned error is not used for those handler failures. A non-nil error on post-tool or
+// session events usually means setup failed before external hooks (for example JSON marshal
+// in fireExternal); external hook failures are also logged for non-PreToolUse events.
 func (r *Registry) Fire(ctx context.Context, e Event) error {
 	for _, h := range r.handlers[e.Type] {
 		err := h(ctx, e)

@@ -26,12 +26,16 @@ type terminalSink struct {
 
 var _ orchestrator.StreamSink = (*terminalSink)(nil)
 
-func (s *terminalSink) OnThinkingStart() {
+func (s *terminalSink) OnThinkingStart(phase string) {
 	if s.needsNL {
 		fmt.Println()
 		s.needsNL = false
 	}
-	fmt.Fprintf(os.Stderr, "⟳ Thinking…\n")
+	line := strings.TrimSpace(phase)
+	if line == "" {
+		line = "Thinking"
+	}
+	fmt.Fprintf(os.Stderr, "* %s…\n", line)
 }
 
 func (s *terminalSink) OnTextDelta(text string) {
@@ -45,6 +49,10 @@ func (s *terminalSink) OnToolUse(name, rawInput string) {
 	if s.needsNL {
 		fmt.Println()
 		s.needsNL = false
+	}
+	head := strings.TrimSpace(orchestrator.ToolPhaseHeadline(name))
+	if head != "" {
+		fmt.Fprintf(os.Stderr, "* %s\n", head)
 	}
 	label := capitalizeToolName(name)
 	desc := toolDescription(name, rawInput)

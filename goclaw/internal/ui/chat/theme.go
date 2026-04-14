@@ -218,12 +218,17 @@ func (t *Theme) RenderToolCard(toolLabel, summary, outcome string, isError bool,
 }
 
 // RenderThinkingRow is a single transcript line for the LLM phase before the first text delta or tool call.
-func (t *Theme) RenderThinkingRow(elapsedSec int, width int) string {
+// baseLabel is a short English phrase from orchestrator.ThinkingPhaseLine; empty uses "Thinking".
+func (t *Theme) RenderThinkingRow(baseLabel string, elapsedSec int, width int) string {
 	_ = width
-	label := "Thinking…"
-	if elapsedSec >= 1 {
-		label = fmt.Sprintf("Thinking (%ds)…", elapsedSec)
+	label := strings.TrimSpace(baseLabel)
+	if label == "" {
+		label = "Thinking"
 	}
+	if elapsedSec >= 1 {
+		label = fmt.Sprintf("%s (%ds)", label, elapsedSec)
+	}
+	label += "…"
 	return "  " + t.FooterDim.Render(label)
 }
 

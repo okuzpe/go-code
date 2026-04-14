@@ -19,7 +19,7 @@ const gitignoreLocalSettingsBlock = "\n\n# goclaw — machine-local settings (do
 
 // handleSlashProjectInit writes a starter .goclaw/settings.json when missing (coding-oriented defaults).
 // Merged config and permissions load at process start; tell the user to restart for tool_permissions,
-// and /profile general-purpose for an immediate profile switch in this session.
+// and /profile builder for an immediate profile switch in this session if needed.
 func handleSlashProjectInit(env SlashEnv) (string, error) {
 	wd := strings.TrimSpace(env.Workdir)
 	if wd == "" {
@@ -35,9 +35,22 @@ func handleSlashProjectInit(env SlashEnv) (string, error) {
 	}
 	// tool_permissions: allow pure reads; ask for shell, network, and writes (safer default for local agents).
 	patch := map[string]any{
-		"agent_profile": "general-purpose",
-		"provider":      "ollama",
-		"ollama_model":  config.DefaultOllamaModel,
+		"agent_profile":          "builder",
+		"provider":               "ollama",
+		"ollama_model":           config.DefaultOllamaModel,
+		"ollama_num_ctx":         8192,
+		"model_context_tokens":   8192,
+		"llm_compaction":         true,
+		"compaction_model":       "qwen2.5-coder:7b",
+		"task_model_router":      "rules",
+		"task_models": map[string]any{
+			"default":   "qwen2.5-coder:7b",
+			"code":      "qwen2.5-coder:14b",
+			"reasoning": "qwen2.5-coder:14b",
+			"explore":   "qwen2.5-coder:7b",
+			"fast":      "qwen2.5-coder:7b",
+			"creative":  "qwen2.5-coder:14b",
+		},
 		"tool_permissions": map[string]any{
 			"read_file":  "allow",
 			"glob":       "allow",
@@ -75,7 +88,7 @@ func handleSlashProjectInit(env SlashEnv) (string, error) {
 			}
 		}
 	}
-	msg := fmt.Sprintf("created %s\nfor profile general-purpose in this session, run: /profile general-purpose\ntool permissions from the new file apply after you restart goclaw.", path)
+	msg := fmt.Sprintf("created %s\nfor profile builder in this session, run: /profile builder\ntool permissions from the new file apply after you restart goclaw.", path)
 	if len(notes) > 0 {
 		msg += "\n" + strings.Join(notes, "\n")
 	}

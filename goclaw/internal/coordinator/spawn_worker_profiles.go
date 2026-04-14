@@ -51,7 +51,7 @@ func spawnWorkerProfileNames(profs map[string]agents.Profile) []string {
 func joinWorkerProfileHint(profs map[string]agents.Profile) string {
 	names := spawnWorkerProfileNames(profs)
 	if len(names) == 0 {
-		return "general-purpose, explore, plan, verification, code-review"
+		return "builder, general-purpose, explore, plan, verification, code-review"
 	}
 	return strings.Join(names, ", ")
 }

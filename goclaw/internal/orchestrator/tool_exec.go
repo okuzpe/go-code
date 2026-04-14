@@ -73,18 +73,20 @@ func (o *Orchestrator) finishToolExecution(ctx context.Context, toolName, input,
 	ev := hooks.Event{ToolName: toolName, Input: input, Output: content}
 	if execErr != nil {
 		ev.Type = hooks.PostToolUseFailure
+		ev.FailureKind = hooks.FailureExecuteError
 		if err := o.hooks.Fire(ctx, ev); err != nil {
-			slog.Warn("post_tool_use_failure hook error", "tool", toolName, "err", err)
+			slog.WarnContext(ctx, "hook fire failed", "event", string(ev.Type), "tool", toolName, "err", err)
 		}
 		return rejectTool(execErr.Error())
 	}
 	if resultIsError {
 		ev.Type = hooks.PostToolUseFailure
+		ev.FailureKind = hooks.FailureErrorResult
 	} else {
 		ev.Type = hooks.PostToolUse
 	}
 	if err := o.hooks.Fire(ctx, ev); err != nil {
-		slog.Warn("post_tool_use hook error", "tool", toolName, "err", err)
+		slog.WarnContext(ctx, "hook fire failed", "event", string(ev.Type), "tool", toolName, "err", err)
 	}
 	return toolOutcome{Content: content, IsError: resultIsError}
 }

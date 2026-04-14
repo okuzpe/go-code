@@ -68,19 +68,20 @@ func (s *batchedProgramSink) flush() {
 	}
 }
 
-func (s *batchedProgramSink) OnThinkingStart() {
+func (s *batchedProgramSink) OnThinkingStart(phase string) {
 	s.mu.Lock()
 	first := !s.thinkingStarted
 	s.thinkingStarted = true
 	s.mu.Unlock()
+	s.p.Send(thinkingPhaseMsg{phase: phase})
 	if first {
 		// First iteration: assistantPlaceholderMsg (sent before submit()) already set up
-		// the thinking row and streaming state — nothing more to do here.
+		// the thinking row; thinkingPhaseMsg updates its label when the orchestrator resolves the phase.
 		return
 	}
 	// Subsequent iterations (between tool calls): re-show the thinking row.
 	s.flush()
-	s.p.Send(thinkingRestartMsg{})
+	s.p.Send(thinkingRestartMsg{phase: phase})
 }
 
 func (s *batchedProgramSink) OnToolProgress(name, partial string) {

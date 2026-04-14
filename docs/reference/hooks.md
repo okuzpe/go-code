@@ -14,7 +14,7 @@ Hooks are event callbacks that fire at fixed points in the agent loop. They allo
 | **Settings: `external_hooks`** | `settings.json` / merge chain | Each entry: `event`, plus `command` (+ optional `args`) **or** `url` for HTTP POST. Wired in [`goclaw/internal/app/run.go`](../../goclaw/internal/app/run.go) (`RunChat`). |
 | **Project file** | `.goclaw/hooks.json` | Loaded only when **`trusted_workspace`** is `true` in merged config (`internal/hooks/load.go`). |
 
-Subprocess hooks receive a JSON payload on **stdin** (see `internal/hooks/wire.go`). **Exit code 2** on `PreToolUse` blocks the tool and surfaces an error to the model. Other non-zero exits are logged; for `PreToolUse`, exit codes other than 2 still fail the hook and block.
+Subprocess hooks receive a JSON payload on **stdin** (see [`goclaw/internal/hooks/wire.go`](../../goclaw/internal/hooks/wire.go)). Fields: `hook_event_name`, `tool_name`, `tool_input`, `tool_output` (on post-tool events), and optional `failure_kind` on `post_tool_use_failure` (`execute_error` when `Tool.Execute` returned an error, `error_result` when the tool finished with `Result.IsError`). **Exit code 2** on `PreToolUse` blocks the tool and surfaces an error to the model. Other non-zero exits are logged; for `PreToolUse`, exit codes other than 2 still fail the hook and block.
 
 HTTP hooks use **POST** with `Content-Type: application/json`. URLs must pass **`tools.ValidateWebhookURL`** — same SSRF posture as `web_fetch` (loopback and private ranges blocked).
 
@@ -29,12 +29,14 @@ Implementation: [`goclaw/internal/hooks/hooks.go`](../../goclaw/internal/hooks/h
 | Event | When it fires | Blocking? |
 |-------|--------------|-----------|
 | `PreToolUse` | Before a tool executes | Yes — Go handler error, subprocess exit **2**, or HTTP 4xx/5xx / network error cancels the tool call |
-| `PostToolUse` | After a tool succeeds | No — errors logged with `slog.WarnContext` |
-| `PostToolUseFailure` | After a tool returns an error | No |
+| `PostToolUse` | After a tool succeeds | No — handler errors logged with `slog.WarnContext` |
+| `PostToolUseFailure` | After `Execute` errors or after a successful `Execute` with `Result.IsError` | No — same logging; payload includes `failure_kind` (`execute_error` vs `error_result`) for subprocess/HTTP |
 | `SessionStart` | REPL startup, before the first prompt | No |
 | `SessionEnd` | REPL shutdown, before saving the session | No |
 
 ### Go handler registration
+
+Built-in `reg.On(...)` wiring for the chat runtime lives in [`goclaw/internal/app/chat_wiring.go`](../../goclaw/internal/app/chat_wiring.go) (`PrepareChatRuntime`), not in `cmd/goclaw/main.go`.
 
 ```go
 reg := hooks.New()
@@ -44,8 +46,13 @@ reg.On(hooks.PreToolUse, func(ctx context.Context, e hooks.Event) error {
     return nil // return an error to block execution
 })
 reg.On(hooks.PostToolUse, func(ctx context.Context, e hooks.Event) error {
-    // e.Output — JSON output from the tool (PostToolUse only)
+    // e.Output — tool result body (JSON or text per tool)
     return nil // error is logged but not fatal
+})
+reg.On(hooks.PostToolUseFailure, func(ctx context.Context, e hooks.Event) error {
+    // e.Output — same as post success path; may be empty or partial when failure_kind == execute_error
+    // e.FailureKind — hooks.FailureExecuteError or hooks.FailureErrorResult
+    return nil
 })
 ```
 
@@ -53,10 +60,11 @@ The `Event` struct:
 
 ```go
 type Event struct {
-    Type     EventType
-    ToolName string
-    Input    string // JSON input passed to the tool
-    Output   string // JSON output (PostToolUse only)
+    Type        EventType
+    ToolName    string
+    Input       string // JSON input passed to the tool
+    Output      string // Tool result on post_tool_use / post_tool_use_failure (may be partial if Execute errored)
+    FailureKind string // post_tool_use_failure only: FailureExecuteError or FailureErrorResult
 }
 ```
 
@@ -79,6 +87,8 @@ JSON array of objects with the same shape as `external_hooks` entries. **Disable
 ### Blocking vs. non-blocking
 
 `PreToolUse` is the only event where failures block tool execution. All other events are best-effort: handler errors are logged and do not interrupt the REPL.
+
+For post-tool events, `Registry.Fire` returns a non-nil error only in exceptional cases (for example JSON marshal failure before external hooks); Go handler errors on `PostToolUse` / `PostToolUseFailure` are logged inside `Fire` and do not appear as the returned `error`.
 
 ### REPL integration
 
@@ -113,3 +123,4 @@ Subprocess hooks run with the **user’s OS permissions** — there is no sandbo
 | 2026-04-08 | Added goclaw implementation status (`internal/hooks`); roadmap row aligned. |
 | 2026-04-08 | Translated to English; restructured around implemented vs. roadmap; reference-product analysis condensed. |
 | 2026-04-07 | §0 / §9: `external_hooks`, `.goclaw/hooks.json` + `trusted_workspace`, subprocess exit 2, HTTP SSRF, REPL wiring in `internal/app/run.go`. |
+| 2026-04-14 | `Event.FailureKind`, wire field `failure_kind`, `Registry.Fire` return semantics for post-tool events, `Output` semantics on execute errors. |
