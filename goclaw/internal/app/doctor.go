@@ -13,6 +13,7 @@ import (
 
 	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/config"
+	"github.com/okuzpe/goclaw/internal/ide"
 	"github.com/okuzpe/goclaw/internal/mcp"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/plugin"
@@ -89,6 +90,9 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 	lines = append(lines, fmt.Sprintf("user config dir: %s", cfg.UserConfigDir))
 	lines = append(lines, fmt.Sprintf("sessions dir:    %s", filepath.Join(cfg.UserConfigDir, "sessions")))
 	lines = append(lines, fmt.Sprintf("memory dir:      %s", filepath.Join(cfg.UserConfigDir, "memory")))
+
+	lines = append(lines, "")
+	lines = append(lines, ideBridgeDoctorLines(rt)...)
 
 	lines = append(lines, "")
 	lines = append(lines, "checks:")
@@ -537,6 +541,56 @@ func probeOllama(ctx context.Context, host string) bool {
 	}
 	_ = resp.Body.Close()
 	return resp.StatusCode >= 200 && resp.StatusCode < 500
+}
+
+// ideBridgeDoctorLines summarizes IDE lockfile discovery and GOCLAW_IDE_NOTIFY_URL for doctor.
+func ideBridgeDoctorLines(rt *ChatRuntime) []string {
+	if rt == nil {
+		return nil
+	}
+	cfg := rt.Cfg
+	out := []string{"ide bridge:"}
+	out = append(out, fmt.Sprintf("  ide_bridge_mcp: %v", cfg.IDEBridgeMCP))
+
+	notifyRaw := strings.TrimSpace(os.Getenv("GOCLAW_IDE_NOTIFY_URL"))
+	if notifyRaw == "" {
+		out = append(out, "  GOCLAW_IDE_NOTIFY_URL: (unset)")
+	} else {
+		u, err := url.Parse(notifyRaw)
+		loopbackOK := err == nil && (u.Scheme == "http" || u.Scheme == "https")
+		if loopbackOK {
+			host := strings.ToLower(u.Hostname())
+			loopbackOK = host == "127.0.0.1" || host == "localhost" || host == "::1"
+		}
+		if loopbackOK {
+			out = append(out, checkLine("GOCLAW_IDE_NOTIFY_URL loopback", true))
+			out = append(out, "    "+truncate(notifyRaw, doctorMCPDisplayMaxRunes))
+		} else {
+			out = append(out, checkLine("GOCLAW_IDE_NOTIFY_URL loopback", false))
+			out = append(out, "    (invalid URL, scheme, or non-loopback host — see startup logs)")
+		}
+	}
+
+	ideDir := filepath.Join(cfg.UserConfigDir, "ide")
+	if rt.DisableTools {
+		out = append(out, "  ide lockfile MCP: skipped (tools disabled)")
+		return out
+	}
+	if !cfg.IDEBridgeMCP {
+		out = append(out, "  ide lockfile MCP: off (set \"ide_bridge_mcp\": true — see docs/goclaw/ide-editor-setup.md)")
+		return out
+	}
+	endpoint, _, err := ide.DiscoverMCPEndpoint(ideDir)
+	if err != nil {
+		out = append(out, checkLine("ide lockfile MCP discovery", false))
+		out = append(out, "    dir: "+ideDir)
+		out = append(out, "    err: "+err.Error())
+		out = append(out, "    fix: docs/goclaw/ide-editor-setup.md")
+		return out
+	}
+	out = append(out, checkLine("ide lockfile MCP discovery", true))
+	out = append(out, "    endpoint: "+truncate(endpoint, doctorMCPDisplayMaxRunes))
+	return out
 }
 
 // Minimal compile-time guard: DoctorReportFromRuntime expects fields set by PrepareChatRuntime.

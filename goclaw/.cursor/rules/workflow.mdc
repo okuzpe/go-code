@@ -42,12 +42,12 @@ For Ollama, point `OLLAMA_HOST` at a local Ollama instance or an HTTP mock.
 | Goroutines inside BubbleTea `Update()` | Use `tea.Cmd` for all async; raw goroutines break the Elm loop |
 | Raw `http.Client.Do` in LLM clients | Extend `internal/llm/retry.go` instead |
 | Mixing session (RAM/history) with memory (disk facts) | Separate systems |
-| Remote MCP (SSE/HTTP) or OAuth | Needs its own security+transport design pass first |
+| MCP **OAuth**, **WebSocket**, or **legacy SSE-only** servers without a design pass | Streamable **HTTP** MCP is already shipped (`internal/mcp/http.go`); new auth/transports need security review first |
 
 ## Current implementation status (2026-04)
-All phases are **done**. The project has: 10 tools, BubbleTea TUI, readline fallback, Cobra CLI, MCP stdio client (multi-server), external hooks + project hooks file, IDE notifier, planfile + `/apply-plan`, all slash commands, permissions, memory, compaction, retry. See monorepo `docs/goclaw/roadmap.md` for the checklist.
+All phases are **done**. The project has: ten core built-in tools + **`script`** (default on), coordinator tools, BubbleTea TUI, readline fallback, Cobra CLI, MCP **stdio + streamable HTTP** (multi-server), external hooks + project hooks file, IDE notifier + lockfile MCP discovery, planfile + `/apply-plan`, all slash commands, permissions, memory, compaction, retry. See monorepo `docs/goclaw/roadmap.md` for the checklist.
 
-**Next work areas:** same checklist in monorepo [`docs/goclaw/roadmap.md`](../../../docs/goclaw/roadmap.md) (from `goclaw/.cursor/rules/`, three levels up to repo root). From the module root, open `../docs/goclaw/roadmap.md`. Remaining items: optional MCP session round-trip test, remote MCP / IDE bridge design, manual TUI checklist runs.
+**Next work areas:** same checklist in monorepo [`docs/goclaw/roadmap.md`](../../../docs/goclaw/roadmap.md) (from `goclaw/.cursor/rules/`, three levels up to repo root). From the module root, open `../docs/goclaw/roadmap.md`. Optional polish: full IDE extension parity (Wave A in roadmap), MCP OAuth/WS (Wave B), manual TUI checklist runs.
 
 ## Adding a new tool
 1. Read `internal/tools/registry.go` — `Tool` interface

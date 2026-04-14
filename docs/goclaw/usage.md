@@ -21,8 +21,10 @@ Try: a simple repo question, a tool (e.g. web search), and `/doctor` or `goclaw 
 - For **“audit everything”** or whole-tree refactors: ask for **one slice per turn** (one package, one `internal/` area, or one doc). Check results with **`git diff`**, tool output, or successful write tools — not with narrative alone.
 - **Disk changes** only happen when **`write_file`**, **`edit_file`**, or **`patch`** complete successfully (subject to permissions). If the assistant says it “applied changes” but no write tool ran, treat that as prose, not git truth.
 - **Why it stopped at "Done"** — Each of your messages runs until the model answers **without** requesting more tools. A text-only reply (even "Done") **ends that turn**; there is no hidden auto-loop. For multi-step refactors, either write one prompt that forces **read → edit → verify** in one go, or send a **follow-up** ("continue: apply the first edit to `internal/...`").
-- **Auto-continue (default on)** — When your message clearly asks for fixes/refactors and the model stops with prose after only read-only tools (`glob`, `read_file`, …), goclaw may inject a short `[goclaw]` user line and **re-prompt the model** (up to twice per message). Set `"auto_continue_action_requests": false` in `settings.json` to disable.
-- **Truth-on-disk footer (default on)** — If your message signals code changes, tools ran, writes are allowed for the profile, but no `write_file` / `edit_file` / `patch` completed successfully, the runtime may append a short bilingual `[goclaw]` footer to the assistant reply (and session log) so prose cannot claim edits alone. Set `"truth_footer_no_workspace_writes": false` in `settings.json` to disable.
+- **Auto-continue (default on)** — When your message clearly asks for fixes/refactors and the model stops with prose after only read-only tools (`glob`, `read_file`, …), goclaw may inject a short `[goclaw]` user line and **re-prompt the model** (default **2** times per user message). Optional **`auto_continue_action_max_nudges`** in `settings.json` raises that cap (**1–5**; values above **5** are clamped). Each nudge is an extra model round-trip. Set `"auto_continue_action_requests": false` to disable entirely.
+- **Truth-on-disk footer (default on)** — If your message signals code changes, tools ran, writes are allowed for the profile, but no `write_file` / `edit_file` / `patch` completed successfully, the runtime may append a short bilingual `[goclaw]` footer to the assistant reply (and session log) so prose cannot claim edits alone. Set `"truth_footer_no_workspace_writes": false` in `settings.json` to disable. In the fullscreen TUI, a one-line footer hint may also remind you to send **continue** or a short follow-up.
+- **Turn shape** — One user message runs the loop until the model returns **no** tool calls (then the turn ends). If it stopped after reads only, typing **continue** or nudging the agent is normal; see auto-continue above.
+- **Iteration budget** — Past halfway through the per-turn iteration limit, a `<system-reminder>` warns the model that budget is tight. If you asked for real edits and tools already ran without a successful write, that reminder nudges toward **finishing edits** instead of only wrapping up in prose.
 
 ### First-run setup (onboarding)
 
@@ -142,6 +144,16 @@ Example:
 
 Full environment variable list: [CLAUDE.md — Environment Variables](../../goclaw/CLAUDE.md).
 
+## Editor integration (VS Code / Cursor pattern)
+
+To attach a **local editor MCP server** (HTTP on loopback) without hand-editing `mcp_servers` every time:
+
+1. Put a JSON lockfile under **`~/.goclaw/ide/*.json`** with `url` (and optional `headers`).
+2. Set **`ide_bridge_mcp`: `true`** in merged settings.
+3. Optionally set **`GOCLAW_IDE_NOTIFY_URL`** to a loopback URL for post-tool POST pings.
+
+**Step-by-step:** [ide-editor-setup.md](./ide-editor-setup.md) · **Contract:** [ide-bridge.md](../reference/ide-bridge.md) §6–§7 · **Example JSON:** [examples/ide-mcp-endpoint.example.json](./examples/ide-mcp-endpoint.example.json).
+
 ## Agent profiles
 
 **Default (no settings):** `general-purpose` — full tools on the main session. Use **`coordinator`** when you want hub mode (delegate with `spawn_agent` only on the parent).
@@ -192,7 +204,7 @@ In the TUI, tool approval for **ask** mode appears as a **single compact line ab
 |------|------|
 | `read_file`, `glob`, `grep` | Read/search workspace |
 | `bash` | One simple command; allowlist; timeout (default 30s, override `bash_timeout_sec`) |
-| `script` | Multi-line shell (opt-in `allow_script`); same timeout as `bash` |
+| `script` | Multi-line shell (**on by default**; opt-out `allow_script: false`); same timeout as `bash` |
 | `write_file`, `edit_file`, `patch` | Writes (stripped on read-only profiles) |
 | `web_fetch`, `web_search` | Network (SSRF rules on fetch) |
 | `todo_write` | Session task list |

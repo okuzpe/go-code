@@ -1,0 +1,6 @@
+{
+  "url": "http://127.0.0.1:8765/mcp",
+  "headers": {
+    "Authorization": "Bearer replace-with-token-if-your-server-requires-it"
+  }
+}

@@ -95,6 +95,17 @@ Approximate resolution order: environment variable (dev only) → OS credential 
 - **`ide_bridge_mcp`:** when `true` in merged `settings.json`, goclaw scans **`~/.goclaw/ide/*.json`** (sorted by name), reads the first file with a valid **loopback** `url` and optional `headers`, and appends a synthetic MCP server **`id: "ide"`** before connecting (same Streamable HTTP stack as `mcp_servers[].url` in [`goclaw/internal/mcp/http.go`](../../goclaw/internal/mcp/http.go)). Extensions can drop a lockfile such as `{"url":"http://127.0.0.1:1234/mcp","headers":{"Authorization":"Bearer …"}}`.
 - **D21 "full bridge"** still depends on editor-side MCP servers and UX; goclaw provides HTTP client + discovery, not IDE UI.
 
+### 6.1 Reference flow (minimal, reproducible)
+
+1. **Extension (or test harness)** writes a JSON file under **`~/.goclaw/ide/`** (e.g. `~/.goclaw/ide/vscode.json`) with a **loopback** MCP URL and optional headers, for example:
+   ```json
+   {"url":"http://127.0.0.1:8765/mcp","headers":{"Authorization":"Bearer your-token"}}
+   ```
+2. User sets **`ide_bridge_mcp`: `true`** in merged `settings.json` (user or project).
+3. Start goclaw from a workspace; on **`PrepareChatRuntime`**, discovery **sorts** `*.json` by name and uses the **first** file whose `url` passes loopback validation (same rules as `mcp.ValidateHTTPURL` with remote URLs disallowed for this path). A synthetic MCP server with **`id`: `"ide"`** is appended if not already present.
+4. If discovery fails (missing dir, no `.json` files, invalid JSON, empty `url`, or non-loopback URL), startup logs **`ide bridge mcp: no MCP endpoint from lockfiles`** with the directory and error — fix the lockfile or path instead of expecting silent fallback.
+5. **Post-tool pings (optional):** set **`GOCLAW_IDE_NOTIFY_URL`** to `http://127.0.0.1:PORT/...` (or `https` on loopback). Non-loopback or malformed URLs log a warning and use a **no-op** notifier (HTTP timeout per POST is **2 s**; failures are swallowed so the REPL never blocks on the IDE).
+
 ---
 
 ## 7. goclaw ↔ extension contract (V3 spec)
@@ -105,7 +116,7 @@ Approximate resolution order: environment variable (dev only) → OS credential 
 |---------|-----------|
 | **MCP endpoint** | Extension writes a JSON lockfile under `~/.goclaw/ide/*.json` with `url` (loopback `http`/`https`) and optional `headers`. User sets `ide_bridge_mcp: true`; goclaw appends synthetic MCP server `id: "ide"` and uses the same streamable HTTP client as other `mcp_servers[].url` entries. |
 | **Bearer / auth** | Prefer `headers.Authorization` in the lockfile, or use `mcp_servers` with `bearer_token_file` for static tokens (see [`docs/goclaw/mcp-remote.md`](../goclaw/mcp-remote.md)). |
-| **Post-tool notify** | `GOCLAW_IDE_NOTIFY_URL` must stay **loopback-only**. Payload shape is stable JSON: `{"tool","result_bytes","is_error"}`. Extensions may use this for progress UI without MCP. |
+| **Post-tool notify** | `GOCLAW_IDE_NOTIFY_URL` must stay **loopback-only** (`127.0.0.1`, `localhost`, `::1`). Invalid URLs are **logged at warn** and ignored. Payload shape is stable JSON: `{"tool","result_bytes","is_error"}`. POST uses a **2 s** client timeout; HTTP errors do not fail the tool. Extensions may use this for progress UI without MCP. |
 | **Future events** | Additional notification types should be versioned (e.g. `event` field) and remain **best-effort**; the REPL must not depend on the IDE replying. |
 | **OAuth / remote IDE** | Out of scope until explicitly designed; same posture as D6 OAuth for MCP. |
 
@@ -122,3 +133,4 @@ Approximate resolution order: environment variable (dev only) → OS credential 
 | 2026-04-09 | §6: `ide_bridge_mcp`, `internal/ide/discovery.go`, lockfile JSON → MCP HTTP |
 | 2026-04-09 | §7: goclaw ↔ extension contract (lockfile MCP, notify payload, future versioning) |
 | 2026-04-12 | Translated Spanish sections 1–4 and changelog to English |
+| 2026-04-14 | §6.1 minimal reference flow; §7 notify: warn on bad URL, 2 s timeout; align with `chat_wiring` / `notify.go` logging |

@@ -129,6 +129,11 @@ type Config struct {
 	// continuation and re-call the LLM (capped per turn). JSON: auto_continue_action_requests.
 	AutoContinueActionRequests bool
 
+	// AutoContinueActionMaxNudges caps synthetic "continue with tools" user injections per turn when
+	// AutoContinueActionRequests is true. 0 means default 2; values are clamped to 1..5.
+	// JSON: auto_continue_action_max_nudges.
+	AutoContinueActionMaxNudges int
+
 	// TruthFooterNoWorkspaceWrites when true: if the user message signals code changes, tools ran,
 	// writes were allowed, but no successful write_file/edit_file/patch, append a [goclaw] bilingual
 	// footer to the assistant reply. JSON: truth_footer_no_workspace_writes (default true).

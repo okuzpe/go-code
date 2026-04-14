@@ -2,9 +2,37 @@
 
 **Status in goclaw:** **D19 implemented** — Markdown + YAML frontmatter in `~/.goclaw/agents/*.md` and `.goclaw/agents/*.md`; see [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md) and [`agent-profiles.md`](./agent-profiles.md).
 
-Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D19 custom agents) and [agent-profiles.md](./agent-profiles.md). Reference (third-party, Claude Code analysis): [Custom Agents — claude-code-explain](https://claude-code-explain.helmcode.com/custom-agents).
+Third-party analysis (Claude Code–style, **not** a feature checklist for goclaw): [Custom Agents — claude-code-explain](https://claude-code-explain.helmcode.com/custom-agents).
 
-**Idea:** one **.md per agent** with **YAML frontmatter** that fixes the operational identity (tools, model, permissions, MCP, hooks, memory, color); the **Markdown body** is the system prompt. No extra code to "register" the agent beyond placing it in a discovery path.
+---
+
+## Supported in goclaw (D19)
+
+**Source of truth:** [`goclaw/internal/agents/loader.go`](../../goclaw/internal/agents/loader.go) (`customFrontmatter` struct).
+
+| YAML key | Role |
+|----------|------|
+| `name` | Profile id (`[a-z0-9-]+`); must be unique after merge |
+| `description` | Parsed and stored on the profile (diagnostics / future UX; not a hosted “subagent picker”) |
+| `model` | Optional per-profile Ollama model override |
+| `tool_allowlist` | Allowed tool names; **omit or YAML null** → all tools (`nil` in code); **`[]`** → no tools |
+| `disallowed_tools` | Tool names removed from the effective set when the profile is built |
+| `read_only` | When true, write tools and `mcp__` tools are not available |
+| `system_prompt` | Optional system text from YAML (in addition to the Markdown body) |
+| `max_turns` | Max orchestrator iterations for this profile (`0` = built-in default **32**) |
+| `memory` | `user`, `project`, or `local` — per-agent memory root under `~/.goclaw/` / `.goclaw/` (see [memory-system.md](./memory-system.md), D13/D19 in CLAUDE.md) |
+
+**Markdown body** (after the closing `---` of the frontmatter): appended to the profile’s system prompt.
+
+**Discovery:** `~/.goclaw/agents/*.md` and `<workspace>/.goclaw/agents/*.md`; **project overrides user** for the same `name`; **hot-reload** when switching profile via `/profile`.
+
+**Not implemented in goclaw’s frontmatter parser:** `hooks`, `mcpServers`, `skills`, `permissionMode`, `color`, `isolation`, enterprise priority chains, `--agents` JSON, or “Agent tool” invocation — those appear only in the **reference** sections below or in other products.
+
+---
+
+## Reference material (upstream patterns; partial overlap)
+
+The sections below mix **goclaw-relevant links** with **design notes** from other agent stacks. If a capability is not listed under **Supported in goclaw** above, assume it is **not** in `loader.go` unless [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md) explicitly ships it.
 
 ---
 
@@ -12,13 +40,12 @@ Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D19 custom agents) and [age
 
 | Document | Relation |
 |----------|----------|
-| [agent-profiles.md](./agent-profiles.md) §2 | The **8 built-in profiles** (incl. `coordinator`, `code-review`) are the built-in set; a custom with the **same name** can **override** the built-in in the reference (priority). |
-| [coordinator-mode.md](./coordinator-mode.md) | The **Agent** tool picks `subagent_type` → resolves custom or built-in definition. |
-| [hooks.md](./hooks.md) | Frontmatter **`hooks`**: registers **session** hooks when the sub-agent spawns; cleaned up on finish; `Stop` → `SubagentStop` in reference. |
-| [memory-system.md](./memory-system.md) | **Project** memory (`MEMORY.md`) ≠ **per-agent** memory (`memory: user|project|local` + dedicated directory); see §5 of this doc. |
-| §2.8 **MCP** | `mcpServers` in frontmatter: named references or inline definition; cleanup on agent finish if applicable. |
-| §2.9 **Skills** | `skills` field to preload content before the first turn. |
-| [yolo-classifier.md](./yolo-classifier.md) | Agent `permissionMode` limits or expands risk; still passes through **D17** in auto mode. |
+| [agent-profiles.md](./agent-profiles.md) §2 | The **8 built-in profiles** (incl. `coordinator`, `code-review`) are the built-in set; a custom with the **same name** can **override** the built-in (project over user over built-in). |
+| [coordinator-mode.md](./coordinator-mode.md) | goclaw uses in-process **`spawn_agent`** / **`stop_task`** and profiles — not a hosted **“Agent” tool** API; see [coordinator.md](../goclaw/coordinator.md). |
+| [hooks.md](./hooks.md) | Project/user **hooks** use `external_hooks` and `.goclaw/hooks.json` — **not** YAML `hooks` in agent Markdown (reference-product pattern only). |
+| [memory-system.md](./memory-system.md) | **Project** memory (`MEMORY.md`) ≠ **per-agent** memory (`memory: user|project|local`); see §5 of this doc. |
+| **MCP / skills** | Runtime MCP and SKILL.md injection are configured via **settings** and discovery paths in CLAUDE.md — **not** via `mcpServers` / `skills` keys in agent frontmatter. |
+| [yolo-classifier.md](./yolo-classifier.md) | **D17** risk scoring + `yolo_threshold` in settings; not a per-agent `permissionMode` field in Markdown. |
 
 ---
 
@@ -33,7 +60,7 @@ Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D19 custom agents) and [age
 
 **Priority order** (highest wins in reference): managed enterprise → session flag → **project** `agents/` → **user** `~/…/agents/` → **plugin** → **built-in** (lowest).
 
-**Go mapping:** explicit table in `internal/agents` (`Resolve(name string, sources ...)`); env flag like `GOCLAW_SIMPLE=true` can **skip** customs (equivalent to `CLAUDE_CODE_SIMPLE`).
+**Go mapping (reference):** other products use `Resolve(name, sources...)`-style tables; goclaw merges **built-in** + **user dir** + **project dir** in [`loader.go`](../../goclaw/internal/agents/loader.go) / `AllWithCustom` — there is **no** `GOCLAW_SIMPLE` skip flag unless added explicitly in code.
 
 ---
 
@@ -96,11 +123,11 @@ Flow: create dir if missing → load `MEMORY.md`-style index → add scope guide
 
 ---
 
-## 6. Invocation (Agent tool)
+## 6. Invocation (reference product vs goclaw)
 
-Conceptual fields: `description`, `prompt`, `subagent_type`, `model`, `run_in_background`, `name`, `team_name`, `mode`, `isolation`, `cwd` (advanced contexts).
+**Reference:** an “Agent” tool with fields such as `subagent_type`, `model`, `run_in_background`, `isolation`, `cwd`.
 
-**Fork vs fresh (reference):** without `subagent_type` can inherit parent context; with a defined type → own prompt/tools and fresh window.
+**goclaw:** workers are started with the **`spawn_agent`** tool (coordinator profile): task string + **worker profile name** (built-in or custom from the merged map). See [coordinator.md](../goclaw/coordinator.md).
 
 ---
 
@@ -134,7 +161,7 @@ Interactive UI: list by source, view details, create assistant (wizard), edit/de
 | Per-agent hooks | Delegated to `internal/hooks` with `agentID` scope |
 | Worktree isolation | `internal/tools/git` or wrapper; **D19** flag |
 
-**Status:** custom agents + priority merge + hooks/MCP in frontmatter are **aligned** with D19 in [roadmap.md](../goclaw/roadmap.md) Tier 6 and [CLAUDE.md](../../goclaw/CLAUDE.md); the interactive `/agents` UI from the reference product is **not implemented**.
+**Status:** custom agents on disk + merge order + **`memory` / `tool_allowlist` / `max_turns`** match D19 in [roadmap.md](../goclaw/roadmap.md) Tier 6 and [CLAUDE.md](../../goclaw/CLAUDE.md). **Frontmatter `hooks` / `mcpServers` / `skills`** are **not** implemented; the interactive `/agents` UI from the reference product is **not implemented**.
 
 ---
 
@@ -144,3 +171,4 @@ Interactive UI: list by source, view details, create assistant (wizard), edit/de
 |------|--------|
 | 2026-04-07 | Created: types, priority, frontmatter, tools, agent memory, MCP/hooks, plugins, Go mapping, helmcode §20 link |
 | 2026-04-12 | Translated from Spanish to English |
+| 2026-04-14 | **Supported in goclaw** table (`loader.go`); reference sections labeled non-implemented frontmatter features |

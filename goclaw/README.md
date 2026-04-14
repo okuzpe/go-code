@@ -32,7 +32,7 @@ Details (modes, sessions, JSON output, troubleshooting): **[usage.md](../docs/go
 
 **Master index** (every path, audience, reading order, `docs/reference/` contracts): **[docs-map.md](../docs/docs-map.md)**.
 
-**Core links:** [CLAUDE.md](CLAUDE.md) (implementation) · [usage.md](../docs/goclaw/usage.md) (operators) · [documentation.md](../docs/goclaw/documentation.md) (where to add docs) · [code-adjustment-map.md](../docs/reference/code-adjustment-map.md) (docs ↔ `internal/*`). **Mock LLM harness:** [scripts/MOCK_PARITY_HARNESS.md](scripts/MOCK_PARITY_HARNESS.md) (`make parity`).
+**Core links:** [CLAUDE.md](CLAUDE.md) (implementation) · [usage.md](../docs/goclaw/usage.md) (operators) · [ide-editor-setup.md](../docs/goclaw/ide-editor-setup.md) (editor MCP lockfile golden path) · [documentation.md](../docs/goclaw/documentation.md) (where to add docs) · [code-adjustment-map.md](../docs/reference/code-adjustment-map.md) (docs ↔ `internal/*`). **Mock LLM harness:** [scripts/MOCK_PARITY_HARNESS.md](scripts/MOCK_PARITY_HARNESS.md) (`make parity`).
 
 Everything else (roadmap, changelog, architecture hub, tool/MCP/hooks reference): use the tables in **docs-map.md** — from this directory, topic files live under `../docs/goclaw/<name>.md` or `../docs/reference/<name>.md`.
 

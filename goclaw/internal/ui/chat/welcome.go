@@ -175,6 +175,9 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	for _, ln := range wrapPlainWords("Run /help for commands. Try /init or /plan when you want a structured run.", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
+	for _, ln := range wrapPlainWords("One user message runs until the model answers without tool calls; if it stops after reads only, a short follow-up (e.g. continue) is normal.", rightW-1) {
+		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+	}
 	for _, ln := range wrapPlainWords("Ctrl+P opens the agent profile picker (same as /agents).", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
@@ -283,6 +286,8 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 	body.WriteString(dim.Render("/help  /capabilities  ·  CLAUDE.md  ·  .goclaw/"))
 	body.WriteString("\n")
 	body.WriteString(dim.Render("Ctrl+P — agent profile picker  ·  Plan: /profile plan → /plan save → /apply-plan --preview → /apply-plan"))
+	body.WriteString("\n")
+	body.WriteString(dim.Render("Turns: one message runs until the model replies without tools; continue is OK if it stopped after reads."))
 	body.WriteString("\n")
 	body.WriteString(dim.Render("Tool cards: one-line result hint when available · Ctrl+T — full tool history"))
 	body.WriteString("\n")

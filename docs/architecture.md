@@ -1,6 +1,6 @@
 # Architecture hub (monorepo)
 
-This repository ships **[goclaw](../goclaw/)** — a Go CLI coding agent (local-first Ollama, optional Anthropic). **Packages, tools, env vars, decisions D1–D22, and conventions** are in **[goclaw/CLAUDE.md](../goclaw/CLAUDE.md)**. **Where every doc file lives and in what order to read them** is in **[docs-map.md](./docs-map.md)** (do not duplicate that index here).
+This repository ships **[goclaw](../goclaw/)** — a Go CLI coding agent (**local-first Ollama only** for the shipped binary; legacy cloud providers are rejected — see [usage.md — Legacy providers](./goclaw/usage.md#legacy-providers-anthropic-openai_compatible)). **Packages, tools, env vars, decisions D1–D22, and conventions** are in **[goclaw/CLAUDE.md](../goclaw/CLAUDE.md)**. **Where every doc file lives and in what order to read them** is in **[docs-map.md](./docs-map.md)** (do not duplicate that index here).
 
 ## Product shape
 
@@ -28,7 +28,7 @@ flowchart TB
   subgraph core["Agent core"]
     ORCH["internal/orchestrator — turn loop, compaction, tool trace"]
     SESS["internal/session — messages, JSONL persistence"]
-    LLM["internal/llm — Ollama, Anthropic, OpenAI-compatible stream"]
+    LLM["internal/llm — Ollama client (shipped); OpenAI-compat stream for tests/mocks only"]
   end
 
   subgraph agents_cfg["Agents & config"]
@@ -116,7 +116,7 @@ After `PrepareChatRuntime`, the REPL/TUI receives a `ChatRuntime` value (same st
 | Field / concern | Role |
 |-----------------|------|
 | `Cfg`, `Workdir` | Merged settings + cwd as workspace root |
-| `Client` | `llm.Client` (Ollama / Anthropic / OpenAI-compatible) |
+| `Client` | `llm.Client` — **Ollama** at runtime; `openai_compat` exists for **unit tests** (`testutil/mockopenai`), not user settings |
 | `Sess`, `Store` | In-memory transcript + disk JSONL under `sessions/` |
 | `Reg` | Main **tool registry** (builtins + `spawn_agent` + `stop_task` + MCP tools) |
 | `MemStore`, `Policy`, `HookReg` | Memory filesystem store, permission policy, hook registry |
@@ -245,7 +245,7 @@ sequenceDiagram
 | MCP servers | `internal/mcp`, `internal/config` | [reference/mcp.md](./reference/mcp.md) |
 | Permissions / bash | `internal/permissions`, `internal/tools` | [reference/bash-security.md](./reference/bash-security.md) |
 | Custom agents | `internal/agents` | [reference/custom-agents.md](./reference/custom-agents.md) |
-| IDE bridge | `internal/ide` | [reference/ide-bridge.md](./reference/ide-bridge.md) |
+| IDE bridge | `internal/ide` | [ide-editor-setup.md](./goclaw/ide-editor-setup.md) (golden path), [reference/ide-bridge.md](./reference/ide-bridge.md) (contract) |
 
 ## Changelog
 

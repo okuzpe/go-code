@@ -230,10 +230,10 @@ These themes are **not** required for the checklist above; pick one when priorit
 | Area                                                                   | Status |
 | ---------------------------------------------------------------------- | ------ |
 | Core agent loop (32 iter / 64 tools)                                   | Done   |
-| Ollama + Anthropic clients with retry                                  | Done   |
+| Ollama client + D22 HTTP retry (`internal/llm/retry.go`)                | Done   |
 | Session JSONL store + resume                                           | Done   |
 | `read_file`, `glob`, `grep`, `bash`, `write_file`, `edit_file`         | Done   |
-| `web_fetch` (SSRF guards), `web_search` (DDG)                          | Done   |
+| `web_fetch` (SSRF guards), `web_search` (DDG / Brave / SerpAPI backends) | Done   |
 | `todo_write` + session task list in prompt                             | Done   |
 | Permissions (ask/allow/deny) + tool approver                           | Done   |
 | Memory filesystem (`~/.goclaw/memory/`)                                | Done   |
@@ -251,7 +251,7 @@ These themes are **not** required for the checklist above; pick one when priorit
 | CI: `golangci-lint` + 61% coverage threshold (`-coverpkg=./...`)       | Done   |
 | 8 built-in agent profiles (incl. `coordinator`, `code-review`)         | Done   |
 | Custom agent profiles (`~/.goclaw/agents/*.md`, `.goclaw/agents/*.md`) | Done   |
-| `script` tool (multi-line shell, opt-in via `allow_script: true`)      | Done   |
+| `script` tool (multi-line shell; **on by default**, opt-out `allow_script: false`) | Done   |
 | YOLO risk classifier (`yolo_threshold` in settings, default -1/off)    | Done   |
 | Parallel read-tool execution (auto-approve turns only)                 | Done   |
 | LLM-driven compaction (`llm_compaction: true`, opt-in)                 | Done   |

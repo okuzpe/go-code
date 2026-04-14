@@ -111,6 +111,8 @@ flowchart LR
 |-------------|-----------|------|
 | `CLAUDE.md` (D1, D22, wire) | [`retry-logic.md`](./retry-logic.md), [`local-models.md`](./local-models.md) | `client.go`, `ollama*.go`, `openai_compat*.go`, `retry.go`, `message.go` |
 
+**Shipped runtime:** only **`OllamaClient`** is wired from `PrepareChatRuntime`. **`openai_compat*.go`** is for **unit tests and `testutil/mockopenai`** — not a user-configurable `provider` in settings.
+
 **Adjustment:** HTTP retries → extend [`internal/llm/retry.go`](../../goclaw/internal/llm/retry.go) only; avoid ad-hoc `http.Client.Do` in clients.
 
 ---
@@ -207,9 +209,9 @@ flowchart LR
 
 | Primary doc | Secondary | Code |
 |-------------|-----------|------|
-| `CLAUDE.md` (partial IDE) | [`ide-bridge.md`](./ide-bridge.md) | `ide/notify.go`, `ide/discovery.go` |
+| `CLAUDE.md` (partial IDE) | [`ide-bridge.md`](./ide-bridge.md), [`ide-editor-setup.md`](../goclaw/ide-editor-setup.md) (golden path) | `ide/notify.go`, `ide/discovery.go` |
 
-**Adjustment:** Keep shipped behavior aligned with §6–§7 in [`ide-bridge.md`](./ide-bridge.md).
+**Adjustment:** Keep shipped behavior aligned with §6–§7 in [`ide-bridge.md`](./ide-bridge.md) and the operator checklist in [`ide-editor-setup.md`](../goclaw/ide-editor-setup.md).
 
 ---
 

@@ -8,15 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Editor golden path:** [ide-editor-setup.md](./ide-editor-setup.md) and [examples/ide-mcp-endpoint.example.json](./examples/ide-mcp-endpoint.example.json); [usage.md](./usage.md) — Editor integration; **`goclaw doctor`** prints an **`ide bridge:`** section (lockfile discovery + `GOCLAW_IDE_NOTIFY_URL` loopback check).
 - **`code-review`** built-in agent profile (read-only on workspace writes via allowlist) and REPL **`/review`** slash command: runs `git diff` in the workspace, injects output for one review turn. Docs: [code-review-workflow.md](code-review-workflow.md), [verification-recipe.md](verification-recipe.md), [ide-pr-parity.md](ide-pr-parity.md). Optional skill: `goclaw/.claude/skills/code-review.md`.
 - **`task_models` routing:** while `code-review` is active, the rules router uses the **`reasoning`** role for every turn (see [model-routing.md](model-routing.md)); project template **`goclaw/.goclaw/verify.example.sh`** for a canonical verify entry point.
 
 ### Changed
 
+- **Orchestrator / UX:** Mid-turn **budget** system-reminder is **softer** when the user asked for code changes, tools already ran, and no successful workspace write has occurred yet (still wraps up normally for explore-style turns). **Auto-continue** heuristics recognize more change-request phrasing; optional **`auto_continue_action_max_nudges`** (1–5, default 2) in `settings.json`. **TUI:** one-line **footer hint** when the truth-on-disk footer appears; **welcome** tips mention turn shape and follow-up **continue**.
+- **IDE bridge:** when `ide_bridge_mcp` is true but lockfile discovery fails, log a **warning** with `dir` and `err`. **`GOCLAW_IDE_NOTIFY_URL`:** invalid scheme, parse errors, or non-loopback hosts now log a **warning** instead of failing silently (still no-op notifier). See [ide-bridge.md](../reference/ide-bridge.md) §6.1.
+- **Documentation:** align **Ollama-only** CLI narrative across [architecture.md](../architecture.md), [roadmap.md](roadmap.md), [philosophy.md](philosophy.md), [tool-contract.md](../reference/tool-contract.md), [custom-agents.md](../reference/custom-agents.md) (supported YAML = `loader.go`), [costs.md](../reference/costs.md), [coordinator-mode.md](../reference/coordinator-mode.md), [code-adjustment-map.md](../reference/code-adjustment-map.md); Cursor rules `architecture.mdc` / `workflow.mdc`; [documentation.md](documentation.md) security ↔ onboarding checklist; `script` tool comment default matches config.
 - **TUI:** welcome panel **Guided flows** (plan + multi-agent), **Ctrl+P** opens agent picker; footer hint after `/plan save` and `/apply-plan --preview`.
 - **Slash:** `/apply-plan --preview` shows a plan excerpt without executing; `/apply-plan` still runs one execution turn. `/plan save` message points at preview-then-execute.
 - **bash tool (Windows):** allow **`dir`**, **`where`**, **`type`** when using CMD fallback; clearer hint when `bash`/`sh` are missing from `PATH`.
-- **Documentation:** reference and roadmap wording now distinguish **shipped** behavior from **not implemented** / **Partial** (removed stale MVP/post-MVP labels where features already exist); see [documentation.md](documentation.md) terminology note and [roadmap.md](roadmap.md).
+- **Documentation:** reference and roadmap wording distinguish **shipped** behavior from **not implemented** / **Partial** (removed stale MVP/post-MVP labels where features already exist); see [documentation.md](documentation.md) terminology note and [roadmap.md](roadmap.md).
 
 ## [1.3.0] - 2026-04-11
 

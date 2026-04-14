@@ -35,6 +35,7 @@ type settingsFile struct {
 	YoloThreshold                *int                `json:"yolo_threshold"`
 	LLMCompaction                *bool               `json:"llm_compaction"`
 	AutoContinueActionRequests   *bool               `json:"auto_continue_action_requests,omitempty"`
+	AutoContinueActionMaxNudges  *int                `json:"auto_continue_action_max_nudges,omitempty"`
 	TruthFooterNoWorkspaceWrites *bool               `json:"truth_footer_no_workspace_writes,omitempty"`
 	MCPServersAllowRemote        *bool               `json:"mcp_allow_remote_urls,omitempty"`
 	IDEBridgeMCP                 *bool               `json:"ide_bridge_mcp,omitempty"`
@@ -173,6 +174,9 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.AutoContinueActionRequests != nil {
 		cfg.AutoContinueActionRequests = *sf.AutoContinueActionRequests
+	}
+	if sf.AutoContinueActionMaxNudges != nil && *sf.AutoContinueActionMaxNudges > 0 {
+		cfg.AutoContinueActionMaxNudges = *sf.AutoContinueActionMaxNudges
 	}
 	if sf.TruthFooterNoWorkspaceWrites != nil {
 		cfg.TruthFooterNoWorkspaceWrites = *sf.TruthFooterNoWorkspaceWrites

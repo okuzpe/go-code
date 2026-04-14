@@ -14,7 +14,7 @@ import (
 )
 
 // Lockfile is a minimal JSON descriptor for an IDE MCP endpoint.
-// Convention: place files under ~/.goclaw/ide/*.json (see IDE_BRIDGE.md §6).
+// Convention: place files under ~/.goclaw/ide/*.json (see docs/reference/ide-bridge.md §6).
 type Lockfile struct {
 	URL     string            `json:"url"`
 	Headers map[string]string `json:"headers,omitempty"`

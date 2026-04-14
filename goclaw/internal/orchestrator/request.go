@@ -135,10 +135,22 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	if o.budgetIter > 0 && o.budgetLimit > 0 && o.budgetIter > o.budgetLimit/2 {
 		remaining := o.budgetLimit - o.budgetIter
 		toolsLeft := maxToolCalls - o.budgetToolCalls
+		softenBudget := !o.profile.ReadOnly &&
+			toolSpecsAllowWorkspaceWrite(specs) &&
+			userMessageWantsWorkspaceWrites(o.turnUserMessage) &&
+			o.turnHadToolRound &&
+			!o.turnWorkspaceWriteOK
+		var body string
+		if softenBudget {
+			body = "You are running low on iteration budget. If the user asked for concrete code changes, prioritize completing in-flight edits (write_file, edit_file, patch) or clearly stating blockers — avoid stopping with analysis-only while edits are still expected."
+		} else {
+			body = "If you are close to finishing, wrap up and report rather than starting new work."
+		}
 		sys = sys + fmt.Sprintf(
-			"\n\n<system-reminder>Budget: iteration %d/%d (%d remaining). Tool calls used: %d/%d (%d remaining). If you are close to finishing, wrap up and report rather than starting new work.</system-reminder>",
+			"\n\n<system-reminder>Budget: iteration %d/%d (%d remaining). Tool calls used: %d/%d (%d remaining). %s</system-reminder>",
 			o.budgetIter, o.budgetLimit, remaining,
 			o.budgetToolCalls, maxToolCalls, toolsLeft,
+			body,
 		)
 	}
 

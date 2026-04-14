@@ -61,6 +61,8 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | [`docs/goclaw/model-routing.md`](./goclaw/model-routing.md) | `task_models`, routers | End-user | Shipped |
 | [`docs/goclaw/code-review-workflow.md`](./goclaw/code-review-workflow.md) | `/review`, `code-review` profile, git-anchored review | End-user | Shipped |
 | [`docs/goclaw/verification-recipe.md`](./goclaw/verification-recipe.md) | `.goclaw/verify.sh` post-edit checks | End-user | Shipped |
+| [`docs/goclaw/ide-editor-setup.md`](./goclaw/ide-editor-setup.md) | Editor MCP lockfile golden path (`~/.goclaw/ide`, `ide_bridge_mcp`, notify URL) | End-user | Shipped |
+| [`docs/goclaw/examples/ide-mcp-endpoint.example.json`](./goclaw/examples/ide-mcp-endpoint.example.json) | Copy-paste lockfile template for IDE HTTP MCP | End-user | Shipped |
 | [`docs/goclaw/ide-pr-parity.md`](./goclaw/ide-pr-parity.md) | IDE / PR parity vs Wave A–B roadmap | Contributor | Shipped |
 | [`docs/goclaw/manual-tui-checklist.md`](./goclaw/manual-tui-checklist.md) | Bubble Tea / readline QA | Maintainer | Shipped |
 | [`docs/goclaw/i18n.md`](./goclaw/i18n.md) | LLM language vs English UI | Contributor | Policy / planned |
@@ -75,7 +77,7 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | [`tool-contract.md`](./reference/tool-contract.md) | Tool caps, SSRF, loop budgets | Contributor | Shipped |
 | [`tool-flows.md`](./reference/tool-flows.md) | Mermaid flows | Contributor | Shipped |
 | [`code-adjustment-map.md`](./reference/code-adjustment-map.md) | Docs ↔ `internal/*` map | Maintainer | Shipped |
-| [`custom-agents.md`](./reference/custom-agents.md) | Markdown agents + frontmatter | Contributor | D19 shipped; doc may exceed YAML in goclaw |
+| [`custom-agents.md`](./reference/custom-agents.md) | Markdown agents + frontmatter | Contributor | D19 shipped — see **Supported in goclaw** in doc (= `loader.go` keys); below that, upstream reference only |
 | [`coordinator-mode.md`](./reference/coordinator-mode.md) | Coordinator vs Team/Swarm | Contributor | D16 shipped; peer topology not shipped |
 | [`yolo-classifier.md`](./reference/yolo-classifier.md) | Auto-mode gate | Contributor | Rule-based risk in goclaw; LLM classifier not separate |
 | [`plugins.md`](./reference/plugins.md) | Plugin manifest, marketplace ideas | Contributor | Local plugins **shipped**; remote marketplace **not implemented** |
@@ -104,6 +106,8 @@ Edits to the documentation tree (index moves, link cleanups) are logged here so 
 
 | Date | Change |
 |------|--------|
+| 2026-04-14 | [ide-editor-setup.md](./goclaw/ide-editor-setup.md) golden path + [examples/ide-mcp-endpoint.example.json](./goclaw/examples/ide-mcp-endpoint.example.json); [usage.md](./goclaw/usage.md) editor section; `goclaw doctor` **ide bridge:** block; [README.md](../goclaw/README.md) core link. |
+| 2026-04-14 | **Doc + rules alignment (Ollama-only CLI, tools, IDE):** [architecture.md](./architecture.md), [roadmap.md](./goclaw/roadmap.md) quick reference, [philosophy.md](./goclaw/philosophy.md), [tool-contract.md](./reference/tool-contract.md), [custom-agents.md](./reference/custom-agents.md) supported YAML block, [costs.md](./reference/costs.md), [coordinator-mode.md](./reference/coordinator-mode.md), [code-adjustment-map.md](./reference/code-adjustment-map.md) §4 note, [ide-bridge.md](./reference/ide-bridge.md) §6.1 + §7; [documentation.md](./goclaw/documentation.md) security ↔ onboarding checklist; [docs-map.md](./docs-map.md) custom-agents index row; `goclaw/.cursor/rules` architecture + workflow. |
 | 2026-04-14 | Added `code-review` profile, `/review`, and topic docs [code-review-workflow.md](./goclaw/code-review-workflow.md), [verification-recipe.md](./goclaw/verification-recipe.md), [ide-pr-parity.md](./goclaw/ide-pr-parity.md); [model-routing.md](./goclaw/model-routing.md) review-session section. |
 | 2026-04-11 | Expanded [architecture.md](./architecture.md) (Mermaid flows); linked from [documentation.md](./goclaw/documentation.md) and this map (intro, reading order row 3, index row). |
 | 2026-04-11 | **Release 1.3.0 (doc):** [roadmap.md](./goclaw/roadmap.md) shipped checklist Tiers 0–8 + optional follow-up waves; [changelog.md](./goclaw/changelog.md) **1.3.0**; [manual-tui-checklist.md](./goclaw/manual-tui-checklist.md) automated gate log; git tag `v1.3.0`. |

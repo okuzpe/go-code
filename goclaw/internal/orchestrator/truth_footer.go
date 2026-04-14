@@ -6,7 +6,14 @@ import (
 	"github.com/okuzpe/goclaw/internal/llm"
 )
 
-const noWorkspaceWriteTruthFooter = "\n\n---\n[goclaw] No workspace files were modified this turn (no successful write_file / edit_file / patch).\n[goclaw] No se modificó ningún archivo del proyecto en este turno (no hubo write_file / edit_file / patch con éxito)."
+// TruthFooterMarkerEN and TruthFooterMarkerES are stable substrings of noWorkspaceWriteTruthFooter
+// (used by the TUI to detect the runtime footer without duplicating copy).
+const (
+	TruthFooterMarkerEN = "No workspace files were modified this turn"
+	TruthFooterMarkerES = "No se modificó ningún archivo del proyecto en este turno"
+)
+
+const noWorkspaceWriteTruthFooter = "\n\n---\n[goclaw] " + TruthFooterMarkerEN + " (no successful write_file / edit_file / patch).\n[goclaw] " + TruthFooterMarkerES + " (no hubo write_file / edit_file / patch con éxito)."
 
 // maybeAppendNoWorkspaceWriteFooter appends a bilingual runtime footer when the user message
 // signals code changes, tools ran, writes were available, but no successful workspace write completed.
@@ -27,7 +34,7 @@ func maybeAppendNoWorkspaceWriteFooter(
 	if !toolSpecsAllowWorkspaceWrite(o.effectiveToolSpecs()) {
 		return response
 	}
-	if strings.Contains(response, "No workspace files were modified this turn") {
+	if strings.Contains(response, TruthFooterMarkerEN) {
 		return response
 	}
 	return response + noWorkspaceWriteTruthFooter

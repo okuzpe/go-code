@@ -167,6 +167,12 @@ type Orchestrator struct {
 
 	// budgetToolCalls is the cumulative tool-call count within the current turn.
 	budgetToolCalls int
+
+	// Per-turn snapshot for buildRequest (cleared after runUserTurn): original user message and
+	// whether tools have run without a successful workspace write yet — used to soften budget reminders.
+	turnUserMessage       string
+	turnHadToolRound      bool
+	turnWorkspaceWriteOK  bool
 }
 
 // New creates an Orchestrator with the provided subsystems.
@@ -235,7 +241,15 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		iterLimit = o.profile.MaxTurns
 	}
 	o.budgetLimit = iterLimit
-	defer func() { o.budgetIter = 0; o.budgetLimit = 0; o.budgetToolCalls = 0 }()
+	o.turnUserMessage = userMessage
+	defer func() {
+		o.budgetIter = 0
+		o.budgetLimit = 0
+		o.budgetToolCalls = 0
+		o.turnUserMessage = ""
+		o.turnHadToolRound = false
+		o.turnWorkspaceWriteOK = false
+	}()
 
 	actionNudges := 0
 	hadToolRound := false
@@ -245,6 +259,8 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	for iter := range iterLimit {
 		o.budgetIter = iter + 1
 		o.budgetToolCalls = toolCalls
+		o.turnHadToolRound = hadToolRound
+		o.turnWorkspaceWriteOK = workspaceWriteOK
 		o.maybeCompact(ctx, sink)
 
 		if sink != nil {

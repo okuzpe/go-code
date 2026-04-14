@@ -331,6 +331,8 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 		ideDir := filepath.Join(cfg.UserConfigDir, "ide")
 		if u, hdrs, err := ide.DiscoverMCPEndpoint(ideDir); err == nil {
 			appendIDEBridgeMCPServerIfMissing(&cfg, u, hdrs)
+		} else {
+			slog.Warn("ide bridge mcp: no MCP endpoint from lockfiles", "dir", ideDir, "err", err)
 		}
 	}
 	var mcpSessions []mcp.Conn

@@ -14,7 +14,7 @@ import (
 
 // ScriptTool runs a multi-line shell script, allowing pipes, &&, redirections,
 // and other shell composition that the bash tool intentionally forbids.
-// It is opt-in via AllowScript in Config (allow_script: true in settings.json).
+// AllowScript defaults to true in config; set allow_script: false in settings to disable registration.
 type ScriptTool struct {
 	timeoutSec int
 }

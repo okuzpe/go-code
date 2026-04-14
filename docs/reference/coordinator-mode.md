@@ -6,6 +6,8 @@ Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D16 coordinator). Conceptua
 
 **Key message:** the analyzed product has **two distinct multi-agent systems**, not one system with two names. Conflating them in your own design produces incoherent permissions (e.g. a "coordinator" that can still `Write`).
 
+**goclaw (shipped):** multi-agent delegation is the **hub-and-spoke coordinator** — `--profile coordinator`, tools **`spawn_agent`** and **`stop_task`**, worker profiles by name (built-in or custom). It does **not** expose the reference product’s **Agent** tool or `team_name` peer mesh. See [`docs/goclaw/coordinator.md`](../goclaw/coordinator.md) and D16 in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md). For disk mailboxes vs workers, see [`docs/goclaw/swarm.md`](../goclaw/swarm.md).
+
 ---
 
 ## 1. Two topologies

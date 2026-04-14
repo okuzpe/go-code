@@ -4,6 +4,7 @@ package ide
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -31,11 +32,17 @@ func FromEnv() Notifier {
 		return Noop{}
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "http" && u.Scheme != "https" {
+	if err != nil {
+		slog.Warn("GOCLAW_IDE_NOTIFY_URL ignored", "url", raw, "err", err)
+		return Noop{}
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		slog.Warn("GOCLAW_IDE_NOTIFY_URL ignored", "url", raw, "err", fmt.Errorf("scheme must be http or https"))
 		return Noop{}
 	}
 	host := strings.ToLower(u.Hostname())
 	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+		slog.Warn("GOCLAW_IDE_NOTIFY_URL ignored: host must be loopback (127.0.0.1, localhost, or ::1)", "host", host, "url", raw)
 		return Noop{}
 	}
 	return &localHTTPNotify{url: raw, client: &http.Client{Timeout: ideNotifyHTTPTimeout}}

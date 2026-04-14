@@ -15,7 +15,9 @@ goclaw is primarily a **local CLI** over **Ollama**. “Parity” with hosted as
 
 **Goal:** smoother “open in editor” / file sync / richer MCP toward the extension.
 
-**First steps (from [roadmap.md](./roadmap.md)):** ship or document one reference extension flow; tighten discovery and failure modes; align [ide-bridge.md](../reference/ide-bridge.md) contract sections with `internal/ide`.
+**Shipped in this slice:** operator golden path [ide-editor-setup.md](./ide-editor-setup.md) (lockfile + `ide_bridge_mcp` + optional `GOCLAW_IDE_NOTIFY_URL`), example [examples/ide-mcp-endpoint.example.json](./examples/ide-mcp-endpoint.example.json), [usage.md](./usage.md#editor-integration-vs-code--cursor-pattern) entry point, **`goclaw doctor`** **`ide bridge:`** section, startup warnings on discovery/notify misconfig (see [ide-bridge.md](../reference/ide-bridge.md) §6.1).
+
+**Still extension-dependent:** a first-party VS Code/Cursor extension that writes `~/.goclaw/ide/*.json` on activate is not in this repo; follow the pattern in ide-editor-setup.md.
 
 ## Wave B — MCP enterprise
 

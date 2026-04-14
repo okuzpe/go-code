@@ -719,11 +719,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinnerActive = false
 		m.statusLine = ""
 		m.clearThinkingLine()
-		rawLen := utf8.RuneCountInString(m.curAssistant.String())
+		rawAssistant := m.curAssistant.String()
+		rawLen := utf8.RuneCountInString(rawAssistant)
 		// Finalize the current segment with markdown rendering.
 		m.finalizeCurrentSegment()
 		if rawLen >= idleTranscriptHintMinRunes {
 			m.idleTranscriptHint = m.transcriptScrollNavHint()
+		}
+		if !msg.aborted && (strings.Contains(rawAssistant, orchestrator.TruthFooterMarkerEN) ||
+			strings.Contains(rawAssistant, orchestrator.TruthFooterMarkerES)) {
+			m.footerHint = "No workspace writes this turn — type continue or a short follow-up if you still want edits applied."
 		}
 		var drainCmd tea.Cmd
 		if !msg.aborted {
@@ -860,6 +865,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendSystem(fmt.Sprintf("(dropped %d queued message(s) after error)", n))
 		}
 		m.idleTranscriptHint = ""
+		m.footerHint = ""
 		m.stripAssistantPlaceholderLine()
 		m.appendError(fmt.Sprintf("✗ %v", msg.err))
 		m.curAssistantLineIdx = -1
@@ -986,6 +992,7 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 		m.spinnerActive = false
 		m.curAssistantLineIdx = -1
 		m.idleTranscriptHint = ""
+		m.footerHint = ""
 		m.setLinesContent(true)
 		return m, nil, true
 	case "tab":
