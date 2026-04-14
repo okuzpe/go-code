@@ -209,6 +209,17 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 			cfg.AgentProfile, agents.JoinSortedProfileKeys(profs))
 	}
 
+	// Autonomous mode: when stdout is not a TTY (piped, --json-output, CI), append a conservative
+	// behaviour note to the profile's system prompt so the model avoids interactive assumptions.
+	if !isTTY(os.Stdout) {
+		profile.SystemPrompt += "\n\n═══ AUTONOMOUS MODE ═══\n" +
+			"Running without an interactive terminal. Be more conservative:\n" +
+			"- Prefer read operations over writes when the intent is ambiguous\n" +
+			"- Skip optional cleanup or cosmetic tasks unless explicitly requested\n" +
+			"- After completing the task, report what was done; do not prompt for next steps\n" +
+			"- If a required confirmation cannot be given, skip the risky action and explain why"
+	}
+
 	slog.Info("starting goclaw", "provider", cfg.Provider, "model", cfg.Model(), "profile", profile.Name)
 
 	var client llm.Client

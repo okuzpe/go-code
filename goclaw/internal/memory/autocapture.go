@@ -5,14 +5,22 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/okuzpe/goclaw/internal/config"
 )
 
 const maxAutoEntriesPerSession = 128
 
-var autoCountPerSession sync.Map // session id -> *int32
+// autoSessionQuota guards per-session auto-capture counts with a mutex so the
+// check-then-increment is atomic and the map doesn't leak old sessions.
+var autoSessionQuota struct {
+	mu     sync.Mutex
+	counts map[string]int
+}
+
+func init() {
+	autoSessionQuota.counts = make(map[string]int)
+}
 
 // MaybeAutoCaptureFromTool appends a short project memory line after successful write_file / edit_file / patch
 // when cfg.MemoryAutoExtract is true. Best-effort; capped per session.
@@ -29,13 +37,16 @@ func MaybeAutoCaptureFromTool(cfg config.Config, store *Store, sessionID, toolNa
 	if err := json.Unmarshal([]byte(toolInput), &in); err != nil || strings.TrimSpace(in.Path) == "" {
 		return
 	}
-	v, _ := autoCountPerSession.LoadOrStore(sessionID, new(int32))
-	cnt := v.(*int32)
-	if atomic.LoadInt32(cnt) >= maxAutoEntriesPerSession {
+
+	autoSessionQuota.mu.Lock()
+	if autoSessionQuota.counts[sessionID] >= maxAutoEntriesPerSession {
+		autoSessionQuota.mu.Unlock()
 		slog.Info("memory: auto-capture quota reached", "session", sessionID)
 		return
 	}
-	atomic.AddInt32(cnt, 1)
+	autoSessionQuota.counts[sessionID]++
+	autoSessionQuota.mu.Unlock()
+
 	_, _ = store.Save(Entry{
 		Name:        "auto-edit",
 		Description: "auto-captured from " + toolName,

@@ -117,6 +117,14 @@ func (m *Model) refreshToolLogOverlay() {
 			sum := text.TruncateRunes(entry.summary, toolLogSummaryMaxRunes)
 			detail = "  " + sum
 		}
+		if entry.outcome != "" {
+			out := text.TruncateRunes(entry.outcome, toolLogSummaryMaxRunes)
+			if detail != "" {
+				detail += th.FooterDim.Render(" · ") + th.FooterDim.Render(out)
+			} else {
+				detail = "  " + th.FooterDim.Render(out)
+			}
+		}
 		elapsed := ""
 		if entry.elapsed > 0 {
 			elapsed = fmt.Sprintf("  (%.1fs, %s)", entry.elapsed.Seconds(), formatBytes(len(entry.content)))
@@ -146,14 +154,18 @@ func formatBytes(n int) string {
 
 // appendToToolLog records a finished tool in the session log.
 // Called from appendToolDoneLine after the compact card line is added to m.lines.
-func (m *Model) appendToToolLog(name, summary, content string, isError bool) {
+func (m *Model) appendToToolLog(name, summary, content string, isError bool, outcome string) {
 	var elapsed time.Duration
 	if !m.toolLogStart.IsZero() {
 		elapsed = time.Since(m.toolLogStart)
 	}
+	if outcome == "" {
+		outcome = orchestrator.TranscriptOutcomeSnippet(name, content, isError)
+	}
 	m.toolLog = append(m.toolLog, toolLogEntry{
 		name:    name,
 		summary: summary,
+		outcome: outcome,
 		content: content,
 		isError: isError,
 		elapsed: elapsed,

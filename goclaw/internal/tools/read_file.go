@@ -37,6 +37,7 @@ func (ReadFileTool) Name() string { return "read_file" }
 func (ReadFileTool) Description() string {
 	return "Read a UTF-8 text file, or list the contents of a directory. " +
 		"Output includes line numbers (N⇥content) for reference — the numbers are not part of the file content. " +
+		"When output ends with a truncation notice, call read_file again with offset_lines/limit_lines to read the next chunk. " +
 		"Symlinks are resolved. Relative paths resolve from the process working directory at agent start; absolute paths are used as-is."
 }
 

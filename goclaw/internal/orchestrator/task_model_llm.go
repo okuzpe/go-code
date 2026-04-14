@@ -14,7 +14,10 @@ import (
 
 const (
 	taskModelLLMMaxTokens = 128
-	taskModelLLMTimeout   = 15 * time.Second
+	// taskModelLLMTimeout caps the router LLM call. A local Ollama model on a fast machine
+	// typically responds in < 1s for this short prompt. 3s is generous enough for a loaded
+	// GPU while keeping worst-case user-visible latency low.
+	taskModelLLMTimeout = 3 * time.Second
 )
 
 var errTaskModelLLMEmpty = errors.New("router returned empty role")

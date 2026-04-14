@@ -30,6 +30,7 @@ type lineMeta struct {
 	// tool card (lineKindToolCard) + tool running (lineKindToolRunning)
 	toolName    string
 	toolSummary string // full summary from OnToolUse; truncated on each render
+	toolOutcome string // one-line result hint from TranscriptOutcomeSnippet (tool cards only)
 	toolError   bool
 	// assistant markdown (lineKindAssistantMD)
 	assistantRaw string
@@ -52,11 +53,12 @@ func (m *Model) appendSeparatorMeta() {
 	m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindSeparator})
 }
 
-func (m *Model) appendToolCardMeta(toolName, summary string, isError bool) {
+func (m *Model) appendToolCardMeta(toolName, summary, outcome string, isError bool) {
 	m.lineMeta = append(m.lineMeta, lineMeta{
 		kind:        lineKindToolCard,
 		toolName:    toolName,
 		toolSummary: summary,
+		toolOutcome: outcome,
 		toolError:   isError,
 	})
 }
@@ -119,7 +121,7 @@ func (m *Model) reflowTranscriptForWidth() {
 			if s := strings.TrimSpace(meta.toolSummary); s != "" {
 				truncatedSummary = text.TruncateRunes(s, 96)
 			}
-			m.lines[i] = th.RenderToolCard(label, truncatedSummary, meta.toolError, m.width)
+			m.lines[i] = th.RenderToolCard(label, truncatedSummary, meta.toolOutcome, meta.toolError, m.width)
 		case lineKindThinking:
 			meta := m.lineMeta[i]
 			elapsed := int(time.Since(meta.startedAt).Seconds())

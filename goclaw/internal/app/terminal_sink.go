@@ -24,6 +24,14 @@ type terminalSink struct {
 
 var _ orchestrator.StreamSink = (*terminalSink)(nil)
 
+func (s *terminalSink) OnThinkingStart() {
+	if s.needsNL {
+		fmt.Println()
+		s.needsNL = false
+	}
+	fmt.Fprintf(os.Stderr, "⟳ Thinking…\n")
+}
+
 func (s *terminalSink) OnTextDelta(text string) {
 	fmt.Print(text)
 	if len(text) > 0 {
@@ -50,10 +58,13 @@ func (s *terminalSink) OnToolUse(name, rawInput string) {
 	}
 }
 
-func (s *terminalSink) OnToolResult(_ string, content string, isError bool) {
+func (s *terminalSink) OnToolResult(name string, content string, isError bool) {
 	icon := "✓"
 	if isError {
 		icon = "✗"
+	}
+	if hint := orchestrator.TranscriptOutcomeSnippet(name, content, isError); hint != "" {
+		fmt.Fprintf(os.Stderr, "SUMMARY\n%s\n", hint)
 	}
 	displayed := strings.TrimSpace(content)
 	truncated := false
@@ -81,6 +92,10 @@ func (s *terminalSink) OnDone(_ string) {
 		fmt.Println()
 		s.needsNL = false
 	}
+}
+
+func (s *terminalSink) OnToolProgress(_ string, partial string) {
+	fmt.Fprintf(os.Stderr, "│ %s\n", partial)
 }
 
 func (s *terminalSink) OnCompact(removed int) {

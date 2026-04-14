@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -82,11 +83,8 @@ func (s ScriptTool) Execute(ctx context.Context, input string) (Result, error) {
 	}
 
 	// Write script to a temp file.
-	ext := ".sh"
-	if runtime.GOOS == "windows" {
-		ext = ".bat"
-	}
-	tmpFile, err := os.CreateTemp("", "goclaw-script-*"+ext)
+	// Always use .sh so scriptInvocation can find bash/sh on Windows (Git for Windows).
+	tmpFile, err := os.CreateTemp("", "goclaw-script-*.sh")
 	if err != nil {
 		return Result{Content: fmt.Sprintf("failed to create temp script: %v", err), IsError: true}, nil
 	}
@@ -109,6 +107,13 @@ func (s ScriptTool) Execute(ctx context.Context, input string) (Result, error) {
 	}
 
 	cwd := strings.TrimSpace(in.Cwd)
+	if cwd != "" {
+		var err error
+		cwd, err = filepath.Abs(cwd)
+		if err != nil {
+			return Result{Content: fmt.Sprintf("cwd: %v", err), IsError: true}, nil
+		}
+	}
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(s.scriptTimeout())*time.Second)
 	defer cancel()
@@ -120,10 +125,20 @@ func (s ScriptTool) Execute(ctx context.Context, input string) (Result, error) {
 	}
 	cmd.Env = os.Environ()
 
-	out, execErr := cmd.CombinedOutput()
-	if len(out) > MaxBashOutput {
-		out = out[:MaxBashOutput]
-		out = append(out, []byte("\n[output truncated]")...)
+	reporter := ProgressReporterFromContext(ctx)
+	var out []byte
+	var execErr error
+	if reporter == nil {
+		out, execErr = cmd.CombinedOutput()
+		if len(out) > MaxBashOutput {
+			out = out[:MaxBashOutput]
+			out = append(out, []byte("\n[output truncated]")...)
+		}
+	} else {
+		out, execErr = runCommandWithProgressPipes(cmd, reporter)
+		if execErr != nil && len(out) == 0 {
+			return Result{Content: execErr.Error(), IsError: true}, nil
+		}
 	}
 	output := string(out)
 
@@ -144,16 +159,13 @@ func (s ScriptTool) Execute(ctx context.Context, input string) (Result, error) {
 // scriptInvocation returns the interpreter and arguments to run a script file.
 func scriptInvocation(scriptPath string) (string, []string) {
 	if runtime.GOOS == "windows" {
-		// .sh files: prefer bash if available.
-		if strings.HasSuffix(scriptPath, ".sh") {
-			if p, err := exec.LookPath("bash"); err == nil {
-				return p, []string{scriptPath}
-			}
-			if p, err := exec.LookPath("sh"); err == nil {
-				return p, []string{scriptPath}
-			}
+		// Prefer bash/sh from Git for Windows or MSYS so bash syntax works.
+		if p, err := exec.LookPath("bash"); err == nil {
+			return p, []string{scriptPath}
 		}
-		// .bat files: use cmd.exe.
+		if p, err := exec.LookPath("sh"); err == nil {
+			return p, []string{scriptPath}
+		}
 		return "cmd", []string{"/C", scriptPath}
 	}
 	return "/bin/bash", []string{scriptPath}

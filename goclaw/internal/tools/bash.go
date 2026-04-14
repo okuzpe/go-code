@@ -289,26 +289,49 @@ func (b BashTool) Execute(ctx context.Context, input string) (Result, error) {
 	timeoutCtx, cancel := context.WithTimeout(ctx, b.bashTimeout())
 	defer cancel()
 
-	name, args := shellInvocation(cmdLine)
-	c := exec.CommandContext(timeoutCtx, name, args...)
+	execName, args := shellInvocation(cmdLine)
+	c := exec.CommandContext(timeoutCtx, execName, args...)
 	if cwd != "" {
 		c.Dir = cwd
 	}
 	c.Env = os.Environ()
-	out, err := c.CombinedOutput()
-	if len(out) > MaxBashOutput {
-		out = out[:MaxBashOutput]
-		out = append(out, []byte("\n[output truncated]")...)
+
+	reporter := ProgressReporterFromContext(ctx)
+	if reporter == nil {
+		// No progress sink — use simple CombinedOutput for non-interactive callers.
+		out, err := c.CombinedOutput()
+		if len(out) > MaxBashOutput {
+			out = out[:MaxBashOutput]
+			out = append(out, []byte("\n[output truncated]")...)
+		}
+		s := string(out)
+		if timeoutCtx.Err() == context.DeadlineExceeded {
+			return Result{Content: s + "\n[timeout]", IsError: true}, nil
+		}
+		if err != nil {
+			if s == "" {
+				s = err.Error()
+			} else {
+				s += "\n" + err.Error()
+			}
+			return Result{Content: s, IsError: true}, nil
+		}
+		return Result{Content: s, IsError: false}, nil
+	}
+
+	out, waitErr := runCommandWithProgressPipes(c, reporter)
+	if waitErr != nil && len(out) == 0 {
+		return Result{Content: waitErr.Error(), IsError: true}, nil
 	}
 	s := string(out)
 	if timeoutCtx.Err() == context.DeadlineExceeded {
 		return Result{Content: s + "\n[timeout]", IsError: true}, nil
 	}
-	if err != nil {
+	if waitErr != nil {
 		if s == "" {
-			s = err.Error()
+			s = waitErr.Error()
 		} else {
-			s += "\n" + err.Error()
+			s += "\n" + waitErr.Error()
 		}
 		return Result{Content: s, IsError: true}, nil
 	}

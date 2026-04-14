@@ -178,6 +178,9 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	for _, ln := range wrapPlainWords("Ctrl+P opens the agent profile picker (same as /agents).", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
+	for _, ln := range wrapPlainWords("Each tool card can show a one-line result hint under the input; Ctrl+T opens full tool output history for this session.", rightW-1) {
+		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
+	}
 	for _, ln := range wrapPlainWords("CLAUDE.md and .goclaw/ carry project context.", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
@@ -280,6 +283,8 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 	body.WriteString(dim.Render("/help  /capabilities  ·  CLAUDE.md  ·  .goclaw/"))
 	body.WriteString("\n")
 	body.WriteString(dim.Render("Ctrl+P — agent profile picker  ·  Plan: /profile plan → /plan save → /apply-plan --preview → /apply-plan"))
+	body.WriteString("\n")
+	body.WriteString(dim.Render("Tool cards: one-line result hint when available · Ctrl+T — full tool history"))
 	body.WriteString("\n")
 	body.WriteString(dim.Render("Multi-agent: /profile coordinator, /workers, /focus"))
 	if opt.FileWriteToolsHidden {

@@ -40,8 +40,10 @@ func NewStore(dir string) (*Store, error) {
 	return &Store{dir: dir}, nil
 }
 
-// Save appends all messages in s to its JSONL file, rotating if the file
-// exceeds rotateAfterBytes.
+// Save writes all messages in s to its JSONL file atomically (temp file + rename),
+// rotating if the existing file exceeds rotateAfterBytes.
+// An atomic write guarantees the previous file is never left in a partial state
+// if a disk-full or I/O error occurs mid-write.
 func (st *Store) Save(s *Session) error {
 	path := st.currentPath(s.ID)
 
@@ -52,18 +54,38 @@ func (st *Store) Save(s *Session) error {
 		}
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	// Write to a sibling temp file, then rename atomically so a failed write
+	// never truncates the live session file.
+	tmp, err := os.CreateTemp(st.dir, ".session-*.jsonl.tmp")
 	if err != nil {
-		return fmt.Errorf("session store: open %s: %w", path, err)
+		return fmt.Errorf("session store: create temp: %w", err)
 	}
-	defer f.Close()
+	tmpPath := tmp.Name()
+	// Clean up temp file on any error path.
+	committed := false
+	defer func() {
+		if !committed {
+			tmp.Close()
+			os.Remove(tmpPath)
+		}
+	}()
 
-	enc := json.NewEncoder(f)
+	enc := json.NewEncoder(tmp)
 	for _, m := range s.Messages {
 		if err := enc.Encode(m); err != nil {
 			return fmt.Errorf("session store: encode message: %w", err)
 		}
 	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("session store: sync temp: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("session store: close temp: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("session store: rename: %w", err)
+	}
+	committed = true
 	return nil
 }
 

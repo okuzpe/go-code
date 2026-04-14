@@ -59,7 +59,8 @@ Architecture note
                    the agent uses spawn_agent to delegate to isolated worker orchestrators, then
                    synthesizes results. It never touches files or shell directly.
   General-purpose  Default profile. Explore → implement → verify with tools directly (no workers).
-                   Ctrl+T (TUI) or /tools (readline) shows the tool call history for this session.
+                   Completed tool cards show a short result line when useful; Ctrl+T (TUI) or /tools
+                   (readline) opens full tool output history for this session.
 `)
 
 }

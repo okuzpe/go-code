@@ -19,10 +19,11 @@ const (
 
 // batchedProgramSink coalesces OnTextDelta calls before forwarding to the TUI.
 type batchedProgramSink struct {
-	p     *tea.Program
-	mu    sync.Mutex
-	buf   strings.Builder
-	timer *time.Timer
+	p               *tea.Program
+	mu              sync.Mutex
+	buf             strings.Builder
+	timer           *time.Timer
+	thinkingStarted bool // true after the first OnThinkingStart — first call is handled by assistantPlaceholderMsg
 }
 
 func newBatchedProgramSink(p *tea.Program) *batchedProgramSink {
@@ -65,6 +66,25 @@ func (s *batchedProgramSink) flush() {
 	if chunk != "" {
 		s.p.Send(assistantDeltaMsg(chunk))
 	}
+}
+
+func (s *batchedProgramSink) OnThinkingStart() {
+	s.mu.Lock()
+	first := !s.thinkingStarted
+	s.thinkingStarted = true
+	s.mu.Unlock()
+	if first {
+		// First iteration: assistantPlaceholderMsg (sent before submit()) already set up
+		// the thinking row and streaming state — nothing more to do here.
+		return
+	}
+	// Subsequent iterations (between tool calls): re-show the thinking row.
+	s.flush()
+	s.p.Send(thinkingRestartMsg{})
+}
+
+func (s *batchedProgramSink) OnToolProgress(name, partial string) {
+	s.p.Send(toolProgressMsg{name: name, partial: partial})
 }
 
 func (s *batchedProgramSink) OnToolUse(name, rawInput string) {

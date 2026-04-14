@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/okuzpe/goclaw/internal/agents"
@@ -43,6 +44,24 @@ func normalizeTaskRole(r string) string {
 		return r
 	}
 	return "default"
+}
+
+// rulesRouterHighConfidence reports whether the rules classifier result is reliable enough
+// to skip the LLM router call for this message. Skipping avoids the round-trip latency
+// when the outcome is already obvious:
+//   - Very short prompts (< 60 runes): rules "fast" is correct; an LLM call adds no value.
+//   - "explore": strong keyword signals (where is, search for, etc.) that LLM rarely overrides.
+//   - Profile fallback only ("default"): LLM may genuinely help here — don't skip.
+func rulesRouterHighConfidence(msg, rulesRole string) bool {
+	runes := utf8.RuneCountInString(strings.TrimSpace(msg))
+	switch rulesRole {
+	case "fast":
+		return runes < 60
+	case "explore":
+		return true
+	default:
+		return false
+	}
 }
 
 // classifyTaskRoleRules scores the user message with lightweight heuristics (no extra LLM calls).
@@ -127,10 +146,8 @@ func taskExplorationHint(role string) string {
 		return "\n\n[THIS TURN: coding. IMMEDIATE first output = native tool_use (glob / grep / read_file / bash as needed)." + noNarration + "]"
 	case "fix":
 		return "\n\n[THIS TURN: review-and-fix. FIRST output must be a tool call (glob). " +
-			"Read files from several directories before deciding anything. " +
-			"After reading: apply every fix you find with edit_file or write_file, then verify with bash. " +
-			"You MUST produce a final short paragraph — do not end the turn silently. " +
-			"Do NOT produce a suggestion list instead of actual edits." +
+			"After reading enough files (see base prompt analysis rules): apply fixes with edit_file or write_file, then verify with bash. " +
+			"End with one short paragraph — not a suggestion list." +
 			noNarration + "]"
 	case "reasoning", "explore":
 		return "\n\n[THIS TURN: analysis. IMMEDIATE first output = native tool_use (glob / read_file / grep)." + noNarration + "]"
@@ -171,19 +188,25 @@ func (o *Orchestrator) resolveTaskModel(ctx context.Context, userMsg string) Tas
 	role := classifyTaskRoleRules(userMsg, o.profile)
 	reason := fmt.Sprintf("rules:%s", role)
 
-	if mode == "llm" && o.llm != nil {
+	if mode == "llm" && o.llm != nil && !rulesRouterHighConfidence(userMsg, role) {
+		start := time.Now()
 		if r2, rsn, err := classifyTaskRoleLLM(ctx, o.llm, userMsg, cfg); err == nil && r2 != "" {
 			role = normalizeTaskRole(r2)
-			reason = "llm:" + rsn
+			reason = fmt.Sprintf("llm:%s (%.0fms)", rsn, float64(time.Since(start).Milliseconds()))
 		} else {
+			elapsed := time.Since(start)
 			if err != nil {
-				slog.Debug("task model llm router failed", "err", err)
+				slog.Warn("task model llm router failed, using rules classification",
+					"err", err, "elapsed", elapsed.Round(time.Millisecond), "rules_role", role)
 			}
 			role = normalizeTaskRole(role)
-			reason = fmt.Sprintf("rules_fallback:%s", role)
+			reason = fmt.Sprintf("rules_fallback:%s (%.0fms)", role, float64(elapsed.Milliseconds()))
 		}
 	} else {
 		role = normalizeTaskRole(role)
+		if mode == "llm" && rulesRouterHighConfidence(userMsg, role) {
+			reason = fmt.Sprintf("rules_confident:%s", role)
+		}
 	}
 
 	if m, ok := cfg.TaskModels[role]; ok && strings.TrimSpace(m) != "" {

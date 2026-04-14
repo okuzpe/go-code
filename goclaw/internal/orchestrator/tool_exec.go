@@ -9,6 +9,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/hooks"
 	"github.com/okuzpe/goclaw/internal/llm"
 	"github.com/okuzpe/goclaw/internal/permissions"
+	"github.com/okuzpe/goclaw/internal/tools"
 )
 
 // toolOutcome carries the result of one tool execution.
@@ -31,9 +32,20 @@ func rejectTool(msg string) toolOutcome {
 	return toolOutcome{Content: msg, IsError: true}
 }
 
+// sinkProgressAdapter bridges StreamSink.OnToolProgress into tools.ProgressReporter.
+type sinkProgressAdapter struct {
+	name string
+	sink StreamSink
+}
+
+func (a *sinkProgressAdapter) OnProgress(_ string, partial string) {
+	a.sink.OnToolProgress(a.name, partial)
+}
+
 func (o *Orchestrator) executeTool(ctx context.Context, tu *llm.ToolUse, sink StreamSink) toolOutcome {
 	if sink != nil {
 		ctx = ContextWithStreamSink(ctx, sink)
+		ctx = tools.WithProgressReporter(ctx, &sinkProgressAdapter{name: tu.Name, sink: sink})
 	}
 	if outcome, blocked := o.checkReadOnly(tu.Name); blocked {
 		return outcome
@@ -61,7 +73,9 @@ func (o *Orchestrator) finishToolExecution(ctx context.Context, toolName, input,
 	ev := hooks.Event{ToolName: toolName, Input: input, Output: content}
 	if execErr != nil {
 		ev.Type = hooks.PostToolUseFailure
-		_ = o.hooks.Fire(ctx, ev)
+		if err := o.hooks.Fire(ctx, ev); err != nil {
+			slog.Warn("post_tool_use_failure hook error", "tool", toolName, "err", err)
+		}
 		return rejectTool(execErr.Error())
 	}
 	if resultIsError {
@@ -69,7 +83,9 @@ func (o *Orchestrator) finishToolExecution(ctx context.Context, toolName, input,
 	} else {
 		ev.Type = hooks.PostToolUse
 	}
-	_ = o.hooks.Fire(ctx, ev)
+	if err := o.hooks.Fire(ctx, ev); err != nil {
+		slog.Warn("post_tool_use hook error", "tool", toolName, "err", err)
+	}
 	return toolOutcome{Content: content, IsError: resultIsError}
 }
 
@@ -104,7 +120,7 @@ func (o *Orchestrator) checkApproval(ctx context.Context, tu *llm.ToolUse) (tool
 			}
 		}
 		if o.approver == nil {
-			return toolOutcome{Err: fmt.Errorf("tool %q requires user approval; no approver configured", tu.Name)}, true
+			return rejectTool(fmt.Sprintf("tool %q requires approval but no interactive approver is available (running non-interactively)", tu.Name)), true
 		}
 		approved, err := o.approver(ctx, tu.Name, tu.Input)
 		if err != nil {

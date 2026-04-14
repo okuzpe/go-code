@@ -97,7 +97,9 @@ func (o *Orchestrator) compactToTailWithLLM(ctx context.Context, preserve int) {
 
 	req := llm.Request{
 		Model:  o.cfg.ModelForCompaction(),
-		System: "You are a concise summarizer. Summarize the following conversation excerpt in 3-5 sentences. Focus on key decisions, file paths modified, and outcomes. Be brief.",
+		System: "You are a concise session summarizer for a coding agent. Summarize the excerpt in 3-6 short sentences. " +
+			"Preserve concrete file paths, commands run, errors encountered, and explicit user decisions. " +
+			"Mention open todos or unfinished work if visible. Omit boilerplate and tool-narration chatter. English only.",
 		Messages: []llm.Message{
 			llm.PlainMessage("user", "Summarize this conversation:\n\n"+excerpt.String()),
 		},
@@ -115,14 +117,24 @@ func (o *Orchestrator) compactToTailWithLLM(ctx context.Context, preserve int) {
 		}
 	}
 	if err := <-errc; err != nil {
-		slog.Warn("llm compaction failed, falling back to heuristic", "err", err)
+		slog.Warn("llm compaction: LLM error, falling back to heuristic (context detail may be reduced)",
+			"err", err, "head_messages", len(head))
+		o.compactToTail(preserve)
+		return
+	}
+
+	summaryText := strings.TrimSpace(summary.String())
+	if summaryText == "" {
+		// Empty LLM response — heuristic is more useful than a blank compaction message.
+		slog.Warn("llm compaction: empty summary returned, falling back to heuristic",
+			"head_messages", len(head))
 		o.compactToTail(preserve)
 		return
 	}
 
 	tail := msgs[len(msgs)-preserve:]
 	o.session.ReplaceMessages(tail)
-	o.session.PrependMessage(llm.PlainMessage("user", "[session compacted] "+strings.TrimSpace(summary.String())))
+	o.session.PrependMessage(llm.PlainMessage("user", "[session compacted] "+summaryText))
 }
 
 // clearOldToolResults replaces the Content of ToolResults in messages outside the preserved tail

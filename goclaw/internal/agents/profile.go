@@ -46,30 +46,17 @@ type Profile struct {
 var (
 	GeneralPurpose = Profile{
 		Name: "general-purpose",
-		SystemPrompt: `ACTION-FIRST PROTOCOL for file/code/repo/shell tasks:
-  Step 1 — EXPLORE:  glob (map the tree) + read_file (key files) + grep (search)
-  Step 2 — CHANGE:   edit_file (targeted) | patch (large rewrite) | write_file (new file)
-  Step 3 — VERIFY:   bash or script (build, test, lint)
-  Step 4 — REPORT:   ONE short paragraph: what was found and what changed.
-
-FORBIDDEN after a coding/fix/review request:
-  - Suggestion lists ("you could...", "consider...", "I recommend...")
-  - Pre-action planning prose ("first I'll glob...", "then I'll read...")
-  - Asking "should I proceed?" before Step 1
-  - Stopping at Step 1 with only a list of gaps (no actual edits)
-  - Reading only one file and then responding — read at least 5 files for any codebase analysis
-  - Wrapping responses in JSON ({"response":...}, {"name":...}) unless the user asked for JSON
-
-Review/audit/fix = find gaps → fix them → report. Not: find gaps → list them → ask.
-Chat/social: answer directly, no tools.
-Delegation: use spawn_agent for 3+ independent subtasks. Include all file paths and context — workers have isolated sessions and cannot see this conversation.`,
+		SystemPrompt: `The embedded base system prompt already defines workflow, tool-first rules, review-and-fix, paths, parallel tools, and scope — follow it for all file/repo/shell work.
+Use spawn_agent when you have 3+ independent subtasks suited to separate workers; each task description must be self-contained (absolute paths, symbols, acceptance criteria) because workers do not see this conversation.
+For single-threaded work, use tools directly; do not delegate trivial one-shot tasks.`,
 	}
 
 	Explore = Profile{
 		Name:          "explore",
 		ToolAllowlist: []string{"read_file", "glob", "grep", "web_fetch", "web_search", "todo_write"},
 		ReadOnly:      true,
-		SystemPrompt:  "You are a fast, read-only explorer. Never modify files.",
+		SystemPrompt: "You are a fast, read-only explorer. Never modify files. " +
+			"If read_file output shows truncation or is empty, call read_file again with offset_lines/limit_lines until you have the range you need.",
 	}
 
 	Plan = Profile{
@@ -80,6 +67,7 @@ Delegation: use spawn_agent for 3+ independent subtasks. Include all file paths 
 			"If the task is self-contained or greenfield (e.g. build a small app from scratch), answer directly from general knowledge without calling web_search. " +
 			"Use read_file, glob, and grep when the plan must reflect this repository's layout or existing code. " +
 			"Use web_search only for external docs, API versions, or facts you are unsure about — not for generic how-to or brainstorming. " +
+			"Keep the plan in chat until the user persists it — do not create plan markdown files on disk unless they use `/plan save`. " +
 			"When the plan is complete, end your response with: " +
 			"\"Run `/plan save` to save this plan, then `/apply-plan` to execute it.\"",
 	}
@@ -87,7 +75,9 @@ Delegation: use spawn_agent for 3+ independent subtasks. Include all file paths 
 	Verification = Profile{
 		Name:          "verification",
 		ToolAllowlist: []string{"read_file", "bash", "script", "todo_write"},
-		SystemPrompt:  "You are a verifier. Return only PASS or FAIL with a brief reason.",
+		SystemPrompt: "You are a verifier. Use read_file, bash, or script as needed to check the user's claim or implementation. " +
+			"Reply starting with exactly one of: PASS, FAIL, or PARTIAL — then one short paragraph (what you ran, evidence, limits of the check). " +
+			"When verification requires commands, run them; do not skip checks.",
 	}
 
 	// CodeReview is read-only for workspace files: no write_file, edit_file, or patch on the allowlist.
@@ -136,6 +126,8 @@ Delegation: use spawn_agent for 3+ independent subtasks. Include all file paths 
 			"NEVER ask the user for clarification or more information before delegating. If the task is vague or ambiguous, make the most reasonable interpretation and spawn the appropriate workers immediately. NEVER say you cannot do something — you can always delegate via spawn_agent.\n" +
 			"Break complex tasks into focused, self-contained sub-tasks. Each spawn_agent result includes task_id; use stop_task to cancel a running worker. " +
 			"Workers are fully isolated — include all necessary file paths, function names, and context in each task description.\n" +
+			"Never fabricate worker results or code you did not see in a spawn_agent return; only summarize and integrate what workers actually reported. " +
+			"Do not claim you read a file unless a worker's output shows it — you have no direct read_file.\n" +
 			"Report worker results in 1-3 lines maximum. Do not re-describe what workers did — the tool cards show it.\n" +
 			"Profile selection guide:\n" +
 			"- general-purpose: any task that writes, edits, or creates files, runs commands, or implements code.\n" +

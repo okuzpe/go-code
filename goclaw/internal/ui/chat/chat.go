@@ -164,6 +164,7 @@ type pendingTool struct {
 type toolLogEntry struct {
 	name    string
 	summary string // input preview (from OnToolUse)
+	outcome string // one-line result hint (same as transcript tool cards)
 	content string // full result string (from OnToolResult; capped at display)
 	isError bool
 	elapsed time.Duration
@@ -802,6 +803,43 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if len(m.toolWaitQueue) > 0 {
 			return m, tickToolWait()
+		}
+		return m, nil
+	case thinkingRestartMsg:
+		// Re-show thinking row between tool iterations (mid-turn LLM call).
+		if m.streaming {
+			m.assistantPlaceholder = true
+			m.appendThinkingRow()
+		}
+		return m, nil
+	case toolProgressMsg:
+		// Update the live in-progress card for the named tool. Uses msg.name to find the
+		// correct card so parallel tool runs each update their own row.
+		lineIdx := m.findToolRunLineByName(msg.name)
+		if lineIdx >= 0 && lineIdx < len(m.lines) && lineIdx < len(m.lineMeta) &&
+			m.lineMeta[lineIdx].kind == lineKindToolRunning {
+			meta := m.lineMeta[lineIdx]
+			// Append the new partial line to the running summary (cap at 3 lines for display).
+			prev := meta.toolSummary
+			lines := strings.Split(strings.TrimRight(prev, "\n"), "\n")
+			lines = append(lines, msg.partial)
+			if len(lines) > 3 {
+				lines = lines[len(lines)-3:]
+			}
+			newSummary := strings.Join(lines, "\n")
+			meta.toolSummary = newSummary
+			m.lineMeta[lineIdx] = meta
+			th := m.theme
+			if th == nil {
+				th = DefaultTheme()
+			}
+			label := orchestrator.ToolWorkingPhrase(meta.toolName)
+			elapsed := 0
+			if len(m.toolWaitQueue) > 0 && !m.toolWaitStartedAt.IsZero() {
+				elapsed = int(time.Since(m.toolWaitStartedAt).Seconds())
+			}
+			m.lines[lineIdx] = th.RenderToolInProgressRow(label, newSummary, elapsed, m.widthOrDefault())
+			m.setLinesContent(false)
 		}
 		return m, nil
 	case compactNoticeMsg:
@@ -1496,8 +1534,9 @@ func (m *Model) footerView() string {
 		}
 		b.WriteString("\n")
 	} else if stats != "" {
-		// Idle: show stats (context %, session id) on their own line.
-		session := footerline.AlignedHintsSession("", stats, "", "", fw)
+		// Idle: show stats (message/token budget for the LLM context window — not assistant output).
+		// Leading label "Context" plus optional #session id on the right so this line is never read as chat.
+		session := footerline.AlignedHintsSession("Context", stats, "", m.sessionID, fw)
 		if strings.TrimSpace(session) != "" {
 			if fw > 4 {
 				b.WriteString(th.FooterDim.Width(fw).Render(session))
@@ -1981,6 +2020,22 @@ func (m *Model) widthOrDefault() int {
 	return defaultTerminalWidthFallback
 }
 
+// findToolRunLineByName returns the transcript line index for the in-progress tool card
+// whose toolName matches name. Falls back to toolRunLineIdx[0] when no exact match is
+// found (e.g. the name is empty or the card was not yet registered). Returns -1 when
+// there are no in-flight tool cards at all.
+func (m *Model) findToolRunLineByName(name string) int {
+	for _, idx := range m.toolRunLineIdx {
+		if idx >= 0 && idx < len(m.lineMeta) && m.lineMeta[idx].toolName == name {
+			return idx
+		}
+	}
+	if len(m.toolRunLineIdx) > 0 {
+		return m.toolRunLineIdx[0]
+	}
+	return -1
+}
+
 func (m *Model) appendThinkingRow() {
 	th := m.theme
 	if th == nil {
@@ -2114,7 +2169,8 @@ func (m *Model) replaceToolRunningWithCard(lineIdx int, toolName, summary, conte
 		m.appendToolDoneLine(toolName, summary, content, isError)
 		return
 	}
-	card := th.RenderToolCard(label, truncatedSummary, isError, m.widthOrDefault())
+	outcome := orchestrator.TranscriptOutcomeSnippet(toolName, content, isError)
+	card := th.RenderToolCard(label, truncatedSummary, outcome, isError, m.widthOrDefault())
 	m.lines[lineIdx] = card
 	m.syncLineMetaLen()
 	if lineIdx < len(m.lineMeta) {
@@ -2122,11 +2178,12 @@ func (m *Model) replaceToolRunningWithCard(lineIdx int, toolName, summary, conte
 			kind:        lineKindToolCard,
 			toolName:    toolName,
 			toolSummary: summary,
+			toolOutcome: outcome,
 			toolError:   isError,
 		}
 	}
 	m.setLinesContent(false)
-	m.appendToToolLog(toolName, summary, content, isError)
+	m.appendToToolLog(toolName, summary, content, isError, outcome)
 }
 
 func (m *Model) stripAssistantPlaceholderLine() {
@@ -2205,11 +2262,12 @@ func (m *Model) appendToolDoneLine(toolName, summary, content string, isError bo
 	if s := strings.TrimSpace(summary); s != "" {
 		truncatedSummary = text.TruncateRunes(s, 96)
 	}
-	card := th.RenderToolCard(label, truncatedSummary, isError, m.width)
+	outcome := orchestrator.TranscriptOutcomeSnippet(toolName, content, isError)
+	card := th.RenderToolCard(label, truncatedSummary, outcome, isError, m.width)
 	m.lines = append(m.lines, card)
-	m.appendToolCardMeta(toolName, summary, isError)
+	m.appendToolCardMeta(toolName, summary, outcome, isError)
 	m.setLinesContent(false)
-	m.appendToToolLog(toolName, summary, content, isError)
+	m.appendToToolLog(toolName, summary, content, isError, outcome)
 }
 
 // refreshAssistantLine updates or appends a line with streaming content.
@@ -2369,6 +2427,16 @@ type toolResultMsg struct {
 	name    string
 	content string // full result string (used for tool log drill-down)
 	isError bool
+}
+
+// thinkingRestartMsg re-shows the "Thinking…" row between tool iterations
+// (the first iteration is handled by assistantPlaceholderMsg).
+type thinkingRestartMsg struct{}
+
+// toolProgressMsg carries an incremental output chunk from a running tool (e.g. a bash stdout line).
+type toolProgressMsg struct {
+	name    string
+	partial string
 }
 
 // compactNoticeMsg is sent when automatic context compaction removes messages.

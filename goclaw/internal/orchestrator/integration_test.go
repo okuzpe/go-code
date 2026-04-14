@@ -36,6 +36,18 @@ func (c *captureSink) OnTextDelta(text string) {
 	c.deltas = append(c.deltas, text)
 }
 
+func (c *captureSink) OnThinkingStart() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.events = append(c.events, "thinking_start")
+}
+
+func (c *captureSink) OnToolProgress(name, partial string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.events = append(c.events, "tool_progress:"+name+":"+partial)
+}
+
 func (c *captureSink) OnToolUse(name, _ string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -406,7 +418,8 @@ func TestOrchestratorYoloBlocksHighRisk(t *testing.T) {
 			Match: "high-risk",
 			Tool:  &mockopenai.ToolReply{Name: "bash", Input: `{"command":"rm -rf /tmp/all"}`},
 		},
-		// The orchestrator should return an error (no approver + YOLO threshold exceeded).
+		// After the rejection the LLM receives an is_error tool result; the mock
+		// returns a default response so the run completes without a fatal error.
 	})
 	defer srv.Close()
 
@@ -420,7 +433,8 @@ func TestOrchestratorYoloBlocksHighRisk(t *testing.T) {
 	orch := New(cfg, testOpenAIClient(srv),
 		session.New(), reg, permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose)
 
+	// The tool is rejected non-fatally (LLM sees an error tool result) rather than
+	// aborting the entire run. The LLM can adapt and the session continues.
 	_, err := orch.Run(context.Background(), "high-risk")
-	require.Error(t, err, "expected error when YOLO threshold is exceeded and no approver")
-	require.Contains(t, err.Error(), "approver")
+	require.NoError(t, err, "YOLO threshold exceeded with nil approver should reject tool gracefully, not abort the run")
 }

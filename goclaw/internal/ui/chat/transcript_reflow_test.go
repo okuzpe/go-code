@@ -22,8 +22,8 @@ func TestReflowTranscriptForWidth_separatorAndToolCard(t *testing.T) {
 	m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindSeparator})
 	label := orchestrator.ToolFinishedPhrase("bash")
 	summary := "echo hello"
-	m.lines = append(m.lines, th.RenderToolCard(label, summary, false, 100))
-	m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindToolCard, toolName: "bash", toolSummary: summary, toolError: false})
+	m.lines = append(m.lines, th.RenderToolCard(label, summary, "hello", false, 100))
+	m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindToolCard, toolName: "bash", toolSummary: summary, toolOutcome: "hello", toolError: false})
 
 	m.width = 42
 	m.reflowTranscriptForWidth()

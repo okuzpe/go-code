@@ -23,6 +23,7 @@ const (
 	toolCardMinInnerWidth         = 36
 	toolCardDashMin               = 3
 	toolInProgressSummaryMaxRunes = 120
+	toolCardOutcomeMaxRunes      = 100
 )
 
 func toolCardInnerWidth(termWidth int) int {
@@ -175,11 +176,12 @@ func (t *Theme) SeparatorLine(width int) string {
 //
 //	╭─ read_file ──────────────
 //	│  src/main.go
+//	│  42 lines · 1200 chars
 //	╰─ ✓
 //
 // The │ bar uses the tool accent color to give each card a left-accent visual
-// similar to VS Code diagnostic panels.
-func (t *Theme) RenderToolCard(toolLabel, summary string, isError bool, width int) string {
+// similar to VS Code diagnostic panels. outcome is optional (tool result hint).
+func (t *Theme) RenderToolCard(toolLabel, summary, outcome string, isError bool, width int) string {
 	cardW := toolCardInnerWidth(width)
 
 	nameRendered := t.ToolCardHead.Render(" " + toolLabel + " ")
@@ -202,6 +204,13 @@ func (t *Theme) RenderToolCard(toolLabel, summary string, isError bool, width in
 		b.WriteString(t.ToolTag.Render("│"))
 		b.WriteString("  ")
 		b.WriteString(t.ToolCardBody.Render(s))
+	}
+	if o := strings.TrimSpace(outcome); o != "" {
+		o = text.TruncateRunes(o, toolCardOutcomeMaxRunes)
+		b.WriteString("\n  ")
+		b.WriteString(t.ToolTag.Render("│"))
+		b.WriteString("  ")
+		b.WriteString(t.FooterDim.Render(o))
 	}
 	b.WriteString("\n  ")
 	b.WriteString(footer)

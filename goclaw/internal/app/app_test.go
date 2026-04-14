@@ -67,6 +67,8 @@ func TestReplPrompt(t *testing.T) {
 type noopStreamSink struct{}
 
 func (noopStreamSink) OnTextDelta(string)                {}
+func (noopStreamSink) OnThinkingStart()                  {}
+func (noopStreamSink) OnToolProgress(string, string)     {}
 func (noopStreamSink) OnToolUse(string, string)          {}
 func (noopStreamSink) OnToolResult(string, string, bool) {}
 func (noopStreamSink) OnDone(string)                     {}

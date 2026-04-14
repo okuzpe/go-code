@@ -2,10 +2,13 @@ package orchestrator
 
 import (
 	_ "embed"
+	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/okuzpe/goclaw/internal/llm"
+	"github.com/okuzpe/goclaw/internal/text"
 	"github.com/okuzpe/goclaw/internal/tools"
 )
 
@@ -97,17 +100,13 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	}
 	if o.mem != nil {
 		if block, err := o.mem.RecentContext(memorySnippetEntries); err == nil && block != "" {
-			if len(block) > memoryMaxBytes {
-				block = block[:memoryMaxBytes] + "\n[memory truncated]"
-			}
+			block = truncateMemoryBlock(block, memoryMaxBytes)
 			sys = sys + "\n\n## Persistent memory (recent)\n" + block
 		}
 	}
 	if o.projectMem != nil {
 		if block, err := o.projectMem.RecentContext(memorySnippetEntries); err == nil && block != "" {
-			if len(block) > memoryMaxBytes {
-				block = block[:memoryMaxBytes] + "\n[memory truncated]"
-			}
+			block = truncateMemoryBlock(block, memoryMaxBytes)
 			sys = sys + "\n\n## Project memory (.goclaw/memory)\n" + block
 		}
 	}
@@ -123,6 +122,18 @@ func (o *Orchestrator) buildRequest() llm.Request {
 
 	if hint := userLanguageSystemSuffix(lastUserNaturalText(o.session.Messages), o.cfg); hint != "" {
 		sys = sys + hint
+	}
+
+	// Budget reminder: inject once we are past the halfway point of available iterations,
+	// so the model knows it is approaching its ceiling and should wrap up or report.
+	if o.budgetIter > 0 && o.budgetLimit > 0 && o.budgetIter > o.budgetLimit/2 {
+		remaining := o.budgetLimit - o.budgetIter
+		toolsLeft := maxToolCalls - o.budgetToolCalls
+		sys = sys + fmt.Sprintf(
+			"\n\n<system-reminder>Budget: iteration %d/%d (%d remaining). Tool calls used: %d/%d (%d remaining). If you are close to finishing, wrap up and report rather than starting new work.</system-reminder>",
+			o.budgetIter, o.budgetLimit, remaining,
+			o.budgetToolCalls, maxToolCalls, toolsLeft,
+		)
 	}
 
 	maxTokens := 4096
@@ -177,4 +188,14 @@ func toolMatchesAllowlist(name string, allow map[string]struct{}) bool {
 		}
 	}
 	return false
+}
+
+// truncateMemoryBlock caps a memory block at maxRunes runes, appending a marker
+// when truncated. Using rune boundaries avoids splitting multibyte UTF-8 characters
+// (e.g. emoji or CJK) that byte-slicing would corrupt.
+func truncateMemoryBlock(block string, maxRunes int) string {
+	if utf8.RuneCountInString(block) <= maxRunes {
+		return block
+	}
+	return text.TruncateRunes(block, maxRunes) + "\n[memory truncated]"
 }

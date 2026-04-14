@@ -160,6 +160,8 @@ func TestOrchestratorAskRequiresApprover(t *testing.T) {
 			Match: "phase-a",
 			Tool:  &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"note.txt"}`},
 		},
+		// After the tool rejection the LLM gets an is_error tool result; the mock
+		// returns a default text response and the run completes without a fatal error.
 	})
 	defer srv.Close()
 
@@ -176,9 +178,10 @@ func TestOrchestratorAskRequiresApprover(t *testing.T) {
 		agents.GeneralPurpose,
 	)
 
+	// With no approver, the tool is rejected non-fatally (LLM sees an error tool result)
+	// rather than aborting the entire run.
 	_, err := orch.Run(ctx, "phase-a trigger")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "approver")
+	require.NoError(t, err, "nil approver should reject the tool gracefully, not abort the run")
 }
 
 func TestOrchestratorUserDeclinesTool(t *testing.T) {

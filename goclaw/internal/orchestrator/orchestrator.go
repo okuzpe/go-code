@@ -78,11 +78,18 @@ func WithSkillsSnippet(s string) Option {
 // All methods must be fast and non-blocking (or handle their own buffering),
 // since they run on the orchestrator's goroutines.
 type StreamSink interface {
+	// OnThinkingStart is called at the beginning of each LLM stream call (including
+	// between tool iterations). UIs can show a "Thinking…" indicator.
+	OnThinkingStart()
 	OnTextDelta(text string)
 	OnToolUse(name, rawInput string)
 	// OnToolResult is called after each tool finishes. content is the full result
 	// string (may be large; callers may cap display to a reasonable limit).
 	OnToolResult(name string, content string, isError bool)
+	// OnToolProgress is called with incremental partial output from a running tool
+	// (e.g. bash stdout lines as they arrive). May be called many times between
+	// OnToolUse and OnToolResult for the same tool.
+	OnToolProgress(name, partial string)
 	OnDone(finalText string)
 	// OnCompact is called after automatic context compaction removes messages.
 	// removed is the net reduction in message count after compaction.
@@ -152,6 +159,14 @@ type Orchestrator struct {
 	// taskRole is the classified task role for the current user turn (e.g. "code", "explore").
 	// Used by buildRequest to inject a per-role system hint. Cleared after runUserTurn completes.
 	taskRole string
+
+	// budgetIter and budgetLimit track iteration progress within the current turn so buildRequest
+	// can inject a budget reminder when the iteration ceiling is approaching.
+	budgetIter  int // current iteration (1-based), 0 = not in a turn
+	budgetLimit int // effective iterLimit for the current turn, 0 = not in a turn
+
+	// budgetToolCalls is the cumulative tool-call count within the current turn.
+	budgetToolCalls int
 }
 
 // New creates an Orchestrator with the provided subsystems.
@@ -219,9 +234,17 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	if o.profile.MaxTurns > 0 && o.profile.MaxTurns < maxIterations {
 		iterLimit = o.profile.MaxTurns
 	}
+	o.budgetLimit = iterLimit
+	defer func() { o.budgetIter = 0; o.budgetLimit = 0; o.budgetToolCalls = 0 }()
 
-	for range iterLimit {
+	for iter := range iterLimit {
+		o.budgetIter = iter + 1
+		o.budgetToolCalls = toolCalls
 		o.maybeCompact(ctx, sink)
+
+		if sink != nil {
+			sink.OnThinkingStart()
+		}
 
 		streamStart := time.Now()
 		events, errc := o.llm.Stream(ctx, o.buildRequest())
