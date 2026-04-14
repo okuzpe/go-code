@@ -5,10 +5,17 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/okuzpe/goclaw/internal/tools"
 )
+
+// DefaultOllamaModel is the built-in Ollama tag when neither OLLAMA_MODEL nor settings.json
+// set ollama_model. qwen2.5-coder:14b is the default coding model; use qwen2.5-coder:7b (or
+// OLLAMA_MODEL) if you need a smaller VRAM footprint — see defaultTaskModels for lighter roles.
+const DefaultOllamaModel = "qwen2.5-coder:14b"
 
 // Config holds all runtime settings for goclaw.
 type Config struct {
@@ -18,11 +25,17 @@ type Config struct {
 
 	// Ollama settings
 	OllamaHost  string // default: http://localhost:11434
-	OllamaModel string // default: qwen2.5-coder:14b
+	OllamaModel string // default: DefaultOllamaModel (qwen2.5-coder:14b)
 	// OllamaNumCtx sets the context window size sent to Ollama.
 	// 0 means use Ollama's model default (often 2048 — too small for tool schemas).
 	// Default: 8192. Set via settings.json "ollama_num_ctx".
 	OllamaNumCtx int
+
+	// OllamaHTTPTimeoutSec is the net/http Client timeout for each Ollama request, including
+	// reading the full streaming response body. 0 uses a built-in default (45 minutes).
+	// -1 disables the client timeout (no limit; cancellation still follows context).
+	// Values above 86400 are clamped to 24 hours. JSON: ollama_http_timeout_sec; env: GOCLAW_OLLAMA_HTTP_TIMEOUT_SEC.
+	OllamaHTTPTimeoutSec int
 
 	// CompactionModel overrides the model id for LLM-driven context compaction only (llm_compaction: true).
 	// Empty means use Model(). Set via settings.json "compaction_model" or GOCLAW_COMPACTION_MODEL.
@@ -111,6 +124,16 @@ type Config struct {
 	// the heuristic placeholder. Default false (opt-in via llm_compaction: true).
 	LLMCompaction bool
 
+	// AutoContinueActionRequests when true: after read-only tools, if the user message
+	// signals code changes and the model replies prose-only, inject a short synthetic user
+	// continuation and re-call the LLM (capped per turn). JSON: auto_continue_action_requests.
+	AutoContinueActionRequests bool
+
+	// TruthFooterNoWorkspaceWrites when true: if the user message signals code changes, tools ran,
+	// writes were allowed, but no successful write_file/edit_file/patch, append a [goclaw] bilingual
+	// footer to the assistant reply. JSON: truth_footer_no_workspace_writes (default true).
+	TruthFooterNoWorkspaceWrites bool
+
 	// ExternalHooks are subprocess or HTTP hooks from settings (see hooks package).
 	ExternalHooks []ExternalHookEntry
 
@@ -193,51 +216,80 @@ type ExternalHookEntry struct {
 // Any settings.json file can override individual task_models entries without replacing the whole map.
 func Default() Config {
 	home, _ := os.UserHomeDir()
-	return Config{
-		Provider:                  "ollama",
-		OllamaHost:                envOr("OLLAMA_HOST", "http://localhost:11434"),
-		OllamaModel:               envOr("OLLAMA_MODEL", "qwen2.5-coder:14b"),
-		OllamaNumCtx:              32768,
-		CompactionModel:           envOr("GOCLAW_COMPACTION_MODEL", ""),
-		TaskModelRouter:           NormalizeTaskModelRouter(envOr("GOCLAW_TASK_MODEL_ROUTER", "rules")),
-		TaskModelRouterModel:      envOr("GOCLAW_TASK_MODEL_ROUTER_MODEL", ""),
-		TaskModels:                defaultTaskModels(),
-		PreferredResponseLanguage: envOr("GOCLAW_PREFERRED_RESPONSE_LANGUAGE", ""),
-		AutoCompactThreshold:      0.85,
-		UserConfigDir:             filepath.Join(home, ".goclaw"),
-		ProjectConfigDir:          ".goclaw",
-		AgentProfile:              "general-purpose",
-		PermissionModes:           nil,
-		YoloThreshold:             60,
-		WebSearchBackend:          "ddg",
-		BraveSearchAPIKey:         os.Getenv("BRAVE_SEARCH_API_KEY"),
-		SerpAPIKey:                os.Getenv("SERPAPI_API_KEY"),
-		WebSearchFallbackDDG:      true,
-		AllowScript:               true,
-		TUIMouseScroll:            envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
-		UIAppearance:              "auto",
+	cfg := Config{
+		Provider:                     "ollama",
+		OllamaHost:                   envOr("OLLAMA_HOST", "http://localhost:11434"),
+		OllamaModel:                  envOr("OLLAMA_MODEL", DefaultOllamaModel),
+		OllamaNumCtx:                 32768,
+		CompactionModel:              envOr("GOCLAW_COMPACTION_MODEL", ""),
+		TaskModelRouter:              NormalizeTaskModelRouter(envOr("GOCLAW_TASK_MODEL_ROUTER", "rules")),
+		TaskModelRouterModel:         envOr("GOCLAW_TASK_MODEL_ROUTER_MODEL", ""),
+		TaskModels:                   defaultTaskModels(),
+		PreferredResponseLanguage:    envOr("GOCLAW_PREFERRED_RESPONSE_LANGUAGE", ""),
+		AutoCompactThreshold:         0.85,
+		UserConfigDir:                filepath.Join(home, ".goclaw"),
+		ProjectConfigDir:             ".goclaw",
+		AgentProfile:                 "general-purpose",
+		PermissionModes:              nil,
+		YoloThreshold:                60,
+		WebSearchBackend:             "ddg",
+		BraveSearchAPIKey:            os.Getenv("BRAVE_SEARCH_API_KEY"),
+		SerpAPIKey:                   os.Getenv("SERPAPI_API_KEY"),
+		WebSearchFallbackDDG:         true,
+		AllowScript:                  true,
+		AutoContinueActionRequests:   true,
+		TruthFooterNoWorkspaceWrites: true,
+		TUIMouseScroll:               envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
+		UIAppearance:                 "auto",
 	}
+	if v := strings.TrimSpace(os.Getenv("GOCLAW_OLLAMA_HTTP_TIMEOUT_SEC")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.OllamaHTTPTimeoutSec = n
+		}
+	}
+	return cfg
+}
+
+const (
+	defaultOllamaHTTPTimeoutSec = 2700 // 45 minutes for slow streaming turns
+	maxOllamaHTTPTimeoutSec     = 86400
+)
+
+// OllamaHTTPClientTimeout returns the http.Client Timeout for Ollama requests.
+// Zero uses defaultOllamaHTTPTimeoutSec. -1 means no client timeout (streaming may run until context cancel).
+func (c Config) OllamaHTTPClientTimeout() time.Duration {
+	sec := c.OllamaHTTPTimeoutSec
+	if sec == -1 {
+		return 0
+	}
+	if sec <= 0 {
+		return defaultOllamaHTTPTimeoutSec * time.Second
+	}
+	if sec > maxOllamaHTTPTimeoutSec {
+		return maxOllamaHTTPTimeoutSec * time.Second
+	}
+	return time.Duration(sec) * time.Second
 }
 
 // defaultTaskModels returns the built-in per-role model assignments used when task_model_router
 // is active. Settings files merge into this map (later entries override individual keys).
 //
 // Role → model rationale:
-//   - fix, code: strongest coder model — actual edits and code generation need maximum quality
+//   - fix, code: same as DefaultOllamaModel / OLLAMA_MODEL unless overridden — strongest Qwen 2.5 Coder tag for edits
 //   - reasoning, creative: qwen3.5 — better instruction following and analysis than coder models
-//   - explore, fast, default: qwen2.5-coder:7b — lighter model, sufficient for reads and quick answers
+//   - explore, fast, default: qwen2.5-coder:7b — lighter reads and short prompts (override in task_models)
 //
 // Override any role in ~/.goclaw/settings.json under "task_models" without replacing the whole map.
 func defaultTaskModels() map[string]string {
-	main := envOr("OLLAMA_MODEL", "qwen2.5-coder:14b")
+	main := envOr("OLLAMA_MODEL", DefaultOllamaModel)
 	return map[string]string{
-		"fix":      main,
-		"code":     main,
+		"fix":       main,
+		"code":      main,
 		"reasoning": "qwen3.5:latest",
 		"creative":  "qwen3.5:latest",
-		"explore":  "qwen2.5-coder:7b",
-		"fast":     "qwen2.5-coder:7b",
-		"default":  "qwen2.5-coder:7b",
+		"explore":   "qwen2.5-coder:7b",
+		"fast":      "qwen2.5-coder:7b",
+		"default":   "qwen2.5-coder:7b",
 	}
 }
 

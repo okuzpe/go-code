@@ -41,14 +41,26 @@ func (c *OllamaClient) FunctionToolsDropped() bool {
 	return c.functionToolsDropped.Load()
 }
 
-// NewOllama creates a client. host defaults to http://localhost:11434.
+// NewOllama creates a client with a 45-minute HTTP timeout (covers slow streaming turns).
+// host defaults to http://localhost:11434.
 func NewOllama(host string) *OllamaClient {
+	return NewOllamaWithHTTPTimeout(host, 45*time.Minute)
+}
+
+// NewOllamaWithHTTPTimeout creates a client. host defaults to http://localhost:11434.
+// If timeout is 0, the http.Client has no request timeout (caller context still applies).
+// Otherwise timeout applies to the full round trip including reading the streaming body.
+func NewOllamaWithHTTPTimeout(host string, timeout time.Duration) *OllamaClient {
 	if host == "" {
 		host = "http://localhost:11434"
 	}
+	hc := &http.Client{}
+	if timeout > 0 {
+		hc.Timeout = timeout
+	}
 	return &OllamaClient{
 		host: strings.TrimRight(host, "/"),
-		http: &http.Client{Timeout: 10 * time.Minute},
+		http: hc,
 	}
 }
 
@@ -433,13 +445,31 @@ func tryProseToolDirective(full string, specs []ToolSpec) (prose string, tu Tool
 	return "", ToolUse{}, false
 }
 
-// streamWithTools buffers all assistant content until the stream ends, then decides
-// whether the content is a tool call or plain text. If it's a tool call, only the
-// ToolUse event is emitted (no raw JSON in the chat). If it's text, it's emitted as
-// a single TextDelta. The TUI shows a "thinking" spinner during the buffering phase.
+// ollamaAssistContentAllowsIncrementalStream is true when buffered assistant text still looks
+// like plain prose rather than a JSON tool blob we must classify only after the stream ends.
+func ollamaAssistContentAllowsIncrementalStream(buf string) bool {
+	s := strings.TrimSpace(buf)
+	if s == "" {
+		return false
+	}
+	if strings.HasPrefix(s, "{") {
+		return false
+	}
+	if strings.Contains(strings.ToLower(buf), "```json") {
+		return false
+	}
+	return true
+}
+
+// streamWithTools reads the assistant stream and may emit native ToolUse events at the end.
+// Plain prose is streamed incrementally as TextDelta chunks so the UI can clear the
+// "Thinking…" row as soon as tokens arrive. Content that looks like a leading JSON tool
+// payload (trimmed body starts with "{" or contains a ```json fence) stays buffered until
+// done=true so we can still classify tool calls without flashing raw JSON in the transcript.
 func (c *OllamaClient) streamWithTools(scanner *bufio.Scanner, out chan<- Event, specs []ToolSpec) error {
 	var contentBuf strings.Builder
 	var lastNative []ollamaToolCallWire
+	var streamedText bool
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -455,8 +485,12 @@ func (c *OllamaClient) streamWithTools(scanner *bufio.Scanner, out chan<- Event,
 		}
 		if chunk.Message.Content != "" {
 			contentBuf.WriteString(chunk.Message.Content)
-			// Text is buffered — NOT streamed yet. We only emit it at
-			// the end once we know it's not a tool call.
+			if len(lastNative) == 0 && ollamaAssistContentAllowsIncrementalStream(contentBuf.String()) {
+				if piece := stripLeakedChatTemplateTokens(chunk.Message.Content); strings.TrimSpace(piece) != "" {
+					out <- TextDelta{Text: piece}
+					streamedText = true
+				}
+			}
 		}
 		if chunk.Done {
 			emittedTool := false
@@ -477,8 +511,10 @@ func (c *OllamaClient) streamWithTools(scanner *bufio.Scanner, out chan<- Event,
 					out <- tu
 					emittedTool = true
 				} else if prose, tu, ok := tryProseToolDirective(fullContent, specs); ok {
-					if ps := stripLeakedChatTemplateTokens(prose); strings.TrimSpace(ps) != "" {
-						out <- TextDelta{Text: ps}
+					if !streamedText {
+						if ps := stripLeakedChatTemplateTokens(prose); strings.TrimSpace(ps) != "" {
+							out <- TextDelta{Text: ps}
+						}
 					}
 					out <- tu
 					emittedTool = true
@@ -486,7 +522,7 @@ func (c *OllamaClient) streamWithTools(scanner *bufio.Scanner, out chan<- Event,
 			}
 
 			// Only show the text to the user if it was NOT a tool call.
-			if !emittedTool {
+			if !emittedTool && !streamedText {
 				if s := stripLeakedChatTemplateTokens(contentBuf.String()); strings.TrimSpace(s) != "" {
 					out <- TextDelta{Text: s}
 				}

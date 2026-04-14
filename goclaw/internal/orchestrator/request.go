@@ -20,14 +20,8 @@ const (
 	memoryMaxBytes       = 4096 // max bytes per memory block to prevent silent context bloat
 )
 
-func (o *Orchestrator) buildRequest() llm.Request {
-	model := o.cfg.Model()
-	if o.profile.ModelOverride != "" {
-		model = o.profile.ModelOverride
-	} else if o.turnModel != "" {
-		model = o.turnModel
-	}
-
+// effectiveToolSpecs returns registry specs after profile allowlist, disallowed, and read-only stripping.
+func (o *Orchestrator) effectiveToolSpecs() []tools.ToolSpec {
 	specs := o.tools.Specs()
 	if o.profile.ToolAllowlist != nil {
 		if len(o.profile.ToolAllowlist) == 0 {
@@ -66,6 +60,18 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		specs = stripToolName(specs, "patch")
 		specs = stripMCPNames(specs)
 	}
+	return specs
+}
+
+func (o *Orchestrator) buildRequest() llm.Request {
+	model := o.cfg.Model()
+	if o.profile.ModelOverride != "" {
+		model = o.profile.ModelOverride
+	} else if o.turnModel != "" {
+		model = o.turnModel
+	}
+
+	specs := o.effectiveToolSpecs()
 
 	llmTools := make([]llm.ToolSpec, 0, len(specs))
 	for _, s := range specs {

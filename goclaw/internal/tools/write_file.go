@@ -35,6 +35,7 @@ func (WriteFileTool) Name() string { return "write_file" }
 func (WriteFileTool) Description() string {
 	return "Create or overwrite a UTF-8 text file. " +
 		"The parent directory must already exist. Content is written atomically. " +
+		"Symlinks in the parent path are resolved to the real directory; the final path component is not followed, so replacing a symlink file overwrites that path per the OS. " +
 		"Use edit_file for targeted line replacements; use write_file for new files or full rewrites."
 }
 
@@ -44,7 +45,7 @@ func (WriteFileTool) InputSchema() any {
 		"properties": map[string]any{
 			"path": map[string]any{
 				"type":        "string",
-				"description": "Path relative to launch cwd, or absolute (parent directory must exist)",
+				"description": "Path relative to launch cwd, or absolute (parent directory must exist). Parent symlinks are resolved; the basename is not symlink-expanded.",
 			},
 			"content": map[string]any{
 				"type":        "string",

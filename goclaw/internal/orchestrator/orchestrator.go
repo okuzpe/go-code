@@ -129,19 +129,19 @@ func WithProjectContext(ctx string) Option {
 
 // Orchestrator wires all subsystems and drives the agent loop.
 type Orchestrator struct {
-	cfg               config.Config
-	llm               llm.Client
-	session           *session.Session
-	tools             *tools.Registry
-	perms             *permissions.Policy
-	hooks             *hooks.Registry
-	profile           agents.Profile
-	approver          ToolApprover
-	mem               *memory.Store
-	projectMem        *memory.Store // per-project memory store (D14); nil if not present
-	afterTool         AfterToolHook
-	skillsPrompt      string
-	todoStore *todos.Store
+	cfg          config.Config
+	llm          llm.Client
+	session      *session.Session
+	tools        *tools.Registry
+	perms        *permissions.Policy
+	hooks        *hooks.Registry
+	profile      agents.Profile
+	approver     ToolApprover
+	mem          *memory.Store
+	projectMem   *memory.Store // per-project memory store (D14); nil if not present
+	afterTool    AfterToolHook
+	skillsPrompt string
+	todoStore    *todos.Store
 
 	// workdir is the tool path root injected into the system prompt (optional).
 	workdir string
@@ -237,6 +237,11 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	o.budgetLimit = iterLimit
 	defer func() { o.budgetIter = 0; o.budgetLimit = 0; o.budgetToolCalls = 0 }()
 
+	actionNudges := 0
+	hadToolRound := false
+	lastBatchReadOnly := false
+	workspaceWriteOK := false
+
 	for iter := range iterLimit {
 		o.budgetIter = iter + 1
 		o.budgetToolCalls = toolCalls
@@ -283,6 +288,18 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		slog.Debug("llm stream done", "elapsed", time.Since(streamStart), "tools", len(pendingTools))
 
 		if len(pendingTools) == 0 {
+			if o.shouldInjectActionNudge(userMessage, toolCalls, lastBatchReadOnly, hadToolRound, actionNudges) {
+				o.session.AddAssistant(response, nil)
+				actionNudges++
+				o.session.Add("user", actionContinueNudgeMessage)
+				slog.Debug("orchestrator: action-continue nudge", "nudge", actionNudges)
+				continue
+			}
+			plain := response
+			response = maybeAppendNoWorkspaceWriteFooter(o, response, userMessage, hadToolRound, workspaceWriteOK)
+			if sink != nil && len(response) > len(plain) {
+				sink.OnTextDelta(response[len(plain):])
+			}
 			o.session.AddAssistant(response, nil)
 			if sink != nil {
 				sink.OnDone(response)
@@ -298,6 +315,9 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			}
 			return response, nil
 		}
+
+		lastBatchReadOnly = !toolUsesIncludeWorkspaceWrite(pendingTools)
+		hadToolRound = true
 
 		records := make([]llm.ToolCallRecord, len(pendingTools))
 		for i, tu := range pendingTools {
@@ -328,6 +348,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 					sink.OnToolResult(r.ToolName, r.Content, r.IsError)
 				}
 			}
+			recordWorkspaceWriteFromResults(&workspaceWriteOK, results)
 			appendJSONToolTrace(toolTrace, pendingTools, results)
 		} else {
 			for _, tu := range pendingTools {
@@ -351,6 +372,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 					IsError:   out.IsError,
 				})
 			}
+			recordWorkspaceWriteFromResults(&workspaceWriteOK, results)
 			appendJSONToolTrace(toolTrace, pendingTools, results)
 		}
 		o.session.AddToolResults(results)

@@ -16,7 +16,7 @@ curl http://localhost:11434/api/tags
 #### 2. Is the model pulled?
 ```bash
 ollama list
-ollama pull qwen2.5-coder:14b   # or your configured model
+ollama pull qwen2.5-coder:14b   # or your configured model (e.g. qwen2.5-coder:7b on low VRAM)
 ```
 
 #### 3. Does bare `/api/chat` work?

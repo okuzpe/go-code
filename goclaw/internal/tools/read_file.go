@@ -2,9 +2,11 @@ package tools
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -38,6 +40,7 @@ func (ReadFileTool) Description() string {
 	return "Read a UTF-8 text file, or list the contents of a directory. " +
 		"Output includes line numbers (N⇥content) for reference — the numbers are not part of the file content. " +
 		"When output ends with a truncation notice, call read_file again with offset_lines/limit_lines to read the next chunk. " +
+		"Binary files (NUL byte in the first 8 KiB) are rejected. " +
 		"Symlinks are resolved. Relative paths resolve from the process working directory at agent start; absolute paths are used as-is."
 }
 
@@ -100,6 +103,28 @@ func (t *ReadFileTool) Execute(ctx context.Context, input string) (Result, error
 	}
 	if st.IsDir() {
 		return listDirectory(resolved, in.Path), nil
+	}
+
+	const readFileBinarySniffBytes = 8192
+	if st.Mode().IsRegular() {
+		sniffSize := readFileBinarySniffBytes
+		if st.Size() >= 0 && st.Size() < int64(sniffSize) {
+			sniffSize = int(st.Size())
+		}
+		if sniffSize > 0 {
+			prefix := make([]byte, sniffSize)
+			n, readErr := io.ReadFull(f, prefix)
+			prefix = prefix[:n]
+			if readErr != nil && readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
+				return Result{Content: fmt.Sprintf("read file: %v", readErr), IsError: true}, nil
+			}
+			if bytes.IndexByte(prefix, 0) >= 0 {
+				return Result{Content: "binary file (NUL byte); read_file only supports text", IsError: true}, nil
+			}
+			if _, seekErr := f.Seek(0, io.SeekStart); seekErr != nil {
+				return Result{Content: fmt.Sprintf("read file: %v", seekErr), IsError: true}, nil
+			}
+		}
 	}
 
 	limitLines := in.LimitLines

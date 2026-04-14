@@ -6,7 +6,7 @@ alwaysApply: true
 # GoClaw — Architecture
 
 ## Identity
-Go CLI agent, Claude Code–style. Module: `github.com/okuzpe/goclaw`. Go 1.26. Default provider: local Ollama (`qwen2.5-coder:14b`).
+Go CLI agent, Claude Code–style. Module: `github.com/okuzpe/goclaw`. Go 1.26. Default provider: local Ollama (`qwen2.5-coder:14b`, `config.DefaultOllamaModel`).
 
 ## Workspace scope
 Sibling folders such as `claw-code/` in the parent directory are **reference only**; they are not part of this module or goclaw’s roadmap. Implement and commit only under `goclaw/`.

@@ -12,41 +12,44 @@ import (
 
 // settingsFile is the JSON shape for ~/.goclaw/settings.json and .goclaw/settings.json.
 type settingsFile struct {
-	Provider                  *string             `json:"provider"`
-	OllamaHost                *string             `json:"ollama_host"`
-	OllamaModel               *string             `json:"ollama_model"`
-	OllamaNumCtx              *int                `json:"ollama_num_ctx,omitempty"`
-	CompactionModel           *string             `json:"compaction_model,omitempty"`
-	TaskModelRouter           *string             `json:"task_model_router,omitempty"`
-	TaskModels                map[string]string   `json:"task_models,omitempty"`
-	TaskModelRouterModel      *string             `json:"task_model_router_model,omitempty"`
-	PreferredResponseLanguage *string             `json:"preferred_response_language,omitempty"`
-	AgentProfile              *string             `json:"agent_profile"`
-	AutoCompactThreshold      *float64            `json:"auto_compact_threshold"`
-	BashTimeoutSec            *int                `json:"bash_timeout_sec"`
-	ModelContextTokens        *int                `json:"model_context_tokens"`
-	MaxResponseTokens         *int                `json:"max_response_tokens,omitempty"`
-	MCPServers                []MCPServerConfig   `json:"mcp_servers"`
-	TrustedWorkspace          *bool               `json:"trusted_workspace"`
-	ExternalHooks             []ExternalHookEntry `json:"external_hooks"`
-	ToolPermissions           map[string]string   `json:"tool_permissions"`
-	AllowScript               *bool               `json:"allow_script"`
-	YoloThreshold             *int                `json:"yolo_threshold"`
-	LLMCompaction             *bool               `json:"llm_compaction"`
-	MCPServersAllowRemote     *bool               `json:"mcp_allow_remote_urls,omitempty"`
-	IDEBridgeMCP              *bool               `json:"ide_bridge_mcp,omitempty"`
-	WebSearchBackend          *string             `json:"web_search_backend,omitempty"`
-	BraveSearchAPIKey         *string             `json:"brave_search_api_key,omitempty"`
-	SerpAPIKey                *string             `json:"serpapi_api_key,omitempty"`
-	WebSearchFallbackDDG      *bool               `json:"web_search_fallback_ddg,omitempty"`
-	PluginDirs                []string            `json:"plugin_dirs,omitempty"`
-	PluginAllow               []string            `json:"plugin_allow,omitempty"`
-	PluginDeny                []string            `json:"plugin_deny,omitempty"`
-	MemoryAutoExtract         *bool               `json:"memory_auto_extract,omitempty"`
-	MemoryLLMSilentExtract    *bool               `json:"memory_llm_silent_extract,omitempty"`
-	TUIMouseScroll            *bool               `json:"tui_mouse_scroll,omitempty"`
-	UIAppearance              *string             `json:"ui_appearance,omitempty"`
-	ToolWorkspaceRoot         *string             `json:"tool_workspace_root,omitempty"`
+	Provider                     *string             `json:"provider"`
+	OllamaHost                   *string             `json:"ollama_host"`
+	OllamaModel                  *string             `json:"ollama_model"`
+	OllamaNumCtx                 *int                `json:"ollama_num_ctx,omitempty"`
+	OllamaHTTPTimeoutSec         *int                `json:"ollama_http_timeout_sec,omitempty"`
+	CompactionModel              *string             `json:"compaction_model,omitempty"`
+	TaskModelRouter              *string             `json:"task_model_router,omitempty"`
+	TaskModels                   map[string]string   `json:"task_models,omitempty"`
+	TaskModelRouterModel         *string             `json:"task_model_router_model,omitempty"`
+	PreferredResponseLanguage    *string             `json:"preferred_response_language,omitempty"`
+	AgentProfile                 *string             `json:"agent_profile"`
+	AutoCompactThreshold         *float64            `json:"auto_compact_threshold"`
+	BashTimeoutSec               *int                `json:"bash_timeout_sec"`
+	ModelContextTokens           *int                `json:"model_context_tokens"`
+	MaxResponseTokens            *int                `json:"max_response_tokens,omitempty"`
+	MCPServers                   []MCPServerConfig   `json:"mcp_servers"`
+	TrustedWorkspace             *bool               `json:"trusted_workspace"`
+	ExternalHooks                []ExternalHookEntry `json:"external_hooks"`
+	ToolPermissions              map[string]string   `json:"tool_permissions"`
+	AllowScript                  *bool               `json:"allow_script"`
+	YoloThreshold                *int                `json:"yolo_threshold"`
+	LLMCompaction                *bool               `json:"llm_compaction"`
+	AutoContinueActionRequests   *bool               `json:"auto_continue_action_requests,omitempty"`
+	TruthFooterNoWorkspaceWrites *bool               `json:"truth_footer_no_workspace_writes,omitempty"`
+	MCPServersAllowRemote        *bool               `json:"mcp_allow_remote_urls,omitempty"`
+	IDEBridgeMCP                 *bool               `json:"ide_bridge_mcp,omitempty"`
+	WebSearchBackend             *string             `json:"web_search_backend,omitempty"`
+	BraveSearchAPIKey            *string             `json:"brave_search_api_key,omitempty"`
+	SerpAPIKey                   *string             `json:"serpapi_api_key,omitempty"`
+	WebSearchFallbackDDG         *bool               `json:"web_search_fallback_ddg,omitempty"`
+	PluginDirs                   []string            `json:"plugin_dirs,omitempty"`
+	PluginAllow                  []string            `json:"plugin_allow,omitempty"`
+	PluginDeny                   []string            `json:"plugin_deny,omitempty"`
+	MemoryAutoExtract            *bool               `json:"memory_auto_extract,omitempty"`
+	MemoryLLMSilentExtract       *bool               `json:"memory_llm_silent_extract,omitempty"`
+	TUIMouseScroll               *bool               `json:"tui_mouse_scroll,omitempty"`
+	UIAppearance                 *string             `json:"ui_appearance,omitempty"`
+	ToolWorkspaceRoot            *string             `json:"tool_workspace_root,omitempty"`
 }
 
 // Load merges JSON settings into base in this order (later wins for overlapping keys):
@@ -109,6 +112,9 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	if sf.OllamaNumCtx != nil && *sf.OllamaNumCtx >= 0 {
 		cfg.OllamaNumCtx = *sf.OllamaNumCtx
 	}
+	if sf.OllamaHTTPTimeoutSec != nil {
+		cfg.OllamaHTTPTimeoutSec = *sf.OllamaHTTPTimeoutSec
+	}
 	if sf.CompactionModel != nil && strings.TrimSpace(*sf.CompactionModel) != "" {
 		cfg.CompactionModel = strings.TrimSpace(*sf.CompactionModel)
 	}
@@ -164,6 +170,12 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.LLMCompaction != nil && *sf.LLMCompaction {
 		cfg.LLMCompaction = true
+	}
+	if sf.AutoContinueActionRequests != nil {
+		cfg.AutoContinueActionRequests = *sf.AutoContinueActionRequests
+	}
+	if sf.TruthFooterNoWorkspaceWrites != nil {
+		cfg.TruthFooterNoWorkspaceWrites = *sf.TruthFooterNoWorkspaceWrites
 	}
 	if sf.MCPServersAllowRemote != nil && *sf.MCPServersAllowRemote {
 		cfg.MCPServersAllowRemote = true

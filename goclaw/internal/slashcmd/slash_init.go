@@ -37,7 +37,7 @@ func handleSlashProjectInit(env SlashEnv) (string, error) {
 	patch := map[string]any{
 		"agent_profile": "general-purpose",
 		"provider":      "ollama",
-		"ollama_model":  "qwen2.5-coder:14b",
+		"ollama_model":  config.DefaultOllamaModel,
 		"tool_permissions": map[string]any{
 			"read_file":  "allow",
 			"glob":       "allow",

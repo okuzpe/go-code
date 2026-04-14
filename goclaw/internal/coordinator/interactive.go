@@ -167,7 +167,7 @@ func runInteractiveWorkerLoop(
 	runTurn := func(userText string, sink orchestrator.StreamSink) error {
 		res, err := orch.RunStreaming(ctx, userText, wrapNestedWorkerSink(sink))
 		if err != nil {
-			w.setState(fmt.Sprintf("error: %v", err), res, "failed")
+			w.setState(truncateWorkerSummary(fmt.Sprintf("error: %v", err)), res, "failed")
 			return err
 		}
 		w.setState(firstNonEmptyLine(res), res, "running")

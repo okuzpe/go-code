@@ -227,7 +227,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	switch p {
 	case "", "ollama":
 		cfg.Provider = "ollama"
-		client = llm.NewOllama(cfg.OllamaHost)
+		client = llm.NewOllamaWithHTTPTimeout(cfg.OllamaHost, cfg.OllamaHTTPClientTimeout())
 	case "anthropic":
 		return nil, fmt.Errorf("provider \"anthropic\" is no longer supported; set \"provider\" to \"ollama\" (default) and use a local model via ollama_model / OLLAMA_MODEL")
 	case "openai_compatible":

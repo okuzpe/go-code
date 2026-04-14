@@ -67,7 +67,7 @@ When using [`/review`](./code-review-workflow.md), the injected message is a ful
 {
   "task_model_router": "rules",
   "task_models": {
-    "default": "qwen2.5-coder:14b",
+    "default": "qwen2.5-coder:7b",
     "code": "qwen2.5-coder:14b",
     "reasoning": "qwen2.5-coder:14b",
     "explore": "qwen2.5-coder:7b",

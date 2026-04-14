@@ -37,6 +37,7 @@ func (EditFileTool) Description() string {
 		"If read_file showed lines as N<TAB>content, do not include the line number or that tab in old_string — only the real file lines. " +
 		"By default old_string must appear exactly once; set replace_all:true to replace every occurrence. " +
 		"The edit is written atomically and the file's original permissions are preserved. " +
+		"Symlinks in the parent path are resolved to the real directory; the final path component is not followed, so a symlink file target is overwritten at that path per the OS. " +
 		"Use write_file for new files or full rewrites."
 }
 
@@ -46,7 +47,7 @@ func (EditFileTool) InputSchema() any {
 		"properties": map[string]any{
 			"path": map[string]any{
 				"type":        "string",
-				"description": "Path relative to launch cwd, or absolute path to an existing file",
+				"description": "Path relative to launch cwd, or absolute path to an existing file. Parent symlinks are resolved; the basename is not symlink-expanded.",
 			},
 			"old_string": map[string]any{
 				"type": "string",

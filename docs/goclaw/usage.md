@@ -4,7 +4,7 @@ Task-oriented guide: how to run the CLI, configure providers, and use sessions, 
 
 ## Quick start (Ollama)
 
-Prerequisite: Ollama on `http://localhost:11434` with a model pulled (default: `qwen2.5-coder:14b`).
+Prerequisite: Ollama on `http://localhost:11434` with a model pulled (default: `qwen2.5-coder:14b`; use `qwen2.5-coder:7b` in settings on tight VRAM).
 
 ```bash
 cd goclaw
@@ -15,6 +15,15 @@ go run ./cmd/goclaw --readline   # line REPL; or GOCLAW_USE_TUI=0
 
 Try: a simple repo question, a tool (e.g. web search), and `/doctor` or `goclaw doctor`.
 
+### Large repo analysis and refactors
+
+- **`.goclaw/plan.md`** is a local scratchpad; it may contain notes unrelated to goclaw. For product intent and architecture, prefer **[CLAUDE.md](../../goclaw/CLAUDE.md)**, **[README.md](../../goclaw/README.md)**, and the topic files under **[docs/goclaw/](./)** (see [docs-map.md](../docs-map.md)).
+- For **“audit everything”** or whole-tree refactors: ask for **one slice per turn** (one package, one `internal/` area, or one doc). Check results with **`git diff`**, tool output, or successful write tools — not with narrative alone.
+- **Disk changes** only happen when **`write_file`**, **`edit_file`**, or **`patch`** complete successfully (subject to permissions). If the assistant says it “applied changes” but no write tool ran, treat that as prose, not git truth.
+- **Why it stopped at "Done"** — Each of your messages runs until the model answers **without** requesting more tools. A text-only reply (even "Done") **ends that turn**; there is no hidden auto-loop. For multi-step refactors, either write one prompt that forces **read → edit → verify** in one go, or send a **follow-up** ("continue: apply the first edit to `internal/...`").
+- **Auto-continue (default on)** — When your message clearly asks for fixes/refactors and the model stops with prose after only read-only tools (`glob`, `read_file`, …), goclaw may inject a short `[goclaw]` user line and **re-prompt the model** (up to twice per message). Set `"auto_continue_action_requests": false` in `settings.json` to disable.
+- **Truth-on-disk footer (default on)** — If your message signals code changes, tools ran, writes are allowed for the profile, but no `write_file` / `edit_file` / `patch` completed successfully, the runtime may append a short bilingual `[goclaw]` footer to the assistant reply (and session log) so prose cannot claim edits alone. Set `"truth_footer_no_workspace_writes": false` in `settings.json` to disable.
+
 ### First-run setup (onboarding)
 
 The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings.json` does not exist**, a short wizard runs **before** the chat UI:
@@ -22,7 +31,7 @@ The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings
 1. Security summary (optional full text is bundled; same content as [security.md](./security.md))
 2. Workspace trust for the current directory (`trusted_workspace` in project `.goclaw/settings.json`)
 3. **TUI appearance** preset (fullscreen mode only; change later with `/theme`)
-4. **Provider**: Ollama or Anthropic (API key is written to `~/.goclaw/settings.local.json`)
+4. **Provider**: Ollama (local); settings are written under `~/.goclaw/` as described below
 
 **Files written:** `~/.goclaw/settings.json` (and `settings.local.json` if you enter an API key); project `.goclaw/settings.json` when you confirm trust.
 

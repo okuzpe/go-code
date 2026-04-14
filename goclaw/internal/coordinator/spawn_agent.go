@@ -40,7 +40,7 @@ type WorkerNotification struct {
 	TaskID  string `json:"task_id"` // worker session id; use with stop_task
 	Profile string `json:"profile"`
 	Status  string `json:"status"`  // "completed" | "failed" | "running" (interactive)
-	Summary string `json:"summary"` // first non-empty line of the result
+	Summary string `json:"summary"` // first non-empty line of the result, or capped error text (may end with " [truncated]")
 	Result  string `json:"result"`  // full worker response text
 }
 
@@ -340,7 +340,7 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 	notif := WorkerNotification{TaskID: taskID, Profile: profile.Name}
 	if err != nil {
 		notif.Status = "failed"
-		notif.Summary = fmt.Sprintf("worker failed: %v", err)
+		notif.Summary = truncateWorkerSummary(fmt.Sprintf("worker failed: %v", err))
 		notif.Result = result
 	} else {
 		notif.Status = "completed"
@@ -365,11 +365,15 @@ func shortID(id string) string {
 	return text.TruncateRunesHard(id, workerNotificationShortIDRunes)
 }
 
+func truncateWorkerSummary(summary string) string {
+	return text.TruncateRunesWithSuffix(summary, workerFirstNonEmptyLineMaxRunes, " [truncated]")
+}
+
 func firstNonEmptyLine(s string) string {
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
-			return text.TruncateRunes(line, workerFirstNonEmptyLineMaxRunes)
+			return truncateWorkerSummary(line)
 		}
 	}
 	return "(no output)"

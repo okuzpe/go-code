@@ -13,12 +13,19 @@ func TestDefaultAgentProfileGeneralPurpose(t *testing.T) {
 	}
 }
 
+func TestDefaultOllamaModelMatchesDefaultConfig(t *testing.T) {
+	t.Parallel()
+	if got := Default().OllamaModel; got != DefaultOllamaModel {
+		t.Fatalf("Default().OllamaModel = %q, want DefaultOllamaModel %q", got, DefaultOllamaModel)
+	}
+}
+
 func TestConfigModel_OllamaIgnoresGOCLAWModelEnv(t *testing.T) {
 	t.Setenv("GOCLAW_MODEL", "ignored-for-ollama")
 	cfg := Default()
 	cfg.Provider = "ollama"
-	cfg.OllamaModel = "qwen2.5-coder:14b"
-	if got := cfg.Model(); got != "qwen2.5-coder:14b" {
+	cfg.OllamaModel = DefaultOllamaModel
+	if got := cfg.Model(); got != DefaultOllamaModel {
 		t.Fatalf("Model() = %q, want ollama model unchanged", got)
 	}
 }

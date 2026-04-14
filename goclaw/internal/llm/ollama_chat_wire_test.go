@@ -130,6 +130,104 @@ func TestOllamaFunctionToolsDroppedAfterWireToolRejection(t *testing.T) {
 	}
 }
 
+func TestOllamaStreamWithToolsIncrementalPlainText(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		line1 := `{"model":"m","message":{"role":"assistant","content":"Hello"},"done":false}` + "\n"
+		line2 := `{"model":"m","message":{"role":"assistant","content":" world"},"done":true,"prompt_eval_count":1,"eval_count":2}` + "\n"
+		_, _ = io.Copy(w, strings.NewReader(line1+line2))
+	}))
+	defer srv.Close()
+
+	client := NewOllama(srv.URL)
+	req := Request{
+		Model:    "m",
+		Messages: []Message{PlainMessage("user", "x")},
+		Tools: []ToolSpec{{
+			Name:        "glob",
+			Description: "g",
+			InputSchema: map[string]any{"type": "object"},
+		}},
+	}
+	events, errc := client.Stream(context.Background(), req)
+	var deltas []string
+	for e := range events {
+		if td, ok := e.(TextDelta); ok {
+			deltas = append(deltas, td.Text)
+		}
+	}
+	if err := <-errc; err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(deltas, ""); got != "Hello world" {
+		t.Fatalf("TextDelta join = %q want %q", got, "Hello world")
+	}
+	if len(deltas) < 2 {
+		t.Fatalf("expected at least 2 incremental TextDelta events, got %d", len(deltas))
+	}
+}
+
+func TestOllamaStreamWithToolsBuffersLeadingJSONTool(t *testing.T) {
+	t.Parallel()
+	toolJSON := `{"name":"glob","arguments":{"pattern":"*.md"}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		line, err := json.Marshal(map[string]any{
+			"model":               "m",
+			"message":             map[string]any{"role": "assistant", "content": toolJSON},
+			"done":                true,
+			"prompt_eval_count":   1,
+			"eval_count":          1,
+		})
+		if err != nil {
+			t.Errorf("marshal: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write(append(line, '\n'))
+	}))
+	defer srv.Close()
+
+	client := NewOllama(srv.URL)
+	req := Request{
+		Model:    "m",
+		Messages: []Message{PlainMessage("user", "find md")},
+		Tools: []ToolSpec{{
+			Name:        "glob",
+			Description: "g",
+			InputSchema: map[string]any{"type": "object"},
+		}},
+	}
+	events, errc := client.Stream(context.Background(), req)
+	var deltas int
+	var sawTool bool
+	for e := range events {
+		switch ev := e.(type) {
+		case TextDelta:
+			deltas++
+			if strings.Contains(ev.Text, `"name":"glob"`) {
+				t.Fatalf("raw tool JSON should not stream as TextDelta: %q", ev.Text)
+			}
+		case ToolUse:
+			if ev.Name == "glob" {
+				sawTool = true
+			}
+		}
+	}
+	if err := <-errc; err != nil {
+		t.Fatal(err)
+	}
+	if !sawTool {
+		t.Fatal("expected ToolUse for buffered JSON tool call")
+	}
+	if deltas != 0 {
+		t.Fatalf("expected no TextDelta before tool classification, got %d", deltas)
+	}
+}
+
 func TestOllamaNativeToolCallsStream(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-ndjson")
