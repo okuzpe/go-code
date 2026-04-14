@@ -11,9 +11,10 @@ import (
 
 const runtimeUserLanguageHintHeader = "\n\n## Runtime user-language hint\n"
 
-// lastUserNaturalText returns the most recent user-authored plain text turn (not a tool-result
-// payload), walking backward from the end of the session.
-func lastUserNaturalText(msgs []llm.Message) string {
+// LastUserNaturalText returns the most recent user-authored plain text turn (not a tool-result
+// payload), walking backward from the end of the session. Synthetic auto-continue nudge lines
+// injected by the orchestrator are skipped so callers see the real user request.
+func LastUserNaturalText(msgs []llm.Message) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
 		m := msgs[i]
 		if !strings.EqualFold(m.Role, "user") {
@@ -25,9 +26,20 @@ func lastUserNaturalText(msgs []llm.Message) string {
 		if len(m.ToolResults) > 0 {
 			continue
 		}
+		if isAutoContinueNudgeContent(m.Content) {
+			continue
+		}
 		return m.Content
 	}
 	return ""
+}
+
+func isAutoContinueNudgeContent(s string) bool {
+	return strings.HasPrefix(strings.TrimSpace(s), "[goclaw] The user asked for concrete code improvements")
+}
+
+func lastUserNaturalText(msgs []llm.Message) string {
+	return LastUserNaturalText(msgs)
 }
 
 // userLanguageSystemSuffix appends a short English-meta hint so local models align reply language.

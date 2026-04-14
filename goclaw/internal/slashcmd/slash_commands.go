@@ -18,6 +18,7 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/capabilities", "Print full capability guide (no model call)"},
 	{"/clear", "Clear the terminal screen (readline parity with Ctrl+L in the TUI)"},
 	{"/compact", "Force context compaction on the current session"},
+	{"/continue", "Send a follow-up to finish pending work (same session context)"},
 	{"/copy", "Copy plain session transcript to the system clipboard"},
 	{"/detach", "Stop routing input to the focused worker"},
 	{"/doctor", "Print health report: Ollama, MCP, permissions, paths"},

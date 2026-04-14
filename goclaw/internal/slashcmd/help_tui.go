@@ -47,6 +47,7 @@ Prefix input (single line; same permissions as tools — see docs/goclaw/prefix-
   @path               read_file in the workspace (TUI: path list + Tab; readline: Tab)
   &task               spawn_agent (general-purpose; hub profile)
   /btw text           side question — one wrapped message to the model
+  /continue           follow-up — keep working on your last user request (sent to the model)
 
 For Esc vs streaming vs exit, follow the footer hint line under the input.
 

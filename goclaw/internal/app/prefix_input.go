@@ -29,6 +29,7 @@ func RunLocalPrefixToolIfAny(
 	sess *session.Session,
 	userText string,
 	sink orchestrator.StreamSink,
+	workdir string,
 ) (handled bool, err error) {
 	if mock {
 		return false, nil
@@ -39,6 +40,14 @@ func RunLocalPrefixToolIfAny(
 	}
 	if analysis.Kind != inputprefix.KindLocalTool {
 		return false, nil
+	}
+	var logStart int
+	var logSink *loggingTerminalSink
+	if sink != nil {
+		if ls, ok := sink.(*loggingTerminalSink); ok {
+			logSink = ls
+			logStart = ls.ToolLogLen()
+		}
 	}
 	content, isError, runErr := orch.RunToolInvocation(ctx, analysis.ToolName, analysis.ToolInputJSON, sink)
 	if runErr != nil {
@@ -54,6 +63,9 @@ func RunLocalPrefixToolIfAny(
 			sink.OnTextDelta(line + "\n")
 		}
 		sink.OnDone(body)
+		if logSink != nil {
+			logSink.PrintReadlineTurnFooters(logStart, body, workdir)
+		}
 	}
 	return true, nil
 }

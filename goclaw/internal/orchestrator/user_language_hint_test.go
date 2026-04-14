@@ -22,8 +22,19 @@ func TestLastUserNaturalText(t *testing.T) {
 		{Role: "user", ToolResults: []llm.ToolResultRecord{{Content: "x"}}},
 		llm.PlainMessage("user", "hola"),
 	}
-	if got := lastUserNaturalText(msgs); got != "hola" {
+	if got := LastUserNaturalText(msgs); got != "hola" {
 		t.Fatalf("got %q, want hola", got)
+	}
+}
+
+func TestLastUserNaturalText_skipsAutoContinueNudge(t *testing.T) {
+	t.Parallel()
+	msgs := []llm.Message{
+		llm.PlainMessage("user", "fix the bug in foo"),
+		llm.PlainMessage("user", actionContinueNudgeMessage),
+	}
+	if got := LastUserNaturalText(msgs); got != "fix the bug in foo" {
+		t.Fatalf("got %q, want fix the bug in foo", got)
 	}
 }
 

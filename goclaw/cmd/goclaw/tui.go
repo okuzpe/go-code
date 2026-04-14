@@ -165,7 +165,7 @@ func newChatSubmitter(rt *app.ChatRuntime, orch *orchestrator.Orchestrator, focu
 			reply, err := app.StreamMockAssistant(ctx, userText, sink, rt.Sess)
 			return reply, augment(err)
 		}
-		if handled, err := app.RunLocalPrefixToolIfAny(ctx, rt.Mock, orch, rt.Sess, userText, sink); handled {
+		if handled, err := app.RunLocalPrefixToolIfAny(ctx, rt.Mock, orch, rt.Sess, userText, sink, rt.Workdir); handled {
 			return "", err
 		}
 		userText = app.ExpandInlineAtRefs(ctx, orch, userText)

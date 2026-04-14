@@ -17,6 +17,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/okuzpe/goclaw/internal/gitdiff"
 	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/session"
@@ -130,6 +131,9 @@ type Model struct {
 	footerStatsLine string
 	// footerStatsStreamAt throttles cache refresh while streaming (live assistant bytes change often).
 	footerStatsStreamAt time.Time
+
+	// turnHadWorkspaceWrite is true if this user turn completed at least one successful write_file / edit_file / patch (for post-turn git diff --stat in the transcript).
+	turnHadWorkspaceWrite bool
 
 	// inputResizeLineCount avoids redundant layout() when textarea line count is unchanged (typing on one line).
 	inputResizeLineCount int
@@ -671,6 +675,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pending = &r
 		return m, nil
 	case assistantPlaceholderMsg:
+		m.turnHadWorkspaceWrite = false
 		m.footerStatsStreamAt = time.Time{}
 		m.refreshFooterStatsCache()
 		m.exitTranscriptBrowse()
@@ -728,8 +733,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if !msg.aborted && (strings.Contains(rawAssistant, orchestrator.TruthFooterMarkerEN) ||
 			strings.Contains(rawAssistant, orchestrator.TruthFooterMarkerES)) {
-			m.footerHint = "No workspace writes this turn — type continue or a short follow-up if you still want edits applied."
+			m.footerHint = "goclaw: no workspace writes — type continue, /continue, or a short follow-up if you still want edits."
 		}
+		if !msg.aborted && m.turnHadWorkspaceWrite {
+			if block := gitdiff.WorktreeDiffStat(m.workdir); block != "" {
+				m.appendSystem(block)
+			}
+		}
+		m.turnHadWorkspaceWrite = false
 		var drainCmd tea.Cmd
 		if !msg.aborted {
 			drainCmd = m.drainMessageQueue()
@@ -806,6 +817,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toolWaitStartedAt = time.Time{}
 			m.statusLine = ""
 		}
+		if !msg.isError {
+			switch msg.name {
+			case "write_file", "edit_file", "patch":
+				m.turnHadWorkspaceWrite = true
+			}
+		}
 		if len(m.toolWaitQueue) > 0 {
 			return m, tickToolWait()
 		}
@@ -858,6 +875,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinnerActive = false
 		m.statusLine = ""
 		m.clearThinkingLine()
+		m.turnHadWorkspaceWrite = false
 		m.toolRunLineIdx = nil
 		m.toolWaitQueue = nil
 		if n := len(m.messageQueue); n > 0 {

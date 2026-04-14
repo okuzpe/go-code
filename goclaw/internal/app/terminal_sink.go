@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
 
+	"github.com/okuzpe/goclaw/internal/gitdiff"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 )
 
@@ -181,6 +183,85 @@ func (s *loggingTerminalSink) OnToolResult(name string, content string, isError 
 	s.currentSumm = ""
 	s.currentStart = time.Time{}
 	s.mu.Unlock()
+}
+
+// ToolLogLen returns the current number of completed tool calls in the session log (for readline turn deltas).
+func (s *loggingTerminalSink) ToolLogLen() int {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.log)
+}
+
+// PrintReadlineTurnFooters writes a one-line stderr recap of tools used since startLen; after successful
+// workspace writes it may print git diff --stat when workdir is a git repo. When finalText contains the
+// runtime truth footer markers, prints a continue hint (readline parity with the TUI footer hint).
+func (s *loggingTerminalSink) PrintReadlineTurnFooters(startLen int, finalText, workdir string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	var entries []completedTool
+	if startLen >= 0 && startLen < len(s.log) {
+		entries = append([]completedTool(nil), s.log[startLen:]...)
+	}
+	s.mu.Unlock()
+
+	printReadlineToolRecap(entries)
+	maybeReadlineGitDiffStat(workdir, entries)
+	if strings.Contains(finalText, orchestrator.TruthFooterMarkerEN) ||
+		strings.Contains(finalText, orchestrator.TruthFooterMarkerES) {
+		fmt.Fprintf(os.Stderr, "goclaw: hint — no workspace writes this turn; type continue, /continue, or a short follow-up if you still want edits.\n")
+	}
+}
+
+func printReadlineToolRecap(entries []completedTool) {
+	if len(entries) == 0 {
+		fmt.Fprintf(os.Stderr, "goclaw: turn complete (no tools).\n")
+		return
+	}
+	counts := make(map[string]int, len(entries))
+	for _, e := range entries {
+		counts[e.name]++
+	}
+	names := make([]string, 0, len(counts))
+	for n := range counts {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, n := range names {
+		if c := counts[n]; c == 1 {
+			parts = append(parts, n)
+		} else {
+			parts = append(parts, fmt.Sprintf("%s×%d", n, c))
+		}
+	}
+	fmt.Fprintf(os.Stderr, "goclaw: %d tool call(s): %s\n", len(entries), strings.Join(parts, ", "))
+}
+
+func maybeReadlineGitDiffStat(workdir string, entries []completedTool) {
+	if strings.TrimSpace(workdir) == "" {
+		return
+	}
+	wrote := false
+	for _, e := range entries {
+		if e.isError {
+			continue
+		}
+		switch e.name {
+		case "write_file", "edit_file", "patch":
+			wrote = true
+		}
+	}
+	if !wrote {
+		return
+	}
+	if block := gitdiff.WorktreeDiffStat(workdir); block != "" {
+		fmt.Fprintln(os.Stderr, block)
+	}
 }
 
 // FormatToolLog returns a human-readable summary of the tool history.

@@ -76,14 +76,20 @@ func runOrchestratorTurn(
 	userText string,
 	sink orchestrator.StreamSink,
 	setReqCancel func(context.CancelFunc),
+	workdir string,
 ) {
 	reqCtx, reqCancel := context.WithCancel(baseCtx)
 	setReqCancel(reqCancel)
+	startLen := 0
+	if ls, ok := sink.(*loggingTerminalSink); ok {
+		startLen = ls.ToolLogLen()
+	}
+	var final string
 	var runErr error
 	if mock {
-		_, runErr = StreamMockAssistant(reqCtx, userText, sink, sess)
+		final, runErr = StreamMockAssistant(reqCtx, userText, sink, sess)
 	} else {
-		_, runErr = orch.RunStreaming(reqCtx, userText, sink)
+		final, runErr = orch.RunStreaming(reqCtx, userText, sink)
 	}
 	runErr = AugmentOrchestratorErr(provider, model, runErr)
 	setReqCancel(nil)
@@ -91,6 +97,11 @@ func runOrchestratorTurn(
 	if runErr != nil && !(errors.Is(runErr, context.Canceled) && baseCtx.Err() == nil) {
 		slog.Error("orchestrator error", "err", runErr)
 		fmt.Fprintf(os.Stderr, "error: %v\n", runErr)
+	}
+	if runErr == nil {
+		if ls, ok := sink.(*loggingTerminalSink); ok {
+			ls.PrintReadlineTurnFooters(startLen, final, workdir)
+		}
 	}
 }
 
@@ -182,14 +193,17 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 				fmt.Println(slashOut)
 			}
 			if strings.TrimSpace(modelSubmit) != "" {
-				runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, modelSubmit, r.sink, setReqCancel)
+				runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, modelSubmit, r.sink, setReqCancel, r.rt.Workdir)
 			}
 			continue
 		}
 
 		if wid := strings.TrimSpace(r.focus.Current()); wid != "" {
+			startLen := r.sink.ToolLogLen()
 			werr := runWorkerTurn(r.baseCtx, r.rt.Cfg.Provider, r.rt.Cfg.Model(), wid, input, r.sink, setReqCancel)
 			if werr == nil {
+				snap, _ := coordinator.SnapshotInteractiveWorker(wid)
+				r.sink.PrintReadlineTurnFooters(startLen, snap, r.rt.Workdir)
 				continue
 			}
 			if errors.Is(werr, coordinator.ErrInteractiveWorkerNotFound) {
@@ -201,7 +215,7 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 			}
 		}
 
-		if handled, err := RunLocalPrefixToolIfAny(r.baseCtx, r.rt.Mock, r.orch, sess, input, r.sink); handled {
+		if handled, err := RunLocalPrefixToolIfAny(r.baseCtx, r.rt.Mock, r.orch, sess, input, r.sink, r.rt.Workdir); handled {
 			if err != nil {
 				slog.Error("prefix input error", "err", err)
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -210,7 +224,7 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 		}
 
 		input = ExpandInlineAtRefs(r.baseCtx, r.orch, input)
-		runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, input, r.sink, setReqCancel)
+		runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, input, r.sink, setReqCancel, r.rt.Workdir)
 	}
 }
 

@@ -50,7 +50,7 @@ func profileWriteFootnote(profile agents.Profile) (string, bool) {
 // printStartupBanner renders the ASCII header and session summary for the readline REPL path (and the
 // plain-text branch when stdout is not a TTY). Default fullscreen TUI does not call this — startup UX
 // lives in internal/ui/chat (welcome panel, footer).
-func printStartupBanner(version, provider, model, profileName, sessionID, workdir string, disableTools bool, uiAppearance string, profile agents.Profile) {
+func printStartupBanner(version, provider, model, profileName, sessionID, workdir string, disableTools bool, uiAppearance string, profile agents.Profile, ollamaNumCtx int) {
 	footnote, showFootnote := profileWriteFootnote(profile)
 
 	if !isTTY(os.Stdout) {
@@ -64,6 +64,9 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 		}
 		if showFootnote {
 			fmt.Println("Note: " + footnote)
+		}
+		if ollamaNumCtx > 0 && ollamaNumCtx < OllamaNumCtxBannerWarnBelow {
+			fmt.Printf("Note: ollama_num_ctx=%d is below %d — long prompts plus tool schemas may truncate; see docs/goclaw/usage.md.\n", ollamaNumCtx, OllamaNumCtxBannerWarnBelow)
 		}
 		fmt.Println()
 		return
@@ -105,6 +108,9 @@ func printStartupBanner(version, provider, model, profileName, sessionID, workdi
 
 	if showFootnote {
 		fmt.Println(dim.Render("  " + footnote))
+	}
+	if ollamaNumCtx > 0 && ollamaNumCtx < OllamaNumCtxBannerWarnBelow {
+		fmt.Println(dim.Render(fmt.Sprintf("  Note: ollama_num_ctx=%d is below %d — long prompts plus tool schemas may truncate; see docs/goclaw/usage.md.", ollamaNumCtx, OllamaNumCtxBannerWarnBelow)))
 	}
 
 	fmt.Println(helpLine)

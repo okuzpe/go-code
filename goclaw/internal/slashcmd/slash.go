@@ -309,6 +309,25 @@ use /sessions to list saved ids; current session is auto-saved before switching`
 		after := (*sess).Len()
 		return true, fmt.Sprintf("(compaction applied: %d → %d messages; older turns summarized; tail preserved)", before, after), false, "", nil
 
+	case "continue":
+		if orch == nil {
+			return true, "", false, "", fmt.Errorf("/continue requires a running agent")
+		}
+		if sess == nil || *sess == nil {
+			return true, "", false, "", fmt.Errorf("/continue: no active session")
+		}
+		prev := orchestrator.LastUserNaturalText((*sess).Messages)
+		if prev == "" {
+			return true, "", false, "", fmt.Errorf(`/continue: no prior user message in this session — send a request first`)
+		}
+		r := []rune(strings.TrimSpace(prev))
+		snippet := string(r)
+		if len(r) > 48 {
+			snippet = string(r[:48]) + "…"
+		}
+		const continueSubmit = `Continue working on the prior request: use tools to complete pending edits (write_file, edit_file, patch) or bash/script to verify, or state clearly what blocks you.`
+		return true, fmt.Sprintf("(follow-up for: %s)\n", snippet), false, continueSubmit, nil
+
 	case "edit":
 		if orch == nil {
 			return true, "", false, "", fmt.Errorf("/edit requires a running agent")
@@ -699,8 +718,8 @@ use /workers to list interactive worker ids`)
 // PopularSlashHint is printed once after the startup banner on readline REPL (claw-style flow).
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
-	b.WriteString("Popular slash commands (not sent to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview]   /review   /btw   /copy   /export   /init   /memory   /model   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /allow-writes   /resume   /clear   /quit\n")
+	b.WriteString("Popular slash commands (most are local; /btw and /continue also send one user line to the model):\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview]   /review   /btw   /continue   /copy   /export   /init   /memory   /model   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /allow-writes   /resume   /clear   /quit\n")
 	b.WriteString("Prefix input (see docs/goclaw/prefix-input-modes.md):  !cmd   @path   &task\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
@@ -723,7 +742,7 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("  /review [args] — inject git diff, switch to code-review (see docs/goclaw/code-review-workflow.md)\n")
 	b.WriteString("  /memory list | add | delete — durable memory under ~/.goclaw/memory/\n")
 	b.WriteString("  /workers, /focus or /in <id>, /back or /detach — interactive spawn_agent workers\n")
-	b.WriteString("  /compact, /copy, /export, /edit, /init, /agents, /profile, /theme, /new, /save, /session, /sessions, /resume, /clear, /quit, /btw, /audit, /review\n")
+	b.WriteString("  /compact, /copy, /export, /edit, /init, /agents, /profile, /theme, /new, /save, /session, /sessions, /resume, /clear, /quit, /btw, /continue, /audit, /review\n")
 	b.WriteString("Prefix: ! (bash), @ (read_file), & (spawn_agent) — single line; docs/goclaw/prefix-input-modes.md\n")
 	b.WriteString("Flags: --readline (line REPL), --no-tools, --session <id>, --profile <name>\n")
 	if strings.TrimSpace(workdir) != "" {
@@ -773,6 +792,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /audit [path]    — switch to general-purpose; audit-and-fix workflow on path (default: workspace)\n")
 	b.WriteString("  /review [args]   — inject git diff; switch to code-review (read-only; see docs/goclaw/code-review-workflow.md)\n")
 	b.WriteString("  /btw <text>      — side question: one user message with a brief-aside preamble (sent to the model)\n")
+	b.WriteString("  /continue        — follow-up: ask the model to keep working on your last user request (sent to the model)\n")
 	b.WriteString("  Ctrl+C           — exit (session is saved on shutdown)\n")
 	b.WriteString("\nPrefix input (before model; same tools and permissions; single line each; see docs/goclaw/prefix-input-modes.md):\n")
 	b.WriteString("  !<command>       — bash tool\n")
