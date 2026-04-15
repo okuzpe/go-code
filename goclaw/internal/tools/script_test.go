@@ -2,7 +2,9 @@ package tools
 
 import (
 	"context"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -79,7 +81,11 @@ func TestScriptTool_withCwd(t *testing.T) {
 	result, err := s.Execute(context.Background(), input)
 	require.NoError(t, err)
 	require.False(t, result.IsError)
-	require.Contains(t, result.Content, "tmp")
+	want, err := filepath.EvalSymlinks(dir)
+	require.NoError(t, err)
+	got, err := filepath.EvalSymlinks(strings.TrimSpace(result.Content))
+	require.NoError(t, err)
+	require.Equal(t, filepath.Clean(want), filepath.Clean(got))
 }
 
 func TestNewScriptWithTimeout_positive(t *testing.T) {

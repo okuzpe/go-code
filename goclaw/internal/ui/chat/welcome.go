@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/okuzpe/goclaw/internal/text"
 )
 
 // WelcomeOptions configures the optional startup panel (Phase 2 parity with Claude Code home).
@@ -21,6 +22,8 @@ type WelcomeOptions struct {
 	// WriteApprovalRequired when true (and FileWriteToolsHidden is false), hint that write tools need per-call approval
 	// and how to enable auto-approval. Set when yolo_threshold is below the workspace-write risk score (60).
 	WriteApprovalRequired bool
+	// OllamaWarning is a short English notice shown on the welcome panel when Ollama is unreachable or the model is missing.
+	OllamaWarning string
 }
 
 // defaultWelcomeWrap is used when terminal width is not known yet (before first WindowSizeMsg).
@@ -168,6 +171,12 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 			leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(dim.Render(ln)))
 		}
 	}
+	if w := strings.TrimSpace(opt.OllamaWarning); w != "" {
+		leftLines = append(leftLines, "")
+		for _, ln := range wrapPlainWords(w, leftW-2) {
+			leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(th.ErrorStyle.Render(ln)))
+		}
+	}
 
 	var rightLines []string
 	rightLines = append(rightLines, "")
@@ -254,12 +263,20 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 	accent := lipgloss.NewStyle().Bold(true).Foreground(th.ToolCardHead.GetForeground())
 
 	var body strings.Builder
+	writeJoined := func(lines []string, render func(...string) string) {
+		for i, ln := range lines {
+			body.WriteString(render(ln))
+			if i < len(lines)-1 {
+				body.WriteString("\n")
+			}
+		}
+	}
 	if u := welcomeOSUser(); u != "" {
-		body.WriteString(titleStyle.Render("Welcome back, " + u))
+		writeJoined(wrapPlainWords("Welcome back, "+u, contentMax), titleStyle.Render)
 		body.WriteString("\n")
-		body.WriteString(dim.Render("goclaw v" + version))
+		writeJoined(wrapPlainWords("goclaw v"+version, contentMax), dim.Render)
 	} else {
-		body.WriteString(titleStyle.Render("goclaw v" + version))
+		writeJoined(wrapPlainWords("goclaw v"+version, contentMax), titleStyle.Render)
 	}
 	if sub := strings.TrimSpace(opt.Subtitle); sub != "" {
 		body.WriteString("\n")
@@ -283,33 +300,67 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 	body.WriteString("\n\n")
 	body.WriteString(accent.Render("Tips"))
 	body.WriteString("\n")
-	body.WriteString(dim.Render("/help  /capabilities  ·  CLAUDE.md  ·  .goclaw/"))
-	body.WriteString("\n")
-	body.WriteString(dim.Render("Ctrl+P — agent profile picker  ·  Plan: /profile plan → /plan save → /apply-plan --preview → /apply-plan"))
-	body.WriteString("\n")
-	body.WriteString(dim.Render("Turns: one message runs until the model replies without tools; continue is OK if it stopped after reads."))
-	body.WriteString("\n")
-	body.WriteString(dim.Render("Tool cards: one-line result hint when available · Ctrl+T — full tool history"))
-	body.WriteString("\n")
-	body.WriteString(dim.Render("Multi-agent: /profile coordinator, /workers, /focus"))
+	for _, ln := range wrapPlainWords("/help  /capabilities  ·  CLAUDE.md  ·  .goclaw/", contentMax) {
+		body.WriteString(dim.Render(ln))
+		body.WriteString("\n")
+	}
+	for _, ln := range wrapPlainWords("Ctrl+P — agent profile picker  ·  Plan: /profile plan → /plan save → /apply-plan --preview → /apply-plan", contentMax) {
+		body.WriteString(dim.Render(ln))
+		body.WriteString("\n")
+	}
+	for _, ln := range wrapPlainWords("Turns: one message runs until the model replies without tools; continue is OK if it stopped after reads.", contentMax) {
+		body.WriteString(dim.Render(ln))
+		body.WriteString("\n")
+	}
+	for _, ln := range wrapPlainWords("Tool cards: one-line result hint when available · Ctrl+T — full tool history", contentMax) {
+		body.WriteString(dim.Render(ln))
+		body.WriteString("\n")
+	}
+	for _, ln := range wrapPlainWords("Multi-agent: /profile coordinator, /workers, /focus", contentMax) {
+		body.WriteString(dim.Render(ln))
+		body.WriteString("\n")
+	}
 	if opt.FileWriteToolsHidden {
 		body.WriteString("\n")
 		if opt.HubDelegatesCoding {
-			body.WriteString(dim.Render("This profile hides write tools — spawn_agent for coding, or /profile general-purpose for direct edits."))
+			for _, ln := range wrapPlainWords("This profile hides write tools — spawn_agent for coding, or /profile general-purpose for direct edits.", contentMax) {
+				body.WriteString(dim.Render(ln))
+				body.WriteString("\n")
+			}
 		} else {
-			body.WriteString(dim.Render("Read-only profile — /profile general-purpose for direct file edits."))
+			for _, ln := range wrapPlainWords("Read-only profile — /profile general-purpose for direct file edits.", contentMax) {
+				body.WriteString(dim.Render(ln))
+				body.WriteString("\n")
+			}
 		}
 	} else if opt.WriteApprovalRequired {
 		body.WriteString("\n")
-		body.WriteString(dim.Render("Write tools available · each call needs approval (y/n/Enter) — or /allow-writes to skip prompts this session."))
+		for _, ln := range wrapPlainWords("Write tools available · each call needs approval (y/n/Enter) — or /allow-writes to skip prompts this session.", contentMax) {
+			body.WriteString(dim.Render(ln))
+			body.WriteString("\n")
+		}
+	}
+	if w := strings.TrimSpace(opt.OllamaWarning); w != "" {
+		body.WriteString("\n\n")
+		for _, ln := range wrapPlainWords(w, contentMax) {
+			body.WriteString(th.ErrorStyle.Render(ln))
+			body.WriteString("\n")
+		}
 	}
 
-	body.WriteString("\n")
-	for _, ln := range welcomeBrandGlyphLines() {
-		plain := strings.TrimSpace(ln)
-		centered := lipgloss.PlaceHorizontal(contentMax, lipgloss.Center, plain, lipgloss.WithWhitespaceChars(" "))
-		body.WriteString(dim.Render(centered))
+	// Mascot glyphs are fixed-width art (~21 cells). Skip them when the body is too narrow or
+	// PlaceHorizontal would not constrain wide runes, so framed lines stay within the terminal.
+	if contentMax >= 20 {
 		body.WriteString("\n")
+		for _, ln := range welcomeBrandGlyphLines() {
+			plain := strings.TrimSpace(ln)
+			if lipgloss.Width(plain) > contentMax {
+				plain = text.TruncateRunesHard(plain, contentMax)
+			}
+			centered := lipgloss.PlaceHorizontal(contentMax, lipgloss.Center, plain, lipgloss.WithWhitespaceChars(" "))
+			body.WriteString(dim.Render(centered))
+			body.WriteString("\n")
+		}
 	}
 
 	ribbonWidth := contentMax + 4
@@ -325,11 +376,14 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 		trimmed = trimmed + "\n" + ribbon
 	}
 
-	frame := lipgloss.NewStyle().
+	frameStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(welcomeBorderColor()).
-		Padding(0, 1).
-		Render(trimmed)
+		Padding(0, 1)
+	if termWidth > 0 {
+		frameStyle = frameStyle.Width(termWidth)
+	}
+	frame := frameStyle.Render(trimmed)
 	return strings.Split(frame, "\n")
 }
 
@@ -340,7 +394,10 @@ func wrapPlainWords(text string, maxW int) []string {
 		return nil
 	}
 	if maxW < 12 {
-		return []string{text}
+		if lipgloss.Width(text) <= maxW {
+			return []string{text}
+		}
+		return wrapHardRunes(text, maxW)
 	}
 	if lipgloss.Width(text) <= maxW {
 		return []string{text}
@@ -354,6 +411,15 @@ func wrapPlainWords(text string, maxW int) []string {
 	curW := 0
 	for _, w := range words {
 		ww := lipgloss.Width(w)
+		if ww > maxW {
+			if b.Len() > 0 {
+				lines = append(lines, b.String())
+				b.Reset()
+				curW = 0
+			}
+			lines = append(lines, wrapHardRunes(w, maxW)...)
+			continue
+		}
 		if curW == 0 {
 			b.WriteString(w)
 			curW = ww

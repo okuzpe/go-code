@@ -27,6 +27,8 @@ type settingsFile struct {
 	BashTimeoutSec               *int                `json:"bash_timeout_sec"`
 	ModelContextTokens           *int                `json:"model_context_tokens"`
 	MaxResponseTokens            *int                `json:"max_response_tokens,omitempty"`
+	MaxOrchestratorIterations    *int                `json:"max_orchestrator_iterations,omitempty"`
+	MaxOrchestratorToolCalls     *int                `json:"max_orchestrator_tool_calls,omitempty"`
 	MCPServers                   []MCPServerConfig   `json:"mcp_servers"`
 	TrustedWorkspace             *bool               `json:"trusted_workspace"`
 	ExternalHooks                []ExternalHookEntry `json:"external_hooks"`
@@ -156,6 +158,20 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.MaxResponseTokens != nil && *sf.MaxResponseTokens > 0 {
 		cfg.MaxResponseTokens = *sf.MaxResponseTokens
+	}
+	if sf.MaxOrchestratorIterations != nil && *sf.MaxOrchestratorIterations > 0 {
+		n := *sf.MaxOrchestratorIterations
+		if n > 256 {
+			n = 256
+		}
+		cfg.MaxOrchestratorIterations = n
+	}
+	if sf.MaxOrchestratorToolCalls != nil && *sf.MaxOrchestratorToolCalls > 0 {
+		n := *sf.MaxOrchestratorToolCalls
+		if n > 512 {
+			n = 512
+		}
+		cfg.MaxOrchestratorToolCalls = n
 	}
 	if len(sf.MCPServers) > 0 {
 		cfg.MCPServers = mergeMCPServersByID(cfg.MCPServers, sf.MCPServers)

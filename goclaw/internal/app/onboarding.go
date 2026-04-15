@@ -49,5 +49,5 @@ func securityDocURL() string {
 
 // onboardingCompletionProfileHint is shown after successful first-run setup (readline + TUI).
 func onboardingCompletionProfileHint() string {
-	return "Tip: default profile is builder (direct file tools, action-first). For hub-and-spoke delegation, use /profile coordinator or set agent_profile in settings."
+	return "Tip: default profile is general-purpose (full tools on the main session). Prefer /profile builder for shorter, action-first replies. For hub-and-spoke delegation, use /profile coordinator or set agent_profile in settings."
 }

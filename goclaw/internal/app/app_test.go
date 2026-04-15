@@ -69,8 +69,8 @@ type noopStreamSink struct{}
 func (noopStreamSink) OnTextDelta(string)                {}
 func (noopStreamSink) OnThinkingStart(string) {}
 func (noopStreamSink) OnToolProgress(string, string)     {}
-func (noopStreamSink) OnToolUse(string, string)          {}
-func (noopStreamSink) OnToolResult(string, string, bool) {}
+func (noopStreamSink) OnToolUse(string, string, string)       {}
+func (noopStreamSink) OnToolResult(string, string, string, bool) {}
 func (noopStreamSink) OnDone(string)                     {}
 func (noopStreamSink) OnCompact(int)                     {}
 

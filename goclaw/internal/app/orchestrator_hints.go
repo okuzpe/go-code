@@ -35,6 +35,13 @@ func orchestratorFailureHints(provider, model string, err error) []string {
 			m = "<model>"
 		}
 		out = append(out, "hint: if the model is missing, run: ollama pull "+m)
+	} else if strings.Contains(low, "ollama") && (strings.Contains(low, "file does not exist") ||
+		strings.Contains(low, "model") && (strings.Contains(low, "not found") || strings.Contains(low, "unknown model"))) {
+		m := strings.TrimSpace(model)
+		if m == "" {
+			m = "<model>"
+		}
+		out = append(out, "hint: pull the model into the local Ollama library: ollama pull "+m)
 	}
 
 	if strings.Contains(low, "iteration limit") {

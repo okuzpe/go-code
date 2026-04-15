@@ -105,6 +105,7 @@ func welcomeOptions(rt *app.ChatRuntime) chat.WelcomeOptions {
 		FileWriteToolsHidden:  !rt.Profile.AllowsWorkspaceFileWrites(),
 		HubDelegatesCoding:    rt.Profile.AllowsSpawnAgentDelegation(),
 		WriteApprovalRequired: writeApprovalRequired,
+		OllamaWarning:         app.FormatOllamaWelcomeWarning(rt),
 	}
 }
 

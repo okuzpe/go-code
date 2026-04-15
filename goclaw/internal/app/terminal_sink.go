@@ -45,7 +45,7 @@ func (s *terminalSink) OnTextDelta(text string) {
 	}
 }
 
-func (s *terminalSink) OnToolUse(name, rawInput string) {
+func (s *terminalSink) OnToolUse(_ string, name, rawInput string) {
 	if s.needsNL {
 		fmt.Println()
 		s.needsNL = false
@@ -68,7 +68,7 @@ func (s *terminalSink) OnToolUse(name, rawInput string) {
 	}
 }
 
-func (s *terminalSink) OnToolResult(name string, content string, isError bool) {
+func (s *terminalSink) OnToolResult(_ string, name string, content string, isError bool) {
 	icon := "✓"
 	if isError {
 		icon = "✗"
@@ -164,8 +164,8 @@ type loggingTerminalSink struct {
 	currentStart time.Time
 }
 
-func (s *loggingTerminalSink) OnToolUse(name, preview string) {
-	s.terminalSink.OnToolUse(name, preview)
+func (s *loggingTerminalSink) OnToolUse(toolUseID, name, preview string) {
+	s.terminalSink.OnToolUse(toolUseID, name, preview)
 	s.mu.Lock()
 	s.currentName = name
 	s.currentSumm = preview
@@ -173,8 +173,8 @@ func (s *loggingTerminalSink) OnToolUse(name, preview string) {
 	s.mu.Unlock()
 }
 
-func (s *loggingTerminalSink) OnToolResult(name string, content string, isError bool) {
-	s.terminalSink.OnToolResult(name, content, isError)
+func (s *loggingTerminalSink) OnToolResult(toolUseID, name string, content string, isError bool) {
+	s.terminalSink.OnToolResult(toolUseID, name, content, isError)
 	s.mu.Lock()
 	elapsed := time.Duration(0)
 	if !s.currentStart.IsZero() {

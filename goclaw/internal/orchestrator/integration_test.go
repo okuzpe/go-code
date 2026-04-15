@@ -48,13 +48,13 @@ func (c *captureSink) OnToolProgress(name, partial string) {
 	c.events = append(c.events, "tool_progress:"+name+":"+partial)
 }
 
-func (c *captureSink) OnToolUse(name, _ string) {
+func (c *captureSink) OnToolUse(_, name, _ string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.events = append(c.events, "tool_use:"+name)
 }
 
-func (c *captureSink) OnToolResult(name string, _ string, isError bool) {
+func (c *captureSink) OnToolResult(_, name string, _ string, isError bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	suffix := "ok"

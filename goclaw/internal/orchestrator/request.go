@@ -134,7 +134,7 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	// so the model knows it is approaching its ceiling and should wrap up or report.
 	if o.budgetIter > 0 && o.budgetLimit > 0 && o.budgetIter > o.budgetLimit/2 {
 		remaining := o.budgetLimit - o.budgetIter
-		toolsLeft := maxToolCalls - o.budgetToolCalls
+		toolsLeft := o.effectiveMaxToolCalls() - o.budgetToolCalls
 		softenBudget := !o.profile.ReadOnly &&
 			toolSpecsAllowWorkspaceWrite(specs) &&
 			userMessageWantsWorkspaceWrites(o.turnUserMessage) &&
@@ -149,7 +149,7 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		sys = sys + fmt.Sprintf(
 			"\n\n<system-reminder>Budget: iteration %d/%d (%d remaining). Tool calls used: %d/%d (%d remaining). %s</system-reminder>",
 			o.budgetIter, o.budgetLimit, remaining,
-			o.budgetToolCalls, maxToolCalls, toolsLeft,
+			o.budgetToolCalls, o.effectiveMaxToolCalls(), toolsLeft,
 			body,
 		)
 	}

@@ -23,7 +23,7 @@ func (o *Orchestrator) RunToolInvocation(ctx context.Context, toolName, toolInpu
 		Input: toolInputJSON,
 	}
 	if sink != nil {
-		sink.OnToolUse(toolName, toolInputJSON)
+		sink.OnToolUse(tu.ID, toolName, toolInputJSON)
 	}
 	out := o.executeTool(ctx, tu, sink)
 	if out.Err != nil {
@@ -33,7 +33,7 @@ func (o *Orchestrator) RunToolInvocation(ctx context.Context, toolName, toolInpu
 		o.afterTool(toolName, toolInputJSON, len(out.Content), out.IsError)
 	}
 	if sink != nil {
-		sink.OnToolResult(toolName, out.Content, out.IsError)
+		sink.OnToolResult(tu.ID, toolName, out.Content, out.IsError)
 	}
 	return out.Content, out.IsError, nil
 }

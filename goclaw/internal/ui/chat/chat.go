@@ -166,8 +166,9 @@ type toolTickMsg struct{}
 
 // pendingTool holds human-readable tool activity for compact status + done lines.
 type pendingTool struct {
-	name    string
-	summary string
+	toolUseID string
+	name      string
+	summary   string
 }
 
 // toolLogEntry is a completed tool call stored in the session-scoped tool history.
@@ -231,45 +232,6 @@ type Options struct {
 // hints describe optional UI updates (welcome bar, transcript reload); ignored by callers that do not render a transcript.
 type SlashHandler func(input string) (handled bool, out string, quit bool, modelSubmit string, hints slashcmd.UIHints, err error)
 
-type ApprovalRequest struct {
-	ToolName string
-	Preview  string
-	Resp     chan bool
-}
-
-type ApprovalBroker struct {
-	Requests chan ApprovalRequest
-}
-
-func NewApprovalBroker() *ApprovalBroker {
-	return &ApprovalBroker{Requests: make(chan ApprovalRequest, 8)}
-}
-
-func (b *ApprovalBroker) ToolApprover() orchestrator.ToolApprover {
-	return func(ctx context.Context, toolName, toolInput string) (bool, error) {
-		preview := text.TruncateRunes(
-			orchestrator.FormatToolUsePreview(toolName, toolInput),
-			tuiToolApprovalPreviewMaxRunes,
-		)
-		req := ApprovalRequest{
-			ToolName: toolName,
-			Preview:  preview,
-			Resp:     make(chan bool, 1),
-		}
-		select {
-		case b.Requests <- req:
-		case <-ctx.Done():
-			return false, ctx.Err()
-		}
-		select {
-		case ok := <-req.Resp:
-			return ok, nil
-		case <-ctx.Done():
-			return false, ctx.Err()
-		}
-	}
-}
-
 // inputMaxHeight is the maximum number of visible lines in the input textarea.
 const inputMaxHeight = 6
 
@@ -277,7 +239,6 @@ const inputMaxHeight = 6
 const idleTranscriptHintMinRunes = 1200
 
 const (
-	tuiToolApprovalPreviewMaxRunes = 400
 	approvalOverlayPreviewMaxRunes = 240
 	approvalOverlayPreviewMinRunes = 8
 	approvalOverlayPreviewStep     = 8
@@ -767,7 +728,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Reset buffer for the next assistant segment (post-tool).
 		m.curAssistant.Reset()
 		m.curAssistantLineIdx = -1
-		m.toolWaitQueue = append(m.toolWaitQueue, pendingTool{name: msg.name, summary: msg.preview})
+		m.toolWaitQueue = append(m.toolWaitQueue, pendingTool{toolUseID: msg.toolUseID, name: msg.name, summary: msg.preview})
 		if len(m.toolWaitQueue) == 1 {
 			now := time.Now()
 			m.toolWaitStartedAt = now
@@ -806,18 +767,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout()
 		return m, nil
 	case toolResultMsg:
-		job, ok := m.popToolJob()
-		if !ok {
-			job = pendingTool{name: msg.name, summary: ""}
-		}
-		if len(m.toolRunLineIdx) > 0 {
-			lineIdx := m.toolRunLineIdx[0]
-			m.toolRunLineIdx = m.toolRunLineIdx[1:]
-			if lineIdx >= 0 && lineIdx < len(m.lineMeta) && m.lineMeta[lineIdx].kind == lineKindToolRunning {
-				m.replaceToolRunningWithCard(lineIdx, job.name, job.summary, msg.content, msg.isError)
-			} else {
-				m.appendToolDoneLine(job.name, job.summary, msg.content, msg.isError)
-			}
+		lineIdx, job := m.dequeueToolResult(msg.toolUseID, msg.name)
+		if lineIdx >= 0 && lineIdx < len(m.lineMeta) && m.lineMeta[lineIdx].kind == lineKindToolRunning {
+			m.replaceToolRunningWithCard(lineIdx, job.name, job.summary, msg.content, msg.isError)
 		} else {
 			m.appendToolDoneLine(job.name, job.summary, msg.content, msg.isError)
 		}
@@ -2333,13 +2285,34 @@ func (m *Model) toolQueueStatusLine() string {
 	return base + "…"
 }
 
-func (m *Model) popToolJob() (pendingTool, bool) {
+// dequeueToolResult removes the matching in-flight tool (by toolUseID when set, else FIFO)
+// and returns the transcript line index for its running row (-1 when none).
+func (m *Model) dequeueToolResult(toolUseID, name string) (lineIdx int, job pendingTool) {
+	lineIdx = -1
 	if len(m.toolWaitQueue) == 0 {
-		return pendingTool{}, false
+		return -1, pendingTool{name: name, summary: ""}
 	}
-	j := m.toolWaitQueue[0]
-	m.toolWaitQueue = m.toolWaitQueue[1:]
-	return j, true
+	idx := 0
+	found := false
+	if strings.TrimSpace(toolUseID) != "" {
+		for i := range m.toolWaitQueue {
+			if m.toolWaitQueue[i].toolUseID == toolUseID {
+				idx = i
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		idx = 0
+	}
+	job = m.toolWaitQueue[idx]
+	if idx < len(m.toolRunLineIdx) {
+		lineIdx = m.toolRunLineIdx[idx]
+	}
+	m.toolWaitQueue = append(m.toolWaitQueue[:idx], m.toolWaitQueue[idx+1:]...)
+	m.toolRunLineIdx = append(m.toolRunLineIdx[:idx], m.toolRunLineIdx[idx+1:]...)
+	return lineIdx, job
 }
 
 // appendToolDoneLine renders a completed tool call as a compact card (claw-code style)
@@ -2511,14 +2484,16 @@ type assistantDoneMsg struct {
 }
 
 type toolUseMsg struct {
-	name    string
-	preview string
+	toolUseID string
+	name      string
+	preview   string
 }
 
 type toolResultMsg struct {
-	name    string
-	content string // full result string (used for tool log drill-down)
-	isError bool
+	toolUseID string
+	name      string
+	content   string // full result string (used for tool log drill-down)
+	isError   bool
 }
 
 // thinkingPhaseMsg updates the streaming footer and the in-transcript thinking row label.

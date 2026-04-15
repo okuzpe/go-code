@@ -20,7 +20,7 @@ type customFrontmatter struct {
 	DisallowedTools []string `yaml:"disallowed_tools"`
 	ReadOnly        bool     `yaml:"read_only"`
 	SystemPrompt    string   `yaml:"system_prompt"`
-	// MaxTurns caps the orchestrator loop for this agent (0 = built-in default 32).
+	// MaxTurns caps the orchestrator loop for this agent (0 = use the configured default iteration cap).
 	MaxTurns int `yaml:"max_turns"`
 	// Memory selects a per-agent memory scope: "user", "project", or "local".
 	// Empty means use the global user memory store.

@@ -29,8 +29,8 @@ type Profile struct {
 	DisallowedTools []string
 	ReadOnly        bool   // if true, write/bash tools are blocked
 	SystemPrompt    string // appended to the base system prompt
-	// MaxTurns caps the orchestrator loop for this profile (0 = use built-in default of 32).
-	// Set via frontmatter "max_turns". Values above the built-in default are clamped to it.
+	// MaxTurns caps the orchestrator loop for this profile (0 = use configured default iteration cap).
+	// Set via frontmatter "max_turns". Values above the effective iteration cap are clamped to it.
 	MaxTurns int
 	// MemoryScope selects a per-agent memory directory instead of the global user memory store.
 	// Valid values: "user" (~/.goclaw/agent-memory/<name>/),
@@ -52,7 +52,7 @@ Use spawn_agent when you have 3+ independent subtasks suited to separate workers
 For single-threaded work, use tools directly; do not delegate trivial one-shot tasks.`,
 	}
 
-	// Builder is the default direct-coding profile: same full tool surface as general-purpose,
+	// Builder is a direct-coding profile: same full tool surface as general-purpose,
 	// with stronger bias toward short, action-first replies and immediate tool use.
 	Builder = Profile{
 		Name: "builder",
@@ -147,7 +147,7 @@ For single-threaded work, use tools directly; do not delegate trivial one-shot t
 			"- plan: produce a step-by-step implementation plan — read-only output.\n" +
 			"- verification: run tests or checks and report PASS/FAIL.\n" +
 			"- code-review: read-only review of a git diff (no file writes); use after the user runs /review or for PR-style feedback.\n" +
-			"When uncertain which profile: default to builder or general-purpose.",
+			"When uncertain which profile: default to general-purpose or builder.",
 	}
 )
 

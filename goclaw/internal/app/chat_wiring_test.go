@@ -35,7 +35,7 @@ func TestPrepareChatRuntime_MCPServerStartFailureContinues(t *testing.T) {
 	cmd := cli.NewRootCmd("dev",
 		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
-		func() error { return nil },
+		func(*cobra.Command) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
 	)
 	require.NoError(t, cmd.ParseFlags([]string{}))
@@ -75,7 +75,7 @@ func TestPrepareChatRuntime_ProjectHooksOnlyWhenTrusted(t *testing.T) {
 	cmd := cli.NewRootCmd("dev",
 		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
-		func() error { return nil },
+		func(*cobra.Command) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
 	)
 	require.NoError(t, cmd.ParseFlags([]string{}))
@@ -92,12 +92,12 @@ func TestPrepareChatRuntime_ProjectHooksOnlyWhenTrusted(t *testing.T) {
 
 	trustedSettings := []byte(`{"agent_profile":"explore","trusted_workspace":true}`)
 	require.NoError(t, os.WriteFile(filepath.Join(goclawDir, "settings.json"), trustedSettings, 0o600))
-	require.NoError(t, os.Remove(marker))
+	_ = os.Remove(marker)
 
 	cmd2 := cli.NewRootCmd("dev",
 		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
-		func() error { return nil },
+		func(*cobra.Command) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
 	)
 	require.NoError(t, cmd2.ParseFlags([]string{}))

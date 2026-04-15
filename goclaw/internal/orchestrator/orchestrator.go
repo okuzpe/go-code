@@ -82,10 +82,11 @@ type StreamSink interface {
 	// between tool iterations). phase is a short English line from ThinkingPhaseLine (may be empty).
 	OnThinkingStart(phase string)
 	OnTextDelta(text string)
-	OnToolUse(name, rawInput string)
+	// OnToolUse is emitted when the model requests a tool. toolUseID is the wire id (may be empty for synthetic invocations).
+	OnToolUse(toolUseID, name, rawInput string)
 	// OnToolResult is called after each tool finishes. content is the full result
 	// string (may be large; callers may cap display to a reasonable limit).
-	OnToolResult(name string, content string, isError bool)
+	OnToolResult(toolUseID, name string, content string, isError bool)
 	// OnToolProgress is called with incremental partial output from a running tool
 	// (e.g. bash stdout lines as they arrive). May be called many times between
 	// OnToolUse and OnToolResult for the same tool.
@@ -201,6 +202,28 @@ func New(
 	return o
 }
 
+func (o *Orchestrator) effectiveMaxIterations() int {
+	n := o.cfg.MaxOrchestratorIterations
+	if n <= 0 {
+		return maxIterations
+	}
+	if n > 256 {
+		return 256
+	}
+	return n
+}
+
+func (o *Orchestrator) effectiveMaxToolCalls() int {
+	n := o.cfg.MaxOrchestratorToolCalls
+	if n <= 0 {
+		return maxToolCalls
+	}
+	if n > 512 {
+		return 512
+	}
+	return n
+}
+
 // TaskRole returns the classified task role for the current turn (e.g. "fix", "code", "explore").
 // Returns "" between turns.
 func (o *Orchestrator) TaskRole() string { return o.taskRole }
@@ -236,8 +259,9 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	defer func() { o.turnModel = ""; o.taskRole = "" }()
 
 	toolCalls := 0
-	iterLimit := maxIterations
-	if o.profile.MaxTurns > 0 && o.profile.MaxTurns < maxIterations {
+	iterCap := o.effectiveMaxIterations()
+	iterLimit := iterCap
+	if o.profile.MaxTurns > 0 && o.profile.MaxTurns < iterCap {
 		iterLimit = o.profile.MaxTurns
 	}
 	o.budgetLimit = iterLimit
@@ -296,7 +320,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 					"preview", FormatToolUsePreview(ev.Name, ev.Input),
 				)
 				if sink != nil {
-					sink.OnToolUse(ev.Name, ev.Input)
+					sink.OnToolUse(ev.ID, ev.Name, ev.Input)
 				}
 			case llm.Done:
 				// stream finished
@@ -346,8 +370,9 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		}
 		o.session.AddAssistant(response, records)
 
-		if maxToolCalls-toolCalls < len(pendingTools) {
-			return "", fmt.Errorf("tool call limit (%d) reached", maxToolCalls)
+		toolCap := o.effectiveMaxToolCalls()
+		if toolCap-toolCalls < len(pendingTools) {
+			return "", fmt.Errorf("tool call limit (%d) reached", toolCap)
 		}
 
 		parallel := len(pendingTools) > 1 && o.allToolsAutoApprove(pendingTools) && !pendingToolsIncludeSpawnAgent(pendingTools)
@@ -366,7 +391,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 					o.afterTool(r.ToolName, input, len(r.Content), r.IsError)
 				}
 				if sink != nil {
-					sink.OnToolResult(r.ToolName, r.Content, r.IsError)
+					sink.OnToolResult(r.ToolUseID, r.ToolName, r.Content, r.IsError)
 				}
 			}
 			recordWorkspaceWriteFromResults(&workspaceWriteOK, results)
@@ -384,7 +409,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 					o.afterTool(tu.Name, tu.Input, len(out.Content), out.IsError)
 				}
 				if sink != nil {
-					sink.OnToolResult(tu.Name, out.Content, out.IsError)
+					sink.OnToolResult(tu.ID, tu.Name, out.Content, out.IsError)
 				}
 				results = append(results, llm.ToolResultRecord{
 					ToolUseID: tu.ID,

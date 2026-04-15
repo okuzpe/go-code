@@ -92,6 +92,13 @@ type Config struct {
 	// Increase for long analysis or generation tasks; set via "max_response_tokens" in settings.json.
 	MaxResponseTokens int
 
+	// MaxOrchestratorIterations caps LLM↔tool iterations per user message (0 = built-in 32; values above 256 are clamped).
+	// JSON: max_orchestrator_iterations.
+	MaxOrchestratorIterations int
+	// MaxOrchestratorToolCalls caps tool executions per user message (0 = built-in 64; values above 512 are clamped).
+	// JSON: max_orchestrator_tool_calls.
+	MaxOrchestratorToolCalls int
+
 	// ModelContextTokens overrides the provider-default context window estimate used for compaction.
 	// 0 = use built-in default: OllamaNumCtx when > 0, else 16384.
 	// Set in settings.json as "model_context_tokens" when using a non-standard model or remote endpoint.
@@ -235,7 +242,7 @@ func Default() Config {
 		AutoCompactThreshold:         0.85,
 		UserConfigDir:                filepath.Join(home, ".goclaw"),
 		ProjectConfigDir:             ".goclaw",
-		AgentProfile:                 "builder",
+		AgentProfile:                 "general-purpose",
 		ModelContextTokens:           16384,
 		PermissionModes:              nil,
 		YoloThreshold:                60,

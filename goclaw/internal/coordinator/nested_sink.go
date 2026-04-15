@@ -28,12 +28,12 @@ func (n *nestedWorkerStreamSink) OnToolProgress(name, partial string) {
 	n.inner.OnToolProgress(name, partial)
 }
 
-func (n *nestedWorkerStreamSink) OnToolUse(name, inputPreview string) {
-	n.inner.OnToolUse(name, inputPreview)
+func (n *nestedWorkerStreamSink) OnToolUse(toolUseID, name, inputPreview string) {
+	n.inner.OnToolUse(toolUseID, name, inputPreview)
 }
 
-func (n *nestedWorkerStreamSink) OnToolResult(name string, content string, isError bool) {
-	n.inner.OnToolResult(name, content, isError)
+func (n *nestedWorkerStreamSink) OnToolResult(toolUseID, name string, content string, isError bool) {
+	n.inner.OnToolResult(toolUseID, name, content, isError)
 }
 
 func (n *nestedWorkerStreamSink) OnDone(string) {}

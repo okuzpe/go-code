@@ -155,7 +155,7 @@ func TestDoctorReportPluginSkillMemoryLines(t *testing.T) {
 	report := DoctorReportFromRuntime(context.Background(), rt)
 	require.Contains(t, report, "plugins / skills / memory:")
 	require.Contains(t, report, "skill search roots:")
-	require.Contains(t, report, "workspace skills snippet")
+	require.Contains(t, report, "project tree skills snippet")
 	require.Contains(t, report, "memory entries")
 	require.Contains(t, report, "MEMORY.md present")
 }

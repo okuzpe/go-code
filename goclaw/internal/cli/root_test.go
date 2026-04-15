@@ -12,7 +12,7 @@ func testRoot(t *testing.T) *cobra.Command {
 	return NewRootCmd("dev",
 		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
-		func() error { return nil },
+		func(*cobra.Command) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
 	)
 }
@@ -43,7 +43,7 @@ func TestSessionsListExecute(t *testing.T) {
 	root := NewRootCmd("dev",
 		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
-		func() error { return nil },
+		func(*cobra.Command) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
 	)
 	root.SetOut(io.Discard)

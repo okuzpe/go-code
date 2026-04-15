@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -37,7 +36,7 @@ func RunDoctor(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
+func DoctorReportFromRuntime(_ context.Context, rt *ChatRuntime) string {
 	if rt == nil {
 		return "doctor: no runtime"
 	}
@@ -104,10 +103,20 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 		lines = append(lines, "  ✗ provider \"openai_compatible\" is not supported — goclaw uses local Ollama only; set \"provider\" to \"ollama\" and use ollama_model")
 	default:
 		ollamaHost := effectiveOllamaHost(cfg.OllamaHost)
-		ollamaOK = probeOllama(ctx, ollamaHost)
+		probe := rt.OllamaProbe
+		ollamaOK = probe.Reachable
 		lines = append(lines, checkLine("ollama host reachable", ollamaOK))
 		lines = append(lines, fmt.Sprintf("  - ollama host: %s", ollamaHost))
 		lines = append(lines, fmt.Sprintf("  - ollama_num_ctx: %d", cfg.OllamaNumCtx))
+		if ollamaOK {
+			modelName := strings.TrimSpace(cfg.Model())
+			if modelName != "" {
+				lines = append(lines, checkLine("configured model in local ollama library", probe.ModelInLibrary))
+				if !probe.ModelInLibrary {
+					lines = append(lines, "    fix: ollama pull "+modelName)
+				}
+			}
+		}
 		if OllamaFunctionToolsDropped(rt) {
 			lines = append(lines, "  ✗ ollama rejected tool calling — running text-only this session")
 		} else {
@@ -119,7 +128,7 @@ func DoctorReportFromRuntime(ctx context.Context, rt *ChatRuntime) string {
 
 	lines = append(lines, mcpSummaryLines(rt)...)
 
-	hintLines := hintLines(cfg, ollamaOK, rt.DisableTools, OllamaFunctionToolsDropped(rt))
+	hintLines := hintLines(cfg, ollamaOK, rt.OllamaProbe.ModelInLibrary, rt.DisableTools, OllamaFunctionToolsDropped(rt))
 	hintLines = append(hintLines, profileHintLines(rt.Profile)...)
 	hintLines = append(hintLines, writeToolApprovalHintLines(rt)...)
 	hintLines = append(hintLines, mcpConnectionHintLines(cfg, rt)...)
@@ -363,7 +372,7 @@ func writeToolApprovalHintLines(rt *ChatRuntime) []string {
 	return nil
 }
 
-func hintLines(cfg config.Config, ollamaOK, toolsDisabled, ollamaToolsDropped bool) []string {
+func hintLines(cfg config.Config, ollamaOK, ollamaModelInLibrary, toolsDisabled, ollamaToolsDropped bool) []string {
 	var hints []string
 	if config.NormalizeTaskModelRouter(cfg.TaskModelRouter) == "llm" {
 		hints = append(hints,
@@ -385,6 +394,15 @@ func hintLines(cfg config.Config, ollamaOK, toolsDisabled, ollamaToolsDropped bo
 			"  - If it listens elsewhere, set OLLAMA_HOST in the environment or \"ollama_host\" in settings.json.",
 			"  - Confirm the model is pulled: ollama pull "+strings.TrimSpace(cfg.OllamaModel),
 		)
+	}
+	if ollamaOK && !ollamaModelInLibrary {
+		if m := strings.TrimSpace(cfg.Model()); m != "" {
+			host := effectiveOllamaHost(cfg.OllamaHost)
+			hints = append(hints,
+				fmt.Sprintf("  Configured model %q is not listed by Ollama at %s (not pulled or name typo).", m, host),
+				"  - Run: ollama pull "+m,
+			)
+		}
 	}
 	if toolsDisabled {
 		hints = append(hints, "  Tools are disabled (--no-tools or GOCLAW_DISABLE_TOOLS=1); MCP servers were not started.")
@@ -526,21 +544,6 @@ func effectiveOllamaHost(host string) string {
 		return "http://localhost:11434"
 	}
 	return host
-}
-
-func probeOllama(ctx context.Context, host string) bool {
-	u := ollamaTagsProbeURL(host)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return false
-	}
-	client := &http.Client{Timeout: ollamaDoctorProbeTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false
-	}
-	_ = resp.Body.Close()
-	return resp.StatusCode >= 200 && resp.StatusCode < 500
 }
 
 // ideBridgeDoctorLines summarizes IDE lockfile discovery and GOCLAW_IDE_NOTIFY_URL for doctor.

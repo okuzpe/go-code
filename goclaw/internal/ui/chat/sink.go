@@ -88,15 +88,15 @@ func (s *batchedProgramSink) OnToolProgress(name, partial string) {
 	s.p.Send(toolProgressMsg{name: name, partial: partial})
 }
 
-func (s *batchedProgramSink) OnToolUse(name, rawInput string) {
+func (s *batchedProgramSink) OnToolUse(toolUseID, name, rawInput string) {
 	s.flush()
 	preview := orchestrator.FormatToolUsePreview(name, rawInput)
-	s.p.Send(toolUseMsg{name: name, preview: preview})
+	s.p.Send(toolUseMsg{toolUseID: toolUseID, name: name, preview: preview})
 }
 
-func (s *batchedProgramSink) OnToolResult(name string, content string, isError bool) {
+func (s *batchedProgramSink) OnToolResult(toolUseID, name string, content string, isError bool) {
 	s.flush()
-	s.p.Send(toolResultMsg{name: name, content: content, isError: isError})
+	s.p.Send(toolResultMsg{toolUseID: toolUseID, name: name, content: content, isError: isError})
 }
 
 func (s *batchedProgramSink) OnDone(_ string) {

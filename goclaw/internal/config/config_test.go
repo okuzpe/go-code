@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-func TestDefaultAgentProfileBuilder(t *testing.T) {
+func TestDefaultAgentProfileGeneralPurpose(t *testing.T) {
 	t.Parallel()
-	if got := Default().AgentProfile; got != "builder" {
-		t.Fatalf("Default().AgentProfile = %q, want builder", got)
+	if got := Default().AgentProfile; got != "general-purpose" {
+		t.Fatalf("Default().AgentProfile = %q, want general-purpose", got)
 	}
 }
 

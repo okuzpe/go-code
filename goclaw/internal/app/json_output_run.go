@@ -19,8 +19,8 @@ type discardStreamSink struct{}
 func (discardStreamSink) OnTextDelta(string)                {}
 func (discardStreamSink) OnThinkingStart(string) {}
 func (discardStreamSink) OnToolProgress(string, string)     {}
-func (discardStreamSink) OnToolUse(string, string)          {}
-func (discardStreamSink) OnToolResult(string, string, bool) {}
+func (discardStreamSink) OnToolUse(string, string, string)       {}
+func (discardStreamSink) OnToolResult(string, string, string, bool) {}
 func (discardStreamSink) OnDone(string)                     {}
 func (discardStreamSink) OnCompact(int)                     {}
 

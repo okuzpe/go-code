@@ -62,6 +62,8 @@ type ChatRuntime struct {
 	// McpConnectedIDs lists MCP server ids that started and registered tools successfully (same order as McpSessions).
 	McpConnectedIDs []string
 	OrchOpts        []orchestrator.Option
+	// OllamaProbe is set when provider is ollama: result of GET /api/tags at PrepareChatRuntime (reachability + model in library).
+	OllamaProbe OllamaStartupProbe
 }
 
 // OllamaFunctionToolsDropped reports whether the Ollama HTTP client fell back to text-only
@@ -414,6 +416,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 		}))
 	}
 
+	ollamaProbe := ProbeOllamaStartup(cfg)
 	return &ChatRuntime{
 		Cfg:              cfg,
 		Workdir:          toolRoot,
@@ -434,6 +437,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 		McpSessions:      mcpSessions,
 		McpConnectedIDs:  mcpConnectedIDs,
 		OrchOpts:         orchOpts,
+		OllamaProbe:      ollamaProbe,
 	}, nil
 }
 

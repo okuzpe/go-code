@@ -224,21 +224,21 @@ func TestEditFileReadOnlyTarget(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("read-only file behaviour is platform-specific on Windows")
 	}
+	// A file mode 0444 does not block atomic replace: rename needs write permission on the
+	// parent directory, not the file. Lock the directory instead so CreateTemp/rename fails.
 	dir := t.TempDir()
-	target := filepath.Join(dir, "f.txt")
-	if err := os.WriteFile(target, []byte("immutable"), 0o644); err != nil {
-		require.NoError(t, err)
-	}
-	if err := os.Chmod(target, 0o444); err != nil {
-		require.NoError(t, err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(target, 0o644) })
+	sub := filepath.Join(dir, "sub")
+	require.NoError(t, os.Mkdir(sub, 0o755))
+	target := filepath.Join(sub, "f.txt")
+	require.NoError(t, os.WriteFile(target, []byte("immutable"), 0o644))
+	require.NoError(t, os.Chmod(sub, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(sub, 0o755) })
 
-	tool := NewEditFile(dir)
+	tool := NewEditFile(sub)
 	input := mustJSON(t, map[string]any{"path": "f.txt", "old_string": "immutable", "new_string": "changed"})
 	res, err := tool.Execute(context.Background(), input)
 	require.NoError(t, err)
-	require.True(t, res.IsError, "expected IsError when file is read-only, got success: %q", res.Content)
+	require.True(t, res.IsError, "expected IsError when directory is read-only, got success: %q", res.Content)
 	low := strings.ToLower(res.Content)
 	require.True(t, strings.Contains(low, "permission denied") || strings.Contains(low, "operation not permitted"), "expected permission error in message, got: %q", res.Content)
 

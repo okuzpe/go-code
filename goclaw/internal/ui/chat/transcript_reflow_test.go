@@ -30,8 +30,16 @@ func TestReflowTranscriptForWidth_separatorAndToolCard(t *testing.T) {
 
 	sepPlain := strings.TrimSpace(stripANSI(m.lines[start]))
 	require.Contains(t, sepPlain, "─")
-	require.Equal(t, 42, strings.Count(sepPlain, "─"), "separator should match terminal width")
+	// SeparatorLine uses a compact rule (~40% of width, min 8, max 40), not full terminal width.
+	ruleW := m.width * 2 / 5
+	if ruleW < 8 {
+		ruleW = 8
+	}
+	if ruleW > 40 {
+		ruleW = 40
+	}
+	require.Equal(t, ruleW, strings.Count(sepPlain, "─"), "separator rule width should match theme.SeparatorLine")
 
 	card := stripANSI(m.lines[start+1])
-	require.Contains(t, card, "bash")
+	require.Contains(t, card, "echo hello")
 }

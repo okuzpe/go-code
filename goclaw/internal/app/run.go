@@ -19,6 +19,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func sessionListLongFormat(cmd *cobra.Command) bool {
+	if cmd == nil || cmd.Flags().Lookup("long") == nil {
+		return false
+	}
+	long, err := cmd.Flags().GetBool("long")
+	return err == nil && long
+}
+
 // FullscreenChatRunner runs the Bubble Tea TUI. Implemented in cmd/goclaw so tests of
 // package app do not import internal/ui/chat (Windows non-TTY init can block test binaries).
 type FullscreenChatRunner interface {
@@ -26,7 +34,8 @@ type FullscreenChatRunner interface {
 }
 
 // RunListSessions prints saved session ids under the configured user config dir.
-func RunListSessions() error {
+// When cmd carries the sessions list --long flag, prints tab-separated id, mod time (UTC RFC3339), preview.
+func RunListSessions(cmd *cobra.Command) error {
 	workdir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
@@ -41,6 +50,21 @@ func RunListSessions() error {
 	if err != nil {
 		return fmt.Errorf("session store: %w", err)
 	}
+	if sessionListLongFormat(cmd) {
+		rows, err := store.ListSessionsDetailed()
+		if err != nil {
+			return fmt.Errorf("list sessions: %w", err)
+		}
+		if len(rows) == 0 {
+			fmt.Println("(no saved sessions)")
+			return nil
+		}
+		for _, row := range rows {
+			fmt.Println(session.FormatSessionListTSVLine(row))
+		}
+		return nil
+	}
+
 	ids, err := store.ListIDs()
 	if err != nil {
 		return fmt.Errorf("list sessions: %w", err)
@@ -104,7 +128,7 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 	if err != nil {
 		return err
 	}
-	maybeWarnOllamaUnreachable(rt.Cfg)
+	maybeWarnOllamaUnreachable(rt)
 	defer func() {
 		for _, s := range rt.McpSessions {
 			_ = s.Close()
@@ -211,7 +235,7 @@ func RunPrompt(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	maybeWarnOllamaUnreachable(rt.Cfg)
+	maybeWarnOllamaUnreachable(rt)
 	defer func() {
 		for _, s := range rt.McpSessions {
 			_ = s.Close()

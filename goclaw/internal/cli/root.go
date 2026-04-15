@@ -8,8 +8,8 @@ import (
 // RunChatFunc starts the interactive REPL (same for default root and `chat` subcommand).
 type RunChatFunc func(cmd *cobra.Command, args []string) error
 
-// RunListSessionsFunc prints saved session ids and exits.
-type RunListSessionsFunc func() error
+// RunListSessionsFunc prints saved session ids and exits (see sessions list --long for TSV rows).
+type RunListSessionsFunc func(cmd *cobra.Command) error
 
 // RunDoctorFunc prints a preflight health check and exits.
 type RunDoctorFunc func(cmd *cobra.Command, args []string) error
@@ -31,7 +31,7 @@ func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, li
 				return err
 			}
 			if listSessionsFlag {
-				return listSessions()
+				return listSessions(cmd)
 			}
 			return runChat(cmd, args)
 		},
@@ -58,11 +58,12 @@ func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, li
 	}
 	sessionsListCmd := &cobra.Command{
 		Use:   "list",
-		Short: "Print saved session ids (same as -list-sessions)",
+		Short: "Print saved session ids (default: one id per line; use --long for mod time + preview TSV)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return listSessions()
+			return listSessions(cmd)
 		},
 	}
+	sessionsListCmd.Flags().Bool("long", false, "tab-separated rows: id, RFC3339 mod time (UTC), first user message preview (stable for scripts)")
 	sessionsCmd.AddCommand(sessionsListCmd)
 	root.AddCommand(sessionsCmd)
 	root.AddCommand(newDoctorCmd(runDoctor))
