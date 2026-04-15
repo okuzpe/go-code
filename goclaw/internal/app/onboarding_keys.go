@@ -80,11 +80,11 @@ func teaKeyIsEnterOrEsc(msg tea.KeyMsg) bool {
 // teaKeyIsCtrlC reports Ctrl+C / interrupt for onboarding abort.
 // [tea.Key.String] prefers [tea.Key.Text]; some stacks surface ETX (U+0003) as Text instead of "ctrl+c".
 func teaKeyIsCtrlC(msg tea.KeyMsg) bool {
-	if msg.String() == "ctrl+c" {
+	k := msg.Key()
+	if uv.Key(k).MatchString("ctrl+c") {
 		return true
 	}
-	k := msg.Key()
-	if k.Keystroke() == "ctrl+c" {
+	if msg.String() == "ctrl+c" {
 		return true
 	}
 	if k.Mod.Contains(tea.ModCtrl) && (k.Code == 'c' || k.Code == 'C') {

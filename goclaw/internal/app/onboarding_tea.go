@@ -9,6 +9,27 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
+// openOnboardingControllingTTY opens /dev/tty when the process has a controlling terminal.
+// writable requests O_RDWR (Bubble Tea) vs O_RDONLY (line prompts). Returns nil on Windows or on failure.
+func openOnboardingControllingTTY(writable bool) *os.File {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	flags := os.O_RDONLY
+	if writable {
+		flags = os.O_RDWR
+	}
+	// #nosec G304 -- intentional use of the process controlling terminal.
+	f, err := os.OpenFile("/dev/tty", flags, 0)
+	if err != nil || !term.IsTerminal(f.Fd()) {
+		if f != nil {
+			_ = f.Close()
+		}
+		return nil
+	}
+	return f
+}
+
 // onboardingTeaOptsControllingTTY returns input/output wired to /dev/tty when either stdio
 // stream is not a terminal (IDE tasks, pipes). Bubble Tea only reopens stdin by default; when
 // stdout is piped but the user still sees a terminal panel, routing both streams fixes missing
@@ -21,12 +42,8 @@ func onboardingTeaOptsControllingTTY() (opts []tea.ProgramOption, cleanup func()
 	if term.IsTerminal(os.Stdin.Fd()) && term.IsTerminal(os.Stdout.Fd()) {
 		return nil, cleanup
 	}
-	// #nosec G304 -- intentional use of the process controlling terminal.
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil || !term.IsTerminal(tty.Fd()) {
-		if tty != nil {
-			_ = tty.Close()
-		}
+	tty := openOnboardingControllingTTY(true)
+	if tty == nil {
 		return nil, cleanup
 	}
 	cleanup = func() { _ = tty.Close() }

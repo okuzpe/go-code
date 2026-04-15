@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -126,36 +125,4 @@ func renderOnboardingTrustStepReadlineTTY(uiAppearance, absWd string, width int)
 
 func flushOnboardingStdout() {
 	_ = os.Stdout.Sync()
-}
-
-func printOnboardingTrustStepReadlinePlain(absWd string) {
-	fmt.Println()
-	fmt.Println(" Accessing workspace:")
-	fmt.Println()
-	fmt.Printf(" %s\n", absWd)
-	fmt.Println()
-	fmt.Println(" Quick safety check: Is this a project you created or one you trust (your own")
-	fmt.Println(" code, a well-known open source project, or work from your team)? If not, review")
-	fmt.Println(" this folder first.")
-	fmt.Println()
-	fmt.Println(" goclaw can read, edit, and run tools in this directory. With trusted_workspace,")
-	fmt.Println(" project hooks under .goclaw/ and plugin hooks may also run.")
-	fmt.Println()
-	fmt.Println("  1. Yes, I trust this folder")
-	fmt.Println("  2. No, exit")
-	fmt.Print("\n Choose (1-2): ")
-}
-
-// printOnboardingTrustStepReadline prints the trust step with Lip Gloss on a TTY.
-func printOnboardingTrustStepReadline(uiAppearance, absWd string) {
-	if !isTTY(os.Stdout) {
-		printOnboardingTrustStepReadlinePlain(absWd)
-		return
-	}
-	w := stdoutWrapWidth()
-	// Plain heading first: appears immediately after Bubble Tea tears down, while Lip Gloss builds below.
-	fmt.Print("\nAccessing workspace\n")
-	flushOnboardingStdout()
-	fmt.Print(trustReadlineTTYGlamBody(uiAppearance, absWd, w))
-	flushOnboardingStdout()
 }
