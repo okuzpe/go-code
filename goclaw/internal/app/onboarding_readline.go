@@ -16,6 +16,7 @@ func runOnboardingReadline(version, workdir string, base config.Config) error {
 		return err
 	}
 	fmt.Println()
+	flushOnboardingStdout()
 
 	absWd, err := filepath.Abs(workdir)
 	if err != nil {

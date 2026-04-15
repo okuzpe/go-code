@@ -79,14 +79,14 @@ func renderOnboardingTrustStepTUI(uiAppearance, absWd string, cursor, width int)
 	return b.String()
 }
 
-// renderOnboardingTrustStepReadlineTTY is the Lip Gloss version for line-based onboarding.
-func renderOnboardingTrustStepReadlineTTY(uiAppearance, absWd string, width int) string {
+// trustReadlineTTYGlamBody is the Lip Gloss trust block without the title line (rule, path, copy, prompt).
+// Used for a two-phase print so a plain heading can flush before this heavier ANSI block is built.
+func trustReadlineTTYGlamBody(uiAppearance, absWd string, width int) string {
 	if width <= 0 {
 		width = 80
 	}
 	inner := max(width-2, onboardingTrustWrapMin)
-	trustTitleStyle, trustRuleStyle, trustPathStyle, trustBodyStyle, trustHintStyle, _, trustNumStyle := trustStyles(uiAppearance)
-	title := trustTitleStyle.Render("Accessing workspace")
+	_, trustRuleStyle, trustPathStyle, trustBodyStyle, trustHintStyle, _, trustNumStyle := trustStyles(uiAppearance)
 	rule := trustRuleStyle.Render(strings.Repeat("─", min(inner, onboardingTrustRuleMaxCols)))
 	pathLine := trustPathStyle.Render(absWd)
 
@@ -98,9 +98,6 @@ func renderOnboardingTrustStepReadlineTTY(uiAppearance, absWd string, width int)
 	prompt := trustHintStyle.Render("Choose (1-2): ")
 
 	var b strings.Builder
-	b.WriteString("\n")
-	b.WriteString(title)
-	b.WriteString("\n")
 	b.WriteString(rule)
 	b.WriteString("\n\n")
 	b.WriteString(pathLine)
@@ -115,6 +112,20 @@ func renderOnboardingTrustStepReadlineTTY(uiAppearance, absWd string, width int)
 	b.WriteString("\n\n")
 	b.WriteString(prompt)
 	return b.String()
+}
+
+// renderOnboardingTrustStepReadlineTTY is the Lip Gloss version for line-based onboarding.
+func renderOnboardingTrustStepReadlineTTY(uiAppearance, absWd string, width int) string {
+	if width <= 0 {
+		width = 80
+	}
+	trustTitleStyle, _, _, _, _, _, _ := trustStyles(uiAppearance)
+	title := trustTitleStyle.Render("Accessing workspace")
+	return "\n" + title + "\n" + trustReadlineTTYGlamBody(uiAppearance, absWd, width)
+}
+
+func flushOnboardingStdout() {
+	_ = os.Stdout.Sync()
 }
 
 func printOnboardingTrustStepReadlinePlain(absWd string) {
@@ -141,5 +152,10 @@ func printOnboardingTrustStepReadline(uiAppearance, absWd string) {
 		printOnboardingTrustStepReadlinePlain(absWd)
 		return
 	}
-	fmt.Print(renderOnboardingTrustStepReadlineTTY(uiAppearance, absWd, stdoutWrapWidth()))
+	w := stdoutWrapWidth()
+	// Plain heading first: appears immediately after Bubble Tea tears down, while Lip Gloss builds below.
+	fmt.Print("\nAccessing workspace\n")
+	flushOnboardingStdout()
+	fmt.Print(trustReadlineTTYGlamBody(uiAppearance, absWd, w))
+	flushOnboardingStdout()
 }
