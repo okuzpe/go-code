@@ -2,14 +2,56 @@ package app
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/okuzpe/goclaw/internal/config"
 )
+
+// onboardingReadlineInput returns the reader for line-based prompts. When stdin is not a
+// terminal (e.g. IDE wiring) but the security gate used /dev/tty for Bubble Tea, reads must
+// use the same controlling terminal or prompts block on the wrong stream.
+func onboardingReadlineInput() (r io.Reader, cleanup func()) {
+	cleanup = func() {}
+	if term.IsTerminal(os.Stdin.Fd()) {
+		return os.Stdin, cleanup
+	}
+	if runtime.GOOS == "windows" {
+		return os.Stdin, cleanup
+	}
+	tty, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+	if err != nil || !term.IsTerminal(tty.Fd()) {
+		if tty != nil {
+			_ = tty.Close()
+		}
+		return os.Stdin, cleanup
+	}
+	cleanup = func() { _ = tty.Close() }
+	return tty, cleanup
+}
+
+func readLineFrom(in io.Reader) (string, error) {
+	br := bufio.NewReader(in)
+	line, err := br.ReadString('\n')
+	line = strings.TrimRight(line, "\r\n")
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			if line == "" {
+				return "", ErrOnboardingAborted
+			}
+			return line, nil
+		}
+		return "", err
+	}
+	return line, nil
+}
 
 func runOnboardingReadline(version, workdir string, base config.Config) error {
 	if err := runOnboardingSecurityGate(version, base.UIAppearance); err != nil {
@@ -18,12 +60,15 @@ func runOnboardingReadline(version, workdir string, base config.Config) error {
 	fmt.Println()
 	flushOnboardingStdout()
 
+	in, inCleanup := onboardingReadlineInput()
+	defer inCleanup()
+
 	absWd, err := filepath.Abs(workdir)
 	if err != nil {
 		absWd = workdir
 	}
 	printOnboardingTrustStepReadline(base.UIAppearance, absWd)
-	choice, err := readLine()
+	choice, err := readLineFrom(in)
 	if err != nil {
 		return err
 	}
@@ -51,12 +96,27 @@ func runOnboardingReadline(version, workdir string, base config.Config) error {
 	}
 	maxAppearance := len(config.UIAppearanceChoices) + 1
 	fmt.Printf("  %d. auto (terminal-adaptive)\n", maxAppearance)
-	fmt.Printf("\n Choose (1-%d): ", maxAppearance)
-	appearance, err := readLine()
-	if err != nil {
-		return err
+
+	var uiApp string
+	for {
+		fmt.Printf("\n Choose (1-%d, blank=auto): ", maxAppearance)
+		appearance, err := readLineFrom(in)
+		if err != nil {
+			return err
+		}
+		s := strings.TrimSpace(appearance)
+		if s == "" {
+			uiApp = config.UIAppearanceAuto
+			break
+		}
+		n, aerr := strconv.Atoi(s)
+		if aerr != nil || n < 1 || n > maxAppearance {
+			fmt.Println(" Invalid choice. Enter a listed number or leave blank for auto.")
+			continue
+		}
+		uiApp = parseAppearanceChoice(s)
+		break
 	}
-	uiApp := parseAppearanceChoice(strings.TrimSpace(appearance))
 
 	fmt.Println()
 	fmt.Println(" goclaw uses local Ollama by default. Configure host and model (Enter keeps the default).")
@@ -66,7 +126,7 @@ func runOnboardingReadline(version, workdir string, base config.Config) error {
 		"provider":      "ollama",
 	}
 	fmt.Printf("\n Ollama host [%s]: ", base.OllamaHost)
-	host, err := readLine()
+	host, err := readLineFrom(in)
 	if err != nil {
 		return err
 	}
@@ -76,7 +136,7 @@ func runOnboardingReadline(version, workdir string, base config.Config) error {
 		patch["ollama_host"] = base.OllamaHost
 	}
 	fmt.Printf(" Ollama model [%s]: ", base.OllamaModel)
-	model, err := readLine()
+	model, err := readLineFrom(in)
 	if err != nil {
 		return err
 	}
@@ -122,11 +182,3 @@ func parseAppearanceChoice(s string) string {
 	return config.UIAppearanceAuto
 }
 
-func readLine() (string, error) {
-	r := bufio.NewReader(os.Stdin)
-	line, err := r.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimRight(line, "\r\n"), nil
-}
