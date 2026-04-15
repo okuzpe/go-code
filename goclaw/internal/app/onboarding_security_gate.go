@@ -122,7 +122,7 @@ func (m *secPreflightModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch {
 			case teaKeyIsEnterOrEsc(msg):
 				return m, m.finishOK()
-			case msg.String() == "s" || msg.String() == "S":
+			case teaKeyIsOnboardingSecurityDocKey(msg):
 				return m, m.advanceFromSummary()
 			}
 		case secPhaseDoc:

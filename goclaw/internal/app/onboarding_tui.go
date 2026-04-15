@@ -125,7 +125,7 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.step = obTrust
 				m.cursor = 0
 				return m, nil
-			case msg.String() == "s" || msg.String() == "S":
+			case teaKeyIsOnboardingSecurityDocKey(msg):
 				m.secDoc = true
 				m.refreshSecurityDocViewport()
 				return m, nil

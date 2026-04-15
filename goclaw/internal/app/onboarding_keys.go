@@ -1,6 +1,10 @@
 package app
 
-import tea "charm.land/bubbletea/v2"
+import (
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+)
 
 // teaKeyIsEnter reports Enter/Return for onboarding dismissal.
 //
@@ -27,14 +31,42 @@ func teaKeyIsEnter(msg tea.KeyMsg) bool {
 	return t == "\r" || t == "\n" || t == "\r\n"
 }
 
-// teaKeyIsEsc reports Escape (accepts legacy "esc" string match too).
+// teaKeyIsEsc reports Escape for onboarding (dismiss / abort paths).
+// Matches legacy ESC-as-ctrl+[ (ultraviolet LegacyKeyEncoding.CtrlOpenBracket) and literal ESC in Text.
 func teaKeyIsEsc(msg tea.KeyMsg) bool {
-	switch msg.Key().Code {
+	k := msg.Key()
+	switch k.Code {
 	case tea.KeyEscape: // KeyEsc is the same code as KeyEscape
 		return true
-	default:
-		return msg.String() == "esc"
 	}
+	s := msg.String()
+	if s == "esc" || s == "\x1b" {
+		return true
+	}
+	if k.Keystroke() == "esc" {
+		return true
+	}
+	if k.Text == "\x1b" {
+		return true
+	}
+	// Legacy: ESC byte decoded as ctrl+[ instead of KeyEscape.
+	if k.Mod.Contains(tea.ModCtrl) && k.Code == '[' {
+		return true
+	}
+	return false
+}
+
+// teaKeyIsOnboardingSecurityDocKey is the "show full security doc" shortcut (S / s).
+func teaKeyIsOnboardingSecurityDocKey(msg tea.KeyMsg) bool {
+	s := msg.String()
+	if len(s) == 1 && strings.EqualFold(s, "s") {
+		return true
+	}
+	k := msg.Key()
+	if k.Code == 's' || k.Code == 'S' {
+		return !k.Mod.Contains(tea.ModCtrl) && !k.Mod.Contains(tea.ModAlt)
+	}
+	return false
 }
 
 func teaKeyIsEnterOrEsc(msg tea.KeyMsg) bool {
