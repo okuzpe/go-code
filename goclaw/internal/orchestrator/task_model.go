@@ -170,7 +170,10 @@ func profileFallbackRole(profile agents.Profile) string {
 	case "code-review":
 		return "reasoning"
 	case "general-purpose", "builder":
-		return "code"
+		// Default to "default" so short/vague turns route to the fast path (direct reply) and
+		// the TUI shows neutral "Planning"/"Thinking" instead of implying repo analysis before
+		// we have any coding signal. Explicit code/fix/explore keywords still select those roles.
+		return "default"
 	default:
 		return "default"
 	}

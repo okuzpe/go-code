@@ -22,8 +22,11 @@ func ThinkingPhaseLine(iterZeroBased int, taskRole string, ctx PhaseContext) str
 		switch strings.ToLower(strings.TrimSpace(taskRole)) {
 		case "code", "fix":
 			return "Analyzing repository"
-		case "explore", "fast":
+		case "explore":
 			return "Exploring"
+		case "fast":
+			// Short or conversational turns: not a repo scan; keep the label neutral.
+			return "Thinking"
 		case "reasoning", "creative":
 			return "Deep reasoning"
 		default:

@@ -67,10 +67,14 @@ func TestPrepareTurnModel_UsesTaskMap(t *testing.T) {
 	o.prepareTurnModel(context.Background(), "implement a function to parse JSON")
 	require.Equal(t, "coder:14b", o.turnModel)
 
-	// general-purpose profile fallback is "code", so vague messages use the code model.
+	// general-purpose fallback is "default"; short vague prompts use the fast path → default task model.
 	o.turnModel = ""
 	o.prepareTurnModel(context.Background(), "synthetic vague message that matches no strong keyword")
-	require.Equal(t, "coder:14b", o.turnModel)
+	require.Equal(t, "fallback:7b", o.turnModel)
+
+	o.turnModel = ""
+	o.prepareTurnModel(context.Background(), "hola")
+	require.Equal(t, "fallback:7b", o.turnModel)
 }
 
 func TestBuildRequestTurnModelOverridesGlobal(t *testing.T) {
