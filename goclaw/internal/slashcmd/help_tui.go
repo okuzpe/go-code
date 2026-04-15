@@ -31,7 +31,7 @@ Shortcuts
   Ctrl+P             open agent profile picker (same as /agents Enter)
   Shift+Enter / Alt+Enter   newline in the input
   / then type        filter slash commands (single-line input only)
-  Tab                complete /command
+  Tab                complete /command or the argument under the cursor (profiles, /memory …, paths for /export)
   Esc                close this help panel (when open)
   Ctrl+C             quit the TUI (session saves on exit)
   Ctrl+L             clear transcript (TUI)

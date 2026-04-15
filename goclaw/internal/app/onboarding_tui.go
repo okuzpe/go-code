@@ -103,15 +103,14 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
+		if teaKeyIsCtrlC(msg) {
 			m.err = ErrOnboardingAborted
 			return m, tea.Quit
 		}
 
 		if m.step == obSecurity {
 			if m.secDoc {
-				switch msg.String() {
-				case "enter", "esc":
+				if teaKeyIsEnterOrEsc(msg) {
 					m.secDoc = false
 					m.step = obTrust
 					m.cursor = 0
@@ -121,20 +120,20 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.secVP, cmd = m.secVP.Update(msg)
 				return m, cmd
 			}
-			switch msg.String() {
-			case "enter", "esc":
+			switch {
+			case teaKeyIsEnterOrEsc(msg):
 				m.step = obTrust
 				m.cursor = 0
 				return m, nil
-			case "s", "S":
+			case msg.String() == "s" || msg.String() == "S":
 				m.secDoc = true
 				m.refreshSecurityDocViewport()
 				return m, nil
 			}
 		}
 
-		switch msg.String() {
-		case "esc":
+		switch {
+		case teaKeyIsEsc(msg):
 			if m.step == obTrust && m.cursor == 1 {
 				m.err = ErrOnboardingAborted
 				return m, tea.Quit
@@ -162,7 +161,10 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cursor < 1 {
 					m.cursor++
 				}
-			case "enter":
+			default:
+				if !teaKeyIsEnter(msg) {
+					break
+				}
 				if m.cursor == 1 {
 					m.err = ErrOnboardingAborted
 					return m, tea.Quit
@@ -187,7 +189,10 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cursor < n-1 {
 					m.cursor++
 				}
-			case "enter":
+			default:
+				if !teaKeyIsEnter(msg) {
+					break
+				}
 				m.appearance = themeIndexToAppearance(m.cursor)
 				m.step = obOllamaHost
 				m.ti.SetValue(m.ollamaHost)
@@ -196,7 +201,7 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, textinput.Blink
 			}
 		case obOllamaHost:
-			if msg.String() == "enter" {
+			if teaKeyIsEnter(msg) {
 				v := strings.TrimSpace(m.ti.Value())
 				if v != "" {
 					m.ollamaHost = v
@@ -211,7 +216,7 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ti, cmd = m.ti.Update(msg)
 			return m, cmd
 		case obOllamaModel:
-			if msg.String() == "enter" {
+			if teaKeyIsEnter(msg) {
 				v := strings.TrimSpace(m.ti.Value())
 				if v != "" {
 					m.ollamaModel = v
@@ -223,7 +228,7 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ti, cmd = m.ti.Update(msg)
 			return m, cmd
 		case obDone:
-			if msg.String() == "enter" {
+			if teaKeyIsEnter(msg) {
 				return m, tea.Quit
 			}
 		}

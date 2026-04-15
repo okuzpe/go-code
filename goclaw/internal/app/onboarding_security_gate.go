@@ -113,21 +113,20 @@ func (m *secPreflightModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
+		if teaKeyIsCtrlC(msg) {
 			m.aborted = true
 			return m, tea.Quit
 		}
 		switch m.phase {
 		case secPhaseSummary:
-			switch msg.String() {
-			case "enter", "esc":
+			switch {
+			case teaKeyIsEnterOrEsc(msg):
 				return m, m.finishOK()
-			case "s", "S":
+			case msg.String() == "s" || msg.String() == "S":
 				return m, m.advanceFromSummary()
 			}
 		case secPhaseDoc:
-			switch msg.String() {
-			case "enter", "esc":
+			if teaKeyIsEnterOrEsc(msg) {
 				return m, m.finishOK()
 			}
 			var cmd tea.Cmd

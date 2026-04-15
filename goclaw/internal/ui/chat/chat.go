@@ -149,6 +149,9 @@ type Model struct {
 	// lastReflowWidth is the terminal width used for the last transcript reflow (-1 = not yet).
 	lastReflowWidth int
 
+	// slashContextFn returns SlashContext for / argument completion (nil disables argument picker).
+	slashContextFn func() slashcmd.SlashContext
+
 	// messageQueue holds user texts submitted while the model is busy; shown above the compose box until
 	// assistantDoneMsg drains them (appendSeparator + appendUser + runDispatchAfterUserEcho in order).
 	messageQueue []string
@@ -219,6 +222,8 @@ type Options struct {
 	FooterStats func() string
 	// TUIMouseScroll enables mouse wheel on the transcript (see config.TUIMouseScroll).
 	TUIMouseScroll bool
+	// SlashContext supplies live slash-command argument suggestions (optional; fullscreen TUI from cmd/goclaw).
+	SlashContext func() slashcmd.SlashContext
 }
 
 // SlashHandler runs a slash command. If modelSubmit is non-empty, send that text to the model after displaying out (e.g. /edit).
@@ -311,7 +316,7 @@ const maxSlashSuggestRows = 5
 const atSuggestWalkMinInterval = 180 * time.Millisecond
 
 func placeholderForWidth(termWidth int) string {
-	const full = "Ask anything…  ! @ & /btw /help · Ctrl+B scroll · Shift+Enter newline"
+	const full = "Ask anything…  ! @ & /btw /help · Tab completes / and args · Ctrl+B scroll · Shift+Enter newline"
 	const narrow = "Ask anything…  /help · Ctrl+B scroll"
 	if termWidth > 0 && termWidth < composePlaceholderNarrowMaxW {
 		return narrow
@@ -471,6 +476,7 @@ func New(ctx context.Context, opts Options) Model {
 		activeAgentProfile:  strings.TrimSpace(opts.ActiveAgentProfile),
 		lastReflowWidth:     -1,
 		tuiMouseScroll:      opts.TUIMouseScroll,
+		slashContextFn:      opts.SlashContext,
 	}
 	if strings.TrimSpace(opts.Welcome.Version) != "" {
 		if dash := WelcomeDashboardLines(th, opts.Welcome, 0); len(dash) > 0 {
@@ -1058,6 +1064,28 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 						m.input.CursorUp()
 					}
 					m.input.SetCursorColumn(newCursorCol)
+					m.resizeInput()
+					m.layout()
+					return m, nil, true
+				}
+			}
+		}
+		// Slash argument Tab (single-line buffer only; live SlashContext).
+		if m.slashContextFn != nil {
+			row := m.input.Line()
+			col := m.input.Column()
+			allLines := strings.Split(m.input.Value(), "\n")
+			if row < len(allLines) && !strings.Contains(m.input.Value(), "\n") {
+				curLine := allLines[row]
+				if newLine, newCol, ok := slashcmd.SlashArgTabExpand(m.ctx, m.slashContextFn(), curLine, col); ok {
+					allLines[row] = newLine
+					newValue := strings.Join(allLines, "\n")
+					lastRow := len(allLines) - 1
+					m.input.SetValue(newValue)
+					for i := 0; i < lastRow-row; i++ {
+						m.input.CursorUp()
+					}
+					m.input.SetCursorColumn(newCol)
 					m.resizeInput()
 					m.layout()
 					return m, nil, true
@@ -1754,10 +1782,28 @@ func (m *Model) atSuggestStripView() string {
 	return out
 }
 
-// slashSuggestStripView renders filtered /commands above the input (single-line buffer only).
+// slashSuggestStripView renders filtered /commands or argument picks above the input (single-line buffer only).
 func (m *Model) slashSuggestStripView() string {
 	raw := m.input.Value()
-	sugs := slashcmd.TUISlashSuggestions(raw)
+	if strings.Contains(raw, "\n") {
+		return ""
+	}
+	row := m.input.Line()
+	col := m.input.Column()
+	lines := strings.Split(raw, "\n")
+	if row >= len(lines) {
+		return ""
+	}
+	cur := lines[row]
+	var sugs []slashcmd.SlashCommandSuggest
+	var head string
+	if m.slashContextFn != nil {
+		sugs = slashcmd.SlashInlineSuggestions(m.ctx, m.slashContextFn(), cur, col)
+		head = fmt.Sprintf("/ args · max %d · Tab · type to narrow", maxSlashSuggestRows)
+	} else {
+		sugs = slashcmd.TUISlashSuggestions(cur)
+		head = fmt.Sprintf("/ commands · max %d shown · Tab · type to narrow", maxSlashSuggestRows)
+	}
 	if len(sugs) == 0 {
 		return ""
 	}
@@ -1785,7 +1831,7 @@ func (m *Model) slashSuggestStripView() string {
 	var b strings.Builder
 	b.WriteString(th.SeparatorLine(ruleW))
 	b.WriteString("\n")
-	b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("/ commands · max %d shown · Tab · type to narrow", maxSlashSuggestRows)))
+	b.WriteString(th.SlashPickerDesc.Render(head))
 	for _, s := range sugs {
 		nameW := lipgloss.Width(th.SlashPickerName.Render(s.Name))
 		budget := maxW - nameW - 2

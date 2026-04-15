@@ -60,7 +60,10 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 	submit := newChatSubmitter(rt, orch, focus)
 
 	opts := chat.Options{
-		TUIMouseScroll:     rt.Cfg.TUIMouseScroll,
+		TUIMouseScroll: rt.Cfg.TUIMouseScroll,
+		SlashContext: func() slashcmd.SlashContext {
+			return slashcmd.SlashContext{SlashEnv: slashEnv, Mem: rt.MemStore, Orch: orch, Sess: &sess, Store: rt.Store}
+		},
 		Title:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
 		SessionID:          rt.Sess.ID,
 		FooterStats:        func() string { return tuiFooterStats(rt, orch) },

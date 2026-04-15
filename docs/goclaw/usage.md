@@ -56,9 +56,9 @@ Exit: `Esc` (TUI) or `Ctrl+C`. Clear: `Ctrl+L` (TUI).
 
 ### Slash commands, autocomplete, and help
 
-- **TUI (fullscreen)** — Type `/` on a **single line** to see a **filtered list** of commands as you keep typing (prefix match). **Tab** completes the command (longest shared prefix, or the only match). The same list is defined in code as the readline completer (one source of truth).
+- **TUI (fullscreen)** — Type `/` on a **single line** to see a **filtered list** of commands as you keep typing (prefix match). **Tab** completes the command (longest shared prefix, or the only match). After the command name, the strip shows **argument** suggestions where supported (e.g. `/profile`, `/memory`, `/plan`, `/resume`, `/focus`, `/theme`, `/export`); **Tab** completes the argument token at the cursor the same way. The command list matches the readline completer (one source of truth).
 - **`/help` in the TUI** — Opens a **dismissible help panel** over the transcript (same text as the slash handler). **Esc** closes the panel; **↑** / **↓** (or `k` / `j`) and **PgUp** / **PgDn** scroll long output. **Ctrl+C** still quits the app from the panel.
-- **Readline** — **Tab** completes `/` commands via the readline prefix completer. **`/help`** prints the full help text **inline** in the transcript (no overlay).
+- **Readline** — **Tab** completes `/` commands via the readline prefix completer, and **slash arguments** after the first token when the REPL has a live session context (same rules as the TUI). **`/help`** prints the full help text **inline** in the transcript (no overlay).
 
 ### Prefix input (`!`, `@`, `&`, `/btw`)
 

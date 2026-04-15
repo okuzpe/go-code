@@ -112,6 +112,9 @@ type readlineREPL struct {
 	orch     *orchestrator.Orchestrator
 	focus    *coordinator.FocusRouter
 	sink     *loggingTerminalSink
+	// replSession is the active *session.Session for slash + orchestrator turns; slash handlers
+	// may replace it via SlashContext.Sess. Tab completion reads the same pointer.
+	replSession *session.Session
 }
 
 func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
@@ -135,13 +138,12 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 		return false
 	}
 
-	// sess is a local working copy of the session pointer. Slash commands (e.g. /new)
-	// may replace it with a new *session.Session; we sync it back to r.rt.Sess after
-	// each HandleSlash call (line below). The signal-handler goroutine only calls
-	// reqCancelFn, which aborts the in-flight orchestrator turn — it never touches sess.
-	// Once RunStreaming returns (before we touch sess again), the goroutine is guaranteed
-	// not to be writing to sess, so this pattern is safe without a mutex.
-	sess := r.rt.Sess
+	// replSession is the working session pointer. Slash commands (e.g. /new) may replace it
+	// via SlashContext.Sess; we sync it back to r.rt.Sess after each HandleSlash call (line below).
+	// The signal-handler goroutine only calls reqCancelFn, which aborts the in-flight orchestrator
+	// turn — it never touches replSession. Once RunStreaming returns (before we touch replSession
+	// again), the goroutine is guaranteed not to be writing to it, so this pattern is safe without a mutex.
+	r.replSession = r.rt.Sess
 
 	go func() {
 		for {
@@ -159,7 +161,7 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 	}()
 
 	for {
-		rl.SetPrompt(replPrompt(sess, r.focus))
+		rl.SetPrompt(replPrompt(r.replSession, r.focus))
 		input, err := rl.Readline()
 		if err != nil {
 			if errors.Is(err, readline.ErrInterrupt) || errors.Is(err, io.EOF) {
@@ -174,9 +176,9 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 			continue
 		}
 
-		sc := slashcmd.SlashContext{SlashEnv: r.slashEnv, Mem: r.rt.MemStore, Orch: r.orch, Sess: &sess, Store: r.rt.Store}
+		sc := slashcmd.SlashContext{SlashEnv: r.slashEnv, Mem: r.rt.MemStore, Orch: r.orch, Sess: &r.replSession, Store: r.rt.Store}
 		handled, slashOut, quit, modelSubmit, sErr := slashcmd.HandleSlash(r.baseCtx, sc, input, nil)
-		r.rt.Sess = sess
+		r.rt.Sess = r.replSession
 		if quit && errors.Is(sErr, slashcmd.ErrReplQuit) {
 			if slashOut != "" {
 				fmt.Println(slashOut)
@@ -193,7 +195,7 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 				fmt.Println(slashOut)
 			}
 			if strings.TrimSpace(modelSubmit) != "" {
-				runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, modelSubmit, r.sink, setReqCancel, r.rt.Workdir)
+				runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, r.replSession, modelSubmit, r.sink, setReqCancel, r.rt.Workdir)
 			}
 			continue
 		}
@@ -215,7 +217,7 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 			}
 		}
 
-		if handled, err := RunLocalPrefixToolIfAny(r.baseCtx, r.rt.Mock, r.orch, sess, input, r.sink, r.rt.Workdir); handled {
+		if handled, err := RunLocalPrefixToolIfAny(r.baseCtx, r.rt.Mock, r.orch, r.replSession, input, r.sink, r.rt.Workdir); handled {
 			if err != nil {
 				slog.Error("prefix input error", "err", err)
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -224,7 +226,7 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 		}
 
 		input = ExpandInlineAtRefs(r.baseCtx, r.orch, input)
-		runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, sess, input, r.sink, setReqCancel, r.rt.Workdir)
+		runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, r.replSession, input, r.sink, setReqCancel, r.rt.Workdir)
 	}
 }
 
@@ -260,11 +262,18 @@ func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrat
 	historyFile := replHistoryFile(rt.Cfg.UserConfigDir)
 	focus := coordinator.NewFocusRouter()
 
+	var getSlashCtx func() slashcmd.SlashContext
+	slashCtxWrapper := func() slashcmd.SlashContext {
+		if getSlashCtx == nil {
+			return slashcmd.SlashContext{}
+		}
+		return getSlashCtx()
+	}
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:          replPrompt(rt.Sess, focus),
 		HistoryFile:     historyFile,
 		HistoryLimit:    replHistoryLimit,
-		AutoComplete:    slashcmd.NewReadlineSlashAtCompleter(rt.Workdir),
+		AutoComplete:    slashcmd.NewReadlineSlashAtCompleterWithSlashContext(rt.Workdir, slashCtxWrapper),
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",
 	})
@@ -298,6 +307,16 @@ func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrat
 		orch:  orch,
 		focus: focus,
 		sink:  logSink,
+	}
+	repl.replSession = rt.Sess
+	getSlashCtx = func() slashcmd.SlashContext {
+		return slashcmd.SlashContext{
+			SlashEnv: repl.slashEnv,
+			Mem:      repl.rt.MemStore,
+			Orch:     repl.orch,
+			Sess:     &repl.replSession,
+			Store:    repl.rt.Store,
+		}
 	}
 	repl.slashEnv.ChatSubtitle = func() string {
 		return FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName())
