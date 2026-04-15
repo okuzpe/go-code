@@ -35,7 +35,9 @@ func LastUserNaturalText(msgs []llm.Message) string {
 }
 
 func isAutoContinueNudgeContent(s string) bool {
-	return strings.HasPrefix(strings.TrimSpace(s), "[goclaw] The user asked for concrete code improvements")
+	t := strings.TrimSpace(s)
+	return strings.HasPrefix(t, "[goclaw] The user asked for concrete code improvements") ||
+		strings.HasPrefix(t, "[goclaw] The user asked for code or repository changes")
 }
 
 func lastUserNaturalText(msgs []llm.Message) string {

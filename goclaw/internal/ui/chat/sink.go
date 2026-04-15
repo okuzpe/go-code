@@ -105,5 +105,8 @@ func (s *batchedProgramSink) OnDone(_ string) {
 }
 
 func (s *batchedProgramSink) OnCompact(removed int) {
+	if removed <= 0 {
+		return
+	}
 	s.p.Send(compactNoticeMsg{removed: removed})
 }

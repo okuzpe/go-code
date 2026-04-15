@@ -180,28 +180,19 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 
 	var rightLines []string
 	rightLines = append(rightLines, "")
-	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(section.Render("Tips for getting started")))
-	for _, ln := range wrapPlainWords("Run /help for commands. Try /init or /plan when you want a structured run.", rightW-1) {
+	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(section.Render("Tips")))
+	for _, ln := range wrapPlainWords("/help — commands. Ctrl+P — profiles. Ctrl+T — tool history.", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
-	for _, ln := range wrapPlainWords("One user message runs until the model answers without tool calls; if it stops after reads only, a short follow-up (e.g. continue) is normal.", rightW-1) {
-		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
-	}
-	for _, ln := range wrapPlainWords("Ctrl+P opens the agent profile picker (same as /agents).", rightW-1) {
-		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
-	}
-	for _, ln := range wrapPlainWords("Each tool card can show a one-line result hint under the input; Ctrl+T opens full tool output history for this session.", rightW-1) {
-		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
-	}
-	for _, ln := range wrapPlainWords("CLAUDE.md and .goclaw/ carry project context.", rightW-1) {
+	for _, ln := range wrapPlainWords("One message = one turn; say continue if it stopped after reads only.", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
 	rightLines = append(rightLines, "")
-	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(section.Render("Guided flows")))
-	for _, ln := range wrapPlainWords("Plan: /profile plan, describe your goal, /plan save, /apply-plan --preview, then /apply-plan to implement.", rightW-1) {
+	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(section.Render("Flows")))
+	for _, ln := range wrapPlainWords("Plan: /profile plan, then /plan run when you are ready to implement.", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
-	for _, ln := range wrapPlainWords("Multi-agent: /profile coordinator — delegate with spawn_agent; /workers and /focus for interactive workers.", rightW-1) {
+	for _, ln := range wrapPlainWords("Hub: /profile coordinator — /workers and /focus for delegates.", rightW-1) {
 		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 	}
 	if opt.FileWriteToolsHidden {
@@ -300,23 +291,11 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 	body.WriteString("\n\n")
 	body.WriteString(accent.Render("Tips"))
 	body.WriteString("\n")
-	for _, ln := range wrapPlainWords("/help  /capabilities  ·  CLAUDE.md  ·  .goclaw/", contentMax) {
+	for _, ln := range wrapPlainWords("/help · Ctrl+P (profiles) · Ctrl+T (tool history) · one message = one turn; continue if it stopped early.", contentMax) {
 		body.WriteString(dim.Render(ln))
 		body.WriteString("\n")
 	}
-	for _, ln := range wrapPlainWords("Ctrl+P — agent profile picker  ·  Plan: /profile plan → /plan save → /apply-plan --preview → /apply-plan", contentMax) {
-		body.WriteString(dim.Render(ln))
-		body.WriteString("\n")
-	}
-	for _, ln := range wrapPlainWords("Turns: one message runs until the model replies without tools; continue is OK if it stopped after reads.", contentMax) {
-		body.WriteString(dim.Render(ln))
-		body.WriteString("\n")
-	}
-	for _, ln := range wrapPlainWords("Tool cards: one-line result hint when available · Ctrl+T — full tool history", contentMax) {
-		body.WriteString(dim.Render(ln))
-		body.WriteString("\n")
-	}
-	for _, ln := range wrapPlainWords("Multi-agent: /profile coordinator, /workers, /focus", contentMax) {
+	for _, ln := range wrapPlainWords("Plan: /profile plan → /plan run. Hub: /profile coordinator → /workers, /focus.", contentMax) {
 		body.WriteString(dim.Render(ln))
 		body.WriteString("\n")
 	}

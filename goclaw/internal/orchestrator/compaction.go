@@ -22,10 +22,35 @@ const (
 	compactedToolResult = "[compacted]"
 )
 
-// ForceCompact runs compaction immediately: keeps the last compactPreserveTail messages
+// compactionPreserveCount is how many tail messages to keep when compacting.
+// Sessions with fewer than compactPreserveTail+1 messages still need a smaller tail so at least
+// one message can be folded into the summary; otherwise phase-2 is a no-op while token pressure
+// stays high and the UI shows "0 messages summarized" with no context drop.
+func compactionPreserveCount(msgCount int) int {
+	if msgCount <= 0 {
+		return 0
+	}
+	if msgCount > compactPreserveTail {
+		return compactPreserveTail
+	}
+	if msgCount <= 2 {
+		return 1
+	}
+	// 3..compactPreserveTail: keep all but two oldest turns so compactToTail removes at least one row.
+	return msgCount - 2
+}
+
+// ForceCompact runs compaction immediately: keeps a tail of messages (same sizing as maybeCompact)
 // and prepends a summary user message for the removed prefix. Ignores AutoCompactThreshold.
 func (o *Orchestrator) ForceCompact() {
-	o.compactToTail(compactPreserveTail)
+	if o.session == nil {
+		return
+	}
+	p := compactionPreserveCount(len(o.session.Messages))
+	if p <= 0 {
+		return
+	}
+	o.compactToTail(p)
 }
 
 func (o *Orchestrator) maybeCompact(ctx context.Context, sink StreamSink) {
@@ -38,8 +63,13 @@ func (o *Orchestrator) maybeCompact(ctx context.Context, sink StreamSink) {
 		return
 	}
 
+	preserve := compactionPreserveCount(len(o.session.Messages))
+	if preserve <= 0 {
+		return
+	}
+
 	// Phase 1: clear tool-result payloads in old turns — cheapest, preserves conversation structure.
-	if msgs, cleared := clearOldToolResults(o.session.Messages, compactPreserveTail); cleared {
+	if msgs, cleared := clearOldToolResults(o.session.Messages, preserve); cleared {
 		o.session.ReplaceMessages(msgs)
 		if o.estimatedSessionTokens(ctx, limit) < limit {
 			return
@@ -49,16 +79,18 @@ func (o *Orchestrator) maybeCompact(ctx context.Context, sink StreamSink) {
 	// Phase 2: summarize and remove old messages.
 	before := len(o.session.Messages)
 	if o.cfg.LLMCompaction {
-		o.compactToTailWithLLM(ctx, compactPreserveTail)
+		o.compactToTailWithLLM(ctx, preserve)
 	} else {
-		o.compactToTail(compactPreserveTail)
+		o.compactToTail(preserve)
 	}
 	if sink != nil {
 		removed := before - len(o.session.Messages)
 		if removed < 0 {
 			removed = 0
 		}
-		sink.OnCompact(removed)
+		if removed > 0 {
+			sink.OnCompact(removed)
+		}
 	}
 }
 

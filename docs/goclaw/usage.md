@@ -21,7 +21,7 @@ Try: a simple repo question, a tool (e.g. web search), and `/doctor` or `goclaw 
 - For **“audit everything”** or whole-tree refactors: ask for **one slice per turn** (one package, one `internal/` area, or one doc). Check results with **`git diff`**, tool output, or successful write tools — not with narrative alone.
 - **Disk changes** only happen when **`write_file`**, **`edit_file`**, or **`patch`** complete successfully (subject to permissions). If the assistant says it “applied changes” but no write tool ran, treat that as prose, not git truth.
 - **Why it stopped at "Done"** — Each of your messages runs until the model answers **without** requesting more tools. A text-only reply (even "Done") **ends that turn**; there is no hidden auto-loop. For multi-step refactors, either write one prompt that forces **read → edit → verify** in one go, or send a **follow-up** ("continue: apply the first edit to `internal/...`").
-- **Auto-continue (default on)** — When your message clearly asks for fixes/refactors and the model stops with prose after only read-only tools (`glob`, `read_file`, …), goclaw may inject a short `[goclaw]` user line and **re-prompt the model** (default **2** times per user message). Optional **`auto_continue_action_max_nudges`** in `settings.json` raises that cap (**1–5**; values above **5** are clamped). Each nudge is an extra model round-trip. Set `"auto_continue_action_requests": false` to disable entirely.
+- **Auto-continue (default on)** — When your message clearly asks for fixes/refactors and the model answers with **prose only** — including the **first** completion with **zero** tool calls (common with small local models) **or** after **read-only** tools only — goclaw may inject a short `[goclaw]` user line and **re-prompt the model** (default **2** times per user message for both patterns combined). Optional **`auto_continue_action_max_nudges`** in `settings.json` raises that cap (**1–5**; values above **5** are clamped). Set `"auto_continue_action_requests": false` to disable entirely. If nudges exhaust and tools still never run, see [Troubleshooting — Assistant explains plans but does not modify files](#assistant-explains-plans-but-does-not-modify-files).
 - **Truth-on-disk footer (default on)** — If your message signals code changes, tools ran, writes are allowed for the profile, but no `write_file` / `edit_file` / `patch` completed successfully, the runtime may append a short bilingual `[goclaw]` footer to the assistant reply (and session log) so prose cannot claim edits alone. Set `"truth_footer_no_workspace_writes": false` in `settings.json` to disable. **After successful workspace writes:** both **TUI** and **`--readline`** may show a **`goclaw: git diff --stat`** block when the workspace is a git repo (bounded runtime and output size). **TUI vs readline for the rest:** after the truth footer, the TUI shows an extra hint under the session footer. **`--readline`** also prints a **`goclaw:` stderr** recap each successful turn (`turn complete (no tools)` or `N tool call(s): …`); when the reply includes the truth footer, stderr suggests **continue**, **`/continue`**, or a short follow-up. Recap lines are **not** printed if the turn errors or is cancelled mid-flight.
 - **Turn shape** — One user message runs the loop until the model returns **no** tool calls (then the turn ends). If it stopped after reads only, typing **continue**, slash **`/continue`**, or nudging the agent is normal; **`/continue`** sends a standard follow-up while keeping full session history (see `/help`).
 - **Context window** — If **`ollama_num_ctx`** is set in settings and is **below 8192** (see `OllamaNumCtxBannerWarnBelow` in `internal/app/ux_constants.go`), the **readline / non-TTY startup banner** prints a short warning: long system prompts plus tool schemas may truncate. Raise `ollama_num_ctx` if turns feel “forgetful” or tools behave oddly.
@@ -122,7 +122,7 @@ defaults → ~/.goclaw/settings.json → .goclaw/settings.json
 
 Do not commit `settings.local.json`.
 
-**Common keys:** `provider` (must be `ollama` for a normal run; legacy values error at startup), `agent_profile`, `ollama_model`, `ollama_host`, `ollama_num_ctx`, `bash_timeout_sec`, `tool_permissions`, `mcp_servers` (stdio or HTTP; HTTP entries may set `bearer_token_file` for a static bearer token), `mcp_allow_remote_urls`, `trusted_workspace`, `external_hooks`, `plugin_dirs`, `plugin_allow`, `plugin_deny`, `memory_auto_extract`, `ide_bridge_mcp`. CLI: `--plugin-dir` (repeatable) appends plugin roots.
+**Common keys:** `provider` (must be `ollama` for a normal run; legacy values error at startup), `agent_profile`, `ollama_model`, `ollama_host`, `ollama_num_ctx`, `bash_timeout_sec`, `tool_permissions`, `auto_continue_action_requests`, `auto_continue_action_max_nudges`, `truth_footer_no_workspace_writes`, `mcp_servers` (stdio or HTTP; HTTP entries may set `bearer_token_file` for a static bearer token), `mcp_allow_remote_urls`, `trusted_workspace`, `external_hooks`, `plugin_dirs`, `plugin_allow`, `plugin_deny`, `memory_auto_extract`, `ide_bridge_mcp`. CLI: `--plugin-dir` (repeatable) appends plugin roots.
 
 Example:
 
@@ -165,8 +165,9 @@ Set with `--profile <name>`, `agent_profile` in settings, or **`GOCLAW_AGENT_PRO
 |---------|-------|-----------------|-----------|
 | General-Purpose | `general-purpose` | All built-ins + MCP | No |
 | Explore | `explore` | read, glob, grep, web, todos | Yes |
-| Plan | `plan` | read, glob, grep, web_search, todos | Yes |
-| Verification | `verification` | read_file, bash, todos | No |
+| Plan | `plan` | read, glob, grep, web_search, todos | Yes (no writes; use **`/plan run`** or `/plan save` then `/apply-plan`) |
+| Verification | `verification` | read_file, bash, script, todos | No (no write tools; checks only) |
+| Code review | `code-review` | read, grep, bash, web, todos (no writes) | No (writes not on allowlist) |
 | Guide | `guide` | none | Yes |
 | StatusLine | `statusline` | none | Yes |
 | Coordinator | `coordinator` | spawn_agent, stop_task, todo_write | Yes |
@@ -253,10 +254,11 @@ Use profile `plan` to draft the plan as chat output. In the REPL:
 
 - `/plan init` — create `.goclaw/plan.md` from template
 - `/plan save` — save the last assistant message in this session to `.goclaw/plan.md`
+- **`/plan run`** (alias **`/plan apply`**) — save the last assistant message, then immediately run the same execution path as **`/apply-plan`** (switch to **`general-purpose`**, one model turn). Optional review first: **`/apply-plan --preview`**, then **`/plan run`** or **`/apply-plan`**.
 - `/plan path` / `/plan template` — inspect the default path and template skeleton
 - `/apply-plan [--preview] [path]` — **`--preview`**: print a bounded excerpt of the plan on disk (no model call, no profile switch). **Without `--preview`**: load the plan, switch to `general-purpose`, and stream **one** execution turn (same as before).
 
-Typical workflow: `/profile plan` → ask for a plan → `/plan save` → `/apply-plan --preview` (optional review) → `/apply-plan`. In the **TUI**, **Ctrl+P** opens the agent profile picker (same as typing `/agents` and Enter). See [agent-profiles.md](../reference/agent-profiles.md).
+Typical workflow: `/profile plan` → ask for a plan → **`/plan run`** **or** `/plan save` → `/apply-plan --preview` (optional) → `/apply-plan`. In the **TUI**, **Ctrl+P** opens the agent profile picker (same as typing `/agents` and Enter). See [agent-profiles.md](../reference/agent-profiles.md).
 
 ## Slash commands (REPL)
 
@@ -293,6 +295,19 @@ Mock server: `testutil/mockopenai/`. Windows: transient `*.exe` from tests are n
 - **Ollama connection refused** — start `ollama serve` or set `OLLAMA_HOST`.
 - **Thin `web_search` results** — narrow the query or `web_fetch` a known URL.
 - **Non-interactive tools fail** — set `tool_permissions` to `allow` for those tools or use `--no-tools`.
+
+### Assistant explains plans but does not modify files
+
+Work through this list in order (most issues are **profile**, **permissions**, or **model tool-calling**):
+
+1. **Active profile** — In the REPL, note the profile name (footer / welcome) or run **`/profile <name>`** with a name from **`/agents`**. **`plan`**, **`explore`**, **`guide`**, and **`statusline`** cannot run `write_file` / `edit_file` / **`patch`**. **`coordinator`** does not touch the repo on the parent session — it delegates via **`spawn_agent`**. **`code-review`** is review-only (no write tools). For direct edits on the main session, use **`general-purpose`** or **`builder`** (`agent_profile` in `settings.json`, **`GOCLAW_AGENT_PROFILE`**, or **`goclaw --profile …`** — merge order in [Configuration](#configuration)).
+2. **Plan workflow** — If you used **`plan`** to draft steps, that profile is **intentionally** read-only. Use **`/plan run`** to save the latest assistant message and start execution in one step, **or** **`/plan save`** then **`/apply-plan`** (optional **`/apply-plan --preview`** first). Execution switches to **`general-purpose`** and runs **one** model turn; large plans may need a **follow-up user message** or a smaller plan slice.
+3. **Tools disabled** — **`--no-tools`**, **`GOCLAW_DISABLE_TOOLS=1`**, or **`goclaw prompt … --no-tools`** registers no tools: the model can only emit text. Remove the flag or unset the variable for edits.
+4. **`tool_permissions`** — Default **`ask`** prompts before risky tools. If you decline or never approve, no run occurs. For scripts / CI, set **`allow`** on the tools you need (see [Permissions](#permissions)) or use **`/allow-writes`** in the REPL for the current session (write tools only).
+5. **Ollama model** — Small local models often emit **prose or fake “JSON tool” blobs** instead of native tool calls; those blobs do **not** execute (see the base system prompt in `goclaw/internal/orchestrator/base_system_prompt.md`). Try a stronger coder tag (e.g. **`qwen2.5-coder:14b`** vs 7b) — [ollama-stack.md](./ollama-stack.md).
+6. **Custom agents** — Markdown agents under **`~/.goclaw/agents/`** and **`.goclaw/agents/`** may set **`read_only: true`** or a narrow **`tool_allowlist`** without write tools; same symptom as built-in read-only profiles.
+7. **Auto-continue nudges** — Goclaw may inject up to **`auto_continue_action_max_nudges`** synthetic `[goclaw]` user lines (default **2**, max **5**) when your message signals code changes and the model replies **without** native tool calls — including the **first** completion in the turn (zero tools) or after **read-only** tools only. If the model still ignores tools after nudges, use a stronger **Ollama** tag or **`/profile builder`**.
+8. **Truth-on-disk footer** — If you see **`[goclaw] No workspace files were modified this turn`**, the runtime is reporting that no **`write_file` / `edit_file` / `patch`** succeeded; treat it as ground truth over assistant prose. See the **Truth-on-disk footer** bullet under [Large repo analysis and refactors](#large-repo-analysis-and-refactors).
 
 ## Documentation map
 

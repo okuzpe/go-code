@@ -86,6 +86,12 @@ func ParseSlashLineAtCursor(line string, runeCol int) (p ParsedSlashLine, ok boo
 	} else if runeCol < tokens[0].end {
 		field = 0
 		repStart, repEnd = tokens[0].start, tokens[0].end
+	} else if runeCol == tokens[0].end && (runeCol >= len(runes) || !unicode.IsSpace(runes[runeCol])) {
+		// Cursor immediately after the command token (end is exclusive): still editing the
+		// command name for completion — e.g. "/" or "/help" with cursor at end-of-line. If the
+		// cursor sits on whitespace before the next token, that is the first-argument field.
+		field = 0
+		repStart, repEnd = tokens[0].start, tokens[0].end
 	} else {
 		for k := 1; k < len(tokens); k++ {
 			tok := tokens[k]

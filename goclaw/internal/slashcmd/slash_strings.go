@@ -30,7 +30,7 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("  /help, help, ? — full list with session id and profile\n")
 	b.WriteString("  /capabilities — structured overview (what the agent can do; not sent to the model)\n")
 	b.WriteString("  TUI transcript scroll: PgUp/PgDn, Alt+arrows; mouse wheel opt-in (tui_mouse_scroll or GOCLAW_TUI_MOUSE_SCROLL=1)\n")
-	b.WriteString("  /plan path|init|save|template — workspace plan under .goclaw/plan.md\n")
+	b.WriteString("  /plan path|init|save|run|template — workspace plan under .goclaw/plan.md (run = save + execute)\n")
 	b.WriteString("  /init — create .goclaw/settings.json with coding defaults if missing\n")
 	b.WriteString("  /apply-plan [--preview] [path] — preview plan on disk, or execute (switch to general-purpose, stream one turn)\n")
 	b.WriteString("  /review [args] — inject git diff, switch to code-review (see docs/goclaw/code-review-workflow.md)\n")
@@ -81,7 +81,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	}
 	b.WriteString("  /theme [preset]  — show or set TUI ui_appearance (restart TUI to apply)\n")
 	b.WriteString("  /workers — list workers; /focus or /in <prefix> — jump into worker; /back or /detach — return to coordinator\n")
-	b.WriteString("  /plan path|init|save|template — default plan path, create from template, save last message, or print template\n")
+	b.WriteString("  /plan path|init|save|run|template — default plan path, create, save, save+execute (run), or print template\n")
 	b.WriteString("  /apply-plan [--preview] [path] — preview plan on disk, or execute (switch to general-purpose, stream one turn)\n")
 	b.WriteString("  /audit [path]    — switch to general-purpose; audit-and-fix workflow on path (default: workspace)\n")
 	b.WriteString("  /review [args]   — inject git diff; switch to code-review (read-only; see docs/goclaw/code-review-workflow.md)\n")

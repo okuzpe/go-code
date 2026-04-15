@@ -40,7 +40,7 @@ func formatPlanPreviewOutput(planPath, body string) string {
 	b.WriteString(display)
 	b.WriteString(fmt.Sprintf("\nSize: %d bytes\n\n", len(body)))
 	b.WriteString(excerpt)
-	b.WriteString("\n\nRun /apply-plan to execute this plan (switches to general-purpose and streams one turn).")
+	b.WriteString("\n\nRun /apply-plan or /plan run to execute (switches to general-purpose and streams one turn; /plan run also saves the latest assistant message first).")
 	return b.String()
 }
 

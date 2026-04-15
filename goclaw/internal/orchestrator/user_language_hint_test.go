@@ -29,12 +29,14 @@ func TestLastUserNaturalText(t *testing.T) {
 
 func TestLastUserNaturalText_skipsAutoContinueNudge(t *testing.T) {
 	t.Parallel()
-	msgs := []llm.Message{
-		llm.PlainMessage("user", "fix the bug in foo"),
-		llm.PlainMessage("user", actionContinueNudgeMessage),
-	}
-	if got := LastUserNaturalText(msgs); got != "fix the bug in foo" {
-		t.Fatalf("got %q, want fix the bug in foo", got)
+	for _, nudge := range []string{actionContinueNudgeMessage, actionFirstTurnNoToolsNudgeMessage} {
+		msgs := []llm.Message{
+			llm.PlainMessage("user", "fix the bug in foo"),
+			llm.PlainMessage("user", nudge),
+		}
+		if got := LastUserNaturalText(msgs); got != "fix the bug in foo" {
+			t.Fatalf("got %q for nudge prefix, want fix the bug in foo", got)
+		}
 	}
 }
 

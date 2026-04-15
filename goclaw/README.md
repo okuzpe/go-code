@@ -26,7 +26,7 @@ Install a binary from this checkout:
 go build -o goclaw ./cmd/goclaw
 ```
 
-Details (modes, sessions, JSON output, troubleshooting): **[usage.md](../docs/goclaw/usage.md)**. Whole-repo audits: **[Large repo analysis and refactors](../docs/goclaw/usage.md#large-repo-analysis-and-refactors)**.
+Details (modes, sessions, JSON output, troubleshooting): **[usage.md](../docs/goclaw/usage.md)**. If the assistant **explains but never edits files**: **[usage.md — troubleshooting](../docs/goclaw/usage.md#assistant-explains-plans-but-does-not-modify-files)**. Whole-repo audits: **[Large repo analysis and refactors](../docs/goclaw/usage.md#large-repo-analysis-and-refactors)**.
 
 ## Documentation
 

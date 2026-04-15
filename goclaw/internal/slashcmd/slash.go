@@ -489,10 +489,11 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 			return true, "", false, "", fmt.Errorf("/plan: workspace directory not set")
 		}
 		if len(fields) < 2 {
-			return true, "", false, "", fmt.Errorf(`usage: /plan path | /plan init | /plan save | /plan template
+			return true, "", false, "", fmt.Errorf(`usage: /plan path | /plan init | /plan save | /plan run | /plan template
 path     — show default plan file path
 init     — create .goclaw/plan.md from template if missing
 save     — save last assistant message in this session to .goclaw/plan.md
+run      — same as save, then start one execute turn (alias: apply)
 template — print the template to the terminal`)
 		}
 		sub := strings.ToLower(fields[1])
@@ -509,33 +510,40 @@ template — print the template to the terminal`)
 			}
 			return true, fmt.Sprintf("already exists: %s", planfile.Path(wd)), false, "", nil
 		case "save":
-			if sc.Sess == nil || *sc.Sess == nil || len((*sc.Sess).Messages) == 0 {
+			if sc.Sess == nil || *sc.Sess == nil {
 				return true, "", false, "", fmt.Errorf("/plan save: no messages in current session")
 			}
-			lastText := ""
-			for i := len((*sc.Sess).Messages) - 1; i >= 0; i-- {
-				m := (*sc.Sess).Messages[i]
-				if m.Role == "assistant" && strings.TrimSpace(m.Content) != "" {
-					lastText = m.Content
-					break
-				}
+			planPath, sErr := savePlanFromLastAssistant(wd, *sc.Sess)
+			if sErr != nil {
+				return true, "", false, "", fmt.Errorf("/plan save: %w", sErr)
 			}
-			if lastText == "" {
-				return true, "", false, "", fmt.Errorf("/plan save: no assistant message in session to save")
+			setFooterHint(hintsOut, "Plan saved — /plan run to save+execute, or /apply-plan --preview then /apply-plan.")
+			return true, fmt.Sprintf("plan saved to %s\nRun /plan run to save+execute in one step, or /apply-plan --preview then /apply-plan.", planPath), false, "", nil
+		case "run", "apply":
+			if len(fields) > 2 {
+				return true, "", false, "", fmt.Errorf(`usage: /plan run   (save last assistant to .goclaw/plan.md and start one execute turn; alias: /plan apply)`)
 			}
-			if mkErr := os.MkdirAll(filepath.Join(wd, planfile.Subdir), 0o700); mkErr != nil {
-				return true, "", false, "", fmt.Errorf("/plan save: mkdir: %w", mkErr)
+			if orch == nil {
+				return true, "", false, "", fmt.Errorf("/plan run requires a running agent")
 			}
-			planPath := planfile.Path(wd)
-			if writeErr := os.WriteFile(planPath, []byte(lastText+"\n"), 0o600); writeErr != nil {
-				return true, "", false, "", fmt.Errorf("/plan save: write: %w", writeErr)
+			if sc.Sess == nil || *sc.Sess == nil {
+				return true, "", false, "", fmt.Errorf("/plan run: no messages in current session")
 			}
-			setFooterHint(hintsOut, "Plan saved — /apply-plan --preview to review, then /apply-plan to execute.")
-			return true, fmt.Sprintf("plan saved to %s\nRun /apply-plan --preview to review, then /apply-plan to execute.", planPath), false, "", nil
+			planPath, sErr := savePlanFromLastAssistant(wd, *sc.Sess)
+			if sErr != nil {
+				return true, "", false, "", fmt.Errorf("/plan run: %w", sErr)
+			}
+			notice, modelSubmit, aErr := applyPlanExecute(env, orch, wd, "", hintsOut)
+			if aErr != nil {
+				return true, "", false, "", fmt.Errorf("/plan run: %w", aErr)
+			}
+			setFooterHint(hintsOut, "Plan saved and execution started — one model turn; follow up if the plan is large.")
+			combined := fmt.Sprintf("plan saved to %s\n%s", planPath, notice)
+			return true, combined, false, modelSubmit, nil
 		case "template":
 			return true, planfile.Template(), false, "", nil
 		default:
-			return true, "", false, "", fmt.Errorf("unknown /plan %q — use path, init, save, or template", fields[1])
+			return true, "", false, "", fmt.Errorf("unknown /plan %q — use path, init, save, run, apply, or template", fields[1])
 		}
 
 	case "workers":
@@ -599,13 +607,6 @@ use /workers to list interactive worker ids`)
 		if wd == "" {
 			return true, "", false, "", fmt.Errorf("/apply-plan: workspace directory not set")
 		}
-		if env.Profs == nil {
-			return true, "", false, "", fmt.Errorf("/apply-plan: profile map not configured")
-		}
-		gp, ok := env.Profs["general-purpose"]
-		if !ok {
-			return true, "", false, "", fmt.Errorf("/apply-plan: general-purpose profile missing")
-		}
 		rest := strings.TrimSpace(strings.TrimPrefix(s, fields[0]))
 		pathTail, preview := parseApplyPlanRest(rest)
 		p := planfile.ResolvePlanArg(wd, pathTail)
@@ -618,15 +619,10 @@ use /workers to list interactive worker ids`)
 			setFooterHint(hintsOut, "Review complete — run /apply-plan to execute (or /apply-plan --preview again).")
 			return true, out, false, "", nil
 		}
-		orch.SetProfile(gp)
-		msg := planfile.HandoffUserMessage(p, body)
-		notice := fmt.Sprintf("switched to profile general-purpose; executing plan: %s", p)
-		sub := ""
-		if env.ChatSubtitle != nil {
-			sub = env.ChatSubtitle()
+		notice, msg, err := applyPlanExecute(env, orch, wd, pathTail, hintsOut)
+		if err != nil {
+			return true, "", false, "", fmt.Errorf("/apply-plan: %w", err)
 		}
-		setWelcomeHints(hintsOut, orch, sub)
-		setFooterHint(hintsOut, "")
 		return true, notice, false, msg, nil
 
 	case "audit":

@@ -28,7 +28,35 @@ func switchOrchestratorProfile(orch *orchestrator.Orchestrator, env SlashEnv, ra
 		prev = agents.Profile{Name: orch.ProfileName()}
 	}
 	orch.SetProfile(next)
-	return formatProfileSwitchSummary(prev, next), nil
+	summary := formatProfileSwitchSummary(prev, next)
+	if tail := profileSwitchFollowUp(next); tail != "" {
+		return summary + tail, nil
+	}
+	return summary, nil
+}
+
+// profileSwitchFollowUp appends a short operator hint after /profile and /agents switches
+// so read-only or hub profiles are not mistaken for full coding sessions.
+func profileSwitchFollowUp(p agents.Profile) string {
+	switch strings.ToLower(strings.TrimSpace(p.Name)) {
+	case "plan":
+		return "\nPlan profile cannot modify the workspace. After the plan in chat: /plan run saves and starts one execute turn, or /plan save then /apply-plan (optional --preview first). Switches to general-purpose for that turn."
+	case "explore":
+		return "\nRead-only search profile — no write_file, edit_file, or patch. For direct edits: /profile general-purpose or /profile builder."
+	case "guide", "statusline":
+		return "\nThis profile has no file or shell tools — chat only. For repo edits: /profile general-purpose or /profile builder."
+	case "coordinator":
+		return "\nCoordinator hub — the parent session has no direct read/write tools; delegate with spawn_agent or use /profile general-purpose for single-agent edits."
+	case "code-review":
+		return "\ncode-review has no workspace write tools — output is review prose only. To implement fixes: /profile general-purpose or /profile builder."
+	case "verification":
+		return "\nVerification profile runs checks (read_file, bash, script) — no workspace write tools. To apply code changes: /profile general-purpose or /profile builder."
+	default:
+		if p.ReadOnly {
+			return "\nRead-only profile — use /profile general-purpose or /profile builder for file edits in this session."
+		}
+		return ""
+	}
 }
 
 func formatProfileSwitchSummary(prev, next agents.Profile) string {

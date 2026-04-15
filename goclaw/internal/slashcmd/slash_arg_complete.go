@@ -250,6 +250,8 @@ func slashArgSuggestionsParsed(sc SlashContext, parsed ParsedSlashLine, line str
 			{"path", "print default plan file path"},
 			{"init", "create plan file from template"},
 			{"save", "save last assistant message to plan"},
+			{"run", "save then execute plan (one model turn)"},
+			{"apply", "same as run"},
 			{"template", "print plan template"},
 		} {
 			if lowPartial != "" && !strings.HasPrefix(strings.ToLower(pair.name), lowPartial) {

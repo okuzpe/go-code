@@ -131,9 +131,10 @@ type Config struct {
 	// the heuristic placeholder. config.Default() enables it; set llm_compaction: false to opt out.
 	LLMCompaction bool
 
-	// AutoContinueActionRequests when true: after read-only tools, if the user message
-	// signals code changes and the model replies prose-only, inject a short synthetic user
-	// continuation and re-call the LLM (capped per turn). JSON: auto_continue_action_requests.
+	// AutoContinueActionRequests when true: if the user message signals code changes and the model
+	// replies prose-only (including the first completion with zero tool calls, or after read-only
+	// tools only), inject a short synthetic user line and re-call the LLM (capped per turn).
+	// JSON: auto_continue_action_requests.
 	AutoContinueActionRequests bool
 
 	// AutoContinueActionMaxNudges caps synthetic "continue with tools" user injections per turn when

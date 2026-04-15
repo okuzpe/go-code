@@ -333,10 +333,10 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		slog.Debug("llm stream done", "elapsed", time.Since(streamStart), "tools", len(pendingTools))
 
 		if len(pendingTools) == 0 {
-			if o.shouldInjectActionNudge(userMessage, toolCalls, lastBatchReadOnly, hadToolRound, actionNudges) {
+			if nudgeMsg, ok := o.pickActionContinueNudge(userMessage, toolCalls, lastBatchReadOnly, hadToolRound, actionNudges); ok {
 				o.session.AddAssistant(response, nil)
 				actionNudges++
-				o.session.Add("user", actionContinueNudgeMessage)
+				o.session.Add("user", nudgeMsg)
 				slog.Debug("orchestrator: action-continue nudge", "nudge", actionNudges)
 				continue
 			}

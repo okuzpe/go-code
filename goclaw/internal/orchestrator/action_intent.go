@@ -11,7 +11,12 @@ const (
 	defaultActionNudgesPerUserTurn = 2
 	maxActionNudgesCap             = 5
 
+	// actionContinueNudgeMessage follows a batch of read-only tools when the model stopped in prose.
 	actionContinueNudgeMessage = `[goclaw] The user asked for concrete code improvements (not analysis-only). You already ran read-only tools in this turn. Continue with native tool calls: use edit_file, write_file, or patch for real edits, then bash or script to verify. Do not answer with prose-only until edits are done or truly blocked.`
+
+	// actionFirstTurnNoToolsNudgeMessage applies when the first model completion in this user turn had zero tool calls
+	// but the user message signals repo/code work (common with local models that narrate instead of calling tools).
+	actionFirstTurnNoToolsNudgeMessage = `[goclaw] The user asked for code or repository changes. Your last completion had no native tool calls — prose alone does not read or edit files. Reply with tool calls only on the next turn: use read_file, glob, or grep first as needed, then edit_file, write_file, or patch to apply changes, then bash or script to verify. Do not simulate tools in markdown.`
 )
 
 func (o *Orchestrator) effectiveMaxActionNudges() int {
@@ -89,6 +94,16 @@ var workspaceWriteIntentKeywords = []string{
 	"aplica el",
 	"completa la implementación",
 	"termina de implementar",
+
+	// Spanish (and short phrases) common in operator chat.
+	" no funciona",
+	" corrige ",
+	" corregir ",
+	" escribe el código",
+	" escribe el codigo",
+	" hazlo",
+	" reparar",
+	" soluciona",
 }
 
 // userMessageWantsWorkspaceWrites is a conservative heuristic for when the original user
@@ -158,24 +173,36 @@ func toolUsesIncludeWorkspaceWrite(uses []llm.ToolUse) bool {
 	return false
 }
 
-func (o *Orchestrator) shouldInjectActionNudge(
+// pickActionContinueNudge returns a synthetic user line to re-prompt the model when it answered
+// with prose but the user turn clearly asked for code/repo changes. Covers (1) first completion
+// with zero tool calls — typical with small local models — and (2) after read-only tools only.
+func (o *Orchestrator) pickActionContinueNudge(
 	userMessage string,
 	toolCalls int,
 	lastBatchReadOnly bool,
 	hadToolRound bool,
 	actionNudges int,
-) bool {
-	if !o.cfg.AutoContinueActionRequests {
-		return false
+) (message string, ok bool) {
+	if o == nil || !o.cfg.AutoContinueActionRequests {
+		return "", false
 	}
 	if actionNudges >= o.effectiveMaxActionNudges() {
-		return false
+		return "", false
 	}
-	if o.profile.ReadOnly || !hadToolRound || !lastBatchReadOnly || toolCalls == 0 {
-		return false
+	if o.profile.ReadOnly {
+		return "", false
 	}
 	if !toolSpecsAllowWorkspaceWrite(o.effectiveToolSpecs()) {
-		return false
+		return "", false
 	}
-	return userMessageWantsWorkspaceWrites(userMessage)
+	if !userMessageWantsWorkspaceWrites(userMessage) {
+		return "", false
+	}
+	if hadToolRound && lastBatchReadOnly && toolCalls > 0 {
+		return actionContinueNudgeMessage, true
+	}
+	if !hadToolRound && toolCalls == 0 {
+		return actionFirstTurnNoToolsNudgeMessage, true
+	}
+	return "", false
 }

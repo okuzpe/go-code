@@ -109,7 +109,10 @@ func (s *terminalSink) OnToolProgress(_ string, partial string) {
 }
 
 func (s *terminalSink) OnCompact(removed int) {
-	fmt.Fprintf(os.Stderr, "\n⟳ context compacted (%d messages summarized)\n", removed)
+	if removed <= 0 {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "\n⟳ context compacted (%d message(s) folded into summary)\n", removed)
 }
 
 // capitalizeToolName converts "read_file" → "Read file", "bash" → "Bash".

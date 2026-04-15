@@ -81,7 +81,7 @@ For single-threaded work, use tools directly; do not delegate trivial one-shot t
 			"Use web_search only for external docs, API versions, or facts you are unsure about — not for generic how-to or brainstorming. " +
 			"Keep the plan in chat until the user persists it — do not create plan markdown files on disk unless they use `/plan save`. " +
 			"When the plan is complete, end your response with: " +
-			"\"Run `/plan save` to save this plan, then `/apply-plan` to execute it.\"",
+			"\"Run `/plan run` to save and start execution in one step, or `/plan save` then `/apply-plan` to review first.\"",
 	}
 
 	Verification = Profile{

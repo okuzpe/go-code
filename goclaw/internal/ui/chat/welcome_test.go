@@ -74,7 +74,8 @@ func TestWelcomeDashboardLines_wideTwoColumn(t *testing.T) {
 	lines := WelcomeDashboardLines(th, opt, 100)
 	require.NotEmpty(t, lines)
 	joined := strings.Join(lines, "\n")
-	require.Contains(t, joined, "Tips for getting started")
+	require.Contains(t, joined, "Tips")
+	require.Contains(t, joined, "Flows")
 	require.Contains(t, joined, "/help")
 }
 

@@ -366,7 +366,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case compactNoticeMsg:
-		m.appendSystem(fmt.Sprintf("⟳ Context compacted — %d messages summarized", msg.removed))
+		m.appendSystem(fmt.Sprintf("⟳ Context compacted — %d message(s) folded into summary", msg.removed))
+		m.refreshFooterStatsCache()
+		m.layout()
 		return m, nil
 	case errMsg:
 		m.refreshFooterStatsCache()
