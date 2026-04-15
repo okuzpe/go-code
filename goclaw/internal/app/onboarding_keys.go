@@ -3,6 +3,7 @@ package app
 import (
 	"strings"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -13,6 +14,10 @@ import (
 // string fallbacks. [tea.KeyKpEnter] stringifies as "enter" but is listed explicitly.
 func teaKeyIsEnter(msg tea.KeyMsg) bool {
 	k := msg.Key()
+	// Ultraviolet's matcher handles named keys and modifier chords (e.g. shift+enter).
+	if uv.Key(k).MatchString("enter", "kpenter", "shift+enter", "ctrl+j", "ctrl+m") {
+		return true
+	}
 	switch k.Code {
 	case tea.KeyEnter, tea.KeyKpEnter:
 		return true
@@ -23,8 +28,7 @@ func teaKeyIsEnter(msg tea.KeyMsg) bool {
 	case "enter", "\r", "\n", "\r\n", "ctrl+j":
 		return true
 	}
-	// Legacy encoding: CR as ctrl+m instead of Enter (ultraviolet LegacyKeyEncoding.CtrlM).
-	if msg.String() == "ctrl+m" || k.Keystroke() == "ctrl+m" {
+	if k.Keystroke() == "ctrl+m" || msg.String() == "ctrl+m" {
 		return true
 	}
 	t := k.Text

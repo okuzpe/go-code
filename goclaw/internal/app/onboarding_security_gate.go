@@ -113,6 +113,15 @@ func (m *secPreflightModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
+		// Key release events are not used for dismiss/shortcuts; forwarding only in doc viewport.
+		if _, ok := msg.(tea.KeyReleaseMsg); ok {
+			if m.phase == secPhaseDoc {
+				var cmd tea.Cmd
+				m.vp, cmd = m.vp.Update(msg)
+				return m, cmd
+			}
+			return m, nil
+		}
 		if teaKeyIsCtrlC(msg) {
 			m.aborted = true
 			return m, tea.Quit
@@ -145,7 +154,9 @@ func (m *secPreflightModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *secPreflightModel) View() tea.View {
 	body := m.viewBody()
 	v := tea.NewView(body)
-	v.AltScreen = true
+	// Alternate screen breaks some integrated terminals' keyboard delivery; main buffer is enough
+	// for this short preflight and keeps scrollback readable.
+	v.AltScreen = false
 	if m.phase == secPhaseDoc {
 		v.MouseMode = tea.MouseModeCellMotion
 	} else {
@@ -200,9 +211,11 @@ func renderOnboardingSecurityDocFrame(viewportText string, w int, uiAppearance s
 // runOnboardingSecurityGate runs the preflight UI (readline onboarding path). Ctrl+C aborts onboarding.
 func runOnboardingSecurityGate(version, uiAppearance string) error {
 	m := newSecPreflight(version, uiAppearance)
-	final, err := tea.NewProgram(m).Run()
+	opts, cleanup := onboardingTeaOptsControllingTTY()
+	defer cleanup()
+	final, err := tea.NewProgram(m, opts...).Run()
 	if err != nil {
-		return err
+		return mapOnboardingTeaRunError(err)
 	}
 	fm, ok := final.(*secPreflightModel)
 	if ok && fm.aborted {

@@ -72,10 +72,12 @@ func runOnboardingTUI(version, workdir string, base config.Config) error {
 		ollamaHost:   base.OllamaHost,
 		ollamaModel:  base.OllamaModel,
 	}
-	p := tea.NewProgram(&m)
+	opts, cleanup := onboardingTeaOptsControllingTTY()
+	defer cleanup()
+	p := tea.NewProgram(&m, opts...)
 	_, err := p.Run()
 	if err != nil {
-		return err
+		return mapOnboardingTeaRunError(err)
 	}
 	if m.err != nil {
 		return m.err
@@ -103,6 +105,14 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
+		if _, ok := msg.(tea.KeyReleaseMsg); ok {
+			if m.step == obSecurity && m.secDoc {
+				var cmd tea.Cmd
+				m.secVP, cmd = m.secVP.Update(msg)
+				return m, cmd
+			}
+			return m, nil
+		}
 		if teaKeyIsCtrlC(msg) {
 			m.err = ErrOnboardingAborted
 			return m, tea.Quit
