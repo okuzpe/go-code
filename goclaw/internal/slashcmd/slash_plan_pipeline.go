@@ -40,9 +40,21 @@ func savePlanFromLastAssistant(wd string, sess *session.Session) (planPath strin
 	return planPath, nil
 }
 
-// applyPlanExecute switches the orchestrator to general-purpose and returns the handoff user message
-// for the model (same as a non-preview /apply-plan). pathTail is optional relative plan path (see planfile.ResolvePlanArg).
-func applyPlanExecute(env SlashEnv, orch *orchestrator.Orchestrator, wd, pathTail string, hintsOut *UIHints) (notice string, modelSubmit string, err error) {
+// ApplyPlanOptions configures /apply-plan and /plan run execution.
+type ApplyPlanOptions struct {
+	// Hub when true selects coordinator profile for execution (also combined with settings plan_apply_use_coordinator).
+	Hub bool
+}
+
+func planGateFrom(env SlashEnv) PlanGateConfig {
+	if env.PlanGate == nil {
+		return PlanGateConfig{}
+	}
+	return env.PlanGate()
+}
+
+// applyPlanExecute switches profile and returns the handoff user message for the model.
+func applyPlanExecute(env SlashEnv, orch *orchestrator.Orchestrator, wd, pathTail string, hintsOut *UIHints, opt ApplyPlanOptions) (notice string, modelSubmit string, err error) {
 	if orch == nil {
 		return "", "", fmt.Errorf("requires a running agent")
 	}
@@ -52,18 +64,37 @@ func applyPlanExecute(env SlashEnv, orch *orchestrator.Orchestrator, wd, pathTai
 	if env.Profs == nil {
 		return "", "", fmt.Errorf("profile map not configured")
 	}
-	gp, ok := env.Profs["general-purpose"]
-	if !ok {
-		return "", "", fmt.Errorf("general-purpose profile missing")
-	}
+	gate := planGateFrom(env)
 	p := planfile.ResolvePlanArg(wd, pathTail)
 	body, rerr := planfile.Read(p)
 	if rerr != nil {
 		return "", "", rerr
 	}
-	orch.SetProfile(gp)
-	msg := planfile.HandoffUserMessage(p, body)
-	notice = fmt.Sprintf("switched to profile general-purpose; executing plan: %s", p)
+	if gate.RequireApplyApproval {
+		if err := planfile.VerifyApproval(wd, p, body); err != nil {
+			return "", "", err
+		}
+	}
+	useCoord := opt.Hub || gate.ApplyUseCoordinator
+	steps := planfile.ParseImplementationSteps(body)
+	hOpts := planfile.HandoffOptions{UseCoordinator: useCoord, ParsedSteps: steps}
+	msg := planfile.HandoffUserMessageWithOptions(p, body, hOpts)
+
+	if useCoord {
+		coord, ok := env.Profs["coordinator"]
+		if !ok {
+			return "", "", fmt.Errorf("coordinator profile missing (required for hub plan execution)")
+		}
+		orch.SetProfile(coord)
+		notice = fmt.Sprintf("switched to profile coordinator; executing plan: %s", p)
+	} else {
+		gp, ok := env.Profs["general-purpose"]
+		if !ok {
+			return "", "", fmt.Errorf("general-purpose profile missing")
+		}
+		orch.SetProfile(gp)
+		notice = fmt.Sprintf("switched to profile general-purpose; executing plan: %s", p)
+	}
 	sub := ""
 	if env.ChatSubtitle != nil {
 		sub = env.ChatSubtitle()
@@ -71,4 +102,45 @@ func applyPlanExecute(env SlashEnv, orch *orchestrator.Orchestrator, wd, pathTai
 	setWelcomeHints(hintsOut, orch, sub)
 	setFooterHint(hintsOut, "")
 	return notice, msg, nil
+}
+
+// PlanReviewOutput builds review text: preview excerpt, approval line, and parsed steps.
+func PlanReviewOutput(workdir, pathTail string) (string, error) {
+	p := planfile.ResolvePlanArg(workdir, pathTail)
+	body, err := planfile.Read(p)
+	if err != nil {
+		return "", err
+	}
+	out := formatPlanPreviewOutput(p, body)
+	out += "\n\n" + planfile.ApprovalStatus(workdir, p, body)
+	steps := planfile.ParseImplementationSteps(body)
+	if len(steps) > 0 {
+		out += fmt.Sprintf("\n\nParsed ## Steps (%d):\n", len(steps))
+		for i, s := range steps {
+			out += fmt.Sprintf("  %d. %s\n", i+1, s)
+		}
+	} else {
+		out += "\n\nParsed ## Steps: (none — add a \"## Steps\" section with numbered lines for clearer orchestration.)"
+	}
+	return out, nil
+}
+
+// PlanStepsOutput lists parsed steps only (no full body).
+func PlanStepsOutput(workdir, pathTail string) (string, error) {
+	p := planfile.ResolvePlanArg(workdir, pathTail)
+	body, err := planfile.Read(p)
+	if err != nil {
+		return "", err
+	}
+	steps := planfile.ParseImplementationSteps(body)
+	display := filepath.ToSlash(p)
+	if len(steps) == 0 {
+		return fmt.Sprintf("File: %s\nNo numbered/bullet steps found under a \"## Steps\" heading.", display), nil
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("File: %s\nParsed ## Steps (%d):\n", display, len(steps)))
+	for i, s := range steps {
+		b.WriteString(fmt.Sprintf("  %d. %s\n", i+1, s))
+	}
+	return strings.TrimSuffix(b.String(), "\n"), nil
 }

@@ -9,15 +9,17 @@ import (
 const planPreviewMaxRunes = 4000
 
 // parseApplyPlanRest parses tokens after `/apply-plan`. Supports `--preview` (or `-preview`);
-// `--yes` / `-y` are accepted and ignored (execution is the default when not previewing).
+// `--hub` selects coordinator execution; `--yes` / `-y` are accepted and ignored (execution is the default when not previewing).
 // Remaining non-flag tokens are joined with a single space as an optional plan path.
-func parseApplyPlanRest(rest string) (pathArg string, preview bool) {
+func parseApplyPlanRest(rest string) (pathArg string, preview, hub bool) {
 	parts := strings.Fields(rest)
 	var pathParts []string
 	for _, p := range parts {
 		switch strings.ToLower(p) {
 		case "--preview", "-preview":
 			preview = true
+		case "--hub":
+			hub = true
 		case "--yes", "-y":
 			// no-op: explicit confirm style; same as default execute path
 		default:
@@ -27,7 +29,7 @@ func parseApplyPlanRest(rest string) (pathArg string, preview bool) {
 			pathParts = append(pathParts, p)
 		}
 	}
-	return strings.Join(pathParts, " "), preview
+	return strings.Join(pathParts, " "), preview, hub
 }
 
 // formatPlanPreviewOutput builds human-readable output for /apply-plan --preview.
@@ -40,7 +42,8 @@ func formatPlanPreviewOutput(planPath, body string) string {
 	b.WriteString(display)
 	b.WriteString(fmt.Sprintf("\nSize: %d bytes\n\n", len(body)))
 	b.WriteString(excerpt)
-	b.WriteString("\n\nRun /apply-plan or /plan run to execute (switches to general-purpose and streams one turn; /plan run also saves the latest assistant message first).")
+	b.WriteString("\n\nRun /apply-plan or /plan run to execute (general-purpose or coordinator with --hub / plan_apply_use_coordinator; one model turn; /plan run saves the latest assistant message first).")
+	b.WriteString("\nOptional: /plan review, /plan approve (when plan_require_apply_approval is true), /plan steps.")
 	return b.String()
 }
 

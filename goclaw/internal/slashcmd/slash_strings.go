@@ -13,7 +13,7 @@ import (
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (most are local; /btw and /continue also send one user line to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview]   /review   /btw   /continue   /copy   /export   /init   /memory   /model   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /allow-writes   /resume   /clear   /quit\n")
+	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview] [--hub]   /review   /btw   /continue   /copy   /export   /init   /memory   /model   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /allow-writes   /resume   /clear   /quit\n")
 	b.WriteString("Prefix input (see docs/goclaw/prefix-input-modes.md):  !cmd   @path   &task\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
@@ -30,9 +30,9 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("  /help, help, ? — full list with session id and profile\n")
 	b.WriteString("  /capabilities — structured overview (what the agent can do; not sent to the model)\n")
 	b.WriteString("  TUI transcript scroll: PgUp/PgDn, Alt+arrows; mouse wheel opt-in (tui_mouse_scroll or GOCLAW_TUI_MOUSE_SCROLL=1)\n")
-	b.WriteString("  /plan path|init|save|run|template — workspace plan under .goclaw/plan.md (run = save + execute)\n")
+	b.WriteString("  /plan path|init|save|run|review|approve|revoke|steps|template — .goclaw/plan.md (run = save + execute; optional --hub)\n")
 	b.WriteString("  /init — create .goclaw/settings.json with coding defaults if missing\n")
-	b.WriteString("  /apply-plan [--preview] [path] — preview plan on disk, or execute (switch to general-purpose, stream one turn)\n")
+	b.WriteString("  /apply-plan [--preview] [--hub] [path] — preview, or execute (general-purpose or coordinator; one turn)\n")
 	b.WriteString("  /review [args] — inject git diff, switch to code-review (see docs/goclaw/code-review-workflow.md)\n")
 	b.WriteString("  /memory list | add | delete — durable memory under ~/.goclaw/memory/\n")
 	b.WriteString("  /workers, /focus or /in <id>, /back or /detach — interactive spawn_agent workers\n")
@@ -81,8 +81,8 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	}
 	b.WriteString("  /theme [preset]  — show or set TUI ui_appearance (restart TUI to apply)\n")
 	b.WriteString("  /workers — list workers; /focus or /in <prefix> — jump into worker; /back or /detach — return to coordinator\n")
-	b.WriteString("  /plan path|init|save|run|template — default plan path, create, save, save+execute (run), or print template\n")
-	b.WriteString("  /apply-plan [--preview] [path] — preview plan on disk, or execute (switch to general-purpose, stream one turn)\n")
+	b.WriteString("  /plan path|init|save|run|review|approve|revoke|steps|template — plan workflow + approval gate helpers\n")
+	b.WriteString("  /apply-plan [--preview] [--hub] [path] — preview, or execute (general-purpose or coordinator with --hub; one turn)\n")
 	b.WriteString("  /audit [path]    — switch to general-purpose; audit-and-fix workflow on path (default: workspace)\n")
 	b.WriteString("  /review [args]   — inject git diff; switch to code-review (read-only; see docs/goclaw/code-review-workflow.md)\n")
 	b.WriteString("  /btw <text>      — side question: one user message with a brief-aside preamble (sent to the model)\n")

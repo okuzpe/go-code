@@ -253,6 +253,10 @@ func slashArgSuggestionsParsed(sc SlashContext, parsed ParsedSlashLine, line str
 			{"run", "save then execute plan (one model turn)"},
 			{"apply", "same as run"},
 			{"template", "print plan template"},
+			{"review", "preview plan + approval + parsed steps"},
+			{"approve", "record plan approval for gate"},
+			{"revoke", "clear plan approval"},
+			{"steps", "list parsed ## Steps lines"},
 		} {
 			if lowPartial != "" && !strings.HasPrefix(strings.ToLower(pair.name), lowPartial) {
 				continue

@@ -8,31 +8,48 @@ import (
 )
 
 func TestParseApplyPlanRest(t *testing.T) {
-	path, preview := parseApplyPlanRest("")
+	path, preview, hub := parseApplyPlanRest("")
 	require.False(t, preview)
+	require.False(t, hub)
 	require.Equal(t, "", path)
 
-	path, preview = parseApplyPlanRest("--preview")
+	path, preview, hub = parseApplyPlanRest("--preview")
 	require.True(t, preview)
+	require.False(t, hub)
 	require.Equal(t, "", path)
 
-	_, preview = parseApplyPlanRest("-preview")
+	_, preview, hub = parseApplyPlanRest("-preview")
 	require.True(t, preview)
+	require.False(t, hub)
 
-	path, preview = parseApplyPlanRest("--preview notes/plan.md")
+	path, preview, hub = parseApplyPlanRest("--preview notes/plan.md")
 	require.True(t, preview)
+	require.False(t, hub)
 	require.Equal(t, "notes/plan.md", path)
 
-	path, preview = parseApplyPlanRest("notes/plan.md --preview")
+	path, preview, hub = parseApplyPlanRest("notes/plan.md --preview")
 	require.True(t, preview)
+	require.False(t, hub)
 	require.Equal(t, "notes/plan.md", path)
 
-	path, preview = parseApplyPlanRest("--yes")
+	path, preview, hub = parseApplyPlanRest("--yes")
 	require.False(t, preview)
+	require.False(t, hub)
 	require.Equal(t, "", path)
 
-	path, preview = parseApplyPlanRest("--yes sub/plan.md")
+	path, preview, hub = parseApplyPlanRest("--yes sub/plan.md")
 	require.False(t, preview)
+	require.False(t, hub)
+	require.Equal(t, "sub/plan.md", path)
+
+	path, preview, hub = parseApplyPlanRest("--hub")
+	require.False(t, preview)
+	require.True(t, hub)
+	require.Equal(t, "", path)
+
+	path, preview, hub = parseApplyPlanRest("sub/plan.md --hub")
+	require.False(t, preview)
+	require.True(t, hub)
 	require.Equal(t, "sub/plan.md", path)
 }
 

@@ -53,6 +53,9 @@ type settingsFile struct {
 	TUIMouseScroll               *bool               `json:"tui_mouse_scroll,omitempty"`
 	UIAppearance                 *string             `json:"ui_appearance,omitempty"`
 	ToolWorkspaceRoot            *string             `json:"tool_workspace_root,omitempty"`
+	PlanRequireApplyApproval     *bool               `json:"plan_require_apply_approval,omitempty"`
+	PlanApplyUseCoordinator      *bool               `json:"plan_apply_use_coordinator,omitempty"`
+	AgentPickerHiddenProfiles    []string           `json:"agent_picker_hidden_profiles,omitempty"`
 }
 
 // Load merges JSON settings into base in this order (later wins for overlapping keys):
@@ -241,6 +244,20 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.ToolWorkspaceRoot != nil {
 		cfg.ToolWorkspaceRoot = strings.TrimSpace(*sf.ToolWorkspaceRoot)
+	}
+	if sf.PlanRequireApplyApproval != nil && *sf.PlanRequireApplyApproval {
+		cfg.PlanRequireApplyApproval = true
+	}
+	if sf.PlanApplyUseCoordinator != nil && *sf.PlanApplyUseCoordinator {
+		cfg.PlanApplyUseCoordinator = true
+	}
+	if len(sf.AgentPickerHiddenProfiles) > 0 {
+		for _, s := range sf.AgentPickerHiddenProfiles {
+			s = strings.ToLower(strings.TrimSpace(s))
+			if s != "" {
+				cfg.AgentPickerHiddenProfiles = append(cfg.AgentPickerHiddenProfiles, s)
+			}
+		}
 	}
 	maps.Copy(perms, sf.ToolPermissions)
 	return nil

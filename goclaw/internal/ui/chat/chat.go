@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -124,6 +125,7 @@ type Model struct {
 	userAgentsDir      string
 	projectAgentsDir   string
 	activeAgentProfile string
+	agentPickerHidden  []string
 
 	// footerRendered is built once in layout() so View() joins the same string as used for height math
 	// (avoids footer/sizing mismatch if textarea state differed between two footerView calls).
@@ -214,6 +216,8 @@ type Options struct {
 	ProjectAgentsDir string
 	// ActiveAgentProfile seeds the /agents picker cursor (typically the session start profile).
 	ActiveAgentProfile string
+	// AgentPickerHiddenProfiles excludes these profile names from the Ctrl+P picker (see config agent_picker_hidden_profiles).
+	AgentPickerHiddenProfiles []string
 	// Welcome optional bordered panel before the title (version + tips).
 	Welcome WelcomeOptions
 	// FocusLine optional; when non-nil, its return value is shown in the footer (e.g. worker focus).
@@ -434,6 +438,7 @@ func New(ctx context.Context, opts Options) Model {
 		userAgentsDir:       strings.TrimSpace(opts.UserAgentsDir),
 		projectAgentsDir:    strings.TrimSpace(opts.ProjectAgentsDir),
 		activeAgentProfile:  strings.TrimSpace(opts.ActiveAgentProfile),
+		agentPickerHidden:   slices.Clone(opts.AgentPickerHiddenProfiles),
 		lastReflowWidth:     -1,
 		tuiMouseScroll:      opts.TUIMouseScroll,
 		slashContextFn:      opts.SlashContext,

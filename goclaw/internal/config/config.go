@@ -185,6 +185,16 @@ type Config struct {
 	// UIAppearance selects TUI colors and markdown style: auto, dark, light, dark_colorblind, light_colorblind, dark_ansi, light_ansi.
 	// JSON key: ui_appearance. Empty or "auto" uses terminal-adaptive styling.
 	UIAppearance string
+
+	// PlanRequireApplyApproval when true requires /plan approve (matching plan file hash) before /apply-plan or /plan run execute.
+	// JSON: plan_require_apply_approval (default false).
+	PlanRequireApplyApproval bool
+	// PlanApplyUseCoordinator when true makes /apply-plan and /plan run switch to coordinator and use hub-style handoff (spawn_agent).
+	// JSON: plan_apply_use_coordinator (default false).
+	PlanApplyUseCoordinator bool
+	// AgentPickerHiddenProfiles lists profile names hidden from the TUI Ctrl+P /agents picker (built-in names, lower-case).
+	// JSON: agent_picker_hidden_profiles (array of strings).
+	AgentPickerHiddenProfiles []string
 }
 
 // MCPServerConfig describes one MCP server (stdio subprocess and/or Streamable HTTP URL).

@@ -40,7 +40,7 @@ func switchOrchestratorProfile(orch *orchestrator.Orchestrator, env SlashEnv, ra
 func profileSwitchFollowUp(p agents.Profile) string {
 	switch strings.ToLower(strings.TrimSpace(p.Name)) {
 	case "plan":
-		return "\nPlan profile cannot modify the workspace. After the plan in chat: /plan run saves and starts one execute turn, or /plan save then /apply-plan (optional --preview first). Switches to general-purpose for that turn."
+		return "\nPlan profile cannot modify the workspace. After the plan in chat: /plan review, /plan approve if your settings require it, then /plan run or /plan save + /apply-plan (--preview, --hub). Execution is one model turn (general-purpose or coordinator)."
 	case "explore":
 		return "\nRead-only search profile — no write_file, edit_file, or patch. For direct edits: /profile general-purpose or /profile builder."
 	case "guide", "statusline":
@@ -95,7 +95,33 @@ func firstLine(s string) string {
 	return s
 }
 
-func formatAgentsList(profs map[string]agents.Profile, active string) string {
+func visibleProfileMap(env SlashEnv, profs map[string]agents.Profile) map[string]agents.Profile {
+	pg := planGateFrom(env)
+	if len(pg.AgentPickerHide) == 0 {
+		return profs
+	}
+	hide := make(map[string]struct{}, len(pg.AgentPickerHide))
+	for _, h := range pg.AgentPickerHide {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h != "" {
+			hide[h] = struct{}{}
+		}
+	}
+	out := make(map[string]agents.Profile)
+	for k, v := range profs {
+		if _, skip := hide[strings.ToLower(k)]; skip {
+			continue
+		}
+		out[k] = v
+	}
+	if len(out) == 0 {
+		return profs
+	}
+	return out
+}
+
+func formatAgentsList(profs map[string]agents.Profile, active string, env SlashEnv) string {
+	profs = visibleProfileMap(env, profs)
 	active = strings.TrimSpace(active)
 	var b strings.Builder
 	b.WriteString("Available agents (built-in + custom *.md under agents dirs):\n\n")
@@ -113,6 +139,9 @@ func formatAgentsList(profs map[string]agents.Profile, active string) string {
 	}
 	b.WriteString("\nUsage: /agents <name>  (same as /profile <name>)\n")
 	b.WriteString("Bare /agents in readline uses arrow keys when stdin is a TTY.\n")
+	if pg := planGateFrom(env); len(pg.AgentPickerHide) > 0 {
+		b.WriteString("\nSome profiles are hidden from the picker (agent_picker_hidden_profiles); /profile <name> still works.\n")
+	}
 	return b.String()
 }
 
@@ -122,7 +151,7 @@ func tryInteractiveAgentsPick(env SlashEnv, orch *orchestrator.Orchestrator, hin
 	}
 	fd := int(os.Stdin.Fd())
 	profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
-	names := agents.SortedKeys(profs)
+	names := agents.SortedKeys(visibleProfileMap(env, profs))
 	if len(names) == 0 {
 		return "", false, nil
 	}

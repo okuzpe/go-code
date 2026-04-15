@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -333,6 +334,13 @@ func runReadlineREPL(ctx context.Context, rt *ChatRuntime, orchOpts []orchestrat
 		rt.Cfg.OllamaModel = id
 		orch.SetConfig(rt.Cfg)
 		return nil
+	}
+	repl.slashEnv.PlanGate = func() slashcmd.PlanGateConfig {
+		return slashcmd.PlanGateConfig{
+			RequireApplyApproval: rt.Cfg.PlanRequireApplyApproval,
+			ApplyUseCoordinator:  rt.Cfg.PlanApplyUseCoordinator,
+			AgentPickerHide:      slices.Clone(rt.Cfg.AgentPickerHiddenProfiles),
+		}
 	}
 	repl.run(rl, intCh)
 

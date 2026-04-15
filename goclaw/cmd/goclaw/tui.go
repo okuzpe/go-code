@@ -37,6 +37,13 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 			return app.DoctorReportFromRuntime(ctx, rt), nil
 		},
 	}
+	slashEnv.PlanGate = func() slashcmd.PlanGateConfig {
+		return slashcmd.PlanGateConfig{
+			RequireApplyApproval: rt.Cfg.PlanRequireApplyApproval,
+			ApplyUseCoordinator:  rt.Cfg.PlanApplyUseCoordinator,
+			AgentPickerHide:      rt.Cfg.AgentPickerHiddenProfiles,
+		}
+	}
 	sess := rt.Sess
 	slashEnv.SessionModel = func() string { return rt.Cfg.Model() }
 	slashEnv.SetSessionModel = func(id string) error {
@@ -71,6 +78,7 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		UserConfigDir:      rt.Cfg.UserConfigDir,
 		UserAgentsDir:      rt.UserAgentsDir,
 		ProjectAgentsDir:   rt.ProjectAgentsDir,
+		AgentPickerHiddenProfiles: slices.Clone(rt.Cfg.AgentPickerHiddenProfiles),
 		ActiveAgentProfile: rt.Profile.Name,
 		Theme:              chat.NewThemeForAppearance(rt.Cfg.UIAppearance),
 		Welcome:            welcomeOptions(rt),

@@ -21,7 +21,28 @@ func (m *Model) agentPickNames() []string {
 	if err != nil || len(profs) == 0 {
 		profs = agents.All()
 	}
-	return agents.SortedKeys(profs)
+	names := agents.SortedKeys(profs)
+	if len(m.agentPickerHidden) == 0 {
+		return names
+	}
+	hide := make(map[string]struct{}, len(m.agentPickerHidden))
+	for _, h := range m.agentPickerHidden {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h != "" {
+			hide[h] = struct{}{}
+		}
+	}
+	var out []string
+	for _, n := range names {
+		if _, skip := hide[strings.ToLower(n)]; skip {
+			continue
+		}
+		out = append(out, n)
+	}
+	if len(out) == 0 {
+		return names
+	}
+	return out
 }
 
 func (m *Model) refreshAgentPickOverlay() {

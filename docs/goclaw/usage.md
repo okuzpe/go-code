@@ -122,7 +122,7 @@ defaults → ~/.goclaw/settings.json → .goclaw/settings.json
 
 Do not commit `settings.local.json`.
 
-**Common keys:** `provider` (must be `ollama` for a normal run; legacy values error at startup), `agent_profile`, `ollama_model`, `ollama_host`, `ollama_num_ctx`, `bash_timeout_sec`, `tool_permissions`, `auto_continue_action_requests`, `auto_continue_action_max_nudges`, `truth_footer_no_workspace_writes`, `mcp_servers` (stdio or HTTP; HTTP entries may set `bearer_token_file` for a static bearer token), `mcp_allow_remote_urls`, `trusted_workspace`, `external_hooks`, `plugin_dirs`, `plugin_allow`, `plugin_deny`, `memory_auto_extract`, `ide_bridge_mcp`. CLI: `--plugin-dir` (repeatable) appends plugin roots.
+**Common keys:** `provider` (must be `ollama` for a normal run; legacy values error at startup), `agent_profile`, `ollama_model`, `ollama_host`, `ollama_num_ctx`, `bash_timeout_sec`, `tool_permissions`, `auto_continue_action_requests`, `auto_continue_action_max_nudges`, `truth_footer_no_workspace_writes`, `plan_require_apply_approval`, `plan_apply_use_coordinator`, `agent_picker_hidden_profiles`, `mcp_servers` (stdio or HTTP; HTTP entries may set `bearer_token_file` for a static bearer token), `mcp_allow_remote_urls`, `trusted_workspace`, `external_hooks`, `plugin_dirs`, `plugin_allow`, `plugin_deny`, `memory_auto_extract`, `ide_bridge_mcp`. CLI: `--plugin-dir` (repeatable) appends plugin roots.
 
 Example:
 
@@ -254,11 +254,17 @@ Use profile `plan` to draft the plan as chat output. In the REPL:
 
 - `/plan init` — create `.goclaw/plan.md` from template
 - `/plan save` — save the last assistant message in this session to `.goclaw/plan.md`
-- **`/plan run`** (alias **`/plan apply`**) — save the last assistant message, then immediately run the same execution path as **`/apply-plan`** (switch to **`general-purpose`**, one model turn). Optional review first: **`/apply-plan --preview`**, then **`/plan run`** or **`/apply-plan`**.
+- **`/plan run`** (alias **`/plan apply`**) — save the last assistant message, then immediately run the same execution path as **`/apply-plan`** (one model turn). Append **`--hub`** to run under the **`coordinator`** profile (same as **`/apply-plan --hub`**). When **`plan_apply_use_coordinator`** is true in settings, execution uses the coordinator profile even without **`--hub`**.
 - `/plan path` / `/plan template` — inspect the default path and template skeleton
-- `/apply-plan [--preview] [path]` — **`--preview`**: print a bounded excerpt of the plan on disk (no model call, no profile switch). **Without `--preview`**: load the plan, switch to `general-purpose`, and stream **one** execution turn (same as before).
+- **`/plan review`** — print a bounded excerpt, approval status, and **parsed `## Steps`** lines (optional plan path argument).
+- **`/plan approve`** — write **`.goclaw/plan.meta.json`** with a SHA-256 of the current plan file so **`/apply-plan`** / **`/plan run`** can proceed when **`plan_require_apply_approval`** is true. Re-run after any edit to the plan file.
+- **`/plan revoke`** — delete **`plan.meta.json`** (clear approval).
+- **`/plan steps`** — list parsed steps only (expects a **`## Steps`** section with numbered **`1.`** or **`-` / `*`** lines; used to steer the handoff message).
+- `/apply-plan [--preview] [--hub] [path]` — **`--preview`**: print a bounded excerpt (no model call, no profile switch). **Without `--preview`**: load the plan, switch to **`general-purpose`** (or **`coordinator`** with **`--hub`** or **`plan_apply_use_coordinator`**), and stream **one** execution turn.
 
-Typical workflow: `/profile plan` → ask for a plan → **`/plan run`** **or** `/plan save` → `/apply-plan --preview` (optional) → `/apply-plan`. In the **TUI**, **Ctrl+P** opens the agent profile picker (same as typing `/agents` and Enter). See [agent-profiles.md](../reference/agent-profiles.md).
+**Structured steps:** add a markdown heading **`## Steps`** and numbered lines (`1. …`, `2. …`) so goclaw can inject a short ordered checklist into the handoff. Default execution policy is **sequential** (especially under coordinator); parallel **`spawn_agent`** is left to the model only when steps are clearly independent.
+
+Typical workflow: `/profile plan` → ask for a plan → **`/plan review`** → **`/plan approve`** (if your project sets **`plan_require_apply_approval`**) → **`/plan run`** **or** `/plan save` → `/apply-plan --preview` (optional) → **`/apply-plan`** (add **`--hub`** for multi-worker hub mode). In the **TUI**, **Ctrl+P** opens the agent profile picker. Hide built-in clutter from that picker with **`agent_picker_hidden_profiles`** (array of profile names, e.g. `["guide","statusline"]`). See [agent-profiles.md](../reference/agent-profiles.md).
 
 ## Slash commands (REPL)
 
@@ -301,7 +307,7 @@ Mock server: `testutil/mockopenai/`. Windows: transient `*.exe` from tests are n
 Work through this list in order (most issues are **profile**, **permissions**, or **model tool-calling**):
 
 1. **Active profile** — In the REPL, note the profile name (footer / welcome) or run **`/profile <name>`** with a name from **`/agents`**. **`plan`**, **`explore`**, **`guide`**, and **`statusline`** cannot run `write_file` / `edit_file` / **`patch`**. **`coordinator`** does not touch the repo on the parent session — it delegates via **`spawn_agent`**. **`code-review`** is review-only (no write tools). For direct edits on the main session, use **`general-purpose`** or **`builder`** (`agent_profile` in `settings.json`, **`GOCLAW_AGENT_PROFILE`**, or **`goclaw --profile …`** — merge order in [Configuration](#configuration)).
-2. **Plan workflow** — If you used **`plan`** to draft steps, that profile is **intentionally** read-only. Use **`/plan run`** to save the latest assistant message and start execution in one step, **or** **`/plan save`** then **`/apply-plan`** (optional **`/apply-plan --preview`** first). Execution switches to **`general-purpose`** and runs **one** model turn; large plans may need a **follow-up user message** or a smaller plan slice.
+2. **Plan workflow** — If you used **`plan`** to draft steps, that profile is **intentionally** read-only. Use **`/plan review`** / **`/plan approve`** (when **`plan_require_apply_approval`** is true), then **`/plan run`** or **`/plan save`** + **`/apply-plan`**. Add **`--hub`** (or set **`plan_apply_use_coordinator`**) for **coordinator** execution. Each apply runs **one** model turn; large plans may need **follow-up** messages or a smaller plan slice.
 3. **Tools disabled** — **`--no-tools`**, **`GOCLAW_DISABLE_TOOLS=1`**, or **`goclaw prompt … --no-tools`** registers no tools: the model can only emit text. Remove the flag or unset the variable for edits.
 4. **`tool_permissions`** — Default **`ask`** prompts before risky tools. If you decline or never approve, no run occurs. For scripts / CI, set **`allow`** on the tools you need (see [Permissions](#permissions)) or use **`/allow-writes`** in the REPL for the current session (write tools only).
 5. **Ollama model** — Small local models often emit **prose or fake “JSON tool” blobs** instead of native tool calls; those blobs do **not** execute (see the base system prompt in `goclaw/internal/orchestrator/base_system_prompt.md`). Try a stronger coder tag (e.g. **`qwen2.5-coder:14b`** vs 7b) — [ollama-stack.md](./ollama-stack.md).

@@ -23,6 +23,13 @@ import (
 	"golang.org/x/term"
 )
 
+// PlanGateConfig mirrors plan workflow flags from runtime settings (see config.Config).
+type PlanGateConfig struct {
+	RequireApplyApproval bool
+	ApplyUseCoordinator  bool
+	AgentPickerHide      []string
+}
+
 // SlashEnv carries workspace paths and profile lookup for slash commands.
 type SlashEnv struct {
 	Workdir       string
@@ -45,6 +52,8 @@ type SlashEnv struct {
 	SetSessionModel func(id string) error
 	// ToolLog optional; returns formatted tool history text for the /tools command (readline mode only).
 	ToolLog func(n int) string
+	// PlanGate optional; supplies plan approval / hub / agent-picker flags from settings. Nil → all off.
+	PlanGate func() PlanGateConfig
 }
 
 // SlashContext carries dependencies for HandleSlash (memory, orchestrator, session pointer, disk store).
@@ -459,7 +468,7 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 			} else if used {
 				return true, out, false, "", nil
 			}
-			return true, formatAgentsList(profs, orch.ProfileName()), false, "", nil
+			return true, formatAgentsList(profs, orch.ProfileName(), env), false, "", nil
 		}
 		msg, err := switchOrchestratorProfile(orch, env, fields[1])
 		if err != nil {
@@ -489,15 +498,52 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 			return true, "", false, "", fmt.Errorf("/plan: workspace directory not set")
 		}
 		if len(fields) < 2 {
-			return true, "", false, "", fmt.Errorf(`usage: /plan path | /plan init | /plan save | /plan run | /plan template
+			return true, "", false, "", fmt.Errorf(`usage: /plan path | init | save | run | template | review | approve | revoke | steps
 path     — show default plan file path
 init     — create .goclaw/plan.md from template if missing
 save     — save last assistant message in this session to .goclaw/plan.md
-run      — same as save, then start one execute turn (alias: apply)
-template — print the template to the terminal`)
+run      — same as save, then start one execute turn (optional --hub; alias: apply)
+template — print the template to the terminal
+review   — show plan excerpt, approval status, and parsed ## Steps (optional path)
+approve  — record approval for the current plan file hash (optional path)
+revoke   — clear recorded approval (plan.meta.json)
+steps    — list parsed ## Steps only (optional path)`)
 		}
 		sub := strings.ToLower(fields[1])
 		switch sub {
+		case "review":
+			pathTail := strings.TrimSpace(strings.Join(fields[2:], " "))
+			out, rerr := PlanReviewOutput(wd, pathTail)
+			if rerr != nil {
+				return true, "", false, "", fmt.Errorf("/plan review: %w", rerr)
+			}
+			setFooterHint(hintsOut, "Review done — /plan approve then /apply-plan (or /plan run) when ready.")
+			return true, out, false, "", nil
+		case "approve":
+			pathTail := strings.TrimSpace(strings.Join(fields[2:], " "))
+			p := planfile.ResolvePlanArg(wd, pathTail)
+			body, rerr := planfile.Read(p)
+			if rerr != nil {
+				return true, "", false, "", fmt.Errorf("/plan approve: %w", rerr)
+			}
+			if err := planfile.WriteApproval(wd, p, body); err != nil {
+				return true, "", false, "", fmt.Errorf("/plan approve: %w", err)
+			}
+			setFooterHint(hintsOut, "Plan approved on disk — you can run /apply-plan or /plan run.")
+			return true, fmt.Sprintf("approval saved for %s (content hash recorded in %s)", p, planfile.MetaPath(wd)), false, "", nil
+		case "revoke":
+			if err := planfile.ClearApproval(wd); err != nil {
+				return true, "", false, "", fmt.Errorf("/plan revoke: %w", err)
+			}
+			setFooterHint(hintsOut, "Plan approval cleared.")
+			return true, "cleared plan approval (" + planfile.MetaPath(wd) + ")", false, "", nil
+		case "steps":
+			pathTail := strings.TrimSpace(strings.Join(fields[2:], " "))
+			out, serr := PlanStepsOutput(wd, pathTail)
+			if serr != nil {
+				return true, "", false, "", fmt.Errorf("/plan steps: %w", serr)
+			}
+			return true, out, false, "", nil
 		case "path":
 			return true, planfile.Path(wd), false, "", nil
 		case "init":
@@ -517,11 +563,18 @@ template — print the template to the terminal`)
 			if sErr != nil {
 				return true, "", false, "", fmt.Errorf("/plan save: %w", sErr)
 			}
-			setFooterHint(hintsOut, "Plan saved — /plan run to save+execute, or /apply-plan --preview then /apply-plan.")
-			return true, fmt.Sprintf("plan saved to %s\nRun /plan run to save+execute in one step, or /apply-plan --preview then /apply-plan.", planPath), false, "", nil
+			h := "Plan saved — /plan run to save+execute, or /apply-plan --preview then /apply-plan."
+			if planGateFrom(env).RequireApplyApproval {
+				h = "Plan saved — run /plan approve before /apply-plan or /plan run (plan_require_apply_approval is on)."
+			}
+			setFooterHint(hintsOut, h)
+			return true, fmt.Sprintf("plan saved to %s\nRun /plan review → /plan approve if required, then /plan run or /apply-plan.", planPath), false, "", nil
 		case "run", "apply":
-			if len(fields) > 2 {
-				return true, "", false, "", fmt.Errorf(`usage: /plan run   (save last assistant to .goclaw/plan.md and start one execute turn; alias: /plan apply)`)
+			hub := false
+			for _, f := range fields[2:] {
+				if strings.EqualFold(strings.TrimSpace(f), "--hub") {
+					hub = true
+				}
 			}
 			if orch == nil {
 				return true, "", false, "", fmt.Errorf("/plan run requires a running agent")
@@ -533,7 +586,7 @@ template — print the template to the terminal`)
 			if sErr != nil {
 				return true, "", false, "", fmt.Errorf("/plan run: %w", sErr)
 			}
-			notice, modelSubmit, aErr := applyPlanExecute(env, orch, wd, "", hintsOut)
+			notice, modelSubmit, aErr := applyPlanExecute(env, orch, wd, "", hintsOut, ApplyPlanOptions{Hub: hub})
 			if aErr != nil {
 				return true, "", false, "", fmt.Errorf("/plan run: %w", aErr)
 			}
@@ -543,7 +596,7 @@ template — print the template to the terminal`)
 		case "template":
 			return true, planfile.Template(), false, "", nil
 		default:
-			return true, "", false, "", fmt.Errorf("unknown /plan %q — use path, init, save, run, apply, or template", fields[1])
+			return true, "", false, "", fmt.Errorf("unknown /plan %q — use path, init, save, run, apply, template, review, approve, revoke, or steps", fields[1])
 		}
 
 	case "workers":
@@ -608,7 +661,7 @@ use /workers to list interactive worker ids`)
 			return true, "", false, "", fmt.Errorf("/apply-plan: workspace directory not set")
 		}
 		rest := strings.TrimSpace(strings.TrimPrefix(s, fields[0]))
-		pathTail, preview := parseApplyPlanRest(rest)
+		pathTail, preview, hub := parseApplyPlanRest(rest)
 		p := planfile.ResolvePlanArg(wd, pathTail)
 		body, rerr := planfile.Read(p)
 		if rerr != nil {
@@ -619,7 +672,7 @@ use /workers to list interactive worker ids`)
 			setFooterHint(hintsOut, "Review complete — run /apply-plan to execute (or /apply-plan --preview again).")
 			return true, out, false, "", nil
 		}
-		notice, msg, err := applyPlanExecute(env, orch, wd, pathTail, hintsOut)
+		notice, msg, err := applyPlanExecute(env, orch, wd, pathTail, hintsOut, ApplyPlanOptions{Hub: hub})
 		if err != nil {
 			return true, "", false, "", fmt.Errorf("/apply-plan: %w", err)
 		}

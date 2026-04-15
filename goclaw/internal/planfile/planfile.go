@@ -83,16 +83,44 @@ func Init(workdir string) (created bool, err error) {
 	return true, nil
 }
 
+// HandoffOptions configures the execution handoff user message.
+type HandoffOptions struct {
+	// UseCoordinator when true steers the hub profile: delegate work via spawn_agent rather than direct tools.
+	UseCoordinator bool
+	// ParsedSteps optional list from ParseImplementationSteps (## Steps); improves ordering guidance.
+	ParsedSteps []string
+}
+
 // HandoffUserMessage builds the user message that starts execution against a saved plan.
 func HandoffUserMessage(planPath, planContent string) string {
+	return HandoffUserMessageWithOptions(planPath, planContent, HandoffOptions{})
+}
+
+// HandoffUserMessageWithOptions builds the user message with coordinator / parsed-step hints.
+func HandoffUserMessageWithOptions(planPath, planContent string, opts HandoffOptions) string {
 	// Use forward slashes in the message for cross-platform readability.
 	display := filepath.ToSlash(planPath)
 	var b strings.Builder
 	b.WriteString("The following is an implementation plan saved at ")
 	b.WriteString(display)
-	b.WriteString(". Execute it step by step using the available tools. ")
-	b.WriteString("Update the session task list with todo_write when it helps track progress. ")
-	b.WriteString("Do not skip verification or test steps described in the plan.\n\n---\n\n")
+	b.WriteString(". ")
+	if opts.UseCoordinator {
+		b.WriteString("You are in coordinator (hub) mode: do not claim direct file reads or shell runs — delegate each major plan step to isolated workers via spawn_agent with self-contained task descriptions (absolute paths, acceptance criteria). ")
+		b.WriteString("Default to sequential execution: complete or clearly fail one worker's scope before spawning the next, unless two steps are obviously independent (then you may run two spawn_agent calls in one batch only when safe for the same workspace). ")
+		b.WriteString("Use todo_write to track plan progress. ")
+	} else {
+		b.WriteString("Execute it step by step using the available tools (read → edit → verify). ")
+		b.WriteString("Update the session task list with todo_write when it helps track progress. ")
+	}
+	b.WriteString("At end of this turn, reply with a short checklist of which plan steps are done vs still pending (verifiable outcomes, not prose-only claims). ")
+	b.WriteString("Do not skip verification or test steps described in the plan.\n")
+	if len(opts.ParsedSteps) > 0 {
+		b.WriteString("\nParsed ## Steps (execute in order; same order as in the file body below):\n")
+		for i, s := range opts.ParsedSteps {
+			b.WriteString(fmt.Sprintf("%d. %s\n", i+1, s))
+		}
+	}
+	b.WriteString("\n---\n\n")
 	b.WriteString(planContent)
 	return b.String()
 }

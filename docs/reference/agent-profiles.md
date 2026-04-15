@@ -13,9 +13,10 @@ Select a profile with `-profile <name>` or set `agent_profile` in `settings.json
 
 ### Plan → execute workflow (v1)
 
-1. Use **`plan`** (or author manually) to produce a numbered Markdown plan; save it at **`.goclaw/plan.md`** in the workspace (template: `/plan init` or `/plan template` in the REPL).
-2. Run **`/apply-plan`** (optional path argument) to switch to **`general-purpose`** and send one user turn that embeds the plan and instructs the model to execute step by step.
-3. Alternatively, use **`/profile general-purpose`** after planning and paste the plan, or resume execution in a new session with the saved file.
+1. Use **`plan`** (or author manually) to produce a Markdown plan with a **`## Steps`** section when you want ordered execution hints; save it at **`.goclaw/plan.md`** (template: `/plan init` or `/plan template` in the REPL).
+2. Optional gate: **`/plan review`**, then **`/plan approve`** when **`plan_require_apply_approval`** is enabled in settings (stores **`.goclaw/plan.meta.json`** with a content hash).
+3. Run **`/apply-plan`** or **`/plan run`** (optional **`--hub`** or **`plan_apply_use_coordinator`** for **coordinator**). Default execution profile is **`general-purpose`**; each command streams **one** user turn that embeds the plan.
+4. Alternatively, use **`/profile general-purpose`** after planning and paste the plan, or resume execution in a new session with the saved file.
 
 **Coordinator (D16)** is **implemented** in goclaw: profile `coordinator`, tools `spawn_agent` / `stop_task`, isolated worker sessions — see [docs/goclaw/coordinator.md](../goclaw/coordinator.md) and [coordinator-mode.md](./coordinator-mode.md) (concept vs product reference).
 
