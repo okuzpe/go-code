@@ -23,7 +23,8 @@ const (
 	toolCardMinInnerWidth         = 36
 	toolCardDashMin               = 3
 	toolInProgressSummaryMaxRunes = 120
-	toolCardOutcomeMaxRunes      = 100
+	toolCardOutcomeMaxRunes       = 100
+	toolCardSummaryLineMaxRunes   = 100 // per line when summary contains embedded newlines (glob/grep path sample)
 )
 
 func toolCardInnerWidth(termWidth int) int {
@@ -199,11 +200,18 @@ func (t *Theme) RenderToolCard(toolLabel, summary, outcome string, isError bool,
 	b.WriteString("  ")
 	b.WriteString(header)
 	if s := strings.TrimSpace(summary); s != "" {
-		b.WriteString("\n  ")
-		// Tool-accent color on the vertical bar creates a clear left-accent for the card.
-		b.WriteString(t.ToolTag.Render("│"))
-		b.WriteString("  ")
-		b.WriteString(t.ToolCardBody.Render(s))
+		for _, rawLine := range strings.Split(s, "\n") {
+			line := strings.TrimSpace(rawLine)
+			if line == "" {
+				continue
+			}
+			line = text.TruncateRunes(line, toolCardSummaryLineMaxRunes)
+			b.WriteString("\n  ")
+			// Tool-accent color on the vertical bar creates a clear left-accent for the card.
+			b.WriteString(t.ToolTag.Render("│"))
+			b.WriteString("  ")
+			b.WriteString(t.ToolCardBody.Render(line))
+		}
 	}
 	if o := strings.TrimSpace(outcome); o != "" {
 		o = text.TruncateRunes(o, toolCardOutcomeMaxRunes)

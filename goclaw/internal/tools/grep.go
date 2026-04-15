@@ -4,13 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/okuzpe/goclaw/internal/text"
 )
 
 // GrepTool searches file contents with a regular expression (RE2).
@@ -66,10 +67,9 @@ type grepInput struct {
 
 // Execute implements Tool.
 func (t *GrepTool) Execute(ctx context.Context, input string) (Result, error) {
-	_ = ctx
 	var in grepInput
-	if err := json.Unmarshal([]byte(input), &in); err != nil {
-		return Result{Content: "", IsError: true}, fmt.Errorf("invalid json input: %w", err)
+	if err := UnmarshalToolInputJSON(input, &in); err != nil {
+		return Result{Content: "", IsError: true}, err
 	}
 	pat := strings.TrimSpace(in.Pattern)
 	if pat == "" {
@@ -92,17 +92,25 @@ func (t *GrepTool) Execute(ctx context.Context, input string) (Result, error) {
 		return Result{Content: resErr.Error(), IsError: true}, nil
 	}
 
+	prog := newPathListProgress(ctx, ProgressReporterFromContext(ctx))
+	if prog != nil {
+		defer prog.flush()
+	}
+
 	var b strings.Builder
 	matchCount := 0
 	emit := func(relSlash string, lineNo int, line string) bool {
 		if matchCount >= MaxGrepMatches {
 			return false
 		}
+		row := relSlash + fmt.Sprintf(":%d:%s", lineNo, line)
 		if b.Len() > 0 {
 			b.WriteByte('\n')
 		}
-		b.WriteString(relSlash)
-		fmt.Fprintf(&b, ":%d:%s", lineNo, line)
+		b.WriteString(row)
+		if prog != nil {
+			_ = prog.addLine(text.TruncateRunes(row, 160))
+		}
 		matchCount++
 		return matchCount < MaxGrepMatches
 	}
@@ -121,6 +129,11 @@ func (t *GrepTool) Execute(ctx context.Context, input string) (Result, error) {
 		err = filepath.WalkDir(resolved, func(path string, d fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
 			}
 			if d.IsDir() {
 				return nil

@@ -11,6 +11,12 @@ import (
 
 const transcriptOutcomeMaxRunes = 100
 
+// toolCardListSampleLines caps how many result lines (paths / grep hits) appear on the TUI tool card.
+const toolCardListSampleLines = 12
+
+// toolCardListLineMaxRunes limits each path line width inside the card (terminal-friendly).
+const toolCardListLineMaxRunes = 96
+
 // TranscriptOutcomeSnippet returns a short second line for TUI tool cards: what the
 // tool produced (counts, first error line, tail of shell output), without dumping
 // large file bodies into the transcript.
@@ -100,6 +106,82 @@ func countNonEmptyLinesIn(s string) int {
 		}
 	}
 	return n
+}
+
+// nonEmptyLinesFromMain returns trimmed non-empty lines from glob/grep list output.
+func nonEmptyLinesFromMain(main string) []string {
+	var out []string
+	for _, line := range strings.Split(main, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// ToolCardSummaryBody builds the multi-line summary shown inside a completed tool card.
+// For glob/grep it shows the tool input preview (pattern) plus a sample of result lines so the
+// transcript reads like a sequential trace (similar to other agent CLIs) instead of only a count.
+func ToolCardSummaryBody(toolName, inputPreview, content string, isError bool) string {
+	inputPreview = strings.TrimSpace(inputPreview)
+	if isError {
+		if inputPreview != "" {
+			return text.TruncateRunes(inputPreview, toolCardListLineMaxRunes)
+		}
+		return text.TruncateRunes(strings.TrimSpace(content), toolCardListLineMaxRunes)
+	}
+	switch toolName {
+	case "glob", "grep":
+		return buildListToolCardSummary(inputPreview, content)
+	default:
+		if inputPreview == "" {
+			return ""
+		}
+		return text.TruncateRunes(inputPreview, toolCardListLineMaxRunes)
+	}
+}
+
+func buildListToolCardSummary(inputPreview, content string) string {
+	main, capped := toolListMainBody(content)
+	lines := nonEmptyLinesFromMain(main)
+	var b strings.Builder
+	if inputPreview != "" {
+		b.WriteString(text.TruncateRunes(inputPreview, toolCardListLineMaxRunes))
+	}
+	if len(lines) == 0 {
+		if strings.TrimSpace(main) != "" && b.Len() == 0 {
+			return text.TruncateRunes(strings.TrimSpace(main), toolCardListLineMaxRunes)
+		}
+		if b.Len() == 0 {
+			return ""
+		}
+		return b.String()
+	}
+	shown := 0
+	for _, line := range lines {
+		if shown >= toolCardListSampleLines {
+			break
+		}
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		lineDisp := text.AtRefDisplayMaybePathLine(line)
+		b.WriteString(text.TruncateRunes(lineDisp, toolCardListLineMaxRunes))
+		shown++
+	}
+	if len(lines) > shown {
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		fmt.Fprintf(&b, "… +%d more", len(lines)-shown)
+	}
+	if capped {
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString("(hit tool match cap)")
+	}
+	return b.String()
 }
 
 // toolListMainBody splits glob/grep style output from an optional trailing cap notice.

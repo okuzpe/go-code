@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -87,10 +86,9 @@ func normalizeGlobDoubleStar(pat string) (newPat string, basenameOnly bool) {
 
 // Execute implements Tool.
 func (t *GlobTool) Execute(ctx context.Context, input string) (Result, error) {
-	_ = ctx
 	var in globInput
-	if err := json.Unmarshal([]byte(input), &in); err != nil {
-		return Result{Content: "", IsError: true}, fmt.Errorf("invalid json input: %w", err)
+	if err := UnmarshalToolInputJSON(input, &in); err != nil {
+		return Result{Content: "", IsError: true}, err
 	}
 	pat := strings.TrimSpace(in.Pattern)
 	if pat == "" {
@@ -118,10 +116,20 @@ func (t *GlobTool) Execute(ctx context.Context, input string) (Result, error) {
 		return Result{Content: "glob under: not a directory", IsError: true}, nil
 	}
 
+	prog := newPathListProgress(ctx, ProgressReporterFromContext(ctx))
+	if prog != nil {
+		defer prog.flush()
+	}
+
 	var matches []string
 	err := filepath.WalkDir(walkRoot, func(fullPath string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 		if d.IsDir() {
 			return nil
@@ -143,7 +151,13 @@ func (t *GlobTool) Execute(ctx context.Context, input string) (Result, error) {
 		if !ok {
 			return nil
 		}
-		matches = append(matches, filepath.ToSlash(rel))
+		relSlash := filepath.ToSlash(rel)
+		matches = append(matches, relSlash)
+		if prog != nil {
+			if err := prog.addLine(relSlash); err != nil {
+				return err
+			}
+		}
 		if len(matches) >= MaxGlobMatches {
 			return fs.SkipAll
 		}

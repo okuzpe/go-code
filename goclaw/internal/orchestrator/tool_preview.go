@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+
+	"github.com/okuzpe/goclaw/internal/text"
 )
 
 const (
@@ -49,7 +51,7 @@ func formatKnownToolPreview(toolName, input string) string {
 			Path string `json:"path"`
 		}
 		if json.Unmarshal([]byte(input), &v) == nil {
-			return strings.TrimSpace(v.Path)
+			return text.AtRefDisplayLabel(strings.TrimSpace(v.Path))
 		}
 	case "glob":
 		var v struct {
@@ -66,7 +68,7 @@ func formatKnownToolPreview(toolName, input string) string {
 		if json.Unmarshal([]byte(input), &v) == nil {
 			p := strings.TrimSpace(v.Pattern)
 			if sub := strings.TrimSpace(v.Path); sub != "" {
-				return p + " in " + sub
+				return p + " in " + text.AtRefDisplayLabel(sub)
 			}
 			return p
 		}
@@ -82,7 +84,7 @@ func formatKnownToolPreview(toolName, input string) string {
 			}
 			cmd := strings.TrimSpace(v.Command)
 			if cwd := strings.TrimSpace(v.Cwd); cwd != "" {
-				return cmd + " (cwd " + cwd + ")"
+				return cmd + " (cwd " + text.AtRefDisplayLabel(cwd) + ")"
 			}
 			return cmd
 		}
@@ -95,7 +97,7 @@ func formatKnownToolPreview(toolName, input string) string {
 			// Show first non-empty line of the script as the preview.
 			first := firstNonEmptyLine(v.Script)
 			if cwd := strings.TrimSpace(v.Cwd); cwd != "" {
-				return first + " (cwd " + cwd + ")"
+				return first + " (cwd " + text.AtRefDisplayLabel(cwd) + ")"
 			}
 			return first
 		}

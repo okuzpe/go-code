@@ -19,4 +19,7 @@ func TestClassifyTaskRoleRules_greetingUsesFast(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "fast", classifyTaskRoleRules("hola", agents.GeneralPurpose))
 	require.Equal(t, "fast", classifyTaskRoleRules("hi", agents.GeneralPurpose))
+	require.Equal(t, "fast", classifyTaskRoleRules("hola\n¿qué tal?", agents.GeneralPurpose))
+	require.Equal(t, "code", classifyTaskRoleRules("hi\n\nplease implement auth", agents.GeneralPurpose))
+	require.Equal(t, "code", classifyTaskRoleRules("good code style question", agents.GeneralPurpose))
 }

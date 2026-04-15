@@ -14,16 +14,6 @@ import (
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 )
 
-type discardStreamSink struct{}
-
-func (discardStreamSink) OnTextDelta(string)                {}
-func (discardStreamSink) OnThinkingStart(string) {}
-func (discardStreamSink) OnToolProgress(string, string)     {}
-func (discardStreamSink) OnToolUse(string, string, string)       {}
-func (discardStreamSink) OnToolResult(string, string, string, bool) {}
-func (discardStreamSink) OnDone(string)                     {}
-func (discardStreamSink) OnCompact(int)                     {}
-
 func automationOutputToolApprover(_ context.Context, toolName, _ string) (bool, error) {
 	return false, fmt.Errorf(
 		"automation output mode cannot prompt for tool approval; set \"tool_permissions\" for %q to \"allow\" in settings (or use --no-tools)",
@@ -63,7 +53,7 @@ func RunChatJSONOutputFromLine(ctx context.Context, rt *ChatRuntime, line string
 	}
 
 	if rt.Mock {
-		reply, err := StreamMockAssistant(ctx, line, discardStreamSink{}, rt.Sess)
+		reply, err := StreamMockAssistant(ctx, line, NopStreamSink{}, rt.Sess)
 		if err != nil {
 			return err
 		}
@@ -106,7 +96,7 @@ func RunChatTextOutputFromLine(ctx context.Context, rt *ChatRuntime, line string
 	}
 
 	if rt.Mock {
-		reply, err := StreamMockAssistant(ctx, line, discardStreamSink{}, rt.Sess)
+		reply, err := StreamMockAssistant(ctx, line, NopStreamSink{}, rt.Sess)
 		if err != nil {
 			return err
 		}
@@ -122,7 +112,7 @@ func RunChatTextOutputFromLine(ctx context.Context, rt *ChatRuntime, line string
 
 	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, withAutomationOutputToolApprover(rt.OrchOpts)...)
 
-	resp, err := orch.RunStreaming(ctx, line, discardStreamSink{})
+	resp, err := orch.RunStreaming(ctx, line, NopStreamSink{})
 	if err != nil {
 		return err
 	}

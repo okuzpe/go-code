@@ -11,7 +11,8 @@ func TestFormatToolUsePreview(t *testing.T) {
 		tool, input, wantSubstr string
 	}{
 		{"web_search", `{"query":"noticias venezuela"}`, "noticias venezuela"},
-		{"read_file", `{"path":"internal/app/run.go"}`, "internal/app/run.go"},
+		{"read_file", `{"path":"internal/app/run.go"}`, "@internal/app/run.go"},
+		{"read_file", `{"path":"internal/orchestrator/tool_transcript_snippet.go"}`, "@tool_transcript"},
 		{"bash", `{"command":"go test ./..."}`, "go test ./..."},
 		{"unknown", `{"query":"x","extra":1}`, "x"},
 		{"spawn_agent", `{"profile":"explore","task":"search the web for alog","interactive":false}`, "explore"},

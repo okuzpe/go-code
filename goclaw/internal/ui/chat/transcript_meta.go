@@ -7,7 +7,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
-	"github.com/okuzpe/goclaw/internal/text"
 )
 
 // lineMetaKind classifies a transcript row for width reflow (see reflowTranscriptForWidth).
@@ -31,7 +30,8 @@ type lineMeta struct {
 	thinkingLabel string
 	// tool card (lineKindToolCard) + tool running (lineKindToolRunning)
 	toolName    string
-	toolSummary string // full summary from OnToolUse; truncated on each render
+	toolSummary string // input preview from OnToolUse (pattern, etc.)
+	toolContent string // raw tool result body for reflow (glob/grep path lists); empty when not needed
 	toolOutcome string // one-line result hint from TranscriptOutcomeSnippet (tool cards only)
 	toolError   bool
 	// assistant markdown (lineKindAssistantMD)
@@ -55,11 +55,12 @@ func (m *Model) appendSeparatorMeta() {
 	m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindSeparator})
 }
 
-func (m *Model) appendToolCardMeta(toolName, summary, outcome string, isError bool) {
+func (m *Model) appendToolCardMeta(toolName, summary, outcome string, isError bool, content string) {
 	m.lineMeta = append(m.lineMeta, lineMeta{
 		kind:        lineKindToolCard,
 		toolName:    toolName,
 		toolSummary: summary,
+		toolContent: content,
 		toolOutcome: outcome,
 		toolError:   isError,
 	})
@@ -119,11 +120,8 @@ func (m *Model) reflowTranscriptForWidth() {
 		case lineKindToolCard:
 			meta := m.lineMeta[i]
 			label := orchestrator.ToolFinishedPhrase(meta.toolName)
-			truncatedSummary := ""
-			if s := strings.TrimSpace(meta.toolSummary); s != "" {
-				truncatedSummary = text.TruncateRunes(s, 96)
-			}
-			m.lines[i] = th.RenderToolCard(label, truncatedSummary, meta.toolOutcome, meta.toolError, m.width)
+			summaryBody := orchestrator.ToolCardSummaryBody(meta.toolName, meta.toolSummary, meta.toolContent, meta.toolError)
+			m.lines[i] = th.RenderToolCard(label, summaryBody, meta.toolOutcome, meta.toolError, m.width)
 		case lineKindThinking:
 			meta := m.lineMeta[i]
 			elapsed := int(time.Since(meta.startedAt).Seconds())

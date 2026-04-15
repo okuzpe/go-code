@@ -126,14 +126,76 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 		return "explore"
 	}
 
+	// Short social openers (including a few newlines) should not inherit a coding phase label
+	// or tool-heavy hints before we have a real task signal. Scoped to direct-coding profiles so
+	// hub/explore/plan fallbacks stay unchanged.
+	if (profile.Name == "general-purpose" || profile.Name == "builder") && conversationalChatTurn(lower, m) {
+		return "fast"
+	}
+
 	role := profileFallbackRole(profile)
+	// Vague but task-flavoured prompts (e.g. "good code question") should pick a coding role, not the
+	// generic short-chat fast path.
+	if role == "default" && conversationalTurnHasTaskSignals(lower) {
+		switch profile.Name {
+		case "general-purpose", "builder":
+			return "code"
+		}
+	}
 	// Short, single-line prompts: fast only when the profile fallback is still generic default.
 	if role == "default" && !strings.Contains(m, "\n") && utf8.RuneCountInString(m) < 120 &&
 		!strings.Contains(lower, "architect") &&
-		!strings.Contains(lower, "design doc") {
+		!strings.Contains(lower, "design doc") &&
+		!conversationalTurnHasTaskSignals(lower) {
 		return "fast"
 	}
 	return role
+}
+
+// conversationalChatTurn is true for brief greetings / thanks / goodbyes in common languages.
+// It runs after code/fix/reasoning/explore heuristics so task-like phrases still win.
+func conversationalChatTurn(lower, m string) bool {
+	m = strings.TrimSpace(m)
+	if m == "" || strings.Contains(m, "```") {
+		return false
+	}
+	if utf8.RuneCountInString(m) > 140 {
+		return false
+	}
+	fields := strings.Fields(m)
+	if len(fields) == 0 || len(fields) > 10 {
+		return false
+	}
+	first := strings.Trim(strings.ToLower(fields[0]), ",.:;!?¡¿")
+	switch first {
+	case "hola", "hi", "hello", "hey", "buenas", "buenos", "gracias", "thanks", "thank",
+		"bye", "adiós", "adios", "chao", "vale", "ok", "okay", "yes", "no", "sí", "si",
+		"good", "morning", "evening", "afternoon", "what's", "whats", "sup":
+	default:
+		return false
+	}
+	return !conversationalTurnHasTaskSignals(lower)
+}
+
+// conversationalTurnHasTaskSignals catches coding/repo vocabulary missed by earlier
+// keyword lists (e.g. "good code" as two words).
+func conversationalTurnHasTaskSignals(lower string) bool {
+	phraseHits := []string{
+		"implement", "debug", "panic", "compil", "refactor", "repository", "codebase",
+		"pull request", "git commit", "lint ", "stack trace", "stacktrace", "unit test",
+		"typescript", "javascript", "golang", "python", "error:",
+	}
+	if containsAny(lower, phraseHits) {
+		return true
+	}
+	for _, tok := range strings.Fields(lower) {
+		t := strings.Trim(tok, ",.:;!?¡¿()[]{}\"'`")
+		switch t {
+		case "code", "file", "repo", "branch", "commit", "bug", "test", "tests":
+			return true
+		}
+	}
+	return false
 }
 
 // taskExplorationHint returns a per-turn system suffix that reinforces the tool-first rule

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/okuzpe/goclaw/internal/coordinator"
-	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/stretchr/testify/require"
 )
@@ -64,23 +63,11 @@ func TestReplPrompt(t *testing.T) {
 	require.Equal(t, "12345678@wdeadbeef> ", replPrompt(s, f))
 }
 
-type noopStreamSink struct{}
-
-func (noopStreamSink) OnTextDelta(string)                {}
-func (noopStreamSink) OnThinkingStart(string) {}
-func (noopStreamSink) OnToolProgress(string, string)     {}
-func (noopStreamSink) OnToolUse(string, string, string)       {}
-func (noopStreamSink) OnToolResult(string, string, string, bool) {}
-func (noopStreamSink) OnDone(string)                     {}
-func (noopStreamSink) OnCompact(int)                     {}
-
-var _ orchestrator.StreamSink = noopStreamSink{}
-
 func TestStreamMockAssistant_cancelledBeforeStart(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	sess := session.New()
-	_, err := StreamMockAssistant(ctx, "x", noopStreamSink{}, sess)
+	_, err := StreamMockAssistant(ctx, "x", NopStreamSink{}, sess)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), context.Canceled.Error())
 	require.Equal(t, 0, sess.Len())
@@ -99,14 +86,14 @@ func TestStreamMockAssistant_recordsTurns(t *testing.T) {
 	withZeroMockStreamDelays(t)
 	ctx := context.Background()
 	sess := session.New()
-	reply, err := StreamMockAssistant(ctx, "hi", noopStreamSink{}, sess)
+	reply, err := StreamMockAssistant(ctx, "hi", NopStreamSink{}, sess)
 	require.NoError(t, err)
 	require.Contains(t, reply, "hi")
 	require.Equal(t, 2, sess.Len(), "want 2 messages (user + assistant)")
 }
 
 type cancelAfterDeltas struct {
-	noopStreamSink
+	NopStreamSink
 	n      int
 	limit  int
 	cancel context.CancelFunc
