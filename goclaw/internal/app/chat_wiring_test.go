@@ -37,6 +37,7 @@ func TestPrepareChatRuntime_MCPServerStartFailureContinues(t *testing.T) {
 		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
+		nil,
 	)
 	require.NoError(t, cmd.ParseFlags([]string{}))
 
@@ -77,6 +78,7 @@ func TestPrepareChatRuntime_ProjectHooksOnlyWhenTrusted(t *testing.T) {
 		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
+		nil,
 	)
 	require.NoError(t, cmd.ParseFlags([]string{}))
 
@@ -99,6 +101,7 @@ func TestPrepareChatRuntime_ProjectHooksOnlyWhenTrusted(t *testing.T) {
 		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
+		nil,
 	)
 	require.NoError(t, cmd2.ParseFlags([]string{}))
 	_, err = PrepareChatRuntime(cmd2)

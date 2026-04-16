@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -28,6 +27,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/slashcmd"
 	"github.com/okuzpe/goclaw/internal/text"
 	"github.com/okuzpe/goclaw/internal/ui/footerline"
+	"github.com/okuzpe/goclaw/internal/ui/icons"
 )
 
 type Model struct {
@@ -249,6 +249,8 @@ type Options struct {
 	FooterStats func() string
 	// TUIMouseScroll enables mouse wheel on the transcript (see config.TUIMouseScroll).
 	TUIMouseScroll bool
+	// TUIIcons selects footer/workspace glyphs: emoji, unicode, ascii, nerd (canonical; see config.TUIIcons).
+	TUIIcons string
 	// SlashContext supplies live slash-command argument suggestions (optional; fullscreen TUI from cmd/goclaw).
 	SlashContext func() slashcmd.SlashContext
 }
@@ -325,11 +327,22 @@ func placeholderForWidth(termWidth int) string {
 
 // transcriptScrollNavHint is a short footer line for reading long assistant output in the TUI.
 func (m *Model) transcriptScrollNavHint() string {
-	s := "Transcript: Ctrl+B browse · PgUp/PgDn · Alt+arrows"
-	if m.tuiMouseScroll {
-		return s + " · wheel on transcript or compose"
+	return transcriptScrollNavFooterLine(m.tuiMouseScroll)
+}
+
+// streamBusyFooterScrollHint is a dim footer line while the model is working so users can read
+// earlier transcript lines (see tryBusyComposeTranscriptScroll). Empty when overlays or approval
+// modal are active. Copy lives in transcript_scroll_hints.go.
+func (m *Model) streamBusyFooterScrollHint(termWidth int) string {
+	if m.transcriptBrowse || m.pending != nil {
+		return ""
 	}
-	return s
+	if !(m.streaming || m.spinnerActive) {
+		return ""
+	}
+	narrow := termWidth > 0 && termWidth < composePlaceholderNarrowMaxW
+	empty := strings.TrimSpace(m.input.Value()) == ""
+	return streamBusyTranscriptScrollFooterLine(m.tuiMouseScroll, empty, narrow)
 }
 
 func (m *Model) exitTranscriptBrowse() {
@@ -353,6 +366,8 @@ func (m *Model) enterTranscriptBrowse() {
 // composeViewportKeyMap avoids stealing Space, arrows, j/k/h/l, u, d, or b from the compose textarea.
 // Half-page keys avoid ctrl+u / ctrl+d (textarea delete before/after cursor). alt+pg* helps when PgUp
 // is not delivered by the host terminal. Plain PgUp/PgDn are routed to the transcript only (see Update).
+// While streaming with an empty compose box, plain ↑/↓ (and j/k) still scroll the transcript via
+// tryBusyComposeTranscriptScroll in handleKeyString so users can read history during a reply.
 func composeViewportKeyMap() viewport.KeyMap {
 	km := viewport.DefaultKeyMap()
 	km.PageUp = key.NewBinding(
@@ -381,6 +396,31 @@ func composeTranscriptScrollKey(k string) bool {
 		"alt+pgup", "alt+pgdown",
 		"alt+up", "alt+down",
 		"ctrl+shift+u", "ctrl+shift+d":
+		return true
+	default:
+		return false
+	}
+}
+
+// tryBusyComposeTranscriptScroll scrolls the transcript when the model is working (streaming or
+// spinner) and the compose box is empty. Plain arrows are otherwise unused by the viewport keymap
+// in compose mode and would only move the textarea cursor or repl history.
+func (m *Model) tryBusyComposeTranscriptScroll(k string) bool {
+	if m.transcriptBrowse {
+		return false
+	}
+	if !(m.streaming || m.spinnerActive) {
+		return false
+	}
+	if strings.TrimSpace(m.input.Value()) != "" {
+		return false
+	}
+	switch k {
+	case "up", "k":
+		m.viewport.ScrollUp(1)
+		return true
+	case "down", "j":
+		m.viewport.ScrollDown(1)
 		return true
 	default:
 		return false
@@ -417,6 +457,7 @@ func New(ctx context.Context, opts Options) Model {
 	if th == nil {
 		th = DefaultTheme()
 	}
+	th.Icons = icons.SetFromCanonical(opts.TUIIcons)
 
 	vp := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 	// Wheel requires MouseModeCellMotion in View(); off by default (see config TUIMouseScroll / tui_mouse_scroll).
@@ -608,8 +649,11 @@ func (m *Model) handleKeyString(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	}
 	switch k {
 	case "up":
-		if m.pending != nil || m.transcriptBrowse {
+		if m.transcriptBrowse {
 			return m, nil, false
+		}
+		if m.tryBusyComposeTranscriptScroll("up") {
+			return m, nil, true
 		}
 		if m.replHistoryNavUp() {
 			m.resizeInput()
@@ -618,12 +662,31 @@ func (m *Model) handleKeyString(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		}
 		return m, nil, false
 	case "down":
-		if m.pending != nil || m.transcriptBrowse {
+		if m.transcriptBrowse {
 			return m, nil, false
+		}
+		if m.tryBusyComposeTranscriptScroll("down") {
+			return m, nil, true
 		}
 		if m.replHistoryNavDown() {
 			m.resizeInput()
 			m.layout()
+			return m, nil, true
+		}
+		return m, nil, false
+	case "k":
+		if m.transcriptBrowse {
+			return m, nil, false
+		}
+		if m.tryBusyComposeTranscriptScroll("k") {
+			return m, nil, true
+		}
+		return m, nil, false
+	case "j":
+		if m.transcriptBrowse {
+			return m, nil, false
+		}
+		if m.tryBusyComposeTranscriptScroll("j") {
 			return m, nil, true
 		}
 		return m, nil, false
@@ -966,40 +1029,8 @@ func (m *Model) syncInputPlaceholder() {
 	m.input.Placeholder = placeholderForWidth(m.width)
 }
 
-// visibleTranscriptLine1 returns the 1-based index of the first logical transcript row (m.lines)
-// visible at the top of the viewport, using the same soft-wrap line-height rules as
-// charm.land/bubbles/v2/viewport. yOffset is the viewport vertical scroll position.
-func visibleTranscriptLine1(lines []string, yOffset int, maxCols int, softWrap bool) int {
-	n := len(lines)
-	if n == 0 {
-		return 0
-	}
-	if maxCols < 1 {
-		maxCols = 1
-	}
-	if !softWrap {
-		if yOffset < 0 {
-			yOffset = 0
-		}
-		if yOffset >= n {
-			return n
-		}
-		return yOffset + 1
-	}
-	maxWidth := float64(maxCols)
-	var total int
-	for i, line := range lines {
-		lineHeight := max(1, int(math.Ceil(float64(ansi.StringWidth(line))/maxWidth)))
-		if yOffset >= total && yOffset < total+lineHeight {
-			return i + 1
-		}
-		total += lineHeight
-	}
-	return n
-}
-
-// footerWorkspaceBrand is the idle-footer left “brand”: IDE-style chip with workspace basename
-// and current transcript line (Ln = first visible logical row), or the plain word Context when no workspace is set.
+// footerWorkspaceBrand is the idle-footer left “brand”: IDE-style chip with workspace basename,
+// or the plain word Context when no workspace is set.
 func (m *Model) footerWorkspaceBrand() string {
 	th := m.theme
 	if th == nil {
@@ -1013,21 +1044,7 @@ func (m *Model) footerWorkspaceBrand() string {
 	if base == "." || base == "/" || base == string(filepath.Separator) {
 		return th.FooterDim.Render("Context")
 	}
-	const icon = "▣"
-	chipText := icon + " " + base
-	if len(m.lines) > 0 {
-		mw := m.width
-		if mw <= 0 {
-			mw = m.viewport.Width()
-		}
-		if mw <= 0 {
-			mw = 80
-		}
-		line1 := visibleTranscriptLine1(m.lines, m.viewport.YOffset(), mw, m.viewport.SoftWrap)
-		if line1 > 0 {
-			chipText = fmt.Sprintf("%s %s L%d", icon, base, line1)
-		}
-	}
+	chipText := th.Icons.WorkspaceGlyph() + " " + base
 	return th.FooterWorkspaceChip.Render(chipText)
 }
 
@@ -1343,7 +1360,7 @@ func (m *Model) footerView() string {
 		b.WriteString("\n")
 	} else if stats != "" {
 		// Idle: show stats (message/token budget for the LLM context window — not assistant output).
-		// Leading workspace chip (basename + first visible transcript row Ln) plus optional #session id on the right.
+		// Leading workspace chip (basename) plus optional #session id on the right.
 		session := footerline.AlignedHintsSession(m.footerWorkspaceBrand(), stats, "", m.sessionID, fw)
 		if strings.TrimSpace(session) != "" {
 			if fw > 4 {
@@ -1363,6 +1380,14 @@ func (m *Model) footerView() string {
 		}
 		b.WriteString("\n")
 	}
+	if sb := strings.TrimSpace(m.streamBusyFooterScrollHint(fw)); sb != "" {
+		if fw > 4 {
+			b.WriteString(th.FooterDim.Width(fw).Render(sb))
+		} else {
+			b.WriteString(th.FooterDim.Render(sb))
+		}
+		b.WriteString("\n")
+	}
 	if sh := strings.TrimSpace(m.idleTranscriptHint); sh != "" {
 		if fw > 4 {
 			b.WriteString(th.FooterDim.Width(fw).Render(sh))
@@ -1372,10 +1397,7 @@ func (m *Model) footerView() string {
 		b.WriteString("\n")
 	}
 	if m.transcriptBrowse {
-		line := "Browse: ↑↓ j/k PgUp · Ctrl+B editor · Esc back"
-		if m.tuiMouseScroll {
-			line += " · wheel"
-		}
+		line := transcriptBrowseFooterLine(m.tuiMouseScroll)
 		if fw > 4 {
 			b.WriteString(th.FooterDim.Width(fw).Render(line))
 		} else {

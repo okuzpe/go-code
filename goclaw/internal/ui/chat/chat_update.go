@@ -170,6 +170,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.turnHadWorkspaceWrite = false
 		m.footerStatsStreamAt = time.Time{}
 		m.refreshFooterStatsCache()
+		m.idleTranscriptHint = ""
 		m.exitTranscriptBrowse()
 		m.streaming = true
 		m.assistantPlaceholder = true
@@ -411,7 +412,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.idleTranscriptHint = ""
 		m.footerHint = ""
 		m.stripAssistantPlaceholderLine()
-		m.appendError(fmt.Sprintf("✗ %v", msg.err))
+		eth := m.theme
+		if eth == nil {
+			eth = DefaultTheme()
+		}
+		m.appendError(fmt.Sprintf("%s %v", eth.Icons.ToolErr(), msg.err))
 		m.curAssistantLineIdx = -1
 		return m, nil
 	}

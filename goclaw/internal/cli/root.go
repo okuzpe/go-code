@@ -17,9 +17,23 @@ type RunDoctorFunc func(cmd *cobra.Command, args []string) error
 // RunPromptFunc runs one agent turn from argv text (`goclaw prompt ...`).
 type RunPromptFunc func(cmd *cobra.Command, args []string) error
 
+// TelegramSubcommandFunc runs one `goclaw telegram …` handler (injected from cmd/goclaw to avoid an app↔cli import cycle in tests).
+type TelegramSubcommandFunc func(cmd *cobra.Command, args []string) error
+
+// TelegramCommands wires optional telegram subcommands. Nil receiver or all nil fields omits the `telegram` command group.
+type TelegramCommands struct {
+	Start     TelegramSubcommandFunc // guided setup (TTY) then bridge; used by make telegram
+	Bridge    TelegramSubcommandFunc // strict: exit if settings incomplete
+	Configure TelegramSubcommandFunc // merge settings.local.json only
+}
+
+func telegramWired(tg *TelegramCommands) bool {
+	return tg != nil && (tg.Start != nil || tg.Bridge != nil || tg.Configure != nil)
+}
+
 // NewRootCmd builds the Cobra command tree. runChat and listSessions are injected so tests
 // do not link the full UI stack.
-func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, listSessions RunListSessionsFunc, runDoctor RunDoctorFunc) *cobra.Command {
+func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, listSessions RunListSessionsFunc, runDoctor RunDoctorFunc, tg *TelegramCommands) *cobra.Command {
 	root := &cobra.Command{
 		Use:     "goclaw",
 		Short:   "Go CLI coding agent — coordinator hub by default; workers run tools (local Ollama)",
@@ -68,8 +82,51 @@ func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, li
 	root.AddCommand(newDoctorCmd(runDoctor))
 	root.AddCommand(newChatCmd(runChat))
 	root.AddCommand(newPromptCmd(runPrompt))
+	if telegramWired(tg) {
+		root.AddCommand(newTelegramCmd(tg))
+	}
 
 	return root
+}
+
+func newTelegramCmd(tg *TelegramCommands) *cobra.Command {
+	telegram := &cobra.Command{
+		Use:   "telegram",
+		Short: "Optional Telegram Bot API bridge (allowlisted users only)",
+	}
+	if tg.Configure != nil {
+		configure := &cobra.Command{
+			Use:   "configure",
+			Short: "Interactive wizard: merge Telegram bot token and allowlist into ~/.goclaw/settings.local.json",
+			RunE:  tg.Configure,
+		}
+		telegram.AddCommand(configure)
+	}
+	if tg.Start != nil {
+		start := &cobra.Command{
+			Use:   "start",
+			Short: "Run the Telegram bridge (prompts for missing settings in a TTY, then long-polls)",
+			Long: `Same bridge as telegram bridge after settings exist. When bot token or telegram_allowed_user_ids
+is missing, runs an interactive prompt (stdin/stdout must be TTYs) and merges into ~/.goclaw/settings.local.json.
+
+For scripts or CI, use telegram bridge with env vars or a pre-filled settings.local.json.`,
+			RunE: tg.Start,
+		}
+		telegram.AddCommand(start)
+	}
+	if tg.Bridge != nil {
+		bridge := &cobra.Command{
+			Use:   "bridge",
+			Short: "Long-poll Telegram and run one agent turn per allowlisted text message",
+			Long: `Runs until interrupted. Requires telegram_bot_token (or telegram_bot_token_file / GOCLAW_TELEGRAM_BOT_TOKEN)
+and a non-empty telegram_allowed_user_ids list (or GOCLAW_TELEGRAM_ALLOWED_USER_IDS) in settings — prefer ~/.goclaw/settings.local.json.
+
+Tool runs that would prompt in Ask mode fail in this path; set tool_permissions to "allow" for tools you need, use a read-only profile, or --no-tools.`,
+			RunE: tg.Bridge,
+		}
+		telegram.AddCommand(bridge)
+	}
+	return telegram
 }
 
 func newDoctorCmd(runDoctor RunDoctorFunc) *cobra.Command {

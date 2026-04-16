@@ -20,6 +20,7 @@ func FormatToolUsePreview(toolName, input string) string {
 	if input == "" {
 		return ""
 	}
+	input = unwrapWireToolArgumentsJSON(input)
 	if s := formatKnownToolPreview(toolName, input); s != "" {
 		max := toolUsePreviewMaxRunes
 		if toolName == "spawn_agent" {
@@ -28,6 +29,38 @@ func FormatToolUsePreview(toolName, input string) string {
 		return truncatePreviewRunes(s, max)
 	}
 	return truncatePreviewRunes(genericJSONSummary(input), toolUsePreviewMaxRunes)
+}
+
+// unwrapWireToolArgumentsJSON returns the inner "arguments" object when models emit the
+// Ollama/OpenAI-style envelope {"name":"read_file","arguments":{...}} instead of raw args.
+// If "arguments" is a JSON string containing another object, that string is unwrapped once.
+func unwrapWireToolArgumentsJSON(input string) string {
+	in := strings.TrimSpace(input)
+	var w struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	}
+	if err := json.Unmarshal([]byte(in), &w); err != nil {
+		return input
+	}
+	if strings.TrimSpace(w.Name) == "" || len(w.Arguments) == 0 {
+		return input
+	}
+	args := strings.TrimSpace(string(w.Arguments))
+	if args == "" || args == "null" {
+		return input
+	}
+	if args[0] == '{' || args[0] == '[' {
+		return args
+	}
+	var innerStr string
+	if json.Unmarshal(w.Arguments, &innerStr) == nil {
+		innerStr = strings.TrimSpace(innerStr)
+		if innerStr != "" && (innerStr[0] == '{' || innerStr[0] == '[') {
+			return innerStr
+		}
+	}
+	return input
 }
 
 func formatKnownToolPreview(toolName, input string) string {

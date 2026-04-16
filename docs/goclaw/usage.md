@@ -248,6 +248,9 @@ Persistent flags apply to the default command and `chat`:
 | `prompt <text>...` | One turn from argv |
 | `doctor` | Preflight check (shows `task_model_router` / `task_models` when set) |
 | `sessions list` | Same as `--list-sessions` |
+| `telegram start` | Telegram bridge; prompts for missing token/allowlist in a TTY, then long-polls (same as `make telegram`) |
+| `telegram configure` | Interactive wizard only: merge Telegram keys into `~/.goclaw/settings.local.json` |
+| `telegram bridge` | Telegram bridge without prompts; fails if settings incomplete (scripts / CI) |
 
 ## Plan file (`.goclaw/plan.md`)
 

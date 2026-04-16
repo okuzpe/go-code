@@ -90,6 +90,9 @@ func DoctorReportFromRuntime(_ context.Context, rt *ChatRuntime) string {
 	lines = append(lines, ideBridgeDoctorLines(rt)...)
 
 	lines = append(lines, "")
+	lines = append(lines, telegramDoctorLines(rt)...)
+
+	lines = append(lines, "")
 	lines = append(lines, "checks:")
 	var ollamaOK bool
 	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
@@ -589,6 +592,38 @@ func ideBridgeDoctorLines(rt *ChatRuntime) []string {
 	}
 	out = append(out, checkLine("ide lockfile MCP discovery", true))
 	out = append(out, "    endpoint: "+truncate(endpoint, doctorMCPDisplayMaxRunes))
+	return out
+}
+
+// telegramDoctorLines summarizes optional Telegram bridge settings (no token contents).
+func telegramDoctorLines(rt *ChatRuntime) []string {
+	if rt == nil {
+		return nil
+	}
+	cfg := rt.Cfg
+	out := []string{"telegram bridge (optional):"}
+	tok, err := cfg.ResolveTelegramBotToken(rt.LaunchDir)
+	hasToken := err == nil && strings.TrimSpace(tok) != ""
+	if err != nil {
+		out = append(out, checkLine("telegram bot token readable", false))
+		out = append(out, "    err: "+err.Error())
+	} else if hasToken {
+		out = append(out, checkLine("telegram bot token configured", true))
+		out = append(out, fmt.Sprintf("    token length: %d characters", len(tok)))
+	} else {
+		out = append(out, checkLine("telegram bot token configured", false))
+		out = append(out, "    (unset — see docs/goclaw/telegram-bridge.md)")
+	}
+	n := len(cfg.TelegramAllowedUserIDs)
+	out = append(out, checkLine("telegram_allowed_user_ids non-empty", n > 0))
+	if n > 0 {
+		out = append(out, fmt.Sprintf("    allowlist count: %d", n))
+	} else if hasToken {
+		out = append(out, "    warning: token set but allowlist empty — goclaw telegram bridge will exit")
+	}
+	if sid := strings.TrimSpace(cfg.TelegramSessionID); sid != "" {
+		out = append(out, fmt.Sprintf("  telegram_session_id: %s (when --session is omitted)", sid))
+	}
 	return out
 }
 

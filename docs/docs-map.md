@@ -13,7 +13,7 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | Area | Status |
 |------|--------|
 | Entry point | [`cmd/goclaw`](../goclaw/cmd/goclaw/main.go) → [`internal/cli`](../goclaw/internal/cli/root.go) (Cobra) → [`internal/app`](../goclaw/internal/app/run.go). **UI:** Bubble Tea TUI on TTY by default — flags and env in [`usage.md`](./goclaw/usage.md). Slash commands: [`internal/slashcmd`](../goclaw/internal/slashcmd/slash.go). |
-| Packages | `internal/llm`, `orchestrator`, `session`, `tools`, `permissions`, `config`, `hooks`, `agents`, `memory`, `planfile`, `todos`, `mcp`, `ide`, `plugin`, `skills`, `swarm`, `ui/chat` (BubbleTea TUI) |
+| Packages | `internal/llm`, `orchestrator`, `session`, `tools`, `permissions`, `config`, `hooks`, `agents`, `memory`, `planfile`, `todos`, `mcp`, `ide`, `telegram` (optional Bot API bridge), `plugin`, `skills`, `swarm`, `ui/chat` (BubbleTea TUI) |
 | Tools | Ten built-ins: `read_file`, `glob`, `grep`, `bash`, `write_file`, `edit_file`, `patch`, `web_fetch`, `web_search`, `todo_write`; optional `script` when `allow_script`; coordinator-only `spawn_agent`, `stop_task`; MCP tools as `mcp__<id>__<name>` |
 | Plan workflow | Workspace `.goclaw/plan.md` ([`internal/planfile`](../goclaw/internal/planfile/planfile.go)); `/plan run` (save + execute) or `/apply-plan` switches to **`general-purpose`** for **one** execution turn (or **`coordinator`** with `--hub` / `plan_apply_use_coordinator`). Default **session** profile is **`coordinator`** ([`config.Default()`](../goclaw/internal/config/config.go)) |
 | Memory | `~/.goclaw/memory/` + `MEMORY.md` index; REPL `/memory list|add|delete`; opt-in auto-capture after `write_file`/`edit_file` (`memory_auto_extract`) |
@@ -62,6 +62,7 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | [`docs/goclaw/code-review-workflow.md`](./goclaw/code-review-workflow.md) | `/review`, `code-review` profile, git-anchored review | End-user | Shipped |
 | [`docs/goclaw/verification-recipe.md`](./goclaw/verification-recipe.md) | `.goclaw/verify.sh` post-edit checks | End-user | Shipped |
 | [`docs/goclaw/ide-editor-setup.md`](./goclaw/ide-editor-setup.md) | Editor MCP lockfile golden path (`~/.goclaw/ide`, `ide_bridge_mcp`, notify URL) | End-user | Shipped |
+| [`docs/goclaw/telegram-bridge.md`](./goclaw/telegram-bridge.md) | Optional `goclaw telegram bridge`: Bot API, allowlist, tool_permissions | End-user | Shipped |
 | [`docs/goclaw/examples/ide-mcp-endpoint.example.json`](./goclaw/examples/ide-mcp-endpoint.example.json) | Copy-paste lockfile template for IDE HTTP MCP | End-user | Shipped |
 | [`docs/goclaw/ide-pr-parity.md`](./goclaw/ide-pr-parity.md) | IDE / PR parity vs Wave A–B roadmap | Contributor | Shipped |
 | [`docs/goclaw/manual-tui-checklist.md`](./goclaw/manual-tui-checklist.md) | Bubble Tea TUI QA | Maintainer | Shipped |

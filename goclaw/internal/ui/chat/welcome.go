@@ -113,7 +113,7 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	if inner < 1 {
 		inner = 1
 	}
-	mid := border.Render("│")
+	mid := border.Render(th.Icons.ToolCardV())
 	// Wider hero column, tips column wide enough for wrapped sentences (min 28 when room allows).
 	rightW := 28
 	if inner < 50 {
@@ -230,18 +230,19 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 		lCell := lipgloss.NewStyle().Width(leftW).Align(lipgloss.Left).Render(leftLines[i])
 		rCell := lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(rightLines[i])
 		row := lipgloss.JoinHorizontal(lipgloss.Top, lCell, mid, rCell)
-		fullRow := lipgloss.JoinHorizontal(lipgloss.Top, border.Render("│"), row, border.Render("│"))
+		fullRow := lipgloss.JoinHorizontal(lipgloss.Top, border.Render(th.Icons.ToolCardV()), row, border.Render(th.Icons.ToolCardV()))
 		rows = append(rows, fullRow)
 	}
 
 	titlePlain := "goclaw v" + version
-	topPrefix := "╭── "
+	topPrefix := th.Icons.WelcomeTopPrefix()
+	h := th.Icons.ToolCardH()
 	dashAfterTitle := termWidth - lipgloss.Width(topPrefix) - lipgloss.Width(titlePlain) - 2
 	if dashAfterTitle < 1 {
 		dashAfterTitle = 1
 	}
-	topLine := border.Render(topPrefix) + titleAccent.Render(titlePlain) + border.Render(" "+strings.Repeat("─", dashAfterTitle)+"╮")
-	botLine := border.Render("╰" + strings.Repeat("─", inner) + "╯")
+	topLine := border.Render(topPrefix) + titleAccent.Render(titlePlain) + border.Render(" "+strings.Repeat(h, dashAfterTitle)+th.Icons.WelcomeTopRightCorner())
+	botLine := border.Render(th.Icons.WelcomeBottomLeftCorner() + strings.Repeat(h, inner) + th.Icons.WelcomeBottomRightCorner())
 
 	innerBlock := strings.Join(rows, "\n")
 	framed := topLine + "\n" + innerBlock + "\n" + botLine

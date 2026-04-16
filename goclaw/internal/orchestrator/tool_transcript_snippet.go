@@ -133,6 +133,15 @@ func ToolCardSummaryBody(toolName, inputPreview, content string, isError bool) s
 	switch toolName {
 	case "glob", "grep":
 		return buildListToolCardSummary(inputPreview, content)
+	case "read_file", "write_file", "edit_file", "patch":
+		if inputPreview == "" {
+			return ""
+		}
+		s := strings.TrimSpace(inputPreview)
+		if strings.HasPrefix(s, "→") {
+			return text.TruncateRunes(s, toolCardListLineMaxRunes)
+		}
+		return text.TruncateRunes("→ "+s, toolCardListLineMaxRunes)
 	default:
 		if inputPreview == "" {
 			return ""

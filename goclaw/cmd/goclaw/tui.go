@@ -68,6 +68,7 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 
 	opts := chat.Options{
 		TUIMouseScroll: rt.Cfg.TUIMouseScroll,
+		TUIIcons:       rt.Cfg.TUIIcons,
 		SlashContext: func() slashcmd.SlashContext {
 			return slashcmd.SlashContext{SlashEnv: slashEnv, Mem: rt.MemStore, Orch: orch, Sess: &sess, Store: rt.Store}
 		},

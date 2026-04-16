@@ -7,7 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/okuzpe/goclaw/internal/ui/icons"
 )
 
 // settingsFile is the JSON shape for ~/.goclaw/settings.json and .goclaw/settings.json.
@@ -51,11 +54,16 @@ type settingsFile struct {
 	MemoryAutoExtract            *bool               `json:"memory_auto_extract,omitempty"`
 	MemoryLLMSilentExtract       *bool               `json:"memory_llm_silent_extract,omitempty"`
 	TUIMouseScroll               *bool               `json:"tui_mouse_scroll,omitempty"`
+	TUIIcons                     *string             `json:"tui_icons,omitempty"`
 	UIAppearance                 *string             `json:"ui_appearance,omitempty"`
 	ToolWorkspaceRoot            *string             `json:"tool_workspace_root,omitempty"`
 	PlanRequireApplyApproval     *bool               `json:"plan_require_apply_approval,omitempty"`
 	PlanApplyUseCoordinator      *bool               `json:"plan_apply_use_coordinator,omitempty"`
 	AgentPickerHiddenProfiles    []string           `json:"agent_picker_hidden_profiles,omitempty"`
+	TelegramBotToken             *string             `json:"telegram_bot_token,omitempty"`
+	TelegramBotTokenFile         *string             `json:"telegram_bot_token_file,omitempty"`
+	TelegramAllowedUserIDs       []int64            `json:"telegram_allowed_user_ids,omitempty"`
+	TelegramSessionID            *string             `json:"telegram_session_id,omitempty"`
 }
 
 // Load merges JSON settings into base in this order (later wins for overlapping keys):
@@ -88,7 +96,38 @@ func Load(base Config, cwd string) (Config, error) {
 	if len(perms) > 0 {
 		cfg.PermissionModes = perms
 	}
+	applyTelegramEnvOverrides(&cfg)
 	return cfg, nil
+}
+
+// applyTelegramEnvOverrides applies GOCLAW_TELEGRAM_BOT_TOKEN and GOCLAW_TELEGRAM_ALLOWED_USER_IDS after JSON merge.
+func applyTelegramEnvOverrides(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("GOCLAW_TELEGRAM_BOT_TOKEN")); v != "" {
+		cfg.TelegramBotToken = v
+	}
+	if v := strings.TrimSpace(os.Getenv("GOCLAW_TELEGRAM_ALLOWED_USER_IDS")); v != "" {
+		ids := parseTelegramAllowedUserIDsFromEnv(v)
+		if len(ids) > 0 {
+			cfg.TelegramAllowedUserIDs = ids
+		}
+	}
+}
+
+func parseTelegramAllowedUserIDsFromEnv(raw string) []int64 {
+	parts := strings.Split(raw, ",")
+	var out []int64
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		n, err := strconv.ParseInt(p, 10, 64)
+		if err != nil {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // mergeFile reads path if it exists and applies fields to cfg and merges tool_permissions into perms (later files win).
@@ -236,6 +275,9 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	if sf.TUIMouseScroll != nil {
 		cfg.TUIMouseScroll = *sf.TUIMouseScroll
 	}
+	if sf.TUIIcons != nil {
+		cfg.TUIIcons = icons.CanonicalTUIIcons(*sf.TUIIcons)
+	}
 	if len(sf.ExternalHooks) > 0 {
 		cfg.ExternalHooks = append(cfg.ExternalHooks, sf.ExternalHooks...)
 	}
@@ -258,6 +300,18 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 				cfg.AgentPickerHiddenProfiles = append(cfg.AgentPickerHiddenProfiles, s)
 			}
 		}
+	}
+	if sf.TelegramBotToken != nil {
+		cfg.TelegramBotToken = strings.TrimSpace(*sf.TelegramBotToken)
+	}
+	if sf.TelegramBotTokenFile != nil {
+		cfg.TelegramBotTokenFile = strings.TrimSpace(*sf.TelegramBotTokenFile)
+	}
+	if len(sf.TelegramAllowedUserIDs) > 0 {
+		cfg.TelegramAllowedUserIDs = append([]int64(nil), sf.TelegramAllowedUserIDs...)
+	}
+	if sf.TelegramSessionID != nil {
+		cfg.TelegramSessionID = strings.TrimSpace(*sf.TelegramSessionID)
 	}
 	maps.Copy(perms, sf.ToolPermissions)
 	return nil

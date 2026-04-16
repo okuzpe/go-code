@@ -71,9 +71,9 @@ func (m *Model) refreshToolLogOverlay() {
 	if m.toolLogDetail && m.toolLogCursor >= 0 && m.toolLogCursor < len(m.toolLog) {
 		entry := m.toolLog[m.toolLogCursor]
 		var b strings.Builder
-		icon := "✓"
+		icon := th.Icons.ToolOK()
 		if entry.isError {
-			icon = "✗"
+			icon = th.Icons.ToolErr()
 		}
 		b.WriteString(th.ModalTitle.Render(fmt.Sprintf("[%s] %s", icon, orchestrator.ToolFinishedPhrase(entry.name))))
 		b.WriteString("\n")
@@ -107,9 +107,9 @@ func (m *Model) refreshToolLogOverlay() {
 	b.WriteString(th.ModalTitle.Render(fmt.Sprintf("Tool history (%d steps)", total)))
 	b.WriteString("\n\n")
 	for i, entry := range m.toolLog {
-		icon := "✓"
+		icon := th.Icons.ToolOK()
 		if entry.isError {
-			icon = "✗"
+			icon = th.Icons.ToolErr()
 		}
 		label := orchestrator.ToolFinishedPhrase(entry.name)
 		detail := ""

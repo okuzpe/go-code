@@ -215,6 +215,14 @@ flowchart LR
 
 ---
 
+### 14b. Telegram bridge (`internal/telegram`)
+
+| Primary doc | Secondary | Code |
+|-------------|-----------|------|
+| [`telegram-bridge.md`](../goclaw/telegram-bridge.md) | [`security.md`](../goclaw/security.md) | `telegram/client.go`, `app/telegram_bridge.go`, `config` keys + `loader.go` |
+
+---
+
 ### 15. Coordinator (`internal/coordinator`)
 
 | Primary doc | Secondary | Code |

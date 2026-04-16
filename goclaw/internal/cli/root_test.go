@@ -14,6 +14,7 @@ func testRoot(t *testing.T) *cobra.Command {
 		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
+		nil,
 	)
 }
 
@@ -45,6 +46,7 @@ func TestSessionsListExecute(t *testing.T) {
 		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
+		nil,
 	)
 	root.SetOut(io.Discard)
 	root.SetErr(io.Discard)

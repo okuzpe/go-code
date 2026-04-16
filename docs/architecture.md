@@ -245,6 +245,7 @@ sequenceDiagram
 | Permissions / bash | `internal/permissions`, `internal/tools` | [reference/bash-security.md](./reference/bash-security.md) |
 | Custom agents | `internal/agents` | [reference/custom-agents.md](./reference/custom-agents.md) |
 | IDE bridge | `internal/ide` | [ide-editor-setup.md](./goclaw/ide-editor-setup.md) (golden path), [reference/ide-bridge.md](./reference/ide-bridge.md) (contract) |
+| Telegram bridge | `internal/telegram`, `internal/app` (`RunTelegramBridge`) | [telegram-bridge.md](./goclaw/telegram-bridge.md) |
 
 ## Changelog
 

@@ -23,6 +23,11 @@ func main() {
 		},
 		app.RunListSessions,
 		app.RunDoctor,
+		&cli.TelegramCommands{
+			Start:     app.RunTelegramStart,
+			Bridge:    app.RunTelegramBridge,
+			Configure: app.RunTelegramConfigure,
+		},
 	)
 	if err := root.Execute(); err != nil {
 		slog.Error("fatal", "err", err)

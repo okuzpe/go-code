@@ -15,6 +15,7 @@ func testRootForAutomation(t *testing.T) *cobra.Command {
 		func(*cobra.Command, []string) error { return nil },
 		func(*cobra.Command) error { return nil },
 		func(*cobra.Command, []string) error { return nil },
+		nil,
 	)
 }
 

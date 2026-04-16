@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/okuzpe/goclaw/internal/tools"
+	"github.com/okuzpe/goclaw/internal/ui/icons"
 )
 
 // DefaultOllamaModel is the built-in Ollama tag when neither OLLAMA_MODEL nor settings.json
@@ -188,6 +189,10 @@ type Config struct {
 	// env GOCLAW_TUI_MOUSE_SCROLL=1|true|yes|on to enable wheel on the transcript.
 	TUIMouseScroll bool
 
+	// TUIIcons selects footer/workspace glyphs: emoji (default), unicode (legacy ▣), ascii, or nerd (Nerd Fonts PUA).
+	// JSON: tui_icons; env: GOCLAW_TUI_ICONS (merged settings override env default from Default()).
+	TUIIcons string
+
 	// UIAppearance selects TUI colors and markdown style: auto, dark, light, dark_colorblind, light_colorblind, dark_ansi, light_ansi.
 	// JSON key: ui_appearance. Empty or "auto" uses terminal-adaptive styling.
 	UIAppearance string
@@ -201,6 +206,18 @@ type Config struct {
 	// AgentPickerHiddenProfiles lists profile names hidden from the TUI Ctrl+P /agents picker (built-in names, lower-case).
 	// JSON: agent_picker_hidden_profiles (array of strings).
 	AgentPickerHiddenProfiles []string
+
+	// TelegramBotToken is the Bot API token from BotFather (prefer settings.local.json). Env GOCLAW_TELEGRAM_BOT_TOKEN overrides when set.
+	TelegramBotToken string
+	// TelegramBotTokenFile is a path to a file containing the bot token (single line). Relative paths resolve from launch cwd.
+	// JSON: telegram_bot_token_file.
+	TelegramBotTokenFile string
+	// TelegramAllowedUserIDs is a non-empty allowlist of Telegram user ids that may trigger the bridge (fail-closed when empty).
+	// JSON: telegram_allowed_user_ids (array of integers).
+	TelegramAllowedUserIDs []int64
+	// TelegramSessionID optionally resumes this session id when running goclaw telegram bridge without --session.
+	// JSON: telegram_session_id.
+	TelegramSessionID string
 }
 
 // MCPServerConfig describes one MCP server (stdio subprocess and/or Streamable HTTP URL).
@@ -272,6 +289,7 @@ func Default() Config {
 		AutoContinueActionRequests:   true,
 		TruthFooterNoWorkspaceWrites: true,
 		TUIMouseScroll:               envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
+		TUIIcons:                     icons.CanonicalTUIIcons(os.Getenv("GOCLAW_TUI_ICONS")),
 		UIAppearance:                 "auto",
 	}
 	if v := strings.TrimSpace(os.Getenv("GOCLAW_OLLAMA_HTTP_TIMEOUT_SEC")); v != "" {

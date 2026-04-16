@@ -161,6 +161,7 @@ goclaw/
 │   ├── hooks/                   ← Registry + external command/HTTP + LoadHooksFile
 │   ├── mcp/                     ← stdio JSON-RPC session, ToolAdapter → tools.Tool
 │   ├── ide/                     ← optional localhost POST notifier (GOCLAW_IDE_NOTIFY_URL)
+│   ├── telegram/                ← optional Bot API client for `goclaw telegram start` / `bridge` (api.telegram.org only)
 │   ├── agents/profile.go        ← Profile{Name, ModelOverride, ToolAllowlist, ReadOnly, SystemPrompt}
 │   ├── memory/                  ← Filesystem store under ~/.goclaw/memory/, MEMORY.md index
 │   └── ...
@@ -192,6 +193,8 @@ goclaw/
 | `GOCLAW_USE_TUI` | (empty) | `1` = force TUI; **`0` on a TTY errors** (no line REPL — use JSON or a real terminal) |
 | `GOCLAW_AGENT_PROFILE` | (empty) | When set, overrides `agent_profile` from settings (e.g. `general-purpose` or `coordinator`); **`--profile` still wins** |
 | `GOCLAW_IDE_NOTIFY_URL` | (empty) | Optional `http`/`https` URL with host `127.0.0.1`, `localhost`, or `::1` — best-effort POST after each tool ([`internal/ide`](internal/ide/notify.go)) |
+| `GOCLAW_TELEGRAM_BOT_TOKEN` | (empty) | When set, overrides merged `telegram_bot_token` / file for [`goclaw telegram`](../docs/goclaw/telegram-bridge.md) |
+| `GOCLAW_TELEGRAM_ALLOWED_USER_IDS` | (empty) | Comma-separated Telegram user ids; when non-empty, **replaces** merged `telegram_allowed_user_ids` after JSON load |
 
 **Config paths:**
 - User: `~/.goclaw/settings.json` and `~/.goclaw/settings.local.json`
@@ -212,6 +215,9 @@ goclaw/
 - **`--output-format text|json`** — for one-shot stdout: `text` prints the final assistant message; `json` prints `{"response","toolCalls"}` (same shape as `--json-output`).
 - **`--json-output`** — shorthand for `--output-format json` when piping one line on stdin (no REPL; incompatible with explicit **`--tui`** / **`GOCLAW_USE_TUI=1`**; set `tool_permissions` to `allow` for tools you need without prompts).
 - **`goclaw prompt "…"`** — same one-turn loop using argv instead of stdin; respects `--output-format` / `--json-output`.
+- **`goclaw telegram start`** — long-poll Telegram Bot API; optional TTY wizard merges missing token/allowlist into `~/.goclaw/settings.local.json` ([`docs/goclaw/telegram-bridge.md`](../docs/goclaw/telegram-bridge.md)).
+- **`goclaw telegram configure`** — wizard only (merge settings; no bridge).
+- **`goclaw telegram bridge`** — same bridge as `start` but **fails** if settings are incomplete (automation).
 
 **REPL slash commands** (do not go to the LLM): `/help` or `help` or `?`; `/session`; `/sessions` (list saved ids); `/quit` or `/exit` (save and exit); `/new` (save current JSONL, start empty session); `/save` (persist without exit); `/compact` (force compaction); `/profile <name>` (switch profile without restart); `/workers` (interactive `spawn_agent` workers); `/focus <task_id_prefix>` or `/focus parent`; `/detach` (back to coordinator); `/plan path|init|save|run|template` (`run` = save last assistant + same as `/apply-plan`); `/apply-plan [path]` (load plan file, switch to `general-purpose`, stream one execution turn via modelSubmit); `/memory list|add|delete`. **Sends to the LLM via modelSubmit:** `/btw <text>` (side question — rewrites one user message with a brief-aside preamble). Hooks `SessionStart` / `SessionEnd` fire when the REPL starts and exits.
 
@@ -238,7 +244,7 @@ Example **`settings.json`:**
 }
 ```
 
-Optional keys: **`tui_mouse_scroll`** — when `true`, the fullscreen TUI enables **mouse wheel** scrolling on the transcript (Bubble Tea cell mouse mode; may reduce native terminal mouse selection); default off; `GOCLAW_TUI_MOUSE_SCROLL=1` / `true` / `yes` / `on` enables; **`memory_llm_silent_extract`** — when `true`, after a user turn with no tool calls the runtime may run one background LLM JSON extraction into the active memory store (same provider as the main chat; default off); **`preferred_response_language`** — `auto` (default), `from_os`, or `es` / `en` / `fr` / `de` / `pt` (steers runtime user-language hint; see [`docs/goclaw/i18n.md`](../docs/goclaw/i18n.md)); **`compaction_model`** — model id for LLM summarization when **`llm_compaction`** is true (smaller/faster model than the main turn); **`task_model_router`** / **`task_models`** / **`task_model_router_model`** — per-turn model selection (`off` \| `rules` \| `llm`); see [`model-routing.md`](../docs/goclaw/model-routing.md); **`web_search_backend`** (`ddg` \| `brave` \| `serpapi`), **`brave_search_api_key`**, **`serpapi_api_key`**, **`web_search_fallback_ddg`** (default true when using a non-DDG backend).
+Optional keys: **`tui_mouse_scroll`** — when `true`, the fullscreen TUI enables **mouse wheel** scrolling on the transcript (Bubble Tea cell mouse mode; may reduce native terminal mouse selection); default off; `GOCLAW_TUI_MOUSE_SCROLL=1` / `true` / `yes` / `on` enables; **`tui_icons`** — `emoji` (default: workspace 📁, ✅/❌ on tools, same ● assistant gutter as unicode), `unicode` (legacy ▣ workspace, ✓/✗, box-drawing cards), `ascii` (`*`, `+`/`x`, `|-` frames), or `nerd` (Nerd Fonts PUA for folder, check/cross, comment bullet); applies to footer chip, tool cards, assistant prefix, separators, wide welcome frame, tool log overlay, and streamed error prefix; env `GOCLAW_TUI_ICONS` (defaults merged from settings override env); **`memory_llm_silent_extract`** — when `true`, after a user turn with no tool calls the runtime may run one background LLM JSON extraction into the active memory store (same provider as the main chat; default off); **`preferred_response_language`** — `auto` (default), `from_os`, or `es` / `en` / `fr` / `de` / `pt` (steers runtime user-language hint; see [`docs/goclaw/i18n.md`](../docs/goclaw/i18n.md)); **`compaction_model`** — model id for LLM summarization when **`llm_compaction`** is true (smaller/faster model than the main turn); **`task_model_router`** / **`task_models`** / **`task_model_router_model`** — per-turn model selection (`off` \| `rules` \| `llm`); see [`model-routing.md`](../docs/goclaw/model-routing.md); **`web_search_backend`** (`ddg` \| `brave` \| `serpapi`), **`brave_search_api_key`**, **`serpapi_api_key`**, **`web_search_fallback_ddg`** (default true when using a non-DDG backend); **`telegram_bot_token`**, **`telegram_bot_token_file`**, **`telegram_allowed_user_ids`**, **`telegram_session_id`** — optional [`goclaw telegram start` / `configure` / `bridge`](../docs/goclaw/telegram-bridge.md) (store tokens in `settings.local.json`; allowlist required for the bridge).
 
 **Per-turn model routing (`task_models`):** assign different Ollama model tags to lightweight vs coding turns. Requires `task_model_router: "rules"` and a `task_models` map, for example:
 

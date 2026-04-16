@@ -1,7 +1,7 @@
 # Convenience targets for goclaw (macOS, Linux, Git Bash on Windows).
 # Without make: use the same `go` commands shown under each target.
 
-.PHONY: build install test vet fmt lint lint-tools lint-fmt staticcheck race cover clean parity run run-code run-hub run-tui run-chat run-chat-cmd
+.PHONY: build install test vet fmt lint lint-tools lint-fmt staticcheck race cover clean parity run run-code run-hub run-tui run-chat run-chat-cmd telegram telegram-bridge
 
 CMD := ./cmd/goclaw
 
@@ -74,3 +74,12 @@ run-chat-cmd:
 # Chat-only: no tools registered (same as --no-tools).
 run-chat:
 	go run $(CMD) --no-tools
+
+# Telegram Bot API bridge: prompts for missing token/allowlist in a TTY, then long-polls (see docs/goclaw/telegram-bridge.md).
+# Use `make telegram` only — `make telegram start` would also try a non-existent Make target named `start`.
+telegram:
+	go run $(CMD) telegram start
+
+# Same as telegram bridge: no prompts; fails if settings are incomplete (CI / scripts).
+telegram-bridge:
+	go run $(CMD) telegram bridge

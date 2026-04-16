@@ -19,3 +19,7 @@ Prefer **`~/.goclaw/settings.local.json`** (not committed) for API keys. Do not 
 ## Skipping onboarding
 
 `GOCLAW_NO_ONBOARDING=1` skips the first-run wizard. That does not remove the need for safe usage practices above.
+
+## Telegram bridge (optional)
+
+[`goclaw telegram bridge`](./telegram-bridge.md) uses outbound HTTPS to **`api.telegram.org`** only. The bot token is a **secret** (treat compromise like any API key). The bridge requires a **non-empty `telegram_allowed_user_ids`** list (or `GOCLAW_TELEGRAM_ALLOWED_USER_IDS`) so arbitrary Telegram users cannot drive your agent session.

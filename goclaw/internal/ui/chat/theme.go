@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/okuzpe/goclaw/internal/text"
+	"github.com/okuzpe/goclaw/internal/ui/icons"
 	"github.com/okuzpe/goclaw/internal/ui/terminalstyle"
 )
 
@@ -36,12 +37,16 @@ func toolCardInnerWidth(termWidth int) int {
 }
 
 func toolCardTopRule(t *Theme, headRendered string, cardW int) string {
+	st := icons.Unicode
+	if t != nil {
+		st = t.Icons
+	}
 	nameW := lipgloss.Width(headRendered)
 	dashCount := cardW - nameW - 2
 	if dashCount < toolCardDashMin {
 		dashCount = toolCardDashMin
 	}
-	return t.ToolCardBorder.Render("╭─") + headRendered + t.ToolCardBorder.Render(strings.Repeat("─", dashCount))
+	return t.ToolCardBorder.Render(st.ToolCardTopLeft()) + headRendered + t.ToolCardBorder.Render(strings.Repeat(st.ToolCardH(), dashCount))
 }
 
 // Theme holds Lip Gloss styles and copy for the chat TUI. Centralize here so the
@@ -90,6 +95,9 @@ type Theme struct {
 
 	// AtRefChip styles @path tokens inside user messages in the transcript.
 	AtRefChip lipgloss.Style
+
+	// Icons selects transcript/tool/footer glyphs (see config TUIIcons). Zero means Unicode preset.
+	Icons icons.Set
 
 	// Markdown renderer (glamour), recreated when terminal width or mdGlamourStyle changes.
 	mdMu           sync.Mutex
@@ -171,7 +179,11 @@ func (t *Theme) SeparatorLine(width int) string {
 	if ruleW > 40 {
 		ruleW = 40
 	}
-	rule := t.Separator.Render(strings.Repeat("─", ruleW))
+	st := icons.Unicode
+	if t != nil {
+		st = t.Icons
+	}
+	rule := t.Separator.Render(strings.Repeat(st.ToolCardH(), ruleW))
 	// Left-pad with two spaces to indent slightly from the gutter.
 	return "  " + rule
 }
@@ -191,13 +203,17 @@ func (t *Theme) RenderToolCard(toolLabel, summary, outcome string, isError bool,
 	nameRendered := t.ToolCardHead.Render(" " + toolLabel + " ")
 	header := toolCardTopRule(t, nameRendered, cardW)
 
+	st := icons.Unicode
+	if t != nil {
+		st = t.Icons
+	}
 	var icon string
 	if isError {
-		icon = t.ToolResultErr.Render("✗")
+		icon = t.ToolResultErr.Render(st.ToolErr())
 	} else {
-		icon = t.ToolResultOk.Render("✓")
+		icon = t.ToolResultOk.Render(st.ToolOK())
 	}
-	footer := t.ToolCardBorder.Render("╰─") + " " + icon
+	footer := t.ToolCardBorder.Render(st.ToolCardBottomLeft()) + " " + icon
 
 	var b strings.Builder
 	b.WriteString("  ")
@@ -211,7 +227,7 @@ func (t *Theme) RenderToolCard(toolLabel, summary, outcome string, isError bool,
 			line = text.TruncateRunes(line, toolCardSummaryLineMaxRunes)
 			b.WriteString("\n  ")
 			// Tool-accent color on the vertical bar creates a clear left-accent for the card.
-			b.WriteString(t.ToolTag.Render("│"))
+			b.WriteString(t.ToolTag.Render(st.ToolCardV()))
 			b.WriteString("  ")
 			b.WriteString(t.ToolCardBody.Render(line))
 		}
@@ -219,7 +235,7 @@ func (t *Theme) RenderToolCard(toolLabel, summary, outcome string, isError bool,
 	if o := strings.TrimSpace(outcome); o != "" {
 		o = text.TruncateRunes(o, toolCardOutcomeMaxRunes)
 		b.WriteString("\n  ")
-		b.WriteString(t.ToolTag.Render("│"))
+		b.WriteString(t.ToolTag.Render(st.ToolCardV()))
 		b.WriteString("  ")
 		b.WriteString(t.FooterDim.Render(o))
 	}
@@ -252,7 +268,11 @@ func (t *Theme) RenderToolInProgressRow(toolLabel, summary string, elapsedSec in
 	}
 	nameRendered := t.ToolCardHead.Render(" " + headText + " ")
 	header := toolCardTopRule(t, nameRendered, cardW)
-	footer := t.ToolCardBorder.Render("╰─") + t.FooterDim.Render(" …")
+	st := icons.Unicode
+	if t != nil {
+		st = t.Icons
+	}
+	footer := t.ToolCardBorder.Render(st.ToolCardBottomLeft()) + t.FooterDim.Render(" …")
 
 	var b strings.Builder
 	b.WriteString("  ")
@@ -261,7 +281,7 @@ func (t *Theme) RenderToolInProgressRow(toolLabel, summary string, elapsedSec in
 		s = text.TruncateRunes(s, toolInProgressSummaryMaxRunes)
 		b.WriteString("\n  ")
 		// Tool-accent color on the vertical bar: matches the completed-card style.
-		b.WriteString(t.ToolTag.Render("│"))
+		b.WriteString(t.ToolTag.Render(st.ToolCardV()))
 		b.WriteString("  ")
 		b.WriteString(t.ToolCardBody.Render(s))
 	}
@@ -275,7 +295,11 @@ func (t *Theme) StatusBarRender(status string, width int) string {
 	if width <= 0 {
 		width = statusBarDefaultWidth
 	}
-	bar := t.Separator.Render(strings.Repeat("─", width))
+	st := icons.Unicode
+	if t != nil {
+		st = t.Icons
+	}
+	bar := t.Separator.Render(strings.Repeat(st.ToolCardH(), width))
 	if strings.TrimSpace(status) == "" {
 		return bar
 	}
@@ -291,21 +315,29 @@ func (t *Theme) UserPrefix() string {
 	return fmt.Sprintf("%s %s", t.UserTag.Render(t.UserEmoji), t.UserTag.Render(t.UserLabel))
 }
 
-// AssistantPrefix renders the assistant gutter (Claude Code style: "●").
+// AssistantPrefix renders the assistant gutter (Claude Code style bullet; see Theme.Icons).
 // The glyph is always rendered in the AI accent color for consistent visual hierarchy.
 func (t *Theme) AssistantPrefix() string {
-	if strings.TrimSpace(t.AssistantName) == "" {
-		return t.Assistant.Render(t.AssistantEmoji)
+	bullet := icons.Unicode.AssistantBullet()
+	if t != nil {
+		bullet = t.Icons.AssistantBullet()
 	}
-	return fmt.Sprintf("%s %s", t.Assistant.Render(t.AssistantEmoji), t.Assistant.Render(t.AssistantName))
+	if strings.TrimSpace(t.AssistantName) == "" {
+		return t.Assistant.Render(bullet)
+	}
+	return fmt.Sprintf("%s %s", t.Assistant.Render(bullet), t.Assistant.Render(t.AssistantName))
 }
 
 // AssistantPlainPrefix is the visible prefix without ANSI (for strip/compare logic).
 func (t *Theme) AssistantPlainPrefix() string {
-	if strings.TrimSpace(t.AssistantName) == "" {
-		return t.AssistantEmoji
+	bullet := icons.Unicode.AssistantBullet()
+	if t != nil {
+		bullet = t.Icons.AssistantBullet()
 	}
-	return fmt.Sprintf("%s %s", t.AssistantEmoji, t.AssistantName)
+	if strings.TrimSpace(t.AssistantName) == "" {
+		return bullet
+	}
+	return fmt.Sprintf("%s %s", bullet, t.AssistantName)
 }
 
 // AppearancePreset returns the ui_appearance key for this theme (e.g. "dark", "auto").
