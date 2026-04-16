@@ -38,7 +38,7 @@ func mockAssistantReplyBody(userText string) string {
 	)
 }
 
-// StreamMockAssistant streams a canned assistant reply for --mock (TUI and readline).
+// StreamMockAssistant streams a canned assistant reply for --mock (TUI or JSON automation).
 func StreamMockAssistant(ctx context.Context, userText string, sink orchestrator.StreamSink, sess *session.Session) (string, error) {
 	initialDelay, runeDelay := effectiveMockStreamDelays()
 	if initialDelay > 0 {

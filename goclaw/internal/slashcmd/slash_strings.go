@@ -9,7 +9,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/session"
 )
 
-// PopularSlashHint is printed once after the startup banner on readline REPL (claw-style flow).
+// PopularSlashHint is a compact slash reference (e.g. after /help topics or automation banners).
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
 	b.WriteString("Popular slash commands (most are local; /btw and /continue also send one user line to the model):\n")
@@ -38,7 +38,7 @@ func PreChatHelpSummary(workdir string) string {
 	b.WriteString("  /workers, /focus or /in <id>, /back or /detach — interactive spawn_agent workers\n")
 	b.WriteString("  /compact, /copy, /export, /edit, /init, /agents, /profile, /theme, /new, /save, /session, /sessions, /resume, /clear, /quit, /btw, /continue, /audit, /review\n")
 	b.WriteString("Prefix: ! (bash), @ (read_file), & (spawn_agent) — single line; docs/goclaw/prefix-input-modes.md\n")
-	b.WriteString("Flags: --readline (line REPL), --no-tools, --session <id>, --profile <name>\n")
+	b.WriteString("Flags: --no-tools, --session <id>, --profile <name>\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan file: ")
 		b.WriteString(planfile.Path(workdir))
@@ -55,13 +55,13 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	var b strings.Builder
 	b.WriteString("Slash commands (not sent to the model):\n")
 	b.WriteString("  /help, help, ?   — this text\n")
-	b.WriteString("  TUI transcript: PgUp/PgDn · Alt+arrows · mouse wheel (default on; off via settings or GOCLAW_TUI_MOUSE_SCROLL=0)\n")
+	b.WriteString("  TUI transcript: PgUp/PgDn · Alt+arrows · mouse wheel opt-in (tui_mouse_scroll true or GOCLAW_TUI_MOUSE_SCROLL=1)\n")
 	b.WriteString("  /capabilities    — what I can help with (overview; not sent to the model)\n")
 	b.WriteString("  /doctor          — health check (config, provider reachability, session paths)\n")
 	b.WriteString("  /session         — show full session id and message count\n")
 	b.WriteString("  /sessions        — list saved session ids (same as --list-sessions, without restart)\n")
 	b.WriteString("  /resume <id>     — load a saved session (auto-saves current session first; use /sessions for ids)\n")
-	b.WriteString("  /clear           — clear the terminal screen (readline; TUI uses Ctrl+L)\n")
+	b.WriteString("  /clear           — clear the transcript (TUI: Ctrl+L)\n")
 	b.WriteString("  /quit, /exit     — save session and exit (same shutdown path as Ctrl+C)\n")
 	b.WriteString("  /new             — save current session to disk, start a fresh empty session\n")
 	b.WriteString("  /save            — write current session JSONL without exiting\n")
@@ -73,7 +73,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  /memory list     — list memory files under ~/.goclaw/memory/\n")
 	b.WriteString("  /memory add <type> <name> <text...>  — types: user | feedback | project | reference\n")
 	b.WriteString("  /memory delete <file.md> — remove one file (see list for basename)\n")
-	b.WriteString("  /agents [name]   — list agents or switch (arrow picker when bare in readline TTY)\n")
+	b.WriteString("  /agents [name]   — list agents or switch (TUI: Ctrl+P picker when bare /agents)\n")
 	b.WriteString("  /profile <name>  — switch agent profile (same as /agents <name>)\n")
 	b.WriteString("  /allow-writes    — auto-approve write_file, edit_file, patch for this session (no per-call prompts)\n")
 	if env.SetSessionModel != nil && env.SessionModel != nil {
@@ -92,8 +92,8 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("  !<command>       — bash tool\n")
 	b.WriteString("  @<path>          — read_file in the workspace\n")
 	b.WriteString("  &<task>          — spawn_agent (general-purpose; requires spawn_agent on the active profile)\n")
-	b.WriteString("\nRestart CLI flags: --session <id>  --list-sessions  --no-tools  --readline  --profile <name>\n")
-	b.WriteString("Env: default UI on a TTY is fullscreen TUI; GOCLAW_USE_TUI=0 or GOCLAW_USE_READLINE=1 uses line readline.\n")
+	b.WriteString("\nRestart CLI flags: --session <id>  --list-sessions  --no-tools  --profile <name>\n")
+	b.WriteString("Env: interactive chat requires a TTY; GOCLAW_USE_TUI=0 on a TTY is unsupported — use --output-format json for pipes.\n")
 	b.WriteString("Env: GOCLAW_TUI_MOUSE_SCROLL=1 enables mouse wheel on the TUI transcript (default off; see tui_mouse_scroll in settings).\n")
 	b.WriteString("Env: GOCLAW_AGENT_PROFILE overrides agent_profile from settings (e.g. coordinator or general-purpose).\n")
 	b.WriteString("CLI subcommand: goclaw sessions list (same as --list-sessions)\n")

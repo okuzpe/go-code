@@ -45,12 +45,11 @@ These themes are **not** required for the checklist above; pick one when priorit
 - [x] Manual checklist: [`manual-tui-checklist.md`](./manual-tui-checklist.md) — RunApp, stream, modal `y`/`n`, `Ctrl+L`, `Ctrl+C` + save
 - [x] **Session id visible in the TUI** — footer uses a two-line layout in `internal/ui/chat/chat.go`: primary row for spinner / tool / “Responding…”, second row for `Theme.FooterHint()` plus `sess·…` via `footerline.HintsWithSession` (wraps session to the next line when narrow). **Title bar** stays compact (`goclaw · provider · model · profile` only). Tests live in `internal/ui/footerline` (no Bubble Tea init).
 
-### 1b. Non-TTY / readline path
+### 1b. Non-TTY / automation path
 
-- [x] Readline history file: `replHistoryFile` → `<UserConfigDir>/history` (`internal/app/repl_readline.go`); `MkdirAll` on config dir before `readline.NewEx` so the file can always be created; chzyer/readline persists on `Close`
-- [x] History path test (`repl_readline_test.go`); persistence: manual step in [`manual-tui-checklist.md`](./manual-tui-checklist.md)
-- [x] `rl.Close()` / signal goroutine: documented benign pattern in `repl_readline.go` (Issue #3/#7); no shared `sess` mutation from signal path
-  - Notes (Issue #3/#7): `internal/app/repl_readline.go` keeps `sess` as a local pointer that slash commands may replace (e.g. `/new`), then **syncs back** to `rt.Sess` after each `HandleSlash` call. The signal goroutine only cancels the in-flight request (via `reqCancelFn`) and closes readline; it never mutates the session. This is intentionally structured so any apparent race is **benign**: once `RunStreaming` returns, no goroutine is still writing to the session before the REPL touches it again.
+- [x] **No interactive line REPL on pipes** — use **`--output-format json`** (or **`goclaw prompt`**) so CI and scripts get deterministic I/O; `RunChat` errors with an actionable hint if stdin/stdout are not both TTY and JSON is not selected.
+- [x] **REPL line history** — `<UserConfigDir>/history` via `internal/replhistory` (load + append + tail rotate); TUI compose box **↑/↓** recall in `internal/ui/chat/chat.go`; path coverage in `internal/app/app_test.go` (`TestReplHistoryFile`).
+- [x] Session pointer replacement still flows through `orchestrator.ReplaceSession` while the chat loop keeps `rt.Sess` in sync after slash handling (Issue #3/#7 notes remain valid for TUI + JSON paths).
 
 ### 1c. Error messages — user-facing clarity
 
@@ -63,7 +62,7 @@ These themes are **not** required for the checklist above; pick one when priorit
 - [x] `/new` — old transcript is saved before switching (assertions in `TestHandleSlashNewAndSave`: load previous id, `Len()==1`, new session empty)
 - [x] Resume / tool turns — `TestStoreRoundtripWithToolTurn` encodes assistant `tool_calls` + user `tool_results` + follow-up user text through JSONL (`internal/session/store_test.go`)
 - [x] Session JSONL rotation — `Save` rotates when current file ≥ 256 KiB (`rotateAfterBytes`, max 3 numbered tails); `TestStoreListIDsIgnoresRotationFiles` ensures `sessions list` does not surface `.N.jsonl` shards
-  - Notes (Issue #3/#7): session pointer replacement is done via `orchestrator.ReplaceSession`, while the REPL loop syncs the local `sess` pointer back into runtime (`rt.Sess`) after slash handling.
+  - Notes (Issue #3/#7): session pointer replacement is done via `orchestrator.ReplaceSession`, while the interactive shell syncs the session pointer back into runtime (`rt.Sess`) after slash handling.
 
 ---
 
@@ -144,14 +143,14 @@ These themes are **not** required for the checklist above; pick one when priorit
 
 ### 4b. REPL improvements
 
-- [x] `Tab` completion for **top-level** slash commands (`slashcmd.ReadlinePrefixCompleter` wired in `runReadlineREPL`; list in `readline_tab.go` — extend when adding `/` roots)
+- [x] `Tab` completion for **top-level** slash commands in the TUI (shared `slashcmd` tables — extend when adding `/` roots; keep `slash_commands_test.go` / capabilities in sync)
 - [x] `/sessions` lists id + file mtime (RFC3339) via `Store.ListSessionEntries`
 - [x] `/compact` shows message counts before → after
 - [x] `/memory list` body preview (80 runes)
 
 ### 4c. Startup experience
 
-- [x] Readline / non-TTY startup: `printStartupBanner` shows workspace (TTY: work line in banner; non-TTY: `Workspace:` line). Default TUI skips the banner (welcome panel instead).
+- [x] Non-TTY startup: `printStartupBanner` can show workspace summary lines when stdout is not a TTY. Default fullscreen TUI skips the banner (welcome panel instead).
 - [x] Ollama unreachable: `slog.Warn` after `PrepareChatRuntime`, non-blocking (`ollama_probe.go`)
 - [x] **`doctor` preflight** — `goclaw doctor` and slash `/doctor`: workspace, provider, paths, Ollama probe + hints, MCP server list vs connections, effective `tool_permissions` per registered tool (`internal/app/doctor.go`)
 - [x] `--version` flag prints version (`cmd/goclaw/version.go` provides `var Version = "dev"` and can be set via ldflags)

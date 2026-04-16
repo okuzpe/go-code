@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// SessionLocationBanner is a short cwd line for the readline REPL after startup.
+// SessionLocationBanner is a short cwd line after startup (non-TTY banner / automation).
 func SessionLocationBanner(workdir string) string {
 	w := strings.TrimSpace(workdir)
 	if w == "" {
@@ -62,7 +62,7 @@ How to use me:
   - Paste code, errors, or file paths directly
   - Use /help to see available commands
   - Project setup: /init creates .goclaw/settings.json with coding defaults when the file is missing (optional starter CLAUDE.md and .gitignore hint for settings.local.json)
-  - Sessions: /sessions lists saved ids; /resume <id> loads one without restarting the binary (current session is saved first); /clear clears the terminal in readline mode
+  - Sessions: /sessions lists saved ids; /resume <id> loads one without restarting the binary (current session is saved first); /clear clears the TUI transcript (Ctrl+L)
 
 What are you working on?
 `)

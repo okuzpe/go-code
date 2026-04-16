@@ -16,7 +16,7 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/back", "Return to coordinator session (same as /detach)"},
 	{"/btw", "Side question: rewrite and send one user message to the model"},
 	{"/capabilities", "Print full capability guide (no model call)"},
-	{"/clear", "Clear the terminal screen (readline parity with Ctrl+L in the TUI)"},
+	{"/clear", "Clear the transcript (TUI: same idea as Ctrl+L)"},
 	{"/compact", "Force context compaction on the current session"},
 	{"/continue", "Send a follow-up to finish pending work (same session context)"},
 	{"/copy", "Copy plain session transcript to the system clipboard"},
@@ -43,7 +43,7 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/session", "Show or set session id"},
 	{"/sessions", "List saved session ids on disk"},
 	{"/theme", "Set TUI appearance preset in settings"},
-	{"/tools", "Show tool call history for this session (readline); /tools N shows full output of step N"},
+	{"/tools", "Show tool call history (plain text when wired); TUI: prefer Ctrl+T; /tools N shows full output of step N"},
 	{"/workers", "List coordinator workers and task ids"},
 }
 
@@ -87,7 +87,7 @@ func TUISlashSuggestions(buffer string) []SlashCommandSuggest {
 	return filterSlashByToken(slashFirstToken(raw))
 }
 
-// SlashTabExpand applies prefix completion for a single-line slash buffer (readline-style Tab).
+// SlashTabExpand applies prefix completion for a single-line slash buffer (Tab-longest-prefix style).
 // If ok is false, the caller should forward the key to the input widget.
 func SlashTabExpand(line string) (replacement string, ok bool) {
 	if strings.Contains(line, "\n") {

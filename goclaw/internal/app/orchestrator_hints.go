@@ -6,7 +6,7 @@ import (
 )
 
 // AugmentOrchestratorErr appends user-facing recovery hints when the wrapped error is recognized.
-// errors.Is / errors.As still work on the returned value.
+// model is the active model id (e.g. for ollama pull hints). errors.Is / errors.As still work on the returned value.
 func AugmentOrchestratorErr(model string, err error) error {
 	if err == nil {
 		return nil
@@ -51,7 +51,7 @@ func orchestratorFailureHints(model string, err error) []string {
 		out = append(out, "hint: too many tool calls in one turn — ask for one step at a time or simplify the task.")
 	}
 	if strings.Contains(low, "no approver configured") || strings.Contains(low, "requires user approval") {
-		out = append(out, "hint: this mode needs interactive tool approval — use the readline or TUI REPL (not a pipe-only workflow).")
+		out = append(out, "hint: this mode needs interactive tool approval — use the fullscreen TUI on a real terminal (not a pipe-only workflow).")
 	}
 
 	return dedupeHintLines(out)

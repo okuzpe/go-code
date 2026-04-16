@@ -15,7 +15,7 @@ Select a profile with `-profile <name>` or set `agent_profile` in `settings.json
 
 1. Use **`plan`** (or author manually) to produce a Markdown plan with a **`## Steps`** section when you want ordered execution hints; save it at **`.goclaw/plan.md`** (template: `/plan init` or `/plan template` in the REPL).
 2. Optional gate: **`/plan review`**, then **`/plan approve`** when **`plan_require_apply_approval`** is enabled in settings (stores **`.goclaw/plan.meta.json`** with a content hash).
-3. Run **`/apply-plan`** or **`/plan run`** (optional **`--hub`** or **`plan_apply_use_coordinator`** for **coordinator**). Default execution profile is **`general-purpose`**; each command streams **one** user turn that embeds the plan.
+3. Run **`/apply-plan`** or **`/plan run`** (optional **`--hub`** or **`plan_apply_use_coordinator`** for **coordinator**). Each command switches the active profile to **`general-purpose`** for **one** streamed execution turn that embeds the plan (unless **`--hub`** / coordinator execution is selected).
 4. Alternatively, use **`/profile general-purpose`** after planning and paste the plan, or resume execution in a new session with the saved file.
 
 **Coordinator (D16)** is **implemented** in goclaw: profile `coordinator`, tools `spawn_agent` / `stop_task`, isolated worker sessions — see [docs/goclaw/coordinator.md](../goclaw/coordinator.md) and [coordinator-mode.md](./coordinator-mode.md) (concept vs product reference).
@@ -28,14 +28,14 @@ Built-in profiles live in [`goclaw/internal/agents/profile.go`](../../goclaw/int
 
 | Profile | `-profile` value | Tool allowlist | Read-only | Default? |
 |---------|-----------------|----------------|-----------|----------|
-| General-Purpose | `general-purpose` | All tools | No | Yes |
+| General-Purpose | `general-purpose` | All tools | No | — |
 | Explore | `explore` | read_file, glob, grep, web_fetch, web_search, todo_write | Yes | — |
 | Plan | `plan` | read_file, glob, grep, web_search, todo_write | Yes | — |
 | Verification | `verification` | read_file, bash, script, todo_write | No | — |
 | Code review | `code-review` | read_file, glob, grep, bash, web_fetch, web_search, todo_write | No (writes omitted from allowlist) | — |
 | Guide | `guide` | (none) | Yes | — |
 | StatusLine | `statusline` | (none) | Yes | — |
-| Coordinator | `coordinator` | spawn_agent, stop_task, todo_write | Yes | — |
+| Coordinator | `coordinator` | spawn_agent, stop_task, todo_write | Yes | Yes (`config.Default().AgentProfile`) |
 
 ---
 

@@ -1,7 +1,7 @@
 <!--
   Source of truth: docs/goclaw/security.md (monorepo). Edit that file first, then copy here so
   the bundled first-run viewport matches published security notes. Embedded: go:embed in
-  goclaw/internal/app (onboarding_security_gate.go, onboarding_tui.go). See documentation.md.
+  goclaw/internal/app (onboarding_render.go, onboarding_tui.go). See documentation.md.
 -->
 
 # Security notes for goclaw

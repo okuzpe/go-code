@@ -15,7 +15,7 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | Entry point | [`cmd/goclaw`](../goclaw/cmd/goclaw/main.go) → [`internal/cli`](../goclaw/internal/cli/root.go) (Cobra) → [`internal/app`](../goclaw/internal/app/run.go). **UI:** Bubble Tea TUI on TTY by default — flags and env in [`usage.md`](./goclaw/usage.md). Slash commands: [`internal/slashcmd`](../goclaw/internal/slashcmd/slash.go). |
 | Packages | `internal/llm`, `orchestrator`, `session`, `tools`, `permissions`, `config`, `hooks`, `agents`, `memory`, `planfile`, `todos`, `mcp`, `ide`, `plugin`, `skills`, `swarm`, `ui/chat` (BubbleTea TUI) |
 | Tools | Ten built-ins: `read_file`, `glob`, `grep`, `bash`, `write_file`, `edit_file`, `patch`, `web_fetch`, `web_search`, `todo_write`; optional `script` when `allow_script`; coordinator-only `spawn_agent`, `stop_task`; MCP tools as `mcp__<id>__<name>` |
-| Plan workflow | Workspace `.goclaw/plan.md` ([`internal/planfile`](../goclaw/internal/planfile/planfile.go)); `/plan run` (save + execute) or `/apply-plan` switches to `general-purpose` and runs one execution turn |
+| Plan workflow | Workspace `.goclaw/plan.md` ([`internal/planfile`](../goclaw/internal/planfile/planfile.go)); `/plan run` (save + execute) or `/apply-plan` switches to **`general-purpose`** for **one** execution turn (or **`coordinator`** with `--hub` / `plan_apply_use_coordinator`). Default **session** profile is **`coordinator`** ([`config.Default()`](../goclaw/internal/config/config.go)) |
 | Memory | `~/.goclaw/memory/` + `MEMORY.md` index; REPL `/memory list|add|delete`; opt-in auto-capture after `write_file`/`edit_file` (`memory_auto_extract`) |
 | Compaction | Token-estimate heuristic (char/4), 0.85 threshold, 24-turn tail preserved; optional **`compaction_model`** + **`llm_compaction`** for LLM summaries ([`internal/orchestrator/compaction.go`](../goclaw/internal/orchestrator/compaction.go)) |
 | Hooks | Same five events; Go `hooks.Registry`, **`external_hooks`** (subprocess stdin JSON or HTTP POST in settings), and project **`.goclaw/hooks.json`** when `trusted_workspace` is true ([`internal/hooks`](../goclaw/internal/hooks)) |
@@ -64,9 +64,9 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | [`docs/goclaw/ide-editor-setup.md`](./goclaw/ide-editor-setup.md) | Editor MCP lockfile golden path (`~/.goclaw/ide`, `ide_bridge_mcp`, notify URL) | End-user | Shipped |
 | [`docs/goclaw/examples/ide-mcp-endpoint.example.json`](./goclaw/examples/ide-mcp-endpoint.example.json) | Copy-paste lockfile template for IDE HTTP MCP | End-user | Shipped |
 | [`docs/goclaw/ide-pr-parity.md`](./goclaw/ide-pr-parity.md) | IDE / PR parity vs Wave A–B roadmap | Contributor | Shipped |
-| [`docs/goclaw/manual-tui-checklist.md`](./goclaw/manual-tui-checklist.md) | Bubble Tea / readline QA | Maintainer | Shipped |
+| [`docs/goclaw/manual-tui-checklist.md`](./goclaw/manual-tui-checklist.md) | Bubble Tea TUI QA | Maintainer | Shipped |
 | [`docs/goclaw/i18n.md`](./goclaw/i18n.md) | LLM language vs English UI | Contributor | Policy / planned |
-| [`docs/goclaw/prefix-input-modes.md`](./goclaw/prefix-input-modes.md) | `!` / `@` / `&` / `/btw` prefix input (TUI + readline) | End-user | Shipped — see also [usage.md](./goclaw/usage.md#prefix-input----btw) |
+| [`docs/goclaw/prefix-input-modes.md`](./goclaw/prefix-input-modes.md) | `!` / `@` / `&` / `/btw` prefix input (TUI) | End-user | Shipped — see also [usage.md](./goclaw/usage.md#prefix-input----btw) |
 | [`goclaw/CLAUDE.md`](../goclaw/CLAUDE.md) | Rules, D1–D22, packages, env vars | Contributor | **Source of truth** |
 | [`architecture.md`](./architecture.md) | App/package diagrams, boot → `ChatRuntime` → orchestrator, coordinator vs workers | End-user · Contributor | Shipped |
 | [`agent-profiles.md`](./reference/agent-profiles.md) | Profiles, custom `.md` agents | Contributor | Shipped |

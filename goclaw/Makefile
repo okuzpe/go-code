@@ -1,7 +1,7 @@
 # Convenience targets for goclaw (macOS, Linux, Git Bash on Windows).
 # Without make: use the same `go` commands shown under each target.
 
-.PHONY: build install test vet fmt lint lint-tools lint-fmt staticcheck race cover clean parity run run-code run-hub run-readline run-tui run-chat run-chat-cmd
+.PHONY: build install test vet fmt lint lint-tools lint-fmt staticcheck race cover clean parity run run-code run-hub run-tui run-chat run-chat-cmd
 
 CMD := ./cmd/goclaw
 
@@ -63,9 +63,6 @@ run-hub:
 	go run $(CMD) --profile coordinator
 
 # Line-at-a-time REPL (opt out of default TUI on a TTY).
-run-readline:
-	go run $(CMD) --readline
-
 # Fullscreen TUI (default on TTY; same as explicit --tui / GOCLAW_USE_TUI=1).
 run-tui:
 	go run $(CMD) --tui

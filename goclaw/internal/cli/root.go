@@ -43,9 +43,8 @@ func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, li
 	root.PersistentFlags().String("session", "", "resume an existing session id (JSONL in ~/.goclaw/sessions)")
 	root.PersistentFlags().Bool("list-sessions", false, "list saved session ids and exit")
 	root.PersistentFlags().Bool("no-tools", false, "run without registering tools (chat-only; also GOCLAW_DISABLE_TOOLS=1)")
-	root.PersistentFlags().Bool("readline", false, "force line-at-a-time readline REPL (disables default fullscreen TUI)")
 	root.PersistentFlags().Bool("tui", false, "fullscreen Bubble Tea TUI (default on a TTY; redundant with GOCLAW_USE_TUI=1)")
-	root.PersistentFlags().Bool("mock", false, "stream a canned assistant reply without calling the model (UI demo; TUI and readline)")
+	root.PersistentFlags().Bool("mock", false, "stream a canned assistant reply without calling the model (UI demo; TUI and JSON stdin modes)")
 	root.PersistentFlags().String("output-format", "text", `stdout for one-shot modes: "text" (final assistant only) or "json" (object with response and toolCalls); use with stdin automation or goclaw prompt`)
 	root.PersistentFlags().Bool("json-output", false, `shorthand for --output-format json with stdin automation (echo "hi" | goclaw --json-output); same JSON shape as --output-format json`)
 	root.PersistentFlags().StringSlice("plugin-dir", nil, `plugin root directories (each contains goclaw-plugin.json); repeat flag or comma-separated; merges with settings "plugin_dirs"`)
@@ -84,12 +83,11 @@ func newDoctorCmd(runDoctor RunDoctorFunc) *cobra.Command {
 func newChatCmd(runChat RunChatFunc) *cobra.Command {
 	return &cobra.Command{
 		Use:   "chat",
-		Short: "Start interactive chat (default fullscreen TUI on a TTY; use --readline for line REPL)",
+		Short: "Start interactive chat (fullscreen Bubble Tea TUI on a TTY)",
 		Long: `Opens the coding-agent chat: streaming assistant, tool loop, slash commands, and session persistence.
 Default agent profile is coordinator (hub); use spawn_agent in-session or switch profile with /profile.
 
-On an interactive terminal the default UI is fullscreen Bubble Tea (better tool approval and transcript).
-Use --readline or GOCLAW_USE_READLINE=1 for claw-style line REPL, or GOCLAW_USE_TUI=0 to opt out of TUI.
+On an interactive terminal the UI is fullscreen Bubble Tea (Bubbles textarea + transcript). GOCLAW_USE_TUI=0 on a TTY is unsupported — use a real terminal or --output-format json for pipes.
 Use --mock to stream a canned reply without calling the model (UI / wiring check).
 Use --output-format json or --json-output to read one stdin line and print JSON (automation; incompatible with explicit --tui).
 Use goclaw prompt "message" for a one-shot turn without piping stdin.`,

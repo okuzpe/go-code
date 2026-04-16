@@ -10,7 +10,7 @@ Prerequisite: Ollama on `http://localhost:11434` with a model pulled (default: `
 cd goclaw
 go run ./cmd/goclaw doctor
 go run ./cmd/goclaw              # fullscreen TUI on TTY (default)
-go run ./cmd/goclaw --readline   # line REPL; or GOCLAW_USE_TUI=0
+printf 'ping\n' | go run ./cmd/goclaw --mock --no-tools --output-format json   # pipes / CI (no TTY REPL)
 ```
 
 Try: a simple repo question, a tool (e.g. web search), and `/doctor` or `goclaw doctor`.
@@ -22,9 +22,9 @@ Try: a simple repo question, a tool (e.g. web search), and `/doctor` or `goclaw 
 - **Disk changes** only happen when **`write_file`**, **`edit_file`**, or **`patch`** complete successfully (subject to permissions). If the assistant says it “applied changes” but no write tool ran, treat that as prose, not git truth.
 - **Why it stopped at "Done"** — Each of your messages runs until the model answers **without** requesting more tools. A text-only reply (even "Done") **ends that turn**; there is no hidden auto-loop. For multi-step refactors, either write one prompt that forces **read → edit → verify** in one go, or send a **follow-up** ("continue: apply the first edit to `internal/...`").
 - **Auto-continue (default on)** — When your message clearly asks for fixes/refactors and the model answers with **prose only** — including the **first** completion with **zero** tool calls (common with small local models) **or** after **read-only** tools only — goclaw may inject a short `[goclaw]` user line and **re-prompt the model** (default **2** times per user message for both patterns combined). Optional **`auto_continue_action_max_nudges`** in `settings.json` raises that cap (**1–5**; values above **5** are clamped). Set `"auto_continue_action_requests": false` to disable entirely. If nudges exhaust and tools still never run, see [Troubleshooting — Assistant explains plans but does not modify files](#assistant-explains-plans-but-does-not-modify-files).
-- **Truth-on-disk footer (default on)** — If your message signals code changes, tools ran, writes are allowed for the profile, but no `write_file` / `edit_file` / `patch` completed successfully, the runtime may append a short bilingual `[goclaw]` footer to the assistant reply (and session log) so prose cannot claim edits alone. Set `"truth_footer_no_workspace_writes": false` in `settings.json` to disable. **After successful workspace writes:** both **TUI** and **`--readline`** may show a **`goclaw: git diff --stat`** block when the workspace is a git repo (bounded runtime and output size). **TUI vs readline for the rest:** after the truth footer, the TUI shows an extra hint under the session footer. **`--readline`** also prints a **`goclaw:` stderr** recap each successful turn (`turn complete (no tools)` or `N tool call(s): …`); when the reply includes the truth footer, stderr suggests **continue**, **`/continue`**, or a short follow-up. Recap lines are **not** printed if the turn errors or is cancelled mid-flight.
+- **Truth-on-disk footer (default on)** — If your message signals code changes, tools ran, writes are allowed for the profile, but no `write_file` / `edit_file` / `patch` completed successfully, the runtime may append a short bilingual `[goclaw]` footer to the assistant reply (and session log) so prose cannot claim edits alone. Set `"truth_footer_no_workspace_writes": false` in `settings.json` to disable. **After successful workspace writes:** the **TUI** may show a **`goclaw: git diff --stat`** block when the workspace is a git repo (bounded runtime and output size). After the truth footer, the TUI shows an extra hint under the session footer (mentions **`/continue`** and short follow-ups).
 - **Turn shape** — One user message runs the loop until the model returns **no** tool calls (then the turn ends). If it stopped after reads only, typing **continue**, slash **`/continue`**, or nudging the agent is normal; **`/continue`** sends a standard follow-up while keeping full session history (see `/help`).
-- **Context window** — If **`ollama_num_ctx`** is set in settings and is **below 8192** (see `OllamaNumCtxBannerWarnBelow` in `internal/app/ux_constants.go`), the **readline / non-TTY startup banner** prints a short warning: long system prompts plus tool schemas may truncate. Raise `ollama_num_ctx` if turns feel “forgetful” or tools behave oddly.
+- **Context window** — If **`ollama_num_ctx`** is set in settings and is **below 8192** (see `OllamaNumCtxBannerWarnBelow` in `internal/app/ux_constants.go`), the **non-TTY startup banner** (when printed) warns that long system prompts plus tool schemas may truncate. Raise `ollama_num_ctx` if turns feel “forgetful” or tools behave oddly.
 - **Iteration budget** — Past halfway through the per-turn iteration limit, a `<system-reminder>` warns the model that budget is tight. If you asked for real edits and tools already ran without a successful write, that reminder nudges toward **finishing edits** instead of only wrapping up in prose.
 
 ### First-run setup (onboarding)
@@ -45,29 +45,28 @@ The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings
 
 **`goclaw doctor` does not run onboarding** — it loads config and prints a health report. Run `doctor` for a quick check; run `goclaw` once to complete first-time setup.
 
-The wizard follows the **same TUI vs readline** rules as the main app (default fullscreen TUI on a TTY unless `GOCLAW_USE_TUI=0` or `--readline`). The default **agent profile** is **`coordinator`** (hub — delegate with `spawn_agent`) until you set `agent_profile` or use `/profile` — see [Agent profiles](#agent-profiles).
+The wizard runs in the **same fullscreen Bubble Tea stack** as the main app (when stdin/stdout are TTY). The default **agent profile** is **`coordinator`** (hub — delegate with `spawn_agent`) until you set `agent_profile` or use `/profile` — see [Agent profiles](#agent-profiles).
 
-### REPL modes
+### Interactive chat (TTY)
 
-- **TUI (default on a TTY)** — fullscreen Bubble Tea: transcript, compact tool approval above the input, `/focus` hint in the footer. Opt out with `GOCLAW_USE_TUI=0` or `--readline` / `GOCLAW_USE_READLINE=1`. The ASCII startup banner is **not** printed to stdout in this mode (welcome panel + footer carry session context).
-- **Readline** — line-at-a-time claw-style prompt; `make run-readline` or `goclaw --readline`. Prints the startup banner (TTY: styled; non-TTY: plain lines with workspace and session).
+- **Default on a TTY** — fullscreen Bubble Tea (`internal/ui/chat`): transcript, compact tool approval above the input, `/focus` hint in the footer. The ASCII startup banner is **not** printed to stdout (welcome panel + footer carry session context).
+- **`GOCLAW_USE_TUI=0` on a TTY** is **unsupported** — there is no line-at-a-time REPL. Use a real terminal for interactive chat, or **`--output-format json`** / **`goclaw prompt`** for automation.
 
-Exit: `Esc` (TUI) or `Ctrl+C`. Clear: `Ctrl+L` (TUI).
+Exit: `Esc` (TUI) or `Ctrl+C`. Clear transcript: `Ctrl+L` (TUI). Prior submit lines: **↑** / **↓** in the compose box (single-line recall; persisted under `~/.goclaw/history`).
 
 ### Slash commands, autocomplete, and help
 
-- **TUI (fullscreen)** — Type `/` on a **single line** to see a **filtered list** of commands as you keep typing (prefix match). **Tab** completes the command (longest shared prefix, or the only match). After the command name, the strip shows **argument** suggestions where supported (e.g. `/profile`, `/memory`, `/plan`, `/resume`, `/focus`, `/theme`, `/export`); **Tab** completes the argument token at the cursor the same way. The command list matches the readline completer (one source of truth).
-- **`/help` in the TUI** — Opens a **dismissible help panel** over the transcript (same text as the slash handler). **Esc** closes the panel; **↑** / **↓** (or `k` / `j`) and **PgUp** / **PgDn** scroll long output. **Ctrl+C** still quits the app from the panel.
-- **Readline** — **Tab** completes `/` commands via the readline prefix completer, and **slash arguments** after the first token when the REPL has a live session context (same rules as the TUI). **`/help`** prints the full help text **inline** in the transcript (no overlay).
+- **Slash line** — Type `/` on a **single line** to see a **filtered list** of commands as you keep typing (prefix match). **Tab** completes the command (longest shared prefix, or the only match). After the command name, the strip shows **argument** suggestions where supported (e.g. `/profile`, `/memory`, `/plan`, `/resume`, `/focus`, `/theme`, `/export`); **Tab** completes the argument token at the cursor the same way.
+- **`/help` overlay** — Opens a **dismissible help panel** over the transcript (same text as the slash handler). **Esc** closes the panel; **↑** / **↓** (or `k` / `j`) and **PgUp** / **PgDn** scroll long output. **Ctrl+C** still quits the app from the panel.
 
 ### Prefix input (`!`, `@`, `&`, `/btw`)
 
-Interpreted **after** slash commands and **before** the model (TUI and readline). Same **permission policy, approval, and hooks** as normal tool calls. **Single line** for `!` and `&` (extra lines are rejected). **`--mock`** disables prefix handling.
+Interpreted **after** slash commands and **before** the model (interactive TUI). Same **permission policy, approval, and hooks** as normal tool calls. **Single line** for `!` and `&` (extra lines are rejected). **`--mock`** disables prefix handling.
 
 | Prefix | Meaning |
 |--------|---------|
 | `!` + command | Run the **`bash`** tool with that command (allowlist and metacharacter rules apply). |
-| `@` + path (standalone) | Run **`read_file`** for a path inside the workspace. **TUI:** matching paths appear under the input as you type; **Tab** completes anywhere in the line. **Readline:** **Tab** completes `@` paths or `/` commands. Drag-and-drop a file/folder onto the terminal to insert `@relpath` automatically. |
+| `@` + path (standalone) | Run **`read_file`** for a path inside the workspace. Matching paths appear under the input as you type; **Tab** completes anywhere in the line. Drag-and-drop a file/folder onto the terminal to insert `@relpath` automatically. |
 | `@token` inline | When `@path` tokens appear inside a larger message (e.g. `explain @go.mod`), the file is silently pre-loaded before the model call — no separate read step needed. |
 | `&` + task | Run **`spawn_agent`** with worker profile **`general-purpose`** (requires **`spawn_agent`** on the active profile — default **`coordinator`** includes it; use **`/profile coordinator`** if you switched away). |
 | `/btw` + text | Slash command: submit **one** user message wrapped as a short “side question” to the model. |
@@ -94,6 +93,8 @@ go run ./cmd/goclaw --session <id>
 **Memory** (cross-session Markdown under `~/.goclaw/memory/`): types `user`, `feedback`, `project`, `reference`. Use `/memory list|add|delete` in the REPL.
 
 ## One-shot automation (`prompt` and JSON)
+
+**Default `goclaw` / `goclaw chat` on a pipe** (non-interactive stdin or stdout) **exits with an error** unless you select JSON output — use **`--output-format json`** (or **`--json-output`**) or **`goclaw prompt`**. There is no line-at-a-time REPL for pipes.
 
 No interactive REPL:
 
@@ -181,7 +182,7 @@ Use **`coordinator`** when you want the hub to delegate sub-tasks to isolated wo
 ### `spawn_agent`: time and visibility
 
 - Each **one-shot** `spawn_agent` runs a full worker loop (LLM + tools) until it finishes or hits **`timeout_sec`** (default **120**, maximum **600** seconds). The footer shows elapsed time while the tool runs.
-- Worker assistant output is **streamed to the same transcript** as the parent session when using the interactive TUI or readline REPL, so you can see tokens as the worker produces them (not only after the tool completes).
+- Worker assistant output is **streamed to the same transcript** as the parent session when using the interactive TUI, so you can see tokens as the worker produces them (not only after the tool completes).
 - **`interactive: true`** returns immediately with a `task_id` and a `running` status; use **`/focus`** in the REPL to send more messages to that worker. The **first** worker turn is also streamed when the UI provides a sink.
 
 ### Parallel tool runs and duplicate `spawn_agent`
@@ -198,7 +199,7 @@ When the coordinator calls `spawn_agent` with **`"interactive": true`**, the too
 - **`/focus <task_id_prefix>`** — route typed messages to that worker until **`/detach`** (or `/focus parent`).
 - **`stop_task`** — same as before; cancels the worker by `task_id`.
 
-In the TUI, tool approval for **ask** mode appears as a **single compact line above the input**; readline prints one approval line on stderr before the `Allow execution?` prompt.
+In the TUI, tool approval for **ask** mode appears as a **single compact line above the input** with **`y` / `n`** handling.
 
 ## Built-in tools (summary)
 
@@ -218,7 +219,7 @@ Caps, SSRF, and MCP naming (`mcp__<id>__<name>`): [tool-contract.md](../referenc
 
 ## Permissions
 
-- `ask` (default) — prompt on stderr before running  
+- `ask` (default) — prompt in the TUI (compact approval strip) before running  
 - `allow` — no prompt  
 - `deny` — block  
 
@@ -234,7 +235,7 @@ Persistent flags apply to the default command and `chat`:
 | `--session` | Resume session id |
 | `--list-sessions` | Print ids and exit |
 | `--no-tools` | Chat-only |
-| `--tui` / `--readline` | UI mode |
+| `--tui` | Force fullscreen TUI (default on TTY when stdin/stdout are interactive) |
 | `--mock` | Canned reply (no model) |
 | `--output-format` | `text` or `json` for one-shot stdout |
 | `--json-output` | Stdin automation → JSON |
@@ -274,7 +275,7 @@ Handled locally (not sent to the model). Run **`/help`** for the full list. Key 
 - **Navigation:** `/focus <id>`, `/detach` (aliases: `/back`, `/hub`, `/parent`, `/in`), `/workers`
 - **Content:** `/copy`, `/export`, `/memory`, `/plan`, `/apply-plan`, `/audit`, `/review` (see [code-review-workflow.md](./code-review-workflow.md))
 - **Config:** `/profile`, `/agents`, `/theme`, `/init`, `/doctor`
-- **UI:** `/clear` (same as Ctrl+L in readline), `/edit` (multiline via $EDITOR), `/capabilities`, `/help`
+- **UI:** `/clear` (same idea as Ctrl+L), `/edit` (multiline via $EDITOR), `/capabilities`, `/help`
 
 **`/btw`** consumes the line but **submits** a rewritten user message to the model. **Prefix** lines `!`, `@`, `&` run tools locally then record user + assistant text in the session (see [prefix-input-modes.md](./prefix-input-modes.md)). Same health output as `goclaw doctor` when `/doctor` is wired in the REPL.
 

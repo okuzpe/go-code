@@ -47,7 +47,7 @@ jobs:
         shell: bash
         env:
           GOCLAW_MOCK_FAST: "1"
-        run: printf 'ping\n' | go run ./cmd/goclaw --no-tools --mock --readline
+        run: printf 'ping\n' | go run ./cmd/goclaw --no-tools --mock --output-format json
 
       - name: Test (race on Linux only)
         shell: bash

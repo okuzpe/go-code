@@ -7,7 +7,7 @@ goclaw is a local-first CLI coding agent. The goal is daily-driver usability: pr
 - **Human-readable by default**: tool activity should be understandable at a glance (no raw JSON in the UI).
 - **State, not stories**: show what the agent is doing (“searching”, “reading”, “running”) without verbose narration.
 - **Tools are bounded**: every tool has caps and safety checks; failures should be explicit and recoverable.
-- **Terminal is transport**: UI details can vary (readline vs TUI), but the underlying behavior should be consistent.
+- **Terminal is transport**: fullscreen TUI vs JSON automation differ in I/O, but the underlying agent behavior should be consistent.
 - **Workdir matters**: file operations are workspace-scoped; “where you are” is part of correctness.
 - **Small, composable surfaces**: keep interfaces minimal; prefer predictable contracts over clever behavior.
 

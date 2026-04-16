@@ -20,6 +20,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
+	"github.com/okuzpe/goclaw/internal/replhistory"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/slashcmd"
 	"github.com/okuzpe/goclaw/internal/text"
@@ -156,6 +157,11 @@ type Model struct {
 	// messageQueue holds user texts submitted while the model is busy; shown above the compose box until
 	// assistantDoneMsg drains them (appendSeparator + appendUser + runDispatchAfterUserEcho in order).
 	messageQueue []string
+
+	// replLines stores prior user submits (oldest first, newest last), loaded from ~/.goclaw/history and updated on each model turn.
+	replLines     []string
+	replHistDraft string
+	replHistPos   int // 0 = editing freely; >=1 indexes backward from the newest line in replLines
 
 	// exitConfirmDeadline is the wall-clock instant until which a second Ctrl+C quits the TUI (double Ctrl+C).
 	exitConfirmDeadline time.Time
@@ -475,6 +481,11 @@ func New(ctx context.Context, opts Options) Model {
 	} else {
 		m.preambleEnd = len(m.lines)
 	}
+	if d := strings.TrimSpace(opts.UserConfigDir); d != "" {
+		if lines, err := replhistory.Load(d); err == nil && len(lines) > 0 {
+			m.replLines = lines
+		}
+	}
 	m.refreshFooterStatsCache()
 	return m
 }
@@ -541,6 +552,26 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 		return m, tea.Quit, true
 	}
 	switch k {
+	case "up":
+		if m.pending != nil || m.transcriptBrowse {
+			return m, nil, false
+		}
+		if m.replHistoryNavUp() {
+			m.resizeInput()
+			m.layout()
+			return m, nil, true
+		}
+		return m, nil, false
+	case "down":
+		if m.pending != nil || m.transcriptBrowse {
+			return m, nil, false
+		}
+		if m.replHistoryNavDown() {
+			m.resizeInput()
+			m.layout()
+			return m, nil, true
+		}
+		return m, nil, false
 	case "ctrl+b":
 		if m.pending != nil {
 			return m, nil, true
@@ -664,6 +695,8 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 		}
 		m.footerHint = ""
 		m.idleTranscriptHint = ""
+		m.replHistPos = 0
+		m.replHistDraft = ""
 		m.input.Reset()
 		m.resizeInput() // shrink back to 1 line after submit
 		if m.streaming {
@@ -762,7 +795,56 @@ func (m *Model) drainMessageQueue() tea.Cmd {
 	return nil
 }
 
+func (m *Model) replHistoryNavUp() bool {
+	if m.streaming || m.pending != nil || len(m.replLines) == 0 {
+		return false
+	}
+	if strings.Contains(m.input.Value(), "\n") {
+		return false
+	}
+	if m.replHistPos == 0 {
+		m.replHistDraft = m.input.Value()
+	}
+	if m.replHistPos >= len(m.replLines) {
+		return true
+	}
+	m.replHistPos++
+	idx := len(m.replLines) - m.replHistPos
+	m.input.SetValue(m.replLines[idx])
+	m.input.CursorEnd()
+	return true
+}
+
+func (m *Model) replHistoryNavDown() bool {
+	if m.replHistPos == 0 {
+		return false
+	}
+	m.replHistPos--
+	if m.replHistPos == 0 {
+		m.input.SetValue(m.replHistDraft)
+		m.replHistDraft = ""
+		m.input.CursorEnd()
+		return true
+	}
+	idx := len(m.replLines) - m.replHistPos
+	if idx >= 0 && idx < len(m.replLines) {
+		m.input.SetValue(m.replLines[idx])
+		m.input.CursorEnd()
+	}
+	return true
+}
+
 func (m *Model) runModelSubmit(userText string) {
+	ut := strings.TrimSpace(userText)
+	if d := strings.TrimSpace(m.userConfigDir); d != "" && ut != "" {
+		_ = replhistory.Append(d, ut)
+		m.replLines = append(m.replLines, ut)
+		if len(m.replLines) > replhistory.MaxLines {
+			m.replLines = m.replLines[len(m.replLines)-replhistory.MaxLines:]
+		}
+	}
+	m.replHistPos = 0
+	m.replHistDraft = ""
 	m.streaming = true
 	m.statusLine = ""
 	m.lastThinkingPhase = ""
@@ -2097,6 +2179,7 @@ func RunApp(ctx context.Context, opts Options, approval *ApprovalBroker, submit 
 	m.submitter.fn = func(userText string) {
 		reqCtx, cancel := context.WithCancel(ctx)
 		m.submitter.setCancel(cancel)
+		// Async model work must stay outside Model.Update; only send tea.Msg back into the program.
 		go func() {
 			defer func() {
 				m.submitter.setCancel(nil)

@@ -35,7 +35,7 @@ Shortcuts
   Esc                close this help panel (when open)
   Ctrl+C             quit the TUI (session saves on exit)
   Ctrl+L             clear transcript (TUI)
-  /clear             clear the terminal screen (readline; same idea as Ctrl+L)
+  /clear             clear the transcript (same idea as Ctrl+L)
   /edit              compose a multiline message in $EDITOR
   /copy              copy plain session text to the system clipboard
   /export path.txt   save plain session text to a file
@@ -44,7 +44,7 @@ Transcript: Ctrl+B browse (↑↓ j/k scroll); PgUp/PgDn and Alt+arrows always. 
 
 Prefix input (single line; same permissions as tools — see docs/goclaw/prefix-input-modes.md)
   !cmd               run bash tool (allowlisted shell)
-  @path               read_file in the workspace (TUI: path list + Tab; readline: Tab)
+  @path               read_file in the workspace (path list + Tab)
   &task               spawn_agent (worker profile general-purpose; parent must allow spawn_agent)
   /btw text           side question — one wrapped message to the model
   /continue           follow-up — keep working on your last user request (sent to the model)
@@ -59,7 +59,7 @@ Architecture note
   Coordinator      Default hub profile (--profile coordinator). spawn_agent delegates to workers;
                    the parent session has no direct read/write/shell tools. Synthesizes worker results.
   General-purpose  Direct coding in this session: explore → implement → verify with full tools (no hub).
-                   Tool cards: short result lines when useful; Ctrl+T (TUI) or /tools (readline) for history.
+                   Tool cards: short result lines when useful; Ctrl+T for tool history (/tools when plain text is wired).
 `)
 
 }

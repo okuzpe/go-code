@@ -4,7 +4,7 @@
 
 ## Status
 
-**Implemented.** These prefixes are interpreted locally in the fullscreen TUI and readline REPL **after** slash commands ([`HandleSlash`](../../goclaw/internal/slashcmd/slash.go)) and **before** the message is sent to the model. They reuse the same **tool registry, permission policy, approval flow, and hooks** as model-invoked tools (see [`RunToolInvocation`](../../goclaw/internal/orchestrator/tool_invocation.go)).
+**Implemented.** These prefixes are interpreted locally in the fullscreen TUI **after** slash commands ([`HandleSlash`](../../goclaw/internal/slashcmd/slash.go)) and **before** the message is sent to the model. They reuse the same **tool registry, permission policy, approval flow, and hooks** as model-invoked tools (see [`RunToolInvocation`](../../goclaw/internal/orchestrator/tool_invocation.go)).
 
 ## Dispatch order
 
@@ -37,10 +37,10 @@
 - **`@`** must not read outside the workspace; enforcement is entirely in the **`read_file`** tool implementation.
 - **`&`** is subject to **`spawn_agent`** policy (deny/ask/allow) like any other tool call.
 
-## Readline vs TUI
+## TUI details
 
-- **Parity:** The same [`inputprefix.Analyze`](../../goclaw/internal/inputprefix/analyze.go) helper is used in both frontends.
-- **`@` completion:** The fullscreen TUI shows a **strip of matching workspace paths** under the footer (like `/` command hints) and **Tab** completes the longest shared prefix. Readline uses **Tab** with [`NewReadlineSlashAtCompleter`](../../goclaw/internal/slashcmd/readline_tab.go) (`@` paths + `/` slash commands).
+- **Parsing:** [`inputprefix.Analyze`](../../goclaw/internal/inputprefix/analyze.go) classifies prefix lines before the model runs.
+- **`@` completion:** The fullscreen TUI shows a **strip of matching workspace paths** under the footer (like `/` command hints) and **Tab** completes the longest shared prefix (see `internal/ui/chat`).
 
 ## Related
 

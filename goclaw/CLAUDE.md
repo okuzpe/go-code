@@ -119,13 +119,13 @@ goclaw/
 │   ├── loglevel/                ← `GOCLAW_LOG` → `slog.Level` (`FromEnv`) for `cmd/goclaw` and `tuilog`
 │   ├── tuilog/                  ← `AttachSlogForTUI`: slog append to file during fullscreen TUI (avoids stderr corruption)
 │   ├── app/
-│   │   ├── run.go               ← `RunChat`, `RunListSessions`; default on TTY = Bubble Tea TUI via `FullscreenChatRunner`; readline when opted out (`--readline`, `GOCLAW_USE_TUI=0`, …); `printStartupBanner` only when not using fullscreen TUI
+│   │   ├── run.go               ← `RunChat`, `RunListSessions`; default on TTY = Bubble Tea TUI via `FullscreenChatRunner`; non-TTY chat requires `--output-format json` / `prompt`; `GOCLAW_USE_TUI=0` on TTY errors; `printStartupBanner` for non-TTY paths when used
 │   │   ├── chat_wiring.go       ← `PrepareChatRuntime` (`ChatRuntime`): config, client, session, tools, MCP, plugins, skills, hooks, orchestrator options
-│   │   ├── repl_readline.go     ← readline REPL loop, tool approval prompt, `runOrchestratorTurn`
-│   │   ├── terminal_sink.go     ← readline `StreamSink` implementation
-│   │   ├── banner.go            ← readline / non-TTY startup banner (`printStartupBanner`); not used for default TUI
+│   │   ├── json_output_run.go   ← stdin JSON / `--output-format json` automation loop
+│   │   ├── banner.go            ← non-TTY startup banner (`printStartupBanner`); not used for default fullscreen TUI
 │   │   └── mock.go              ← canned assistant stream for `--mock` / UI wiring tests
 │   ├── slashcmd/                ← `/` slash handlers: `HandleSlash` (`slash.go`), `editor.go`, tests
+│   ├── replhistory/             ← `~/.goclaw/history` append/load for TUI ↑/↓ recall
 │   ├── ui/chat/                 ← Bubble Tea fullscreen TUI (`--tui` / `GOCLAW_USE_TUI`): `chat.go`, `sink.go`, `theme.go`
 │   ├── llm/                     ← Client interface + OllamaClient (+ OpenAICompatClient for tests only)
 │   │   ├── client.go            ← Client interface, Request, ToolSpec, Event types
@@ -187,10 +187,9 @@ goclaw/
 | `GOCLAW_MOCK_FAST` | (empty) | Set to `1` to remove pacing delays from `--mock` (CI / scripts) |
 | `BRAVE_SEARCH_API_KEY` | — | Brave Search API token when `web_search_backend` is `brave` (optional; can use `brave_search_api_key` in settings) |
 | `SERPAPI_API_KEY` | — | SerpAPI key when `web_search_backend` is `serpapi` (optional; can use `serpapi_api_key` in settings) |
-| `GOCLAW_LOG` | `info` | `debug` / `warn` / `error` for slog level. **Fullscreen TUI:** log lines go to `~/.goclaw/logs/goclaw.log` (or `GOCLAW_LOG_FILE`) instead of stderr so the Bubble Tea UI does not corrupt; readline and JSON automation still use stderr. |
+| `GOCLAW_LOG` | `info` | `debug` / `warn` / `error` for slog level. **Fullscreen TUI:** log lines go to `~/.goclaw/logs/goclaw.log` (or `GOCLAW_LOG_FILE`) instead of stderr so the Bubble Tea UI does not corrupt; JSON / `prompt` automation still use stderr. |
 | `GOCLAW_LOG_FILE` | — | Optional path for TUI-session logs (append; parent dirs created). When unset during TUI, defaults to `~/.goclaw/logs/goclaw.log`. |
-| `GOCLAW_USE_TUI` | (empty) | `1` = force TUI; **`0` = opt out of default TUI** and use readline on a TTY |
-| `GOCLAW_USE_READLINE` | (empty) | Set to `1` to force readline REPL (disables default TUI) |
+| `GOCLAW_USE_TUI` | (empty) | `1` = force TUI; **`0` on a TTY errors** (no line REPL — use JSON or a real terminal) |
 | `GOCLAW_AGENT_PROFILE` | (empty) | When set, overrides `agent_profile` from settings (e.g. `general-purpose` or `coordinator`); **`--profile` still wins** |
 | `GOCLAW_IDE_NOTIFY_URL` | (empty) | Optional `http`/`https` URL with host `127.0.0.1`, `localhost`, or `::1` — best-effort POST after each tool ([`internal/ide`](internal/ide/notify.go)) |
 
@@ -207,8 +206,7 @@ goclaw/
 - **`--session <id>`** — load history from `~/.goclaw/sessions/<id>.jsonl` (clear error if missing).
 - **`--list-sessions`** — print saved session ids and exit (same as **`goclaw sessions list`**).
 - **`--no-tools`** — do not register tools (chat-only; useful with models that hallucinate tool JSON).
-- **`--tui`** — fullscreen Bubble Tea TUI (**default on a TTY**). Also **`GOCLAW_USE_TUI=1`** to force; **`GOCLAW_USE_TUI=0`** opts out to readline.
-- **`--readline`** — force line-at-a-time readline REPL (disables default TUI).
+- **`--tui`** — fullscreen Bubble Tea TUI (**default on a TTY**). Also **`GOCLAW_USE_TUI=1`** to force. **`GOCLAW_USE_TUI=0`** on a TTY is unsupported (use **`--output-format json`** or **`goclaw prompt`** for non-interactive runs).
 - **`--mock`** — stream a canned assistant reply without calling the model (UI check; use with `GOCLAW_MOCK_FAST=1` in automation).
 - **`--task-model-router off|rules|llm`** — override per-turn **`task_models`** routing mode for this process (requires a configured **`task_models`** map when not `off`); see [`model-routing.md`](../docs/goclaw/model-routing.md).
 - **`--output-format text|json`** — for one-shot stdout: `text` prints the final assistant message; `json` prints `{"response","toolCalls"}` (same shape as `--json-output`).
@@ -491,10 +489,10 @@ OLLAMA_HOST=http://localhost:11434 OLLAMA_MODEL=qwen2.5-coder:14b go run ./cmd/g
 No TTY required — use before a release or when CI cannot drive the full REPL:
 
 1. **Binary and session store:** from the module root, `go run ./cmd/goclaw --list-sessions` or `go run ./cmd/goclaw sessions list` must exit 0 (prints ids or `(no saved sessions)`). Same for `go build -o goclaw ./cmd/goclaw && ./goclaw sessions list`.
-2. **Chat-only path:** `GOCLAW_DISABLE_TOOLS=1 go run ./cmd/goclaw --no-tools` starts the REPL; with Ollama down you should still see a clear connection error after sending one line, not a silent hang on startup.
-3. **Stdin + mock (CI):** `GOCLAW_MOCK_FAST=1 printf 'ping\n' | go run ./cmd/goclaw --no-tools --mock --readline` exits 0 without a live LLM (Linux CI; readline + pipe can be flaky on some Windows shells).
+2. **Chat-only path (TTY):** `GOCLAW_DISABLE_TOOLS=1 go run ./cmd/goclaw --no-tools` starts the TUI; with Ollama down you should still see a clear connection error after sending one line, not a silent hang on startup.
+3. **Stdin + mock (CI):** `GOCLAW_MOCK_FAST=1 printf 'ping\n' | go run ./cmd/goclaw --no-tools --mock --output-format json` exits 0 without a live LLM (Linux CI).
 4. **JSON one-shot:** `printf 'hello\n' | go run ./cmd/goclaw --output-format json --no-tools` prints one JSON object on stdout (`--json-output` is equivalent; use `--mock` for a canned response without the provider). **Text one-shot:** `go run ./cmd/goclaw prompt "hello" --no-tools`.
-5. **Full REPL (manual, TTY):** run without `--no-tools`, press ↑ for history, trigger a tool in Ask mode; in **readline** mode confirm the `Allow execution?` prompt uses readline editing; in **TUI** confirm the approval modal above the input.
+5. **Full TUI (manual, TTY):** run without `--no-tools`, press **↑** for prior-line recall, trigger a tool in Ask mode; confirm the compact approval strip above the input accepts **`y` / `n`**.
 
 **Mock server** in `testutil/mockopenai/`:
 - Start with `mockopenai.New(scenarios)` → returns `*Server` with `.URL`
@@ -528,12 +526,12 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 7. ~~README + hooks logging~~ — [`README.md`](README.md); post-tool hook handler errors logged with `slog.WarnContext` in [`internal/hooks/hooks.go`](internal/hooks/hooks.go).
 8. ~~`glob` / `grep` tools~~ — workspace-scoped ([`internal/tools/glob.go`](internal/tools/glob.go), [`grep.go`](internal/tools/grep.go)); explore/plan allowlists updated.
 9. ~~`write_file` / `edit_file` tools~~ — atomic writes, str_replace, ReadOnly stripping; [`internal/tools/write_file.go`](internal/tools/write_file.go), [`edit_file.go`](internal/tools/edit_file.go).
-10. ~~REPL readline + expanded bash allowlist~~ — [`github.com/chzyer/readline`](https://github.com/chzyer/readline) in [`internal/app/repl_readline.go`](internal/app/repl_readline.go); allowlist in [`internal/tools/bash.go`](internal/tools/bash.go).
+10. ~~Fullscreen Bubble Tea REPL + expanded bash allowlist~~ — TUI in [`internal/ui/chat`](internal/ui/chat); allowlist in [`internal/tools/bash.go`](internal/tools/bash.go).
 11. ~~Bash single-command shell policy~~ — [`rejectShellMetacharacters`](internal/tools/bash.go) blocks pipes, `;`, `&&`, redirects, subshells, `$(...)`, and unquoted `&` (URLs with query strings must be quoted).
 12. ~~`bash_timeout_sec` in settings~~ — [`internal/config/loader.go`](internal/config/loader.go); [`NewBashWithTimeout`](internal/tools/bash.go).
 13. ~~Clearer Ollama dial errors~~ — [`wrapOllamaDialErr`](internal/llm/ollama.go) on connection refused.
 14. ~~D12 in base system prompt~~ — dedicated tools before bash; [`internal/orchestrator/request.go`](internal/orchestrator/request.go) `baseSystemPrompt`.
-15. ~~stdin smoke test in CI~~ — `.github/workflows/goclaw-ci.yml` runs `printf 'ping\n' \| go run ... --no-tools --mock --readline` with `GOCLAW_MOCK_FAST=1` on Ubuntu.
+15. ~~stdin smoke test in CI~~ — `.github/workflows/goclaw-ci.yml` runs `printf 'ping\n' \| go run ... --no-tools --mock --output-format json` with `GOCLAW_MOCK_FAST=1` on Ubuntu.
 
 When adding sections to this file, keep them in English (Language Rule — STRICT). Cursor rules (`.cursor/rules/*.mdc`) and agent skills (`.claude/skills/*.md`) are also maintained in English.
 

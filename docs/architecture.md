@@ -4,7 +4,7 @@ This repository ships **[goclaw](../goclaw/)** — a Go CLI coding agent (**loca
 
 ## Product shape
 
-GoClaw is a **terminal coding agent**: one **user turn** runs an **orchestrator loop** (LLM stream → optional tool calls → results back into the session → repeat). The UI is either a **Bubble Tea TUI** or a **readline REPL**; **`goclaw prompt`** and **stdin JSON mode** skip the interactive shell but reuse the same runtime. Defaults and flags: **[usage.md](./goclaw/usage.md)**.
+GoClaw is a **terminal coding agent**: one **user turn** runs an **orchestrator loop** (LLM stream → optional tool calls → results back into the session → repeat). On an **interactive TTY**, the shell is the **fullscreen Bubble Tea chat**; **pipes and automation** use **`goclaw prompt`** or **`--output-format json`** (no line-at-a-time REPL). Defaults and flags: **[usage.md](./goclaw/usage.md)**.
 
 ---
 
@@ -21,8 +21,8 @@ flowchart TB
 
   subgraph shell["Session shell"]
     APP["internal/app — RunChat, RunPrompt, PrepareChatRuntime, doctor, onboarding"]
-    RL["internal/app — repl_readline.go"]
     TUI["cmd/goclaw/tui.go + internal/ui/chat — Bubble Tea"]
+    RH["internal/replhistory — ~/.goclaw/history (↑/↓ in chat)"]
   end
 
   subgraph core["Agent core"]
@@ -59,8 +59,8 @@ flowchart TB
   end
 
   CMD --> CLI --> APP
-  APP --> RL
   APP --> TUI
+  TUI --> RH
   APP --> ORCH
   ORCH --> LLM
   ORCH --> SESS
@@ -76,7 +76,6 @@ flowchart TB
   APP --> PL
   APP --> IDE
   ORCH --> TD
-  RL --> SC
   TUI --> SC
 ```
 

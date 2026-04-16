@@ -50,7 +50,8 @@ type SlashEnv struct {
 	SessionModel func() string
 	// SetSessionModel updates the in-process default model id where supported (optional; for /model).
 	SetSessionModel func(id string) error
-	// ToolLog optional; returns formatted tool history text for the /tools command (readline mode only).
+	// ToolLog optional; when set, /tools prints formatted tool history as plain text. Fullscreen TUI
+	// normally uses Ctrl+T instead; HandleSlash returns a hint when ToolLog is nil.
 	ToolLog func(n int) string
 	// PlanGate optional; supplies plan approval / hub / agent-picker flags from settings. Nil → all off.
 	PlanGate func() PlanGateConfig
@@ -71,7 +72,7 @@ var ErrReplQuit = errors.New("repl quit")
 // HandleSlash processes REPL slash commands. Returns handled=true if input was consumed.
 // modelSubmit is non-empty when the caller should send that text to the model (e.g. /edit).
 // quit with ErrReplQuit means the REPL should exit after printing out.
-// hintsOut when non-nil receives TUI refresh hints (welcome bar, transcript rebuild); readline callers may pass nil.
+// hintsOut when non-nil receives TUI refresh hints (welcome bar, transcript rebuild); pass nil for non-TUI callers.
 func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *UIHints) (handled bool, out string, quit bool, modelSubmit string, err error) {
 	mem := sc.Mem
 	orch := sc.Orch

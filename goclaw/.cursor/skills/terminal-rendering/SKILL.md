@@ -1,6 +1,6 @@
 ---
 name: terminal-rendering
-description: Use when adding or changing goclaw terminal output, TUI screens, readline banners, Glamour markdown, or Lip Gloss styles. Ensures ui_appearance theme parity with the chat TUI.
+description: Use when adding or changing goclaw terminal output, TUI screens, non-TTY banners, Glamour markdown, or Lip Gloss styles. Ensures ui_appearance theme parity with the chat TUI.
 ---
 
 # Terminal rendering & theme (goclaw)

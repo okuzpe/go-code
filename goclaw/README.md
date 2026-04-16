@@ -15,7 +15,7 @@ Go CLI coding agent — **local-first** with Ollama (`qwen2.5-coder:14b` by defa
 cd goclaw
 go run ./cmd/goclaw doctor    # health check
 go run ./cmd/goclaw           # fullscreen TUI on a TTY (default)
-go run ./cmd/goclaw --readline # line-at-a-time REPL
+printf 'ping\n' | go run ./cmd/goclaw --mock --no-tools --output-format json  # pipe / CI
 ```
 
 On a TTY, the first interactive launch runs first-time setup until `~/.goclaw/settings.json` exists (see [usage.md — First-run setup](../docs/goclaw/usage.md#first-run-setup-onboarding)).

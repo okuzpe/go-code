@@ -17,6 +17,8 @@ const (
 	onboardingGlamourRuleMaxCols = 72
 	onboardingPlainRuleMaxCols   = 64
 
+	onboardingSecurityDocRuleMax = 78
+
 	onboardingTermMinCols      = 40
 	onboardingTermFallbackWrap = 68
 	onboardingGlamourWrapMin   = 48
@@ -27,6 +29,38 @@ const (
 
 //go:embed onboarding_welcome.md
 var onboardingWelcomeMD string
+
+//go:embed onboarding_security_full.md
+var onboardingSecurityFullMD string
+
+func formatVersionSuffix(version string) string {
+	v := strings.TrimSpace(version)
+	if v == "" {
+		return ""
+	}
+	return " " + v
+}
+
+// glamourRenderSecurityFull renders the bundled security.md mirror (ANSI) for the onboarding doc viewport.
+func glamourRenderSecurityFull(uiAppearance string, wrap int) string {
+	md := strings.TrimSpace(onboardingSecurityFullMD)
+	if md == "" {
+		return ""
+	}
+	if wrap < onboardingGlamourWrapMin {
+		wrap = onboardingGlamourWrapMin
+	}
+	opts := config.GlamourTermRendererOptions(uiAppearance, wrap)
+	r, err := glamour.NewTermRenderer(opts...)
+	if err != nil {
+		return ""
+	}
+	out, err := r.Render(md)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(out, "\n")
+}
 
 func onboardingWelcomeTitle(version string) string {
 	h1 := "Welcome to goclaw"
@@ -41,7 +75,7 @@ func onboardingWelcomeMarkdown(version string) string {
 	return strings.ReplaceAll(onboardingWelcomeMD, "__H1__", h1)
 }
 
-// termWidthForOnboarding returns a sensible wrap width for glamour (readline or TUI).
+// termWidthForOnboarding returns a sensible wrap width for glamour (onboarding TUI / plain fallback).
 func termWidthForOnboarding(explicit int) int {
 	if explicit > 0 {
 		return min(max(explicit-4, onboardingGlamourWrapMin), onboardingGlamourWrapMax)
@@ -111,4 +145,17 @@ func onboardingWelcomePlainBlock(version string, width int) string {
 	o.WriteString(wrapPlain("Press Ctrl+C to exit", w))
 	o.WriteString("\n")
 	return o.String()
+}
+
+// renderOnboardingSecurityDocFrame draws the path header + rule + viewport body + footer for the security doc view.
+func renderOnboardingSecurityDocFrame(viewportText string, w int, uiAppearance string) string {
+	p := terminalstyle.PaletteForAppearance(uiAppearance)
+	pathStyle := lipgloss.NewStyle().Bold(true).Foreground(p.TrustAccent2)
+	rule := lipgloss.NewStyle().Foreground(p.Muted).Render(strings.Repeat("╌", min(max(w-2, 40), onboardingSecurityDocRuleMax)))
+	head := pathStyle.Render("docs/goclaw/security.md") + "\n" + rule
+	foot := lipgloss.NewStyle().
+		Foreground(p.Muted).
+		Italic(true).
+		Render("↑ ↓ PgUp PgDn · scroll · wheel · Press Enter or Esc to continue")
+	return "\n" + head + "\n\n" + viewportText + "\n" + foot + "\n"
 }

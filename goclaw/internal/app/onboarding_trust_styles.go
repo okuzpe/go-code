@@ -1,7 +1,6 @@
 package app
 
 import (
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -76,53 +75,4 @@ func renderOnboardingTrustStepTUI(uiAppearance, absWd string, cursor, width int)
 	b.WriteString(foot)
 	b.WriteString("\n")
 	return b.String()
-}
-
-// trustReadlineTTYGlamBody is the Lip Gloss trust block without the title line (rule, path, copy, prompt).
-// Used for a two-phase print so a plain heading can flush before this heavier ANSI block is built.
-func trustReadlineTTYGlamBody(uiAppearance, absWd string, width int) string {
-	if width <= 0 {
-		width = 80
-	}
-	inner := max(width-2, onboardingTrustWrapMin)
-	_, trustRuleStyle, trustPathStyle, trustBodyStyle, trustHintStyle, _, trustNumStyle := trustStyles(uiAppearance)
-	rule := trustRuleStyle.Render(strings.Repeat("─", min(inner, onboardingTrustRuleMaxCols)))
-	pathLine := trustPathStyle.Render(absWd)
-
-	p1 := trustBodyStyle.Render(wrapPlain("Quick safety check: Is this a project you created or one you trust (your own code, a well-known open source project, or work from your team)? If not, review this folder first.", inner))
-	p2 := trustBodyStyle.Render(wrapPlain("goclaw can read, edit, and run tools in this directory. With trusted_workspace, project hooks under .goclaw/ and plugin hooks may also run.", inner))
-
-	opt1 := trustNumStyle.Render("1.") + " " + trustBodyStyle.Render("Yes, I trust this folder")
-	opt2 := trustNumStyle.Render("2.") + " " + trustBodyStyle.Render("No, exit")
-	prompt := trustHintStyle.Render("Choose (1-2): ")
-
-	var b strings.Builder
-	b.WriteString(rule)
-	b.WriteString("\n\n")
-	b.WriteString(pathLine)
-	b.WriteString("\n\n")
-	b.WriteString(p1)
-	b.WriteString("\n\n")
-	b.WriteString(p2)
-	b.WriteString("\n\n")
-	b.WriteString(opt1)
-	b.WriteString("\n")
-	b.WriteString(opt2)
-	b.WriteString("\n\n")
-	b.WriteString(prompt)
-	return b.String()
-}
-
-// renderOnboardingTrustStepReadlineTTY is the Lip Gloss version for line-based onboarding.
-func renderOnboardingTrustStepReadlineTTY(uiAppearance, absWd string, width int) string {
-	if width <= 0 {
-		width = 80
-	}
-	trustTitleStyle, _, _, _, _, _, _ := trustStyles(uiAppearance)
-	title := trustTitleStyle.Render("Accessing workspace")
-	return "\n" + title + "\n" + trustReadlineTTYGlamBody(uiAppearance, absWd, width)
-}
-
-func flushOnboardingStdout() {
-	_ = os.Stdout.Sync()
 }

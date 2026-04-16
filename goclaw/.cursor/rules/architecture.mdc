@@ -29,7 +29,7 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 |---------|----------------------|
 | `cmd/goclaw/` | Thin `main` + TUI wiring + `Version` |
 | `internal/cli/` | Cobra tree (`NewRootCmd`); inject `RunChat` / `RunListSessions` for testability without linking TUI |
-| `internal/app/` | `RunChat`, `RunListSessions`, banner; default Bubble Tea TUI on TTY; readline with `--readline` / `GOCLAW_USE_TUI=0` |
+| `internal/app/` | `RunChat`, `RunListSessions`, banner; interactive TTY = Bubble Tea TUI only; pipes → JSON / `prompt` (no line REPL) |
 | `internal/slashcmd/` | REPL `/` slash command handlers + `$EDITOR` prompt |
 | `internal/llm/` | `Client` interface + Ollama (NDJSON) + HTTP retry; OpenAI-compat client exists for tests/mocks only |
 | `internal/session/` | In-memory history, JSONL serialization, store |
@@ -53,7 +53,7 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 - No circular imports between `internal/*` packages.
 - `cmd/` imports `internal/` only, never the reverse.
 - Define interfaces in the package that consumes them, not the implementor.
-- `internal/ui/chat/` uses BubbleTea Elm pattern: **all state mutations in `Update()`**; async work via `tea.Cmd`, never raw goroutines inside the model.
+- `internal/ui/chat/` uses BubbleTea Elm pattern: **all state mutations in `Update()`**; async work via `tea.Cmd` and `Program.Send` (goroutines must not mutate the model inside `Update`).
 
 ## Glossary
 - **tool** — Go type implementing `internal/tools.Tool`
@@ -66,6 +66,6 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 - **memory** — durable facts under `~/.goclaw/memory/`
 
 ## Implemented status (2026-04)
-- **Done:** core loop, **Ollama** runtime client + **D22 HTTP retry**, session JSONL store, default BubbleTea TUI on TTY (readline opt-in), Cobra CLI, ten core tools (read_file/glob/grep/bash/write_file/edit_file/patch/web_fetch/web_search/todo_write) + **`script`** (default on), **`spawn_agent`** / **`stop_task`** on the main registry for coordinator mode, permissions, memory, compaction, hooks (Go + external + project file), MCP **stdio + streamable HTTP** (multi-server), IDE notifier + lockfile MCP discovery, planfile + `/apply-plan`, all slash commands, default `agent_profile` **`coordinator`** (hub-and-spoke; `/profile general-purpose` or settings for direct coding; see monorepo `docs/goclaw/coordinator.md`). OpenAI-compat client in `internal/llm` is **tests/mocks only**, not user settings.
+- **Done:** core loop, **Ollama** runtime client + **D22 HTTP retry**, session JSONL store, default BubbleTea TUI on TTY (fullscreen only; `internal/replhistory` for line recall), Cobra CLI, ten core tools (read_file/glob/grep/bash/write_file/edit_file/patch/web_fetch/web_search/todo_write) + **`script`** (default on), **`spawn_agent`** / **`stop_task`** on the main registry for coordinator mode, permissions, memory, compaction, hooks (Go + external + project file), MCP **stdio + streamable HTTP** (multi-server), IDE notifier + lockfile MCP discovery, planfile + `/apply-plan`, all slash commands, default `agent_profile` **`coordinator`** (hub-and-spoke; `/profile general-purpose` or settings for direct coding; see monorepo `docs/goclaw/coordinator.md`). OpenAI-compat client in `internal/llm` is **tests/mocks only**, not user settings.
 - **Post-MVP v2+:** Team/Swarm peer-agent topology (distinct from in-process coordinator); see `docs/reference/coordinator-mode.md` at monorepo root.
 - **Post-MVP v3+:** Full IDE bridge UX, remote plugin marketplace, **MCP OAuth / WebSocket** (streamable HTTP MCP is already shipped).

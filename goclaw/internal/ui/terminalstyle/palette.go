@@ -1,5 +1,5 @@
 // Package terminalstyle holds shared Lip Gloss palette tokens for TTY output keyed by
-// config ui_appearance, so chat TUI, readline banner, and onboarding stay consistent.
+// config ui_appearance, so chat TUI, startup banner, and onboarding stay consistent.
 package terminalstyle
 
 import (
@@ -27,7 +27,7 @@ type Palette struct {
 	SlashPickName lipgloss.TerminalColor
 	SlashPickDesc lipgloss.TerminalColor
 
-	// Banner / onboarding chrome (readline and fallbacks).
+	// Banner / onboarding chrome (non-TTY banner and fallbacks).
 	BannerLogo    lipgloss.TerminalColor
 	BannerKey     lipgloss.TerminalColor
 	BannerValue   lipgloss.TerminalColor

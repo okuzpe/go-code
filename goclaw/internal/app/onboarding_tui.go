@@ -40,7 +40,7 @@ type obModel struct {
 	ollamaHost  string
 	ollamaModel string
 
-	// Security step: s = full docs/goclaw/security.md in viewport (same as readline preflight gate).
+	// Security step: s = full docs/goclaw/security.md in viewport (bundled markdown, scrollable).
 	secDoc bool
 	secVP  viewport.Model
 

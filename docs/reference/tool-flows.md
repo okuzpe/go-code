@@ -11,7 +11,7 @@
 | Covered here | Documented elsewhere |
 |----------------|----------------------|
 | Orchestrator loop, permissions, tool categories, coordinator workers, hooks around tools | [usage.md](../goclaw/usage.md) (CLI, profiles), [CLAUDE.md](../../goclaw/CLAUDE.md) (decisions D1–D22) |
-| | Config merge, TUI vs readline, session JSONL store, compaction, memory, plugins, skills — see [docs-map.md](../docs-map.md) and linked topic files |
+| | Config merge, fullscreen TUI vs JSON automation, session JSONL store, compaction, memory, plugins, skills — see [docs-map.md](../docs-map.md) and linked topic files |
 
 ---
 

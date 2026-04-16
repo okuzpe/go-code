@@ -28,18 +28,9 @@ func ShouldRunOnboarding(tty, jsonMode, mock bool, userConfigDir string) bool {
 	return os.IsNotExist(err)
 }
 
-// RunOnboarding runs the TUI or readline wizard; it writes user and project settings on success.
-func RunOnboarding(version string, workdir string, useTUI bool, base config.Config) error {
-	if useTUI {
-		if err := runOnboardingTUI(version, workdir, base); err != nil {
-			return err
-		}
-	} else {
-		if err := runOnboardingReadline(version, workdir, base); err != nil {
-			return err
-		}
-	}
-	return nil
+// RunOnboarding runs the first-run Bubble Tea wizard; it writes user and project settings on success.
+func RunOnboarding(version string, workdir string, base config.Config) error {
+	return runOnboardingTUI(version, workdir, base)
 }
 
 func securityDocURL() string {
@@ -47,7 +38,7 @@ func securityDocURL() string {
 	return "docs/goclaw/security.md (in the repository)"
 }
 
-// onboardingCompletionProfileHint is shown after successful first-run setup (readline + TUI).
+// onboardingCompletionProfileHint is shown after successful first-run setup.
 func onboardingCompletionProfileHint() string {
-	return "Tip: default profile is general-purpose (full tools on the main session). Prefer /profile builder for shorter, action-first replies. For hub-and-spoke delegation, use /profile coordinator or set agent_profile in settings."
+	return "Tip: default profile is coordinator (hub — delegate with spawn_agent). Use /profile general-purpose or /profile builder for direct tools on the main session. Prefer /profile builder for shorter, action-first replies when coding solo."
 }

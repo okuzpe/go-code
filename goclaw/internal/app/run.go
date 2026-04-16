@@ -14,7 +14,6 @@ import (
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/hooks"
 	"github.com/okuzpe/goclaw/internal/session"
-	"github.com/okuzpe/goclaw/internal/slashcmd"
 	"github.com/okuzpe/goclaw/internal/tuilog"
 	"github.com/spf13/cobra"
 )
@@ -79,13 +78,9 @@ func RunListSessions(cmd *cobra.Command) error {
 	return nil
 }
 
-// RunChat starts the interactive REPL (TUI or readline). version is the CLI build version string.
-// fullscreen runs the TUI when selected; it must be non-nil whenever the TUI path is reachable.
+// RunChat starts the interactive fullscreen Bubble Tea REPL on a TTY, or stdin JSON/text automation when not a TTY.
+// fullscreen must be non-nil whenever stdin and stdout are interactive terminals.
 func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen FullscreenChatRunner) error {
-	readlineFlag, err := cmd.Flags().GetBool("readline")
-	if err != nil {
-		return err
-	}
 	tuiFlag, err := cmd.Flags().GetBool("tui")
 	if err != nil {
 		return err
@@ -95,10 +90,9 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 		return err
 	}
 
-	forceReadline := readlineFlag || strings.TrimSpace(os.Getenv("GOCLAW_USE_READLINE")) == "1"
 	explicitTUI := tuiFlag || strings.TrimSpace(os.Getenv("GOCLAW_USE_TUI")) == "1"
 	denyTUI := strings.TrimSpace(os.Getenv("GOCLAW_USE_TUI")) == "0"
-	if useJSON && explicitTUI && !forceReadline {
+	if useJSON && explicitTUI {
 		return errors.New("--output-format json and --json-output cannot be used with --tui or GOCLAW_USE_TUI=1")
 	}
 
@@ -107,16 +101,22 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 		return err
 	}
 
-	// Default TUI on an interactive terminal; opt out with GOCLAW_USE_TUI=0 or readline flags.
-	useTUI := isTTY(os.Stdout) && !forceReadline && (explicitTUI || !denyTUI)
 	ttyChat := isTTY(os.Stdout) && isTTY(os.Stdin)
+	if !useJSON {
+		if denyTUI && ttyChat {
+			return errors.New("GOCLAW_USE_TUI=0 is unsupported: interactive chat uses the fullscreen TUI only. Unset GOCLAW_USE_TUI, or use --output-format json (or --json-output) with one line on stdin for automation")
+		}
+		if !ttyChat {
+			return errors.New("interactive chat requires an interactive terminal (stdin and stdout must be TTYs). For pipes or CI, use: goclaw --output-format json (or --json-output) with one non-empty line on stdin, or: goclaw prompt \"your message\"")
+		}
+	}
 
 	earlyCfg, workdir, err := loadMergedConfigForRun(cmd)
 	if err != nil {
 		return err
 	}
 	if ShouldRunOnboarding(ttyChat, useJSON, mockFlag, earlyCfg.UserConfigDir) {
-		if err := RunOnboarding(version, workdir, useTUI, earlyCfg); err != nil {
+		if err := RunOnboarding(version, workdir, earlyCfg); err != nil {
 			if errors.Is(err, ErrOnboardingAborted) {
 				return nil
 			}
@@ -145,39 +145,21 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 		return RunChatJSONOutput(ctx, rt)
 	}
 
-	// Fullscreen TUI shows welcome panel + footer; skip ASCII banner to avoid scrollback flash and duplicate UX.
-	if !useTUI {
-		printStartupBanner(version, rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name, rt.Sess.ID, rt.Workdir, rt.DisableTools, rt.Cfg.UIAppearance, rt.Profile, rt.Cfg.OllamaNumCtx)
+	if fullscreen == nil {
+		return errors.New("goclaw: interactive chat requires a fullscreen runner (cmd wiring bug)")
 	}
-
-	if !useTUI && isTTY(os.Stdout) {
-		if banner := slashcmd.SessionLocationBanner(rt.Workdir); banner != "" {
-			fmt.Println(banner)
-			fmt.Println()
-		}
-		fmt.Print(slashcmd.PopularSlashHint(rt.Workdir))
-		fmt.Println()
+	signal.Reset(os.Interrupt)
+	var runErr error
+	{
+		restoreSlog := tuilog.AttachSlogForTUI(rt.Cfg.UserConfigDir)
+		defer restoreSlog()
+		runErr = fullscreen.RunFullscreenChat(ctx, rt)
 	}
-
-	if useTUI {
-		if fullscreen == nil {
-			return errors.New("goclaw: TUI mode requires a fullscreen runner (cmd wiring bug)")
-		}
-		signal.Reset(os.Interrupt)
-		var err error
-		{
-			restoreSlog := tuilog.AttachSlogForTUI(rt.Cfg.UserConfigDir)
-			defer restoreSlog()
-			err = fullscreen.RunFullscreenChat(ctx, rt)
-		}
-		slog.Info("saving session", "id", rt.Sess.ID, "messages", rt.Sess.Len())
-		if saveErr := rt.Store.Save(rt.Sess); saveErr != nil {
-			slog.Error("failed to save session", "err", saveErr)
-		}
-		return err
+	slog.Info("saving session", "id", rt.Sess.ID, "messages", rt.Sess.Len())
+	if saveErr := rt.Store.Save(rt.Sess); saveErr != nil {
+		slog.Error("failed to save session", "err", saveErr)
 	}
-
-	return runReadlineREPL(ctx, rt, rt.OrchOpts)
+	return runErr
 }
 
 // automationUsesJSON returns true when stdout should emit JSON for one-line stdin automation
@@ -209,10 +191,6 @@ func RunPrompt(cmd *cobra.Command, args []string) error {
 		return errors.New(`prompt: need a non-empty message (example: goclaw prompt "summarize README.md")`)
 	}
 
-	readlineFlag, err := cmd.Flags().GetBool("readline")
-	if err != nil {
-		return err
-	}
 	tuiFlag, err := cmd.Flags().GetBool("tui")
 	if err != nil {
 		return err
@@ -222,13 +200,12 @@ func RunPrompt(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	forceReadline := readlineFlag || strings.TrimSpace(os.Getenv("GOCLAW_USE_READLINE")) == "1"
 	explicitTUI := tuiFlag || strings.TrimSpace(os.Getenv("GOCLAW_USE_TUI")) == "1"
-	if useJSON && explicitTUI && !forceReadline {
+	if useJSON && explicitTUI {
 		return errors.New("--output-format json and --json-output cannot be used with --tui or GOCLAW_USE_TUI=1")
 	}
-	if !useJSON && explicitTUI && !forceReadline {
-		return errors.New("prompt: use readline or text output for one-shot prompts; --tui is for interactive chat only")
+	if !useJSON && explicitTUI {
+		return errors.New("prompt: use text output for one-shot prompts; --tui is for interactive chat only")
 	}
 
 	rt, err := PrepareChatRuntime(cmd)

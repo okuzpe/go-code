@@ -2,7 +2,6 @@ package slashcmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/okuzpe/goclaw/internal/agents"
@@ -138,7 +137,7 @@ func formatAgentsList(profs map[string]agents.Profile, active string, env SlashE
 		b.WriteByte('\n')
 	}
 	b.WriteString("\nUsage: /agents <name>  (same as /profile <name>)\n")
-	b.WriteString("Bare /agents in readline uses arrow keys when stdin is a TTY.\n")
+	b.WriteString("In the fullscreen TUI, use Ctrl+P to pick a profile, or pass a name: /agents <name>.\n")
 	if pg := planGateFrom(env); len(pg.AgentPickerHide) > 0 {
 		b.WriteString("\nSome profiles are hidden from the picker (agent_picker_hidden_profiles); /profile <name> still works.\n")
 	}
@@ -149,41 +148,7 @@ func tryInteractiveAgentsPick(env SlashEnv, orch *orchestrator.Orchestrator, hin
 	if env.DisableInteractiveAgentPick || orch == nil {
 		return "", false, nil
 	}
-	fd := int(os.Stdin.Fd())
-	profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
-	names := agents.SortedKeys(visibleProfileMap(env, profs))
-	if len(names) == 0 {
-		return "", false, nil
-	}
-	cur := orch.ProfileName()
-	start := 0
-	for i, n := range names {
-		if n == cur {
-			start = i
-			break
-		}
-	}
-	choice, res, perr := pickListTTY(fd, os.Stdin, os.Stdout, "Agent profile — ↑↓ move · Enter apply · Esc cancel", names, start)
-	if perr != nil {
-		return "", false, nil
-	}
-	switch res {
-	case ttyListPickNone:
-		return "", false, nil
-	case ttyListPickCancelled:
-		return "/agents cancelled.", true, nil
-	case ttyListPickChosen:
-		msg, serr := switchOrchestratorProfile(orch, env, choice)
-		if serr != nil {
-			return "", true, serr
-		}
-		sub := ""
-		if env.ChatSubtitle != nil {
-			sub = env.ChatSubtitle()
-		}
-		setWelcomeHints(hintsOut, orch, sub)
-		return msg, true, nil
-	default:
-		return "", false, nil
-	}
+	_ = hintsOut
+	// Profile picking is handled in the fullscreen TUI (Ctrl+P overlay); bare /agents lists names.
+	return "", false, nil
 }

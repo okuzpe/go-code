@@ -41,14 +41,6 @@ func RunLocalPrefixToolIfAny(
 	if analysis.Kind != inputprefix.KindLocalTool {
 		return false, nil
 	}
-	var logStart int
-	var logSink *loggingTerminalSink
-	if sink != nil {
-		if ls, ok := sink.(*loggingTerminalSink); ok {
-			logSink = ls
-			logStart = ls.ToolLogLen()
-		}
-	}
 	content, isError, runErr := orch.RunToolInvocation(ctx, analysis.ToolName, analysis.ToolInputJSON, sink)
 	if runErr != nil {
 		return true, runErr
@@ -63,9 +55,6 @@ func RunLocalPrefixToolIfAny(
 			sink.OnTextDelta(line + "\n")
 		}
 		sink.OnDone(body)
-		if logSink != nil {
-			logSink.PrintReadlineTurnFooters(logStart, body, workdir)
-		}
 	}
 	return true, nil
 }

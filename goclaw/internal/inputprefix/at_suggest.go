@@ -4,7 +4,6 @@ import (
 	"io/fs"
 	"path/filepath"
 	"strings"
-	"unicode/utf8"
 )
 
 // AtPathSuggest is one workspace-relative path for TUI @ picker rows.
@@ -276,79 +275,4 @@ func AtTabExpand(workdir, line string) (replacement string, ok bool) {
 		return names[0], true // directory: no trailing space, user continues typing inside
 	}
 	return names[0] + " ", true // file: trailing space marks completion
-}
-
-// ReadlineAtCompletions implements readline.AutoCompleter: @ path completion or slash commands.
-type ReadlineAtCompletions struct {
-	Workdir string
-	Slash   interface {
-		Do(line []rune, pos int) ([][]rune, int)
-	}
-}
-
-// Do forwards to @ path completion or slash PrefixCompleter.
-// Leading spaces are stripped for @ matching, matching readline PrefixCompleter behavior.
-func (c *ReadlineAtCompletions) Do(line []rune, pos int) ([][]rune, int) {
-	if pos < 0 {
-		pos = 0
-	}
-	if pos > len(line) {
-		pos = len(line)
-	}
-	trim := strings.TrimLeft(string(line[:pos]), " \t")
-	if strings.HasPrefix(trim, "@") && strings.TrimSpace(c.Workdir) != "" {
-		return readlineAtPathSuffixes(c.Workdir, trim)
-	}
-	if c.Slash != nil {
-		return c.Slash.Do(line, pos)
-	}
-	return nil, 0
-}
-
-func readlineAtPathSuffixes(workdir, typed string) ([][]rune, int) {
-	sugs := TUIAtPathSuggestions(workdir, typed)
-	if len(sugs) == 0 {
-		return nil, 0
-	}
-	names := atDisplayNames(sugs)
-	tl := strings.ToLower(typed)
-	var out [][]rune
-	for _, full := range names {
-		fl := strings.ToLower(full)
-		if !strings.HasPrefix(fl, tl) {
-			continue
-		}
-		if len(full) < len(typed) {
-			continue
-		}
-		out = append(out, []rune(full[len(typed):]))
-	}
-	if len(out) == 0 {
-		return nil, 0
-	}
-	off := utf8.RuneCountInString(typed)
-	if len(out) == 1 {
-		return out, off
-	}
-	same, n := aggregateRunePrefix(out)
-	if n > 0 {
-		return [][]rune{same}, off
-	}
-	return out, off
-}
-
-func aggregateRunePrefix(rows [][]rune) (common []rune, n int) {
-	if len(rows) == 0 {
-		return nil, 0
-	}
-	ref := rows[0]
-	for i := range ref {
-		ch := ref[i]
-		for j := 1; j < len(rows); j++ {
-			if i >= len(rows[j]) || rows[j][i] != ch {
-				return ref[:i], i
-			}
-		}
-	}
-	return ref, len(ref)
 }

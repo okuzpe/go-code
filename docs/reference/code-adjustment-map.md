@@ -89,7 +89,7 @@ flowchart LR
 
 | Primary doc | Secondary | Code |
 |-------------|-----------|------|
-| `CLAUDE.md` | [`usage.md`](../goclaw/usage.md), [`manual-tui-checklist.md`](../goclaw/manual-tui-checklist.md) | `run.go`, `chat_wiring.go`, `repl_readline.go`, `banner.go`; `slashcmd/`; `ui/chat/` |
+| `CLAUDE.md` | [`usage.md`](../goclaw/usage.md), [`manual-tui-checklist.md`](../goclaw/manual-tui-checklist.md) | `run.go`, `chat_wiring.go`, `json_output_run.go`, `banner.go`; `replhistory/`; `slashcmd/`; `ui/chat/` |
 
 **Adjustment:** Chat runtime and tool/MCP registration → **`internal/app/chat_wiring.go`**. Slash commands → `internal/slashcmd`. TUI: async via `tea.Cmd` only; no raw goroutines inside Bubble Tea `Update()` (see architecture rule).
 
