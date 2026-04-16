@@ -45,7 +45,7 @@ Transcript: Ctrl+B browse (↑↓ j/k scroll); PgUp/PgDn and Alt+arrows always. 
 Prefix input (single line; same permissions as tools — see docs/goclaw/prefix-input-modes.md)
   !cmd               run bash tool (allowlisted shell)
   @path               read_file in the workspace (TUI: path list + Tab; readline: Tab)
-  &task               spawn_agent (general-purpose; hub profile)
+  &task               spawn_agent (worker profile general-purpose; parent must allow spawn_agent)
   /btw text           side question — one wrapped message to the model
   /continue           follow-up — keep working on your last user request (sent to the model)
 
@@ -56,12 +56,10 @@ Docs: docs/goclaw/usage.md (monorepo) and CLAUDE.md in the goclaw module.
 Architecture note
   Orchestrator     The agent loop runtime — drives one agent turn (LLM + tools + repeat).
                    Every profile runs inside an orchestrator. Not user-visible; it is the engine.
-  Coordinator      A hub profile (--profile coordinator). The orchestrator runs it in hub mode:
-                   the agent uses spawn_agent to delegate to isolated worker orchestrators, then
-                   synthesizes results. It never touches files or shell directly.
-  General-purpose  Default profile. Explore → implement → verify with tools directly (no workers).
-                   Completed tool cards show a short result line when useful; Ctrl+T (TUI) or /tools
-                   (readline) opens full tool output history for this session.
+  Coordinator      Default hub profile (--profile coordinator). spawn_agent delegates to workers;
+                   the parent session has no direct read/write/shell tools. Synthesizes worker results.
+  General-purpose  Direct coding in this session: explore → implement → verify with full tools (no hub).
+                   Tool cards: short result lines when useful; Ctrl+T (TUI) or /tools (readline) for history.
 `)
 
 }

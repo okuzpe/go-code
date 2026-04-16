@@ -1,8 +1,8 @@
 {
   "trusted_workspace": true,
-  "ollama_model": "qwen2.5-coder:7b",
+  "ollama_model": "qwen2.5-coder:14b",
   "task_model_router": "off",
-  "ollama_num_ctx": 8192,
-  "model_context_tokens": 8192,
+  "ollama_num_ctx": 32768,
+  "model_context_tokens": 32768,
   "preferred_response_language": "es"
 }

@@ -22,8 +22,8 @@ type RunPromptFunc func(cmd *cobra.Command, args []string) error
 func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, listSessions RunListSessionsFunc, runDoctor RunDoctorFunc) *cobra.Command {
 	root := &cobra.Command{
 		Use:     "goclaw",
-		Short:   "Go CLI coding agent (local Ollama)",
-		Long:    "Local-first coding agent with tools, sessions, and REPL slash commands. Run with no arguments to start the chat REPL.",
+		Short:   "Go CLI coding agent — coordinator hub by default; workers run tools (local Ollama)",
+		Long:    "Local-first coding agent: default profile is coordinator (hub); delegate work with spawn_agent to workers that use file and shell tools. Sessions and REPL slash commands. Run with no arguments to start the chat REPL. Override with --profile or agent_profile in settings.",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			listSessionsFlag, err := cmd.Flags().GetBool("list-sessions")
@@ -86,6 +86,7 @@ func newChatCmd(runChat RunChatFunc) *cobra.Command {
 		Use:   "chat",
 		Short: "Start interactive chat (default fullscreen TUI on a TTY; use --readline for line REPL)",
 		Long: `Opens the coding-agent chat: streaming assistant, tool loop, slash commands, and session persistence.
+Default agent profile is coordinator (hub); use spawn_agent in-session or switch profile with /profile.
 
 On an interactive terminal the default UI is fullscreen Bubble Tea (better tool approval and transcript).
 Use --readline or GOCLAW_USE_READLINE=1 for claw-style line REPL, or GOCLAW_USE_TUI=0 to opt out of TUI.

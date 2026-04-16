@@ -34,6 +34,9 @@ Analyze:  glob → read_file / grep → answer from what was actually read.
 Write:    glob / read_file → edit_file or write_file → bash / script to verify.
 Repair:   verify fails → diagnose → targeted fix → re-verify. Max 2 cycles. After 2 failures: stop and report with evidence.
 
+═══ PROPOSE → SECOND PASS → EXECUTE (workers) ═══
+For implementation work: analyze scope → gather evidence with read-only tools → apply edits (that is your proposal on disk) → second pass: re-read edited regions or grep for missed references → run verification (bash/script) and report outcomes. Skip verify only when the task is purely explanatory with no build or test implied.
+
 Tool choice:
 - edit_file  = small exact change
 - patch      = large or uncertain diff

@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/config"
@@ -21,10 +20,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	ollamaDoctorProbeTimeout = 900 * time.Millisecond
-	doctorMCPDisplayMaxRunes = 72
-)
+const doctorMCPDisplayMaxRunes = 72
 
 // RunDoctor prints a short preflight report and exits.
 func RunDoctor(cmd *cobra.Command, _ []string) error {
@@ -420,7 +416,7 @@ func hintLines(cfg config.Config, ollamaOK, ollamaModelInLibrary, toolsDisabled,
 			"  Likely causes:",
 			"  1. Model too old — re-pull it:  ollama pull "+model,
 			"  2. Ollama version too old — update Ollama to v0.3+ (https://ollama.com)",
-			"  3. Context too small for tool schemas — set \"ollama_num_ctx\": 16384 in ~/.goclaw/settings.json",
+			fmt.Sprintf("  3. Context too small for tool schemas — set \"ollama_num_ctx\": %d (or higher) in ~/.goclaw/settings.json", config.DefaultOllamaNumCtx),
 			fmt.Sprintf("  Current ollama_num_ctx: %d", cfg.OllamaNumCtx),
 		)
 	}

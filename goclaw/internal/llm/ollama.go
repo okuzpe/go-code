@@ -18,6 +18,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/okuzpe/goclaw/internal/config"
 )
 
 // OllamaClient implements Client against a local Ollama instance.
@@ -157,10 +159,10 @@ func (c *OllamaClient) streamWithWireTools(ctx context.Context, req Request, out
 		msg := parseOllamaErrorMessage(errBody)
 		if wireTools && len(req.Tools) > 0 && ollamaReportsToolsUnsupported(resp.StatusCode, msg) {
 			c.toolsUnsupportedOnce.Do(func() {
-				slog.Warn("ollama: model rejected tool calling — falling back to text-only (no read_file/bash/etc.). " +
-					"Use a tools-capable model (e.g. qwen2.5-coder:7b) or update Ollama. " +
-					"Set ollama_num_ctx in settings.json (default 8192) if context is too small for tool schemas. " +
-					"Ollama error: " + msg)
+				slog.Warn(fmt.Sprintf("ollama: model rejected tool calling — falling back to text-only (no read_file/bash/etc.). "+
+					"Use a tools-capable model (e.g. qwen2.5-coder:7b) or update Ollama. "+
+					"Set ollama_num_ctx in settings.json (default %d) if context is too small for tool schemas. "+
+					"Ollama error: %s", config.DefaultOllamaNumCtx, msg))
 			})
 			c.functionToolsDropped.Store(true)
 			return c.streamWithWireTools(ctx, req, out, false)

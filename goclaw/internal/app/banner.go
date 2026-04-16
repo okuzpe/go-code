@@ -42,9 +42,9 @@ func profileWriteFootnote(profile agents.Profile) (string, bool) {
 		return "", false
 	}
 	if profile.AllowsSpawnAgentDelegation() {
-		return "Hub profile (no direct write tools) — delegate with spawn_agent or /profile general-purpose.", true
+		return "Coordinator hub (no direct write tools) — delegate with spawn_agent; use /profile general-purpose or /profile builder for direct edits in this session.", true
 	}
-	return "Read-only profile — /profile general-purpose for direct file edits.", true
+	return "Read-only profile — /profile general-purpose or /profile builder for direct file edits.", true
 }
 
 // printStartupBanner renders the ASCII header and session summary for the readline REPL path (and the

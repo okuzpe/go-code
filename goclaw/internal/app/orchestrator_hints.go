@@ -7,18 +7,18 @@ import (
 
 // AugmentOrchestratorErr appends user-facing recovery hints when the wrapped error is recognized.
 // errors.Is / errors.As still work on the returned value.
-func AugmentOrchestratorErr(provider, model string, err error) error {
+func AugmentOrchestratorErr(model string, err error) error {
 	if err == nil {
 		return nil
 	}
-	hints := orchestratorFailureHints(provider, model, err)
+	hints := orchestratorFailureHints(model, err)
 	if len(hints) == 0 {
 		return err
 	}
 	return fmt.Errorf("%w\n%s", err, strings.Join(hints, "\n"))
 }
 
-func orchestratorFailureHints(provider, model string, err error) []string {
+func orchestratorFailureHints(model string, err error) []string {
 	msg := err.Error()
 	low := strings.ToLower(msg)
 	out := make([]string, 0, 4)

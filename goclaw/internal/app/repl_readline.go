@@ -70,7 +70,6 @@ func terminalToolApprover(rl *readline.Instance, getPrompt func() string, uiAppe
 func runOrchestratorTurn(
 	baseCtx context.Context,
 	mock bool,
-	provider string,
 	model string,
 	orch *orchestrator.Orchestrator,
 	sess *session.Session,
@@ -92,7 +91,7 @@ func runOrchestratorTurn(
 	} else {
 		final, runErr = orch.RunStreaming(reqCtx, userText, sink)
 	}
-	runErr = AugmentOrchestratorErr(provider, model, runErr)
+	runErr = AugmentOrchestratorErr(model, runErr)
 	setReqCancel(nil)
 	reqCancel()
 	if runErr != nil && !(errors.Is(runErr, context.Canceled) && baseCtx.Err() == nil) {
@@ -196,14 +195,14 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 				fmt.Println(slashOut)
 			}
 			if strings.TrimSpace(modelSubmit) != "" {
-				runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, r.replSession, modelSubmit, r.sink, setReqCancel, r.rt.Workdir)
+				runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Model(), r.orch, r.replSession, modelSubmit, r.sink, setReqCancel, r.rt.Workdir)
 			}
 			continue
 		}
 
 		if wid := strings.TrimSpace(r.focus.Current()); wid != "" {
 			startLen := r.sink.ToolLogLen()
-			werr := runWorkerTurn(r.baseCtx, r.rt.Cfg.Provider, r.rt.Cfg.Model(), wid, input, r.sink, setReqCancel)
+			werr := runWorkerTurn(r.baseCtx, r.rt.Cfg.Model(), wid, input, r.sink, setReqCancel)
 			if werr == nil {
 				snap, _ := coordinator.SnapshotInteractiveWorker(wid)
 				r.sink.PrintReadlineTurnFooters(startLen, snap, r.rt.Workdir)
@@ -227,20 +226,20 @@ func (r *readlineREPL) run(rl *readline.Instance, intCh <-chan os.Signal) {
 		}
 
 		input = ExpandInlineAtRefs(r.baseCtx, r.orch, input)
-		runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Provider, r.rt.Cfg.Model(), r.orch, r.replSession, input, r.sink, setReqCancel, r.rt.Workdir)
+		runOrchestratorTurn(r.baseCtx, r.rt.Mock, r.rt.Cfg.Model(), r.orch, r.replSession, input, r.sink, setReqCancel, r.rt.Workdir)
 	}
 }
 
 func runWorkerTurn(
 	baseCtx context.Context,
-	provider, model, taskID, userText string,
+	model, taskID, userText string,
 	sink orchestrator.StreamSink,
 	setReqCancel func(context.CancelFunc),
 ) error {
 	reqCtx, reqCancel := context.WithCancel(baseCtx)
 	setReqCancel(reqCancel)
 	err := coordinator.DeliverWorkerMessage(reqCtx, taskID, userText, sink)
-	err = AugmentOrchestratorErr(provider, model, err)
+	err = AugmentOrchestratorErr(model, err)
 	setReqCancel(nil)
 	reqCancel()
 	if err != nil && !(errors.Is(err, context.Canceled) && baseCtx.Err() == nil) {

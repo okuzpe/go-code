@@ -15,9 +15,6 @@ const (
 	compactPreserveTail    = 24
 	compactionSnippetRunes = 280 // max runes per removed message line in the compaction summary
 
-	// Default context window estimate when ModelContextTokens is unset (non-Ollama-num_ctx path; heuristic only).
-	ollamaContextTokens = 8192
-
 	// compactedToolResult is the placeholder written over large tool-result payloads during phase-1 compaction.
 	compactedToolResult = "[compacted]"
 )
@@ -190,16 +187,7 @@ func clearOldToolResults(msgs []llm.Message, preserve int) ([]llm.Message, bool)
 
 // estimatedSessionTokens returns a heuristic token count for compaction decisions.
 func (o *Orchestrator) estimatedSessionTokens(_ context.Context, _ int) int {
-	return sessionTokenEstimate(o.session.Messages, o.cfg.Provider)
-}
-
-// contextBudgetTokens is kept for SessionCompactionFillPercentLive (TUI footer).
-// New orchestrator code should use cfg.EffectiveContextTokens() instead.
-func contextBudgetTokens(provider string, cfgTokens int) int {
-	if cfgTokens > 0 {
-		return cfgTokens
-	}
-	return ollamaContextTokens
+	return sessionTokenEstimate(o.session.Messages)
 }
 
 // sessionTokenEstimateFromChars maps a UTF-8 byte count to an approximate token count (char÷4 heuristic).
@@ -211,21 +199,19 @@ func sessionTokenEstimateFromChars(chars int) int {
 }
 
 // sessionTokenEstimate approximates tokens from message text (chars ÷ 4 heuristic).
-func sessionTokenEstimate(msgs []llm.Message, provider string) int {
-	_ = provider
+func sessionTokenEstimate(msgs []llm.Message) int {
 	c := sessionCharEstimate(msgs)
 	return sessionTokenEstimateFromChars(c)
 }
 
 // SessionMessagesTokenEstimate is a rough context-size hint from stored message payloads (not billed API usage).
 // Same heuristics as compaction; safe for TUI footers and status lines.
-func SessionMessagesTokenEstimate(msgs []llm.Message, provider string) int {
-	return sessionTokenEstimate(msgs, provider)
+func SessionMessagesTokenEstimate(msgs []llm.Message) int {
+	return sessionTokenEstimate(msgs)
 }
 
 // SessionMessagesTokenEstimateLive includes extraChars (e.g. in-flight assistant UTF-8 bytes) in the estimate for UI hints.
-func SessionMessagesTokenEstimateLive(msgs []llm.Message, provider string, extraChars int) int {
-	_ = provider
+func SessionMessagesTokenEstimateLive(msgs []llm.Message, extraChars int) int {
 	c := sessionCharEstimate(msgs) + extraChars
 	return sessionTokenEstimateFromChars(c)
 }
@@ -235,7 +221,7 @@ func SessionMessagesTokenEstimateLive(msgs []llm.Message, provider string, extra
 // bytes (e.g. assistant text still streaming).
 // Returns (percent, true) when auto_compact_threshold > 0; otherwise (0, false).
 func SessionCompactionFillPercentLive(msgs []llm.Message, cfg config.Config, extraChars int) (int, bool) {
-	tok := SessionMessagesTokenEstimateLive(msgs, cfg.Provider, extraChars)
+	tok := SessionMessagesTokenEstimateLive(msgs, extraChars)
 	return sessionCompactionFillPercentFromTokenEstimate(cfg, tok)
 }
 

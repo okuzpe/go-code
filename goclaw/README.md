@@ -47,6 +47,6 @@ Everything else (roadmap, changelog, architecture hub, tool/MCP/hooks reference)
 
 ## Multi-agent (brief)
 
-- **Default session:** `general-purpose` (file/bash tools on the main agent). **`make run-hub`** or **`--profile coordinator`** for hub-and-spoke (`spawn_agent` / `stop_task`; workers have isolated sessions). See [coordinator.md](../docs/goclaw/coordinator.md) and [coordinator-mode.md](../docs/reference/coordinator-mode.md).
+- **Default session:** `coordinator` (hub — `spawn_agent` / `stop_task` / `todo_write` on the parent; workers run tools). **`--profile general-purpose`** or **`--profile builder`** for direct file/bash tools on the main agent. **`make run-hub`** also selects coordinator. See [coordinator.md](../docs/goclaw/coordinator.md) and [coordinator-mode.md](../docs/reference/coordinator-mode.md).
 - **Not in scope:** Team/Swarm (tmux-style peer agents).
 - **External stacks** (Discord, clawhip, etc.) are optional wrappers around the CLI — not bundled here.

@@ -45,7 +45,7 @@ The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings
 
 **`goclaw doctor` does not run onboarding** — it loads config and prints a health report. Run `doctor` for a quick check; run `goclaw` once to complete first-time setup.
 
-The wizard follows the **same TUI vs readline** rules as the main app (default fullscreen TUI on a TTY unless `GOCLAW_USE_TUI=0` or `--readline`). The default **agent profile** is **`general-purpose`** until you set `agent_profile` or use `/profile` — see [Agent profiles](#agent-profiles).
+The wizard follows the **same TUI vs readline** rules as the main app (default fullscreen TUI on a TTY unless `GOCLAW_USE_TUI=0` or `--readline`). The default **agent profile** is **`coordinator`** (hub — delegate with `spawn_agent`) until you set `agent_profile` or use `/profile` — see [Agent profiles](#agent-profiles).
 
 ### REPL modes
 
@@ -69,7 +69,7 @@ Interpreted **after** slash commands and **before** the model (TUI and readline)
 | `!` + command | Run the **`bash`** tool with that command (allowlist and metacharacter rules apply). |
 | `@` + path (standalone) | Run **`read_file`** for a path inside the workspace. **TUI:** matching paths appear under the input as you type; **Tab** completes anywhere in the line. **Readline:** **Tab** completes `@` paths or `/` commands. Drag-and-drop a file/folder onto the terminal to insert `@relpath` automatically. |
 | `@token` inline | When `@path` tokens appear inside a larger message (e.g. `explain @go.mod`), the file is silently pre-loaded before the model call — no separate read step needed. |
-| `&` + task | Run **`spawn_agent`** with profile `general-purpose` (requires **`spawn_agent`** on the active profile — use **`/profile coordinator`** or hub mode for that). |
+| `&` + task | Run **`spawn_agent`** with worker profile **`general-purpose`** (requires **`spawn_agent`** on the active profile — default **`coordinator`** includes it; use **`/profile coordinator`** if you switched away). |
 | `/btw` + text | Slash command: submit **one** user message wrapped as a short “side question” to the model. |
 
 Full grammar and security notes: [prefix-input-modes.md](./prefix-input-modes.md).
@@ -157,7 +157,7 @@ To attach a **local editor MCP server** (HTTP on loopback) without hand-editing 
 
 ## Agent profiles
 
-**Default (no settings):** `general-purpose` — full tools on the main session. Use **`coordinator`** when you want hub mode (delegate with `spawn_agent` only on the parent).
+**Default (no settings):** `coordinator` — hub mode on the main session (`spawn_agent`, `stop_task`, `todo_write` only on the parent). Use **`general-purpose`** or **`builder`** when you want direct read/write/bash tools in the main session without delegation (`/profile` or `agent_profile` in settings).
 
 Set with `--profile <name>`, `agent_profile` in settings, or **`GOCLAW_AGENT_PROFILE`** (applied after settings merge; `--profile` still wins).
 

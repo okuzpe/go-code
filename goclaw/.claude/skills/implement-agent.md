@@ -25,13 +25,13 @@ type Profile struct {
 
 | Name | Model override | Tools (allowlist) | ReadOnly | Role |
 |------|----------------|-------------------|----------|------|
-| `general-purpose` | — | all (`nil`) | false | default |
+| `general-purpose` | — | all (`nil`) | false | direct coding (common worker profile; use `/profile` for main session) |
 | `explore` | — | read_file, glob, grep, web_fetch, web_search, todo_write | true | cheap exploration |
 | `plan` | — | read_file, glob, grep, web_search, todo_write | true | planning — prefer direct plans for greenfield tasks; repo tools when code-aware; web_search only for external facts/docs |
 | `verification` | — | read_file, bash, todo_write | false | PASS/FAIL checks |
 | `guide` | — | none (`[]string{}`) | true | Q&A only |
 | `statusline` | — | none | true | single-line status |
-| `coordinator` | — | spawn_agent, stop_task, todo_write | true | delegate to workers; no direct file/shell tools |
+| `coordinator` | — | spawn_agent, stop_task, todo_write | true | default `agent_profile` in `config.Default()` — hub; no direct file/shell tools |
 
 (Align with `profile.go` if this table drifts.)
 

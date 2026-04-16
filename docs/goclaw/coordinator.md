@@ -1,6 +1,6 @@
 # Coordinator mode (D16) — implementation reference
 
-**Product note:** Hub-and-spoke is **opt-in**. The global default `agent_profile` is **`general-purpose`** (direct coding on the main session). Switch with **`/profile coordinator`**, **`agent_profile`** in settings, **`GOCLAW_AGENT_PROFILE=coordinator`**, or **`make run-hub`** in this repo.
+**Product note:** Hub-and-spoke is the **default** for fresh installs: merged `agent_profile` defaults to **`coordinator`** (see `config.Default()` in goclaw). Use **`/profile general-purpose`** or **`/profile builder`** for direct coding in the main session, or set **`agent_profile`** / **`GOCLAW_AGENT_PROFILE`** accordingly. **`make run-hub`** in this repo also selects coordinator for convenience.
 
 This document ties [coordinator-mode.md](../reference/coordinator-mode.md) (design reference) to the **implemented** hub-and-spoke coordinator in goclaw. It complements the plan → execute workflow ([`internal/planfile`](../internal/planfile/), `/apply-plan`) and stays separate from future **Team/Swarm** designs.
 

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Defaults & docs:** `config.Default().AgentProfile` is **`coordinator`**; default Ollama context budget uses **`DefaultOllamaNumCtx` (32768)** for **`qwen2.5-coder:14b`**. [usage.md](./usage.md), [coordinator.md](./coordinator.md), [prefix-input-modes.md](./prefix-input-modes.md), [manual-tui-checklist.md](./manual-tui-checklist.md), and [agent-profiles.md](../reference/agent-profiles.md) updated to match. Removed unused **`provider`** parameters from **`AugmentOrchestratorErr`** and session token estimate helpers in goclaw.
+
 ### Added
 
 - **Plan workflow polish:** REPL **`/plan review`**, **`/plan approve`**, **`/plan revoke`**, **`/plan steps`**; optional **`plan_require_apply_approval`** (settings) enforces **`/plan approve`** (writes **`.goclaw/plan.meta.json`** with content SHA-256) before **`/apply-plan`** / **`/plan run`**. **`/apply-plan --hub`** and **`/plan run --hub`** (or **`plan_apply_use_coordinator`**) execute via **`coordinator`** with an expanded handoff; **`## Steps`** parsing injects an ordered checklist. Settings **`agent_picker_hidden_profiles`** hides built-in profiles from the TUI Ctrl+P picker. Docs: [usage.md](./usage.md), [agent-profiles.md](../reference/agent-profiles.md).

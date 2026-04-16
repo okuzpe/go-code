@@ -24,7 +24,7 @@ Select a profile with `-profile <name>` or set `agent_profile` in `settings.json
 
 ## Built-in Profiles
 
-Built-in profiles live in [`goclaw/internal/agents/profile.go`](../../goclaw/internal/agents/profile.go) (eight names, including `coordinator` and `code-review`). Custom Markdown agents can override names; see **Custom agents** below. **Default** `agent_profile` when unset in settings is **`general-purpose`** ([`config.Default()`](../../goclaw/internal/config/config.go)); use **`coordinator`** for hub-and-spoke delegation (`spawn_agent` on the parent only).
+Built-in profiles live in [`goclaw/internal/agents/profile.go`](../../goclaw/internal/agents/profile.go) (eight names, including `coordinator` and `code-review`). Custom Markdown agents can override names; see **Custom agents** below. **Default** `agent_profile` when unset in settings is **`coordinator`** ([`config.Default()`](../../goclaw/internal/config/config.go)) — hub-and-spoke (`spawn_agent` on the parent only). Use **`general-purpose`** or **`builder`** for direct tools on the main session.
 
 | Profile | `-profile` value | Tool allowlist | Read-only | Default? |
 |---------|-----------------|----------------|-----------|----------|

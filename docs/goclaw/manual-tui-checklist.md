@@ -13,7 +13,7 @@ Run from a real TTY with `goclaw` (**TUI is default** on a TTY) or explicitly `g
 
 Use a **disposable user config** so you do not wipe your real `~/.goclaw/` (examples: temporary `HOME`, or move/rename `~/.goclaw/settings.json` for one run only).
 
-1. **Fresh settings + TTY** — With no `~/.goclaw/settings.json`, run `goclaw` (or `go run ./cmd/goclaw`) from a project directory. Complete: security screen → trust workspace (option 1) → appearance → Ollama defaults (Enter). Confirm `~/.goclaw/settings.json` exists and project `.goclaw/settings.json` has `"trusted_workspace": true`. Completion tip should mention **general-purpose** (default) vs **`/profile coordinator`** for hub mode.
+1. **Fresh settings + TTY** — With no `~/.goclaw/settings.json`, run `goclaw` (or `go run ./cmd/goclaw`) from a project directory. Complete: security screen → trust workspace (option 1) → appearance → Ollama defaults (Enter). Confirm `~/.goclaw/settings.json` exists and project `.goclaw/settings.json` has `"trusted_workspace": true`. Completion tip should mention **`coordinator`** (default hub) vs **`/profile general-purpose`** or **`/profile builder`** for direct coding in the main session.
 2. **Readline onboarding** — Same fresh config; run with `GOCLAW_USE_TUI=0` or `--readline`. Walk through the same logical steps; stdin prompts match the TUI flow.
 3. **Decline trust** — Choose “exit / not trusted”; process exits without writing user settings (or exits early per implementation); no hang.
 4. **Skip wizard** — `GOCLAW_NO_ONBOARDING=1` with missing `settings.json`: app should **not** show the wizard (may still fail later if provider misconfigured).

@@ -17,6 +17,12 @@ import (
 // OLLAMA_MODEL) if you need a smaller VRAM footprint — see defaultTaskModels for lighter roles.
 const DefaultOllamaModel = "qwen2.5-coder:14b"
 
+// DefaultOllamaNumCtx is the default context window (tokens) for Ollama and for compaction estimates
+// when settings do not override ollama_num_ctx / model_context_tokens.
+// Tuned for DefaultOllamaModel (qwen2.5-coder:14b): Qwen2.5-Coder is trained with native context up to
+// 32,768 tokens; higher values need YaRN / Modelfile and more VRAM. Lower in settings on low-VRAM hardware.
+const DefaultOllamaNumCtx = 32768
+
 // Config holds all runtime settings for goclaw.
 type Config struct {
 	// Provider is always "ollama" at runtime. Non-ollama values from settings are rejected in app wiring
@@ -28,7 +34,7 @@ type Config struct {
 	OllamaModel string // default: DefaultOllamaModel (qwen2.5-coder:14b)
 	// OllamaNumCtx sets the context window size sent to Ollama.
 	// 0 means use Ollama's model default (often 2048 — too small for tool schemas).
-	// Default: 16384. Set via settings.json "ollama_num_ctx". Lower to 8192 on low-VRAM hardware.
+	// Default: DefaultOllamaNumCtx (32K for qwen2.5-coder:14b). Set via settings.json "ollama_num_ctx".
 	OllamaNumCtx int
 
 	// OllamaHTTPTimeoutSec is the net/http Client timeout for each Ollama request, including
@@ -100,7 +106,7 @@ type Config struct {
 	MaxOrchestratorToolCalls int
 
 	// ModelContextTokens overrides the provider-default context window estimate used for compaction.
-	// 0 = use built-in default: OllamaNumCtx when > 0, else 16384.
+	// 0 = use built-in default: OllamaNumCtx when > 0, else DefaultOllamaNumCtx.
 	// Set in settings.json as "model_context_tokens" when using a non-standard model or remote endpoint.
 	ModelContextTokens int
 
@@ -244,7 +250,7 @@ func Default() Config {
 		Provider:                     "ollama",
 		OllamaHost:                   envOr("OLLAMA_HOST", "http://localhost:11434"),
 		OllamaModel:                  envOr("OLLAMA_MODEL", DefaultOllamaModel),
-		OllamaNumCtx:                 16384,
+		OllamaNumCtx:                 DefaultOllamaNumCtx,
 		CompactionModel:              envOr("GOCLAW_COMPACTION_MODEL", "qwen2.5-coder:7b"),
 		TaskModelRouter:              NormalizeTaskModelRouter(envOr("GOCLAW_TASK_MODEL_ROUTER", "rules")),
 		TaskModelRouterModel:         envOr("GOCLAW_TASK_MODEL_ROUTER_MODEL", ""),
@@ -253,8 +259,8 @@ func Default() Config {
 		AutoCompactThreshold:         0.85,
 		UserConfigDir:                filepath.Join(home, ".goclaw"),
 		ProjectConfigDir:             ".goclaw",
-		AgentProfile:                 "general-purpose",
-		ModelContextTokens:           16384,
+		AgentProfile:                 "coordinator",
+		ModelContextTokens:           DefaultOllamaNumCtx,
 		PermissionModes:              nil,
 		YoloThreshold:                60,
 		WebSearchBackend:             "ddg",
@@ -380,7 +386,7 @@ func (c Config) EffectiveContextTokens() int {
 	if c.OllamaNumCtx > 0 {
 		return c.OllamaNumCtx
 	}
-	return 16384
+	return DefaultOllamaNumCtx
 }
 
 // BashTimeoutSeconds returns the bash tool timeout in seconds (clamped to 1..3600).

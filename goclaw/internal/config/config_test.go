@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-func TestDefaultAgentProfileGeneralPurpose(t *testing.T) {
+func TestDefaultAgentProfileCoordinator(t *testing.T) {
 	t.Parallel()
-	if got := Default().AgentProfile; got != "general-purpose" {
-		t.Fatalf("Default().AgentProfile = %q, want general-purpose", got)
+	if got := Default().AgentProfile; got != "coordinator" {
+		t.Fatalf("Default().AgentProfile = %q, want coordinator", got)
 	}
 }
 
@@ -17,6 +17,26 @@ func TestDefaultOllamaModelMatchesDefaultConfig(t *testing.T) {
 	t.Parallel()
 	if got := Default().OllamaModel; got != DefaultOllamaModel {
 		t.Fatalf("Default().OllamaModel = %q, want DefaultOllamaModel %q", got, DefaultOllamaModel)
+	}
+}
+
+func TestEffectiveContextTokens(t *testing.T) {
+	t.Parallel()
+	var unset Config
+	if got := unset.EffectiveContextTokens(); got != DefaultOllamaNumCtx {
+		t.Fatalf("zero Config EffectiveContextTokens = %d, want DefaultOllamaNumCtx %d", got, DefaultOllamaNumCtx)
+	}
+	cfg := Default()
+	if got := cfg.EffectiveContextTokens(); got != DefaultOllamaNumCtx {
+		t.Fatalf("Default() EffectiveContextTokens = %d, want %d", got, DefaultOllamaNumCtx)
+	}
+	modelFirst := Config{ModelContextTokens: 8_000, OllamaNumCtx: 9_000}
+	if got := modelFirst.EffectiveContextTokens(); got != 8_000 {
+		t.Fatalf("ModelContextTokens should win: got %d want 8000", got)
+	}
+	ollamaOnly := Config{ModelContextTokens: 0, OllamaNumCtx: 50_000}
+	if got := ollamaOnly.EffectiveContextTokens(); got != 50_000 {
+		t.Fatalf("OllamaNumCtx when ModelContextTokens unset: got %d want 50000", got)
 	}
 }
 

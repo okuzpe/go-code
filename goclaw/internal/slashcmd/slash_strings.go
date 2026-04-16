@@ -95,7 +95,7 @@ func replHelpText(env SlashEnv, sess **session.Session, orch *orchestrator.Orche
 	b.WriteString("\nRestart CLI flags: --session <id>  --list-sessions  --no-tools  --readline  --profile <name>\n")
 	b.WriteString("Env: default UI on a TTY is fullscreen TUI; GOCLAW_USE_TUI=0 or GOCLAW_USE_READLINE=1 uses line readline.\n")
 	b.WriteString("Env: GOCLAW_TUI_MOUSE_SCROLL=1 enables mouse wheel on the TUI transcript (default off; see tui_mouse_scroll in settings).\n")
-	b.WriteString("Env: GOCLAW_AGENT_PROFILE overrides agent_profile from settings (e.g. general-purpose).\n")
+	b.WriteString("Env: GOCLAW_AGENT_PROFILE overrides agent_profile from settings (e.g. coordinator or general-purpose).\n")
 	b.WriteString("CLI subcommand: goclaw sessions list (same as --list-sessions)\n")
 	b.WriteString("Current session id: ")
 	b.WriteString(id)

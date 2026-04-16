@@ -19,22 +19,9 @@ import (
 func TestSessionTokenEstimateHeuristic(t *testing.T) {
 	t.Parallel()
 	msgs := []llm.Message{llm.PlainMessage("user", strings.Repeat("a", 120))}
-	require.Equal(t, 30, sessionTokenEstimate(msgs, "ollama"))
+	require.Equal(t, 30, sessionTokenEstimate(msgs))
 
-	require.Equal(t, 30, SessionMessagesTokenEstimate(msgs, "ollama"))
-	require.Equal(t, 30, SessionMessagesTokenEstimate(msgs, "  OLLAMA  "))
-}
-
-func TestContextBudgetTokens(t *testing.T) {
-	t.Parallel()
-	require.Equal(t, ollamaContextTokens, contextBudgetTokens("ollama", 0))
-}
-
-func TestContextBudgetTokensOverride(t *testing.T) {
-	t.Parallel()
-	// model_context_tokens in settings.json overrides the provider default.
-	require.Equal(t, 8_000, contextBudgetTokens("ollama", 8_000))
-	require.Equal(t, 50_000, contextBudgetTokens("ollama", 50_000))
+	require.Equal(t, 30, SessionMessagesTokenEstimate(msgs))
 }
 
 func TestClearOldToolResults(t *testing.T) {
@@ -98,7 +85,7 @@ func TestEstimatedSessionTokensHeuristicOnly(t *testing.T) {
 	sess.Add("user", strings.Repeat("a", 400))
 	orch := New(cfg, nil, sess, tools.New(), permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose)
 	got := orch.estimatedSessionTokens(context.Background(), 0)
-	require.Equal(t, sessionTokenEstimate(sess.Messages, "ollama"), got)
+	require.Equal(t, sessionTokenEstimate(sess.Messages), got)
 }
 
 func TestMaybeCompactPhase1OnlyAvoidsPhase2(t *testing.T) {

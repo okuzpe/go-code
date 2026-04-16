@@ -17,9 +17,9 @@ Keep this file in **English**. Add conventions, test commands, and anything agen
 
 const gitignoreLocalSettingsBlock = "\n\n# goclaw — machine-local settings (do not commit)\n.goclaw/settings.local.json\n"
 
-// handleSlashProjectInit writes a starter .goclaw/settings.json when missing (coding-oriented defaults).
+// handleSlashProjectInit writes a starter .goclaw/settings.json when missing (coordinator-hub-oriented defaults).
 // Merged config and permissions load at process start; tell the user to restart for tool_permissions,
-// and /profile builder for an immediate profile switch in this session if needed.
+// and /profile coordinator for an immediate profile switch in this session if needed.
 func handleSlashProjectInit(env SlashEnv) (string, error) {
 	wd := strings.TrimSpace(env.Workdir)
 	if wd == "" {
@@ -33,13 +33,13 @@ func handleSlashProjectInit(env SlashEnv) (string, error) {
 	if !os.IsNotExist(statErr) {
 		return "", fmt.Errorf("/init: stat settings: %w", statErr)
 	}
-	// tool_permissions: allow pure reads; ask for shell, network, and writes (safer default for local agents).
+	// tool_permissions: allow pure reads; ask for shell, network, writes, and hub tools (safer default for local agents).
 	patch := map[string]any{
-		"agent_profile":          "builder",
+		"agent_profile":          "coordinator",
 		"provider":               "ollama",
 		"ollama_model":           config.DefaultOllamaModel,
-		"ollama_num_ctx":         8192,
-		"model_context_tokens":   8192,
+		"ollama_num_ctx":         config.DefaultOllamaNumCtx,
+		"model_context_tokens":   config.DefaultOllamaNumCtx,
 		"llm_compaction":         true,
 		"compaction_model":       "qwen2.5-coder:7b",
 		"task_model_router":      "rules",
@@ -52,15 +52,18 @@ func handleSlashProjectInit(env SlashEnv) (string, error) {
 			"creative":  "qwen2.5-coder:14b",
 		},
 		"tool_permissions": map[string]any{
-			"read_file":  "allow",
-			"glob":       "allow",
-			"grep":       "allow",
-			"bash":       "ask",
-			"web_fetch":  "ask",
-			"web_search": "ask",
-			"write_file": "ask",
-			"edit_file":  "ask",
-			"patch":      "ask",
+			"read_file":    "allow",
+			"glob":         "allow",
+			"grep":         "allow",
+			"bash":         "ask",
+			"web_fetch":    "ask",
+			"web_search":   "ask",
+			"write_file":   "ask",
+			"edit_file":    "ask",
+			"patch":        "ask",
+			"spawn_agent":  "ask",
+			"stop_task":    "ask",
+			"todo_write":   "ask",
 		},
 	}
 	if err := config.MergeWriteSettings(path, patch); err != nil {
@@ -88,7 +91,7 @@ func handleSlashProjectInit(env SlashEnv) (string, error) {
 			}
 		}
 	}
-	msg := fmt.Sprintf("created %s\nfor profile builder in this session, run: /profile builder\ntool permissions from the new file apply after you restart goclaw.", path)
+	msg := fmt.Sprintf("created %s\nfor profile coordinator in this session, run: /profile coordinator\ntool permissions from the new file apply after you restart goclaw.", path)
 	if len(notes) > 0 {
 		msg += "\n" + strings.Join(notes, "\n")
 	}

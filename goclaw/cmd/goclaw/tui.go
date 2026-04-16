@@ -126,13 +126,12 @@ func tuiFooterStats(rt *app.ChatRuntime, orch *orchestrator.Orchestrator) string
 		return ""
 	}
 	live := rt.Sess.StreamingAssistantChars()
-	prov := rt.Cfg.Provider
 
 	base := "1 msg"
 	if n != 1 {
 		base = fmt.Sprintf("%d msgs", n)
 	}
-	if tok := orchestrator.SessionMessagesTokenEstimateLive(rt.Sess.Messages, prov, live); tok >= 1 {
+	if tok := orchestrator.SessionMessagesTokenEstimateLive(rt.Sess.Messages, live); tok >= 1 {
 		base = fmt.Sprintf("%s · ~%d tokens", base, tok)
 	}
 	if pct, ok := orchestrator.SessionCompactionFillPercentLive(rt.Sess.Messages, rt.Cfg, live); ok {
@@ -157,7 +156,7 @@ func tuiFooterStats(rt *app.ChatRuntime, orch *orchestrator.Orchestrator) string
 
 func newChatSubmitter(rt *app.ChatRuntime, orch *orchestrator.Orchestrator, focus *coordinator.FocusRouter) chat.Submitter {
 	augment := func(err error) error {
-		return app.AugmentOrchestratorErr(rt.Cfg.Provider, rt.Cfg.Model(), err)
+		return app.AugmentOrchestratorErr(rt.Cfg.Model(), err)
 	}
 
 	return func(ctx context.Context, userText string, sink orchestrator.StreamSink) (string, error) {
