@@ -9,7 +9,6 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/okuzpe/goclaw/internal/gitdiff"
 	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 )
