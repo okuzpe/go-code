@@ -7,18 +7,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/text"
 	"golang.org/x/term"
 )
 
-const (
-	bannerSeparatorWidth    = 44
-	bannerSessionIDMaxRunes = 12 // 12 runes = 12 characters
-	chatTitleModelMaxRunes  = 40
-	toolPreviewWrapWidth    = 76
-	toolApprovalBoxWidth    = 78
-)
+const chatTitleModelMaxRunes = 40
 
 func isTTY(w io.Writer) bool {
 	f, ok := w.(*os.File)
@@ -27,22 +20,6 @@ func isTTY(w io.Writer) bool {
 	}
 	fd := int(f.Fd())
 	return term.IsTerminal(fd)
-}
-
-var asciiLogo = `
-  ┏━╸┏━┓┏━╸┏  ┏━┓╻ ╻
-  ┃╺┓┃ ┃┃  ┃  ┣━┫┃╻┃
-  ┗━┛┗━┛┗━╸┗━╸╹ ╹┗┻┛`
-
-// profileWriteFootnote returns a hint when the profile cannot use workspace write tools (read-only or hub).
-func profileWriteFootnote(profile agents.Profile) (string, bool) {
-	if profile.AllowsWorkspaceFileWrites() {
-		return "", false
-	}
-	if profile.AllowsSpawnAgentDelegation() {
-		return "Coordinator hub (no direct write tools) — delegate with spawn_agent; use /profile general-purpose or /profile builder for direct edits in this session.", true
-	}
-	return "Read-only profile — /profile general-purpose or /profile builder for direct file edits.", true
 }
 
 // wrapPlain breaks text at spaces to fit width (runes); newlines become spaces first.

@@ -233,7 +233,7 @@ func profileFallbackRole(profile agents.Profile) string {
 		return "reasoning"
 	case "general-purpose", "builder":
 		// Default to "default" so short/vague turns route to the fast path (direct reply) and
-		// the TUI shows neutral "Planning"/"Thinking" instead of implying repo analysis before
+		// the TUI shows neutral "Thinking" instead of implying repo analysis before
 		// we have any coding signal. Explicit code/fix/explore keywords still select those roles.
 		return "default"
 	default:

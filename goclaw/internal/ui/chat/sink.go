@@ -11,10 +11,10 @@ import (
 )
 
 // Batching reduces tea.Send / viewport refresh churn during LLM streaming.
-// Tune interval and byte threshold for terminal feel vs latency.
+// Slightly longer window + larger bursts feel smoother than one tiny Msg per token.
 const (
-	deltaBatchInterval = 28 * time.Millisecond
-	deltaBatchMaxBytes = 384
+	deltaBatchInterval = 42 * time.Millisecond
+	deltaBatchMaxBytes = 640
 )
 
 // batchedProgramSink coalesces OnTextDelta calls before forwarding to the TUI.

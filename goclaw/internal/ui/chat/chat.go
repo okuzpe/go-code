@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -18,6 +20,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/okuzpe/goclaw/internal/gitdiff"
 	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/replhistory"
@@ -148,6 +151,20 @@ type Model struct {
 	atSuggestLastOut  string
 	// lastTranscript avoids redundant viewport.SetContent when only the footer/spinner changed (reduces flicker).
 	lastTranscript string
+
+	// streamPaintAt / streamPaintSkip throttle full transcript joins during assistant streaming
+	// (strings.Join of m.lines is O(n); NDJSON can still deliver many small deltas after sink batching).
+	streamPaintAt   time.Time
+	streamPaintSkip int
+	// assistantHoldLastPaint throttles setLinesContent while assistantStreamHold shows a placeholder row.
+	assistantHoldLastPaint time.Time
+	// assistantRevealRunes / assistantRevealPos drive a short post-stream plain-text reveal before markdown.
+	assistantRevealRunes []rune
+	assistantRevealPos   int
+	// pendingAssistantDone* holds assistantDone follow-up until reveal animation finishes.
+	pendingAssistantDone    assistantDoneMsg
+	pendingAssistantDoneSet bool
+	pendingAssistantRaw     string
 	// lastReflowWidth is the terminal width used for the last transcript reflow (-1 = not yet).
 	lastReflowWidth int
 
@@ -244,6 +261,18 @@ type SlashHandler func(input string) (handled bool, out string, quit bool, model
 // inputMaxHeight is the maximum number of visible lines in the input textarea.
 const inputMaxHeight = 6
 
+// assistantStreamHold: while true, assistant deltas only grow an in-memory buffer and the transcript
+// shows a single lightweight placeholder row (avoids O(n) repaints on long sessions). On assistantDone,
+// we briefly reveal plain text then markdown-finalize (see assistantRevealMinRunes).
+const assistantStreamHold = true
+
+const (
+	assistantHoldPaintMin     = 160 * time.Millisecond
+	assistantRevealMinRunes   = 120
+	assistantRevealTick       = 16 * time.Millisecond
+	assistantRevealChunkRunes = 32
+)
+
 // idleTranscriptHintMinRunes triggers a one-line scroll hint after long assistant replies (e.g. plans).
 const idleTranscriptHintMinRunes = 1200
 
@@ -286,7 +315,7 @@ const maxSlashSuggestRows = 5
 const atSuggestWalkMinInterval = 180 * time.Millisecond
 
 func placeholderForWidth(termWidth int) string {
-	const full = "Ask anything…  ! @ & /btw /help · Tab completes / and args · Ctrl+B scroll · Shift+Enter newline"
+	const full = "Ask anything…  ! @ & /btw /help · Tab completes / and args · Ctrl+B scroll · Shift+Enter newline · wheel scrolls pane under cursor"
 	const narrow = "Ask anything…  /help · Ctrl+B scroll"
 	if termWidth > 0 && termWidth < composePlaceholderNarrowMaxW {
 		return narrow
@@ -298,7 +327,7 @@ func placeholderForWidth(termWidth int) string {
 func (m *Model) transcriptScrollNavHint() string {
 	s := "Transcript: Ctrl+B browse · PgUp/PgDn · Alt+arrows"
 	if m.tuiMouseScroll {
-		return s + " · mouse wheel"
+		return s + " · wheel on transcript or compose"
 	}
 	return s
 }
@@ -507,16 +536,39 @@ func tickToolWait() tea.Cmd {
 	return tea.Tick(time.Second, func(time.Time) tea.Msg { return toolTickMsg{} })
 }
 
+// enterWithNewlineModifiers is true when Enter/Return should insert a newline in the
+// compose textarea instead of submitting. Some hosts (notably Windows) report
+// Shift+Enter as KeyEnter with ModShift set while msg.String() is still "enter".
+func enterWithNewlineModifiers(msg tea.KeyMsg) bool {
+	k := msg.Key()
+	if k.Code != tea.KeyEnter && k.Code != tea.KeyReturn {
+		return false
+	}
+	return k.Mod&(tea.ModShift|tea.ModAlt) != 0
+}
+
 // ctrlCExitArmExpiredMsg clears the exit-confirm window when the scheduled deadline passes.
 // expected must match m.exitConfirmDeadline so restarts of the 3s window ignore stale ticks.
 type ctrlCExitArmExpiredMsg struct {
 	expected time.Time
 }
 
-func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
+func (m *Model) handleKeyString(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+	k := msg.String()
 	if m.pending != nil {
 		switch k {
-		case "y", "Y", "enter":
+		case "y", "Y":
+			select {
+			case m.pending.Resp <- true:
+			default:
+			}
+			m.pending = nil
+			return m, waitForApproval(m.approval.Requests), true
+		case "enter":
+			if enterWithNewlineModifiers(msg) {
+				// Shift/Alt+Enter is newline in compose, not approval (Windows reports ModShift on Enter).
+				return m, nil, false
+			}
 			select {
 			case m.pending.Resp <- true:
 			default:
@@ -531,7 +583,10 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 			m.pending = nil
 			return m, waitForApproval(m.approval.Requests), true
 		default:
-			// Modal approval: ignore other keys (including Enter) so they are not treated as a new chat message.
+			// Modal approval: swallow most keys, but allow newline chords to reach the compose textarea.
+			if k == "shift+enter" || k == "alt+enter" {
+				return m, nil, false
+			}
 			return m, nil, true
 		}
 	}
@@ -678,6 +733,9 @@ func (m *Model) handleKeyString(k string) (tea.Model, tea.Cmd, bool) {
 		m.openAgentPicker()
 		return m, nil, true
 	case "enter":
+		if enterWithNewlineModifiers(msg) {
+			return m, nil, false
+		}
 		if m.transcriptBrowse {
 			m.exitTranscriptBrowse()
 			m.layout()
@@ -906,6 +964,71 @@ func (m *Model) setLinesContent(stickToBottom bool) {
 
 func (m *Model) syncInputPlaceholder() {
 	m.input.Placeholder = placeholderForWidth(m.width)
+}
+
+// visibleTranscriptLine1 returns the 1-based index of the first logical transcript row (m.lines)
+// visible at the top of the viewport, using the same soft-wrap line-height rules as
+// charm.land/bubbles/v2/viewport. yOffset is the viewport vertical scroll position.
+func visibleTranscriptLine1(lines []string, yOffset int, maxCols int, softWrap bool) int {
+	n := len(lines)
+	if n == 0 {
+		return 0
+	}
+	if maxCols < 1 {
+		maxCols = 1
+	}
+	if !softWrap {
+		if yOffset < 0 {
+			yOffset = 0
+		}
+		if yOffset >= n {
+			return n
+		}
+		return yOffset + 1
+	}
+	maxWidth := float64(maxCols)
+	var total int
+	for i, line := range lines {
+		lineHeight := max(1, int(math.Ceil(float64(ansi.StringWidth(line))/maxWidth)))
+		if yOffset >= total && yOffset < total+lineHeight {
+			return i + 1
+		}
+		total += lineHeight
+	}
+	return n
+}
+
+// footerWorkspaceBrand is the idle-footer left “brand”: IDE-style chip with workspace basename
+// and current transcript line (Ln = first visible logical row), or the plain word Context when no workspace is set.
+func (m *Model) footerWorkspaceBrand() string {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	w := strings.TrimSpace(m.workdir)
+	if w == "" {
+		return th.FooterDim.Render("Context")
+	}
+	base := filepath.Base(w)
+	if base == "." || base == "/" || base == string(filepath.Separator) {
+		return th.FooterDim.Render("Context")
+	}
+	const icon = "▣"
+	chipText := icon + " " + base
+	if len(m.lines) > 0 {
+		mw := m.width
+		if mw <= 0 {
+			mw = m.viewport.Width()
+		}
+		if mw <= 0 {
+			mw = 80
+		}
+		line1 := visibleTranscriptLine1(m.lines, m.viewport.YOffset(), mw, m.viewport.SoftWrap)
+		if line1 > 0 {
+			chipText = fmt.Sprintf("%s %s L%d", icon, base, line1)
+		}
+	}
+	return th.FooterWorkspaceChip.Render(chipText)
 }
 
 func (m *Model) footerPrimaryStatus() string {
@@ -1220,8 +1343,8 @@ func (m *Model) footerView() string {
 		b.WriteString("\n")
 	} else if stats != "" {
 		// Idle: show stats (message/token budget for the LLM context window — not assistant output).
-		// Leading label "Context" plus optional #session id on the right so this line is never read as chat.
-		session := footerline.AlignedHintsSession("Context", stats, "", m.sessionID, fw)
+		// Leading workspace chip (basename + first visible transcript row Ln) plus optional #session id on the right.
+		session := footerline.AlignedHintsSession(m.footerWorkspaceBrand(), stats, "", m.sessionID, fw)
 		if strings.TrimSpace(session) != "" {
 			if fw > 4 {
 				b.WriteString(th.FooterDim.Width(fw).Render(session))
@@ -1285,8 +1408,11 @@ func (m *Model) footerView() string {
 		b.WriteString(qs)
 	}
 
-	// One line break before compose so hints/approval do not run into the input strip.
-	b.WriteString("\n")
+	// Spacer before compose: only when the last footer segment did not already end with a newline
+	// (avoids a double blank between idle stats and the input on a quiet footer).
+	if b.Len() > 0 && !strings.HasSuffix(b.String(), "\n") {
+		b.WriteString("\n")
+	}
 
 	inputView := m.composeInputView()
 	if m.width > 4 {
@@ -1993,8 +2119,128 @@ func (m *Model) refreshAssistantLine() {
 		m.lines = append(m.lines, rendered)
 		m.appendPlainMeta()
 		m.curAssistantLineIdx = len(m.lines) - 1
+		m.streamPaintAt = time.Time{}
+		m.streamPaintSkip = 0
 	}
+
+	// While streaming, avoid joining the full transcript on every delta — that stutters on long sessions.
+	const (
+		streamViewportMin   = 32 * time.Millisecond
+		streamViewportBurst = 512
+	)
+	now := time.Now()
+	curLen := m.curAssistant.Len()
+	if m.streaming && !m.streamPaintAt.IsZero() &&
+		now.Sub(m.streamPaintAt) < streamViewportMin &&
+		(curLen-m.streamPaintSkip) < streamViewportBurst {
+		return
+	}
+	m.streamPaintAt = now
+	m.streamPaintSkip = curLen
 	m.setLinesContent(false)
+}
+
+func (m *Model) clearAssistantRevealState() {
+	m.assistantRevealRunes = nil
+	m.assistantRevealPos = 0
+	m.pendingAssistantDoneSet = false
+	m.pendingAssistantRaw = ""
+}
+
+func humanBytes(n int) string {
+	if n <= 0 {
+		return "0 B"
+	}
+	if n < 2048 {
+		return fmt.Sprintf("%d B", n)
+	}
+	kb := float64(n) / 1024
+	if kb < 1024 {
+		if kb < 10 {
+			return fmt.Sprintf("%.1f kB", kb)
+		}
+		return fmt.Sprintf("%.0f kB", kb)
+	}
+	return fmt.Sprintf("%.1f MB", kb/1024)
+}
+
+// refreshAssistantStreamDisplay paints either live tokens (legacy) or a hold placeholder row.
+func (m *Model) refreshAssistantStreamDisplay() {
+	if !assistantStreamHold {
+		m.refreshAssistantLine()
+		return
+	}
+	m.refreshAssistantHoldLine()
+}
+
+// refreshAssistantHoldLine shows a single assistant row while tokens accumulate in curAssistant only.
+func (m *Model) refreshAssistantHoldLine() {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	prefix := th.AssistantPrefix()
+	n := m.curAssistant.Len()
+	hint := "…"
+	if n > 0 {
+		hint = fmt.Sprintf("… %s", humanBytes(n))
+	}
+	rendered := fmt.Sprintf("%s %s", prefix, th.FooterDim.Render(hint))
+
+	if m.curAssistantLineIdx >= 0 && m.curAssistantLineIdx < len(m.lines) {
+		m.lines[m.curAssistantLineIdx] = rendered
+	} else {
+		m.lines = append(m.lines, rendered)
+		m.appendPlainMeta()
+		m.curAssistantLineIdx = len(m.lines) - 1
+		m.assistantHoldLastPaint = time.Time{}
+	}
+
+	now := time.Now()
+	if !m.assistantHoldLastPaint.IsZero() && now.Sub(m.assistantHoldLastPaint) < assistantHoldPaintMin && n > 0 {
+		return
+	}
+	m.assistantHoldLastPaint = now
+	m.setLinesContent(false)
+}
+
+func (m *Model) paintAssistantRevealPlain() {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	prefix := th.AssistantPrefix()
+	if m.curAssistantLineIdx < 0 || m.curAssistantLineIdx >= len(m.lines) {
+		return
+	}
+	chunk := string(m.assistantRevealRunes[:m.assistantRevealPos])
+	m.lines[m.curAssistantLineIdx] = fmt.Sprintf("%s %s", prefix, chunk)
+	m.setLinesContent(false)
+}
+
+// applyAssistantDoneFollowup runs footer hints, git diff, and queue drain after the assistant segment is finalized.
+func (m *Model) applyAssistantDoneFollowup(msg assistantDoneMsg, raw string, rawLen int) tea.Cmd {
+	if rawLen >= idleTranscriptHintMinRunes {
+		m.idleTranscriptHint = m.transcriptScrollNavHint()
+	}
+	if !msg.aborted && (strings.Contains(raw, orchestrator.TruthFooterMarkerEN) ||
+		strings.Contains(raw, orchestrator.TruthFooterMarkerES)) {
+		m.footerHint = "goclaw: no workspace writes — type continue, /continue, or a short follow-up if you still want edits."
+	}
+	if !msg.aborted && m.turnHadWorkspaceWrite {
+		if block := gitdiff.WorktreeDiffStat(m.workdir); block != "" {
+			m.appendSystem(block)
+		}
+	}
+	m.turnHadWorkspaceWrite = false
+	if !msg.aborted {
+		return m.drainMessageQueue()
+	}
+	if n := len(m.messageQueue); n > 0 {
+		m.messageQueue = nil
+		m.appendSystem(fmt.Sprintf("(cleared %d queued message(s) after cancel)", n))
+	}
+	return nil
 }
 
 // normalizeAssistantMarkdownLines removes glamour's heavy left padding on wrapped
@@ -2121,6 +2367,13 @@ type assistantDeltaMsg string
 // assistantDoneMsg ends one model submit turn. aborted is true when the submit goroutine exited with context.Canceled (Esc / Ctrl+C).
 type assistantDoneMsg struct {
 	aborted bool
+}
+
+// assistantRevealTickMsg advances the post-stream plain-text reveal before markdown finalize.
+type assistantRevealTickMsg struct{}
+
+func assistantRevealTickCmd() tea.Cmd {
+	return tea.Tick(assistantRevealTick, func(time.Time) tea.Msg { return assistantRevealTickMsg{} })
 }
 
 type toolUseMsg struct {

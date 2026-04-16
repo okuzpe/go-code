@@ -30,7 +30,9 @@ func ThinkingPhaseLine(iterZeroBased int, taskRole string, ctx PhaseContext) str
 		case "reasoning", "creative":
 			return "Deep reasoning"
 		default:
-			return "Planning"
+			// Neutral: "default" task role is common when routing is off or before role-specific
+			// labels apply — avoid "Planning", which reads like a deliberate plan mode vs. reading the prompt.
+			return "Thinking"
 		}
 	}
 	if ctx.WorkspaceWriteOK {

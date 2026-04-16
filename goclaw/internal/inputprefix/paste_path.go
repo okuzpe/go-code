@@ -1,8 +1,10 @@
 package inputprefix
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -18,10 +20,71 @@ func NormalizePasteNewlines(s string) string {
 	return strings.ReplaceAll(s, "\r", "\n")
 }
 
+// pathFromFileURL converts a file: URI (common when terminals/OS inject drag-drop)
+// into an absolute host path. Returns ("", false) if s is not a usable file URL.
+func pathFromFileURL(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	u, err := url.Parse(s)
+	if err != nil || !strings.EqualFold(u.Scheme, "file") {
+		return "", false
+	}
+	p := u.Path
+	if p == "" && u.Opaque != "" {
+		p = u.Opaque
+	}
+	if p == "" {
+		return "", false
+	}
+	// Windows: file:///C:/Users/... → Path is "/C:/Users/..."
+	if runtime.GOOS == "windows" && len(p) >= 3 && p[0] == '/' && p[2] == ':' {
+		p = p[1:]
+	}
+	p = filepath.Clean(filepath.FromSlash(p))
+	if p == "" || p == "." {
+		return "", false
+	}
+	ap, err := filepath.Abs(p)
+	if err != nil {
+		return "", false
+	}
+	return ap, true
+}
+
+// resolvePastedPathCandidate turns one drag-drop / paste segment into an absolute path
+// under workdir when possible: absolute paths, file: URLs, or paths relative to workdir.
+func resolvePastedPathCandidate(raw, absRoot string) (abs string, ok bool) {
+	raw = strings.TrimSpace(raw)
+	raw = strings.Trim(raw, `"'`)
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+	if fp, ok := pathFromFileURL(raw); ok {
+		raw = fp
+	}
+	if filepath.IsAbs(raw) {
+		a, err := filepath.Abs(filepath.Clean(raw))
+		return a, err == nil
+	}
+	joined := filepath.Join(absRoot, filepath.Clean(filepath.FromSlash(raw)))
+	joinedAbs, err := filepath.Abs(joined)
+	if err != nil {
+		return "", false
+	}
+	rel, relErr := filepath.Rel(absRoot, joinedAbs)
+	if relErr != nil || strings.HasPrefix(rel, "..") {
+		return "", false
+	}
+	return joinedAbs, true
+}
+
 // TryPasteAsAtPaths tries to interpret pasted text as one or more file/directory
 // paths (e.g. from a drag-and-drop into the terminal). If the entire paste content
-// consists of absolute paths that exist under workdir, it returns them as
+// consists of paths that exist under workdir, it returns them as
 // space-separated "@relpath" tokens suitable for insertion into the chat input.
+//
+// Supports: absolute paths, file:// URLs (incl. Windows file:///C:/...), and paths
+// relative to workdir (e.g. internal/foo.go).
 //
 // Returns ("", false) when the paste looks like regular text rather than file paths.
 func TryPasteAsAtPaths(workdir, content string) (string, bool) {
@@ -47,14 +110,15 @@ func TryPasteAsAtPaths(workdir, content string) (string, bool) {
 		if raw == "" {
 			continue
 		}
-		if !filepath.IsAbs(raw) {
-			return "", false // not an absolute path → regular text
+		resolved, resOK := resolvePastedPathCandidate(raw, absRoot)
+		if !resOK {
+			return "", false
 		}
-		info, statErr := os.Stat(raw)
+		info, statErr := os.Stat(resolved)
 		if statErr != nil {
 			return "", false // path doesn't exist → regular text
 		}
-		rel, relErr := filepath.Rel(absRoot, raw)
+		rel, relErr := filepath.Rel(absRoot, resolved)
 		if relErr != nil || strings.HasPrefix(rel, "..") {
 			return "", false // outside workspace
 		}

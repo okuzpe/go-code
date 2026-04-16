@@ -12,7 +12,7 @@ func TestThinkingPhaseLine_fastIsNeutral(t *testing.T) {
 	require.Equal(t, "Thinking", ThinkingPhaseLine(0, "fast", PhaseContext{}))
 	require.Equal(t, "Exploring", ThinkingPhaseLine(0, "explore", PhaseContext{}))
 	require.Equal(t, "Analyzing repository", ThinkingPhaseLine(0, "code", PhaseContext{}))
-	require.Equal(t, "Planning", ThinkingPhaseLine(0, "default", PhaseContext{}))
+	require.Equal(t, "Thinking", ThinkingPhaseLine(0, "default", PhaseContext{}))
 }
 
 func TestClassifyTaskRoleRules_greetingUsesFast(t *testing.T) {

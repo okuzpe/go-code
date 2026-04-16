@@ -2,6 +2,7 @@ package chat
 
 import (
 	"github.com/charmbracelet/lipgloss"
+	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/ui/terminalstyle"
 )
 
@@ -10,6 +11,20 @@ import (
 func NewThemeForAppearance(raw string) *Theme {
 	p := terminalstyle.PaletteForAppearance(raw)
 	return newThemeFromPalette(p)
+}
+
+func footerWorkspaceChipStyle(p terminalstyle.Palette) lipgloss.Style {
+	ascii := p.GlamourStyle == "ascii" ||
+		p.Appearance == config.UIAppearanceDarkANSI ||
+		p.Appearance == config.UIAppearanceLightANSI
+	if ascii {
+		return lipgloss.NewStyle().Bold(true).Foreground(p.SlashPickName)
+	}
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "#1E3A8A", Dark: "#F8FAFC"}).
+		Background(lipgloss.AdaptiveColor{Light: "#BFDBFE", Dark: "#2563EB"}).
+		Padding(0, 1).
+		Bold(true)
 }
 
 func newThemeFromPalette(p terminalstyle.Palette) *Theme {
@@ -56,6 +71,8 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 
 		StatusBar:      lipgloss.NewStyle().Foreground(p.Muted),
 		StatusBarLabel: lipgloss.NewStyle().Foreground(p.AccentAI).Bold(true),
+
+		FooterWorkspaceChip: footerWorkspaceChipStyle(p),
 
 		SlashPickerName: lipgloss.NewStyle().Bold(true).Foreground(p.SlashPickName),
 		SlashPickerDesc: lipgloss.NewStyle().Foreground(p.SlashPickDesc),

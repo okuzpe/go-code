@@ -81,6 +81,9 @@ type Theme struct {
 	StatusBar      lipgloss.Style
 	StatusBarLabel lipgloss.Style
 
+	// FooterWorkspaceChip is the IDE-style folder badge in the idle footer (basename + line span).
+	FooterWorkspaceChip lipgloss.Style
+
 	// SlashPickerName / SlashPickerDesc style the / command rows above the input (TUI).
 	SlashPickerName lipgloss.Style
 	SlashPickerDesc lipgloss.Style

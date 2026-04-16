@@ -8,6 +8,7 @@ import (
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/okuzpe/goclaw/internal/gitdiff"
 	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
@@ -135,7 +136,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, vcmd
 			}
 		}
-		if mdl, cmd, handled := m.handleKeyString(msg.String()); handled {
+		if mdl, cmd, handled := m.handleKeyString(msg); handled {
 			return mdl, cmd
 		}
 	case tea.WindowSizeMsg:
@@ -177,6 +178,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastThinkingPhase = ""
 		m.curAssistant.Reset()
 		m.curAssistantLineIdx = -1
+		m.streamPaintAt = time.Time{}
+		m.streamPaintSkip = 0
+		m.assistantHoldLastPaint = time.Time{}
+		m.clearAssistantRevealState()
 		m.appendThinkingRow("")
 		th := m.theme
 		if th == nil {
@@ -200,7 +205,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLine = ""
 		}
 		m.curAssistant.WriteString(string(msg))
-		m.refreshAssistantLine()
+		m.refreshAssistantStreamDisplay()
 		// Throttle O(n) footer stats while tokens stream (footerStats scans session messages).
 		if m.footerStats != nil {
 			now := time.Now()
@@ -220,29 +225,47 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clearThinkingLine()
 		rawAssistant := m.curAssistant.String()
 		rawLen := utf8.RuneCountInString(rawAssistant)
-		// Finalize the current segment with markdown rendering.
-		m.finalizeCurrentSegment()
-		if rawLen >= idleTranscriptHintMinRunes {
-			m.idleTranscriptHint = m.transcriptScrollNavHint()
-		}
-		if !msg.aborted && (strings.Contains(rawAssistant, orchestrator.TruthFooterMarkerEN) ||
-			strings.Contains(rawAssistant, orchestrator.TruthFooterMarkerES)) {
-			m.footerHint = "goclaw: no workspace writes — type continue, /continue, or a short follow-up if you still want edits."
-		}
-		if !msg.aborted && m.turnHadWorkspaceWrite {
-			if block := gitdiff.WorktreeDiffStat(m.workdir); block != "" {
-				m.appendSystem(block)
+		wantReveal := assistantStreamHold && !msg.aborted &&
+			rawLen >= assistantRevealMinRunes && strings.TrimSpace(rawAssistant) != ""
+		if wantReveal {
+			m.assistantRevealRunes = []rune(rawAssistant)
+			m.assistantRevealPos = 0
+			m.pendingAssistantDone = msg
+			m.pendingAssistantDoneSet = true
+			m.pendingAssistantRaw = rawAssistant
+			if m.curAssistantLineIdx < 0 || m.curAssistantLineIdx >= len(m.lines) {
+				m.refreshAssistantHoldLine()
 			}
+			return m, assistantRevealTickCmd()
 		}
-		m.turnHadWorkspaceWrite = false
-		var drainCmd tea.Cmd
-		if !msg.aborted {
-			drainCmd = m.drainMessageQueue()
-		} else if n := len(m.messageQueue); n > 0 {
-			m.messageQueue = nil
-			m.appendSystem(fmt.Sprintf("(cleared %d queued message(s) after cancel)", n))
+		m.clearAssistantRevealState()
+		m.finalizeCurrentSegment()
+		return m, m.applyAssistantDoneFollowup(msg, rawAssistant, rawLen)
+	case assistantRevealTickMsg:
+		if len(m.assistantRevealRunes) == 0 || !m.pendingAssistantDoneSet {
+			return m, nil
 		}
-		return m, drainCmd
+		total := len(m.assistantRevealRunes)
+		remain := total - m.assistantRevealPos
+		chunk := assistantRevealChunkRunes
+		if remain > 6000 {
+			chunk = max(assistantRevealChunkRunes, remain/48)
+		}
+		next := m.assistantRevealPos + chunk
+		if next > total {
+			next = total
+		}
+		m.assistantRevealPos = next
+		m.paintAssistantRevealPlain()
+		if m.assistantRevealPos >= total {
+			done := m.pendingAssistantDone
+			raw := m.pendingAssistantRaw
+			rawLen := utf8.RuneCountInString(raw)
+			m.clearAssistantRevealState()
+			m.finalizeCurrentSegment()
+			return m, m.applyAssistantDoneFollowup(done, raw, rawLen)
+		}
+		return m, assistantRevealTickCmd()
 	case toolUseMsg:
 		m.clearThinkingLine()
 		// Finalize the pre-tool text with markdown rendering BEFORE resetting.
@@ -371,6 +394,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout()
 		return m, nil
 	case errMsg:
+		m.clearAssistantRevealState()
 		m.refreshFooterStatsCache()
 		m.exitTranscriptBrowse()
 		m.streaming = false
@@ -401,9 +425,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Drag-and-drop interception: convert file/dir paths pasted from the OS into @relpath tokens.
+	// Drag-and-drop / bracketed paste: file/dir paths from the OS → @relpath tokens in the compose box.
+	// Allowed while streaming so mid-reply file drops still work; arbitrary paste while streaming
+	// skips this block and is handled below (textarea).
 	if paste, isPaste := msg.(tea.PasteMsg); isPaste &&
-		!m.streaming && m.pending == nil &&
+		m.pending == nil &&
 		!m.toolLogOpen && !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
 		if m.transcriptBrowse {
 			m.exitTranscriptBrowse()
@@ -432,6 +458,51 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds []tea.Cmd
 		cmd  tea.Cmd
 	)
+
+	// Mouse wheel: with cell mouse mode, scroll the widget under the cursor — compose
+	// (last rows) scrolls the textarea; transcript or footer chrome scrolls the transcript.
+	if mw, ok := msg.(tea.MouseWheelMsg); ok && m.tuiMouseScroll &&
+		!m.toolLogOpen && !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
+		m.layout()
+		if m.transcriptBrowse {
+			m.viewport, cmd = m.viewport.Update(msg)
+			m.resizeInput()
+			return m, cmd
+		}
+		transcriptRows := m.viewport.Height()
+		if transcriptRows < 1 {
+			transcriptRows = 1
+		}
+		th := m.theme
+		if th == nil {
+			th = DefaultTheme()
+		}
+		composeView := m.composeInputView()
+		if m.width > 4 {
+			composeView = th.InputBorder.Render(composeView)
+		}
+		composeLines := lipgloss.Height(composeView)
+		if composeLines < 1 {
+			composeLines = 1
+		}
+		if composeLines > m.height {
+			composeLines = m.height
+		}
+		composeTopY := m.height - composeLines
+		if mw.Y >= composeTopY {
+			m.input, cmd = m.input.Update(msg)
+			m.resizeInput()
+			return m, cmd
+		}
+		if mw.Y < transcriptRows {
+			m.viewport, cmd = m.viewport.Update(msg)
+			m.resizeInput()
+			return m, cmd
+		}
+		m.viewport, cmd = m.viewport.Update(msg)
+		m.resizeInput()
+		return m, cmd
+	}
 
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
