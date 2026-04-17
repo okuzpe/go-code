@@ -5,6 +5,10 @@
 
 CMD := ./cmd/goclaw
 
+# Long-running `go run` can exit with status 1 on Ctrl+C on some Windows/Git Bash setups even when the
+# child handles SIGINT cleanly. Build a temp binary so signals go straight to goclaw.
+TELEGRAM_RUN_BIN := $(CURDIR)/.goclaw-telegram-run$(shell go env GOEXE)
+
 build:
 	go build -o goclaw $(CMD)
 
@@ -33,7 +37,7 @@ cover:
 	go tool cover -html=coverage.out
 
 clean:
-	rm -f goclaw coverage.out
+	rm -f goclaw coverage.out "$(TELEGRAM_RUN_BIN)"
 
 # Install golangci-lint v2 + staticcheck into $(shell go env GOPATH)/bin (add that directory to PATH).
 lint-tools:
@@ -77,9 +81,10 @@ run-chat:
 
 # Telegram Bot API bridge: prompts for missing token/allowlist in a TTY, then long-polls (see docs/goclaw/telegram-bridge.md).
 # Use `make telegram` only — `make telegram start` would also try a non-existent Make target named `start`.
+# Uses a temp binary (not `go run`) so Ctrl+C often maps to a clean exit on Windows/Git Bash.
 telegram:
-	go run $(CMD) telegram start
+	go build -o "$(TELEGRAM_RUN_BIN)" $(CMD) && "$(TELEGRAM_RUN_BIN)" telegram start; st=$$?; rm -f "$(TELEGRAM_RUN_BIN)"; exit $$st
 
 # Same as telegram bridge: no prompts; fails if settings are incomplete (CI / scripts).
 telegram-bridge:
-	go run $(CMD) telegram bridge
+	go build -o "$(TELEGRAM_RUN_BIN)" $(CMD) && "$(TELEGRAM_RUN_BIN)" telegram bridge; st=$$?; rm -f "$(TELEGRAM_RUN_BIN)"; exit $$st

@@ -1,3 +1,7 @@
+# Ephemeral binary from `make telegram` / `make telegram-bridge`
+/.goclaw-telegram-run
+/.goclaw-telegram-run.exe
+
 # Windows and local build artifacts
 # Literal %TEMP% folder (some test runs place binaries here)
 **/%TEMP%/

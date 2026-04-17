@@ -49,7 +49,7 @@ From your project directory (so `.goclaw/` settings and workspace match what you
 goclaw telegram start
 ```
 
-From the `goclaw` module root, **`make telegram`** runs `telegram start` (guided setup when needed).
+From the `goclaw` module root, **`make telegram`** runs `telegram start` (guided setup when needed). The Makefile builds a short-lived binary under `.goclaw-telegram-run*` (not `go run`) so **Ctrl+C** usually exits cleanly on Windows/Git Bash; you can still run `go run ./cmd/goclaw telegram start` directly if you prefer.
 
 Use the same **persistent flags** as other commands: **`--profile`**, **`--session`**, **`--workspace`**, **`--no-tools`**, etc.
 
