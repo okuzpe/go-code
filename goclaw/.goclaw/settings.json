@@ -4,5 +4,9 @@
   "task_model_router": "off",
   "ollama_num_ctx": 32768,
   "model_context_tokens": 32768,
-  "preferred_response_language": "es"
+  "preferred_response_language": "es",
+  "auto_profile_intent": "rules",
+  "auto_direct_coding_profile": "general-purpose",
+  "action_repair_escalation": true,
+  "auto_continue_action_requests": true
 }

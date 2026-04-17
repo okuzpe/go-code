@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/app"
 	"github.com/okuzpe/goclaw/internal/coordinator"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
@@ -36,6 +37,9 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		Focus:                       focus,
 		Doctor: func(ctx context.Context) (string, error) {
 			return app.DoctorReportFromRuntime(ctx, rt), nil
+		},
+		OnProfileChange: func(p agents.Profile) {
+			rt.Profile = p
 		},
 	}
 	slashEnv.PlanGate = func() slashcmd.PlanGateConfig {
@@ -73,7 +77,10 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		SlashContext: func() slashcmd.SlashContext {
 			return slashcmd.SlashContext{SlashEnv: slashEnv, Mem: rt.MemStore, Orch: orch, Sess: &sess, Store: rt.Store}
 		},
-		Title:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
+		PreSubmitSystemLines: func(userText string) []string {
+			return app.MaybeCoordinatorToDirectProfile(rt, orch, userText, strings.TrimSpace(focus.Current()) != "")
+		},
+		Title:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName()),
 		SessionID:          rt.Sess.ID,
 		FooterStats:        func() string { return tuiFooterStats(rt, orch) },
 		Workdir:            rt.Workdir,
@@ -81,9 +88,9 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 		UserAgentsDir:      rt.UserAgentsDir,
 		ProjectAgentsDir:   rt.ProjectAgentsDir,
 		AgentPickerHiddenProfiles: slices.Clone(rt.Cfg.AgentPickerHiddenProfiles),
-		ActiveAgentProfile: rt.Profile.Name,
+		ActiveAgentProfile: orch.ProfileName(),
 		Theme:              chat.NewThemeForAppearance(rt.Cfg.UIAppearance),
-		Welcome:            welcomeOptions(rt),
+		Welcome:            welcomeOptions(rt, orch),
 		FocusLine:          focus.Hint,
 	}
 	return chat.RunApp(ctx, opts, approval, submit, slash)
@@ -102,18 +109,19 @@ func setSessionModel(rt *app.ChatRuntime, orch *orchestrator.Orchestrator, id st
 	return nil
 }
 
-func welcomeOptions(rt *app.ChatRuntime) chat.WelcomeOptions {
+func welcomeOptions(rt *app.ChatRuntime, orch *orchestrator.Orchestrator) chat.WelcomeOptions {
+	p := orch.ActiveProfile()
 	// writeApprovalRequired is true when write tools are available in the profile
 	// but the yolo_threshold is below the workspace-write risk score (60), meaning each
 	// write_file / edit_file / patch call will trigger an interactive approval prompt.
-	writeApprovalRequired := rt.Profile.AllowsWorkspaceFileWrites() && rt.Cfg.YoloThreshold < 60
+	writeApprovalRequired := p.AllowsWorkspaceFileWrites() && rt.Cfg.YoloThreshold < 60
 	return chat.WelcomeOptions{
 		Version:               Version,
-		Subtitle:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), rt.Profile.Name),
+		Subtitle:              app.FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName()),
 		Workdir:               rt.Workdir,
-		Profile:               rt.Profile.Name,
-		FileWriteToolsHidden:  !rt.Profile.AllowsWorkspaceFileWrites(),
-		HubDelegatesCoding:    rt.Profile.AllowsSpawnAgentDelegation(),
+		Profile:               orch.ProfileName(),
+		FileWriteToolsHidden:  !p.AllowsWorkspaceFileWrites(),
+		HubDelegatesCoding:    p.AllowsSpawnAgentDelegation(),
 		WriteApprovalRequired: writeApprovalRequired,
 		OllamaWarning:         app.FormatOllamaWelcomeWarning(rt),
 	}
@@ -142,6 +150,20 @@ func tuiFooterStats(rt *app.ChatRuntime, orch *orchestrator.Orchestrator) string
 	if app.OllamaFunctionToolsDropped(rt) {
 		base += " · Ollama text-only"
 	}
+	p := orch.ActiveProfile()
+	hub := "hub:n"
+	if strings.EqualFold(orch.ProfileName(), "coordinator") {
+		hub = "hub:y"
+	}
+	toolsSummary := "all"
+	if n := len(p.ToolAllowlist); n > 0 {
+		toolsSummary = fmt.Sprintf("%d", n)
+	}
+	ro := "ro:n"
+	if p.ReadOnly {
+		ro = "ro:y"
+	}
+	base = fmt.Sprintf("%s · %s · %s · %s · tools:%s", base, orch.ProfileName(), ro, hub, toolsSummary)
 	if role := orch.TaskRole(); role != "" && role != "default" {
 		model := orch.TurnModel()
 		if model == "" {

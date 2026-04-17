@@ -166,6 +166,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r := ApprovalRequest(msg)
 		m.pending = &r
 		return m, nil
+	case systemTranscriptMsg:
+		m.appendSystem(string(msg))
+		return m, nil
 	case assistantPlaceholderMsg:
 		m.turnHadWorkspaceWrite = false
 		m.footerStatsStreamAt = time.Time{}

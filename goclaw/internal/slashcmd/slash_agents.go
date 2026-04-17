@@ -27,6 +27,9 @@ func switchOrchestratorProfile(orch *orchestrator.Orchestrator, env SlashEnv, ra
 		prev = agents.Profile{Name: orch.ProfileName()}
 	}
 	orch.SetProfile(next)
+	if env.OnProfileChange != nil {
+		env.OnProfileChange(next)
+	}
 	summary := formatProfileSwitchSummary(prev, next)
 	if tail := profileSwitchFollowUp(next); tail != "" {
 		return summary + tail, nil

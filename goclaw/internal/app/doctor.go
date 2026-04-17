@@ -48,6 +48,9 @@ func DoctorReportFromRuntime(_ context.Context, rt *ChatRuntime) string {
 		fmt.Sprintf("model:     %s", cfg.Model()),
 		fmt.Sprintf("task_model_router: %s", config.NormalizeTaskModelRouter(cfg.TaskModelRouter)),
 		taskModelsLine,
+		fmt.Sprintf("auto_profile_intent: %s", config.NormalizeAutoProfileIntent(cfg.AutoProfileIntent)),
+		fmt.Sprintf("auto_direct_coding_profile: %s", config.NormalizeAutoDirectCodingProfile(cfg.AutoDirectCodingProfile)),
+		fmt.Sprintf("action_repair_escalation: %v", cfg.ActionRepairEscalation),
 		fmt.Sprintf("profile:   %s", rt.Profile.Name),
 		fmt.Sprintf("file tools: %s", doctorFileToolsLine(rt.Profile)),
 		fmt.Sprintf("tools:     %s", enabledDisabled(!rt.DisableTools)),
@@ -367,6 +370,18 @@ func hintLines(cfg config.Config, ollamaOK, ollamaModelInLibrary, toolsDisabled,
 		hints = append(hints,
 			"  task_model_router is \"llm\": adds ~2-3s per turn for LLM classification.",
 			"  - Use \"rules\" for zero-latency heuristic routing, or \"off\" to disable.",
+		)
+	}
+	if config.NormalizeTaskModelRouter(cfg.TaskModelRouter) != "off" && len(cfg.TaskModels) == 0 {
+		hints = append(hints,
+			"  task_model_router is not \"off\" but task_models is empty — per-turn model routing is inactive.",
+			"  - Add a \"task_models\" map in settings.json or set task_model_router to \"off\".",
+		)
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.AgentProfile), "coordinator") && config.NormalizeAutoDirectCodingProfile(cfg.AutoDirectCodingProfile) == "off" {
+		hints = append(hints,
+			"  agent_profile is coordinator (hub): the parent session cannot run read_file/bash directly.",
+			"  - For single-window coding: set \"auto_direct_coding_profile\" to \"general-purpose\" or \"builder\", optionally with \"auto_profile_intent\": \"rules\", or use /profile in-session.",
 		)
 	}
 	if cfg.LLMCompaction {

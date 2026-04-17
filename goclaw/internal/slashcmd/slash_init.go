@@ -51,6 +51,9 @@ func handleSlashProjectInit(env SlashEnv) (string, error) {
 			"fast":      "qwen2.5-coder:7b",
 			"creative":  "qwen2.5-coder:14b",
 		},
+		"auto_profile_intent":        "off",
+		"auto_direct_coding_profile": "off",
+		"action_repair_escalation":   false,
 		"tool_permissions": map[string]any{
 			"read_file":    "allow",
 			"glob":         "allow",

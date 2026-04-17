@@ -154,6 +154,29 @@ func TestNormalizeTaskModelRouter(t *testing.T) {
 	}
 }
 
+func TestNormalizeAutoProfileIntent(t *testing.T) {
+	t.Parallel()
+	if got := NormalizeAutoProfileIntent("rules"); got != "rules" {
+		t.Fatalf("got %q", got)
+	}
+	if got := NormalizeAutoProfileIntent("bogus"); got != "off" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestNormalizeAutoDirectCodingProfile(t *testing.T) {
+	t.Parallel()
+	if got := NormalizeAutoDirectCodingProfile("general-purpose"); got != "general-purpose" {
+		t.Fatalf("got %q", got)
+	}
+	if got := NormalizeAutoDirectCodingProfile("builder"); got != "builder" {
+		t.Fatalf("got %q", got)
+	}
+	if got := NormalizeAutoDirectCodingProfile("nope"); got != "off" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestConfigTaskModelRoutingActive(t *testing.T) {
 	t.Parallel()
 	cfg := Default()

@@ -154,6 +154,17 @@ type Config struct {
 	// footer to the assistant reply. JSON: truth_footer_no_workspace_writes (default true).
 	TruthFooterNoWorkspaceWrites bool
 
+	// AutoProfileIntent selects profile-type detection before each user send: "off" (default) or "rules".
+	// JSON: auto_profile_intent; env: GOCLAW_AUTO_PROFILE_INTENT.
+	AutoProfileIntent string
+	// AutoDirectCodingProfile when not "off" and the session is coordinator hub mode, may switch the
+	// orchestrator to general-purpose or builder for obvious single-session coding (see orchestrator profile intent).
+	// JSON: auto_direct_coding_profile; env: GOCLAW_AUTO_DIRECT_CODING_PROFILE.
+	AutoDirectCodingProfile string
+	// ActionRepairEscalation when true: after action-continue nudges are exhausted with no tools, perform
+	// one model escalation (code-role model) before ending the turn. JSON: action_repair_escalation.
+	ActionRepairEscalation bool
+
 	// ExternalHooks are subprocess or HTTP hooks from settings (see hooks package).
 	ExternalHooks []ExternalHookEntry
 
@@ -288,6 +299,9 @@ func Default() Config {
 		LLMCompaction:                true,
 		AutoContinueActionRequests:   true,
 		TruthFooterNoWorkspaceWrites: true,
+		AutoProfileIntent:            NormalizeAutoProfileIntent(envOr("GOCLAW_AUTO_PROFILE_INTENT", "off")),
+		AutoDirectCodingProfile:      NormalizeAutoDirectCodingProfile(envOr("GOCLAW_AUTO_DIRECT_CODING_PROFILE", "off")),
+		ActionRepairEscalation:       envTruthy("GOCLAW_ACTION_REPAIR_ESCALATION"),
 		TUIMouseScroll:               envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
 		TUIIcons:                     icons.CanonicalTUIIcons(os.Getenv("GOCLAW_TUI_ICONS")),
 		UIAppearance:                 "auto",
@@ -373,6 +387,28 @@ func NormalizeTaskModelRouter(raw string) string {
 		return "rules"
 	case "llm":
 		return "llm"
+	default:
+		return "off"
+	}
+}
+
+// NormalizeAutoProfileIntent returns off or rules. Unknown values become off.
+func NormalizeAutoProfileIntent(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "rules", "on", "true", "1", "yes", "heuristic", "heuristics":
+		return "rules"
+	default:
+		return "off"
+	}
+}
+
+// NormalizeAutoDirectCodingProfile returns off, general-purpose, or builder. Unknown values become off.
+func NormalizeAutoDirectCodingProfile(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "general-purpose", "gp", "general":
+		return "general-purpose"
+	case "builder", "b":
+		return "builder"
 	default:
 		return "off"
 	}

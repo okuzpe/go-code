@@ -205,6 +205,7 @@ func runTelegramTurn(ctx context.Context, rt *ChatRuntime, tg *telegram.Client, 
 	}
 
 	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, withAutomationOutputToolApprover(rt.OrchOpts)...)
+	_ = MaybeCoordinatorToDirectProfile(rt, orch, line, false)
 	stopTyping := startTelegramTypingLoop(ctx, tg, chatID)
 	defer stopTyping()
 	t0 := time.Now()

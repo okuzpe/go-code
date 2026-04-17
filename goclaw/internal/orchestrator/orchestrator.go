@@ -276,6 +276,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	}()
 
 	actionNudges := 0
+	repairEscalations := 0
 	hadToolRound := false
 	lastBatchReadOnly := false
 	workspaceWriteOK := false
@@ -338,6 +339,12 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				actionNudges++
 				o.session.Add("user", nudgeMsg)
 				slog.Debug("orchestrator: action-continue nudge", "nudge", actionNudges)
+				continue
+			}
+			if o.tryActionRepairEscalation(userMessage, toolCalls, hadToolRound, lastBatchReadOnly, actionNudges, &repairEscalations) {
+				o.session.AddAssistant(response, nil)
+				o.session.Add("user", actionRepairModelEscalationMessage)
+				slog.Debug("orchestrator: action-repair model escalation")
 				continue
 			}
 			plain := response

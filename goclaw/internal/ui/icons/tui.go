@@ -185,7 +185,7 @@ func (st Set) ApprovalPromptGlyph() string {
 func (st Set) DoctorBadge() string {
 	switch st {
 	case ASCII:
-		return "i "
+		return "> "
 	case Emoji:
 		return "\u2022 " // bullet + space (narrow; avoids wide pictographs in the header)
 	case Nerd:

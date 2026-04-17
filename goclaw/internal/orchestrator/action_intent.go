@@ -17,6 +17,10 @@ const (
 	// actionFirstTurnNoToolsNudgeMessage applies when the first model completion in this user turn had zero tool calls
 	// but the user message signals repo/code work (common with local models that narrate instead of calling tools).
 	actionFirstTurnNoToolsNudgeMessage = `[goclaw] The user asked for code or repository changes. Your last completion had no native tool calls — prose alone does not read or edit files. Reply with tool calls only on the next turn: use read_file, glob, or grep first as needed, then edit_file, write_file, or patch to apply changes, then bash or script to verify. Do not simulate tools in markdown.`
+
+	// actionRepairModelEscalationMessage follows exhausted action-continue nudges when action_repair_escalation is on:
+	// the runtime switches to the configured coding-tier model for one more attempt.
+	actionRepairModelEscalationMessage = `[goclaw] Action nudges were exhausted without native tool calls. This turn now uses the configured coding model — reply with tool calls only: read_file/glob/grep as needed, then edit_file/write_file/patch, then bash or script to verify. Do not simulate tools in markdown.`
 )
 
 func (o *Orchestrator) effectiveMaxActionNudges() int {

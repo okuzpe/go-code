@@ -58,6 +58,9 @@ type SlashEnv struct {
 	// FullscreenTUI is true when slash commands run inside the Bubble Tea chat (cmd/goclaw fullscreen runner).
 	// Used to avoid raw stdout control sequences that would fight the TUI (e.g. /clear).
 	FullscreenTUI bool
+	// OnProfileChange optional; invoked after a successful /profile or /agents hot-switch so the host can
+	// mirror agents.Profile (e.g. ChatRuntime.Profile for doctor and auto-profile helpers).
+	OnProfileChange func(agents.Profile)
 }
 
 // SlashContext carries dependencies for HandleSlash (memory, orchestrator, session pointer, disk store).

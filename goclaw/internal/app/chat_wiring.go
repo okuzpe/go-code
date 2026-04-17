@@ -58,6 +58,9 @@ type ChatRuntime struct {
 	ProjectAgentsDir string
 	DisableTools     bool
 	Mock             bool
+	// ExplicitAgentProfileFromCLI is true when the user set --profile on the CLI or GOCLAW_AGENT_PROFILE in the environment.
+	// Auto-elevate from coordinator to a direct coding profile is skipped when this is set.
+	ExplicitAgentProfileFromCLI bool
 	McpSessions      []mcp.Conn
 	// McpConnectedIDs lists MCP server ids that started and registered tools successfully (same order as McpSessions).
 	McpConnectedIDs []string
@@ -174,7 +177,11 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	if err != nil {
 		return nil, err
 	}
+	explicitAgentProfileFromCLI := strings.TrimSpace(os.Getenv("GOCLAW_AGENT_PROFILE")) != ""
 	if cmd != nil {
+		if p, err := cmd.Flags().GetString("profile"); err == nil && strings.TrimSpace(p) != "" {
+			explicitAgentProfileFromCLI = true
+		}
 		if v, err := cmd.Flags().GetString("task-model-router"); err == nil && strings.TrimSpace(v) != "" {
 			cfg.TaskModelRouter = config.NormalizeTaskModelRouter(v)
 		}
@@ -433,8 +440,9 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 		Profs:            profs,
 		UserAgentsDir:    userAgentsDir,
 		ProjectAgentsDir: projectAgentsDir,
-		DisableTools:     disableTools,
-		Mock:             mockFlag,
+		DisableTools:                disableTools,
+		Mock:                        mockFlag,
+		ExplicitAgentProfileFromCLI: explicitAgentProfileFromCLI,
 		McpSessions:      mcpSessions,
 		McpConnectedIDs:  mcpConnectedIDs,
 		OrchOpts:         orchOpts,

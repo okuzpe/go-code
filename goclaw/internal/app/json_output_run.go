@@ -70,6 +70,7 @@ func RunChatJSONOutputFromLine(ctx context.Context, rt *ChatRuntime, line string
 	}
 
 	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, withAutomationOutputToolApprover(rt.OrchOpts)...)
+	_ = MaybeCoordinatorToDirectProfile(rt, orch, line, false)
 
 	var trace []orchestrator.JSONToolCall
 	resp, err := orch.RunStreamingToolTrace(ctx, line, nil, &trace)
@@ -111,6 +112,7 @@ func RunChatTextOutputFromLine(ctx context.Context, rt *ChatRuntime, line string
 	}
 
 	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, withAutomationOutputToolApprover(rt.OrchOpts)...)
+	_ = MaybeCoordinatorToDirectProfile(rt, orch, line, false)
 
 	resp, err := orch.RunStreaming(ctx, line, NopStreamSink{})
 	if err != nil {

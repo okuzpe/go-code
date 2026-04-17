@@ -171,6 +171,8 @@ type Model struct {
 
 	// slashContextFn returns SlashContext for / argument completion (nil disables argument picker).
 	slashContextFn func() slashcmd.SlashContext
+	// preSubmitSystemLines optional; see Options.PreSubmitSystemLines.
+	preSubmitSystemLines func(userText string) []string
 
 	// messageQueue holds user texts submitted while the model is busy; shown above the compose box until
 	// assistantDoneMsg drains them (appendSeparator + appendUser + runDispatchAfterUserEcho in order).
@@ -254,6 +256,9 @@ type Options struct {
 	TUIIcons string
 	// SlashContext supplies live slash-command argument suggestions (optional; fullscreen TUI from cmd/goclaw).
 	SlashContext func() slashcmd.SlashContext
+	// PreSubmitSystemLines optional; each non-empty line is shown as a system transcript row before the
+	// assistant placeholder for this user send (e.g. coordinator auto-profile notice).
+	PreSubmitSystemLines func(userText string) []string
 }
 
 // SlashHandler runs a slash command. If modelSubmit is non-empty, send that text to the model after displaying out (e.g. /edit).
@@ -518,7 +523,8 @@ func New(ctx context.Context, opts Options) Model {
 		agentPickerHidden:   slices.Clone(opts.AgentPickerHiddenProfiles),
 		lastReflowWidth:     -1,
 		tuiMouseScroll:      opts.TUIMouseScroll,
-		slashContextFn:      opts.SlashContext,
+		slashContextFn:       opts.SlashContext,
+		preSubmitSystemLines: opts.PreSubmitSystemLines,
 	}
 	if strings.TrimSpace(opts.Welcome.Version) != "" {
 		if dash := WelcomeDashboardLines(th, opts.Welcome, 0); len(dash) > 0 {
@@ -2417,6 +2423,9 @@ func waitForApproval(ch <-chan ApprovalRequest) tea.Cmd {
 
 type assistantPlaceholderMsg struct{}
 
+// systemTranscriptMsg appends one system-style line before streaming starts (e.g. profile auto-switch).
+type systemTranscriptMsg string
+
 type assistantDeltaMsg string
 
 // assistantDoneMsg ends one model submit turn. aborted is true when the submit goroutine exited with context.Canceled (Esc / Ctrl+C).
@@ -2488,14 +2497,21 @@ func RunApp(ctx context.Context, opts Options, approval *ApprovalBroker, submit 
 		reqCtx, cancel := context.WithCancel(ctx)
 		m.submitter.setCancel(cancel)
 		// Async model work must stay outside Model.Update; only send tea.Msg back into the program.
-		go func() {
+		go func(line string) {
 			defer func() {
 				m.submitter.setCancel(nil)
 				cancel()
 			}()
+			if m.preSubmitSystemLines != nil {
+				for _, ln := range m.preSubmitSystemLines(line) {
+					if t := strings.TrimSpace(ln); t != "" {
+						p.Send(systemTranscriptMsg(t))
+					}
+				}
+			}
 			p.Send(assistantPlaceholderMsg{})
 			sink := newBatchedProgramSink(p)
-			_, err := submit(reqCtx, userText, sink)
+			_, err := submit(reqCtx, line, sink)
 			sink.flush()
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
@@ -2505,7 +2521,7 @@ func RunApp(ctx context.Context, opts Options, approval *ApprovalBroker, submit 
 					p.Send(errMsg{err: err})
 				}
 			}
-		}()
+		}(userText)
 	}
 
 	_, err := p.Run()

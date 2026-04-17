@@ -26,6 +26,9 @@ type settingsFile struct {
 	TaskModelRouterModel         *string             `json:"task_model_router_model,omitempty"`
 	PreferredResponseLanguage    *string             `json:"preferred_response_language,omitempty"`
 	AgentProfile                 *string             `json:"agent_profile"`
+	AutoProfileIntent            *string             `json:"auto_profile_intent,omitempty"`
+	AutoDirectCodingProfile      *string             `json:"auto_direct_coding_profile,omitempty"`
+	ActionRepairEscalation       *bool               `json:"action_repair_escalation,omitempty"`
 	AutoCompactThreshold         *float64            `json:"auto_compact_threshold"`
 	BashTimeoutSec               *int                `json:"bash_timeout_sec"`
 	ModelContextTokens           *int                `json:"model_context_tokens"`
@@ -188,6 +191,15 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.AgentProfile != nil && *sf.AgentProfile != "" {
 		cfg.AgentProfile = *sf.AgentProfile
+	}
+	if sf.AutoProfileIntent != nil && strings.TrimSpace(*sf.AutoProfileIntent) != "" {
+		cfg.AutoProfileIntent = NormalizeAutoProfileIntent(*sf.AutoProfileIntent)
+	}
+	if sf.AutoDirectCodingProfile != nil && strings.TrimSpace(*sf.AutoDirectCodingProfile) != "" {
+		cfg.AutoDirectCodingProfile = NormalizeAutoDirectCodingProfile(*sf.AutoDirectCodingProfile)
+	}
+	if sf.ActionRepairEscalation != nil && *sf.ActionRepairEscalation {
+		cfg.ActionRepairEscalation = true
 	}
 	if sf.AutoCompactThreshold != nil {
 		cfg.AutoCompactThreshold = *sf.AutoCompactThreshold
