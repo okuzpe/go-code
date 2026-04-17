@@ -16,7 +16,7 @@ goclaw is a local-first CLI coding agent. The goal is daily-driver usability: pr
 - Not a **Team/Swarm** product (tmux-style peer agents or external job grids). In-process **coordinator** delegation (`spawn_agent`) is intentional and bounded; see [coordinator.md](./coordinator.md) and [coordinator-mode.md](../reference/coordinator-mode.md). The minimal disk mailbox hub (`internal/swarm`) is separate; see [swarm.md](./swarm.md).
 - Not a plugin marketplace.
 - Not a “cloud-first” agent that requires external LLM APIs: the **shipped CLI** uses **local Ollama only** (no Anthropic/OpenAI-compatible provider in settings).
-- Not a **multi-channel gateway** (Discord, Telegram, mobile pairing, long-lived daemon as the primary UX). goclaw is REPL/TUI-first; a control-plane gateway would be a different product shape. See [roadmap.md — Future transport and scale](roadmap.md#future-transport-and-scale).
+- Not a **multi-channel gateway** (Discord, mobile pairing, long-lived daemon as the primary UX). goclaw is REPL/TUI-first; a control-plane gateway would be a different product shape. See [roadmap.md — Future transport and scale](roadmap.md#future-transport-and-scale). The optional **[Telegram bridge](./telegram-bridge.md)** (`goclaw telegram …`, interactive `telegram configure`) is a **secondary transport**, not the primary chat surface.
 
 ## Lessons from wider agent stacks
 

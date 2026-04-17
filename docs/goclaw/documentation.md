@@ -27,6 +27,16 @@ The **master file index** for the whole `docs/` tree is [`docs-map.md`](../docs-
 - **Security copy sync (checklist):** when you change [`security.md`](security.md), **always** copy the updated body into [`goclaw/internal/app/onboarding_security_full.md`](../../goclaw/internal/app/onboarding_security_full.md) before merging (see HTML comment at top of that embed file). Same rule is referenced from [code-adjustment-map.md](../reference/code-adjustment-map.md) §17.
 - **Naming:** prefer **kebab-case** Markdown filenames under `docs/`. When you add or rename a top-level doc, update **`docs-map.md`**.
 
+## Defaults and env tables — anti-drift checklist
+
+When you change **built-in defaults** (for example `config.Default()`, first-run wizard copy, or default profile behavior) or **user-visible environment variables**:
+
+1. **[`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md)** — Environment variables table and any narrative that states defaults.
+2. **[`docs/goclaw/usage.md`](./usage.md)** — Quick start, first-run onboarding, flags, and env callouts.
+3. **[`docs/docs-map.md`](../docs-map.md)** — “Implementation status” / index rows only if shipped surface area or file list changes.
+4. **Embedded UI copy** — [`goclaw/internal/app/onboarding.go`](../../goclaw/internal/app/onboarding.go) / [`onboarding_tui.go`](../../goclaw/internal/app/onboarding_tui.go) completion hints; `goclaw doctor` output if it reflects the same default.
+5. **[`docs/goclaw/changelog.md`](./changelog.md)** — User-visible changes under **Unreleased**.
+
 ## Changelog
 
 Merged into **[Doc maintenance changelog](../docs-map.md#doc-maintenance-changelog)**.

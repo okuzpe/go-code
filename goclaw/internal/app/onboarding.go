@@ -39,6 +39,11 @@ func securityDocURL() string {
 }
 
 // onboardingCompletionProfileHint is shown after successful first-run setup.
-func onboardingCompletionProfileHint() string {
-	return "Tip: default profile is coordinator (hub — delegate with spawn_agent). Use /profile general-purpose or /profile builder for direct tools on the main session. Prefer /profile builder for shorter, action-first replies when coding solo."
+func onboardingCompletionProfileHint(agentProfile string) string {
+	switch agentProfile {
+	case "general-purpose":
+		return "Tip: you picked direct coding (general-purpose). Use /profile coordinator for hub delegation with spawn_agent, or /profile builder for shorter action-first replies when coding solo."
+	default:
+		return "Tip: you picked hub mode (coordinator). Delegate with spawn_agent or the & prefix. Use /profile general-purpose or /profile builder for direct tools on the main session."
+	}
 }

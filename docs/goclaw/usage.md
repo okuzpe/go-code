@@ -15,6 +15,10 @@ printf 'ping\n' | go run ./cmd/goclaw --mock --no-tools --output-format json   #
 
 Try: a simple repo question, a tool (e.g. web search), and `/doctor` or `goclaw doctor`.
 
+### Advanced / optional
+
+Not required for a first session on one machine: [telegram-bridge.md](./telegram-bridge.md) (Bot API bridge), [swarm.md](./swarm.md) (disk mailboxes), [model-routing.md](./model-routing.md) (`task_models` per-turn routing), local [plugins.md](../reference/plugins.md) and [skills.md](../reference/skills.md) (SKILL.md snippets in the system prompt).
+
 ### Large repo analysis and refactors
 
 - **`.goclaw/plan.md`** is a local scratchpad; it may contain notes unrelated to goclaw. For product intent and architecture, prefer **[CLAUDE.md](../../goclaw/CLAUDE.md)**, **[README.md](../../goclaw/README.md)**, and the topic files under **[docs/goclaw/](./)** (see [docs-map.md](../docs-map.md)).
@@ -34,7 +38,8 @@ The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings
 1. Security summary (optional full text is bundled; same content as [security.md](./security.md))
 2. Workspace trust for the current directory (`trusted_workspace` in project `.goclaw/settings.json`)
 3. **TUI appearance** preset (fullscreen mode only; change later with `/theme`)
-4. **Provider**: Ollama (local); settings are written under `~/.goclaw/` as described below
+4. **Agent profile** — hub (**`coordinator`**) or direct coding (**`general-purpose`**); written to `agent_profile` in `~/.goclaw/settings.json` (defaults to **`coordinator`** in `config.Default()` if you skip onboarding with `GOCLAW_NO_ONBOARDING=1`). **Esc** on this step goes back to appearance.
+5. **Provider**: Ollama (local); host and model are written under `~/.goclaw/` as described below
 
 **Files written:** `~/.goclaw/settings.json` (and `settings.local.json` if you enter an API key); project `.goclaw/settings.json` when you confirm trust.
 
@@ -45,7 +50,7 @@ The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings
 
 **`goclaw doctor` does not run onboarding** — it loads config and prints a health report. Run `doctor` for a quick check; run `goclaw` once to complete first-time setup.
 
-The wizard runs in the **same fullscreen Bubble Tea stack** as the main app (when stdin/stdout are TTY). The default **agent profile** is **`coordinator`** (hub — delegate with `spawn_agent`) until you set `agent_profile` or use `/profile` — see [Agent profiles](#agent-profiles).
+The wizard runs in the **same fullscreen Bubble Tea stack** as the main app (when stdin/stdout are TTY). During setup you pick **`coordinator`** or **`general-purpose`**; afterward use `/profile` or `agent_profile` in settings — see [Agent profiles](#agent-profiles). If you never run the wizard, **`config.Default()`** still starts from **`coordinator`**.
 
 ### Interactive chat (TTY)
 

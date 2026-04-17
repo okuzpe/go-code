@@ -11,12 +11,28 @@ import (
 	"github.com/okuzpe/goclaw/internal/config"
 )
 
+// onboardingProfileStepOptions is the single source for first-run profile choices (order = TUI cursor index).
+var onboardingProfileStepOptions = []struct {
+	profile string
+	label   string
+}{
+	{
+		profile: "coordinator",
+		label:   "Hub (coordinator) — delegate work with spawn_agent; parent session has no direct file/bash tools",
+	},
+	{
+		profile: "general-purpose",
+		label:   "Direct coding (general-purpose) — full toolset in this session",
+	},
+}
+
 type obStep int
 
 const (
 	obSecurity obStep = iota
 	obTrust
 	obTheme
+	obProfile
 	obOllamaHost
 	obOllamaModel
 	obDone
@@ -36,9 +52,11 @@ type obModel struct {
 
 	ti textinput.Model
 
-	appearance  string
-	ollamaHost  string
-	ollamaModel string
+	appearance       string
+	themeChoiceIndex int
+	agentProfile     string
+	ollamaHost       string
+	ollamaModel      string
 
 	// Security step: s = full docs/goclaw/security.md in viewport (bundled markdown, scrollable).
 	secDoc bool
@@ -69,6 +87,7 @@ func runOnboardingTUI(version, workdir string, base config.Config) error {
 		ti:           ti,
 		secVP:        secVP,
 		appearance:   config.UIAppearanceAuto,
+		agentProfile: base.AgentProfile,
 		ollamaHost:   base.OllamaHost,
 		ollamaModel:  base.OllamaModel,
 	}
@@ -142,6 +161,12 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		if m.step == obProfile && teaKeyIsEsc(msg) {
+			m.step = obTheme
+			m.cursor = m.themeChoiceIndex
+			return m, nil
+		}
+
 		switch {
 		case teaKeyIsEsc(msg):
 			if m.step == obTrust && m.cursor == 1 {
@@ -203,7 +228,28 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !teaKeyIsEnter(msg) {
 					break
 				}
+				m.themeChoiceIndex = m.cursor
 				m.appearance = themeIndexToAppearance(m.cursor)
+				m.step = obProfile
+				m.cursor = onboardingProfileStepInitialCursor(m.agentProfile)
+				return m, nil
+			}
+		case obProfile:
+			n := len(onboardingProfileStepOptions)
+			switch msg.String() {
+			case "up", "k":
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			case "down", "j":
+				if m.cursor < n-1 {
+					m.cursor++
+				}
+			default:
+				if !teaKeyIsEnter(msg) {
+					break
+				}
+				m.agentProfile = onboardingProfileStepOptions[m.cursor].profile
 				m.step = obOllamaHost
 				m.ti.SetValue(m.ollamaHost)
 				m.ti.EchoMode = textinput.EchoNormal
@@ -255,6 +301,7 @@ func (m *obModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *obModel) finish() tea.Cmd {
 	patch := map[string]any{
 		"ui_appearance": m.appearance,
+		"agent_profile": m.agentProfile,
 		"provider":      "ollama",
 		"ollama_host":   m.ollamaHost,
 		"ollama_model":  m.ollamaModel,
@@ -266,6 +313,15 @@ func (m *obModel) finish() tea.Cmd {
 	}
 	m.step = obDone
 	return nil
+}
+
+func onboardingProfileStepInitialCursor(agentProfile string) int {
+	for i, o := range onboardingProfileStepOptions {
+		if o.profile == agentProfile {
+			return i
+		}
+	}
+	return 0
 }
 
 func themeIndexToAppearance(index int) string {
@@ -345,6 +401,16 @@ func (m *obModel) viewBody() string {
 			b.WriteString(fmt.Sprintf("%s%d. %s\n", prefix, i+1, label))
 		}
 		b.WriteString("\n ↑/↓ · Enter")
+	case obProfile:
+		b.WriteString("\n Agent profile (change later with /profile):\n\n")
+		for i, o := range onboardingProfileStepOptions {
+			prefix := "   "
+			if i == m.cursor {
+				prefix = "> "
+			}
+			b.WriteString(fmt.Sprintf("%s%d. %s\n", prefix, i+1, o.label))
+		}
+		b.WriteString("\n ↑/↓ · Enter · Esc — back to appearance")
 	case obOllamaHost:
 		b.WriteString("\n Ollama host:\n\n")
 		b.WriteString(m.ti.View())
@@ -355,7 +421,7 @@ func (m *obModel) viewBody() string {
 		b.WriteString("\n\n Enter to finish setup")
 	case obDone:
 		b.WriteString("\n Setup complete. Settings saved under ~/.goclaw/\n\n ")
-		b.WriteString(onboardingCompletionProfileHint())
+		b.WriteString(onboardingCompletionProfileHint(m.agentProfile))
 		b.WriteString("\n\n Press Enter…")
 	}
 	if m.err != nil && m.step != obDone {

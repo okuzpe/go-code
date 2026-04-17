@@ -4,9 +4,17 @@
 
 Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D13 memory). Conceptual reference (third-party): [Memory — claude-code-explain](https://claude-code-explain.helmcode.com/memory).
 
+### How to read this file
+
+| Label | Meaning |
+|-------|---------|
+| **Shipped** | Matches current `goclaw` behavior (`internal/memory`, orchestrator wiring) unless a sentence is explicitly marked otherwise. |
+| **Reference** | Upstream-style calibration (limits, hygiene); use for judgment, not as a full product spec. |
+| **Proposal** | Suggested follow-up UX or implementation; **not shipped** unless the paragraph says it is. |
+
 ---
 
-## 1. Is it worth including?
+## 1. Is it worth including? (**Shipped** core, **Reference** depth)
 
 **Yes**, and **it is already in goclaw** (D13): history in RAM (`internal/session`) does not survive process exit; disk memory captures **stable facts about the user, project, and feedback** without filling the prompt with git or duplicated code. The rest of this doc covers the **reference product** pattern for calibrating limits and UX.
 
@@ -21,7 +29,7 @@ Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D13 memory). Conceptual ref
 
 ---
 
-## 2. Four types (reference taxonomy)
+## 2. Four types (reference taxonomy) (**Reference** taxonomy, **Shipped** types in D13)
 
 | Type | Typical content | When to save (heuristic) |
 |------|-----------------|--------------------------|
@@ -34,7 +42,7 @@ Each entry can be a **Markdown** file with **YAML frontmatter** (type, date, tit
 
 ---
 
-## 3. `MEMORY.md` index and hard limits
+## 3. `MEMORY.md` index and hard limits (**Reference** ceilings; **Proposal** for user-visible truncation warnings)
 
 In the reference product the index:
 
@@ -51,7 +59,7 @@ In the reference product the index:
 
 ---
 
-## 4. File structure (proposal for our CLI)
+## 4. File structure (proposal for our CLI) (**Shipped** `~/.goclaw/memory/` layout; **Reference** alternate layouts)
 
 We are not required to use `~/.claude/`; a dedicated namespace is better, e.g.:
 
@@ -67,7 +75,7 @@ Or per project in the repo: `.goclaw/memory/` (decision **D7** / **D14**). The *
 
 ---
 
-## 5. What should **not** go in memory
+## 5. What should **not** go in memory (**Reference** hygiene)
 
 Avoid contamination and staleness:
 
@@ -80,7 +88,7 @@ Avoid contamination and staleness:
 
 ---
 
-## 6. Automatic extraction (advanced phase)
+## 6. Automatic extraction (advanced phase) (**Shipped** `memory_llm_silent_extract`; **Reference** table for background pattern)
 
 Pattern from the reference product (summary):
 
@@ -97,7 +105,7 @@ Pattern from the reference product (summary):
 
 ---
 
-## 7. Go package mapping
+## 7. Go package mapping (**Shipped**)
 
 | Piece | Package |
 |-------|---------|
@@ -109,7 +117,7 @@ Dependencies: `orchestrator` → `memory`; `memory` **does not** import `orchest
 
 ---
 
-## 8. Changelog
+## 8. Changelog (**Meta**)
 
 | Date | Change |
 |------|--------|
@@ -119,3 +127,4 @@ Dependencies: `orchestrator` → `memory`; `memory` **does not** import `orchest
 | 2026-04-07 | §3: link [practical-tips.md §8](./practical-tips.md) (index truncation) |
 | 2026-04-12 | Translated from Spanish to English |
 | 2026-04-12 | §6–§7: shipped silent-turn extractor (`memory_llm_silent_extract`) in `internal/memory/extractor.go` |
+| 2026-04-17 | Reading guide table (**Shipped** / **Reference** / **Proposal**); section headings tagged for scope |

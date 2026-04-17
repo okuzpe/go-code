@@ -44,3 +44,15 @@ func TestOnboardingWelcomeMarkdown_replacesTitle(t *testing.T) {
 	require.Contains(t, md, "Before you start")
 	require.Contains(t, md, "docs/goclaw/security.md")
 }
+
+func TestOnboardingProfileStepInitialCursor(t *testing.T) {
+	require.Equal(t, 0, onboardingProfileStepInitialCursor("coordinator"))
+	require.Equal(t, 0, onboardingProfileStepInitialCursor("plan"))
+	require.Equal(t, 1, onboardingProfileStepInitialCursor("general-purpose"))
+	require.Len(t, onboardingProfileStepOptions, 2)
+}
+
+func TestOnboardingCompletionProfileHint(t *testing.T) {
+	require.Contains(t, onboardingCompletionProfileHint("general-purpose"), "direct coding")
+	require.Contains(t, onboardingCompletionProfileHint("coordinator"), "hub mode")
+}
