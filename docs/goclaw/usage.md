@@ -251,6 +251,7 @@ Persistent flags apply to the default command and `chat`:
 | `telegram start` | Telegram bridge; prompts for missing token/allowlist in a TTY, then long-polls (same as `make telegram`) |
 | `telegram configure` | Interactive wizard only: merge Telegram keys into `~/.goclaw/settings.local.json` |
 | `telegram bridge` | Telegram bridge without prompts; fails if settings incomplete (scripts / CI) |
+| `telegram user add …` | Append allowlisted Telegram user id(s) to `~/.goclaw/settings.local.json` (see [telegram-bridge.md](./telegram-bridge.md)) |
 
 ## Plan file (`.goclaw/plan.md`)
 

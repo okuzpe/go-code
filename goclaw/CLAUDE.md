@@ -218,6 +218,7 @@ goclaw/
 - **`goclaw telegram start`** — long-poll Telegram Bot API; optional TTY wizard merges missing token/allowlist into `~/.goclaw/settings.local.json` ([`docs/goclaw/telegram-bridge.md`](../docs/goclaw/telegram-bridge.md)).
 - **`goclaw telegram configure`** — wizard only (merge settings; no bridge).
 - **`goclaw telegram bridge`** — same bridge as `start` but **fails** if settings are incomplete (automation).
+- **`goclaw telegram user add …`** — merge resolved ids into `telegram_allowed_user_ids` in `~/.goclaw/settings.local.json` (no full wizard).
 
 **REPL slash commands** (do not go to the LLM): `/help` or `help` or `?`; `/session`; `/sessions` (list saved ids); `/quit` or `/exit` (save and exit); `/new` (save current JSONL, start empty session); `/save` (persist without exit); `/compact` (force compaction); `/profile <name>` (switch profile without restart); `/workers` (interactive `spawn_agent` workers); `/focus <task_id_prefix>` or `/focus parent`; `/detach` (back to coordinator); `/plan path|init|save|run|template` (`run` = save last assistant + same as `/apply-plan`); `/apply-plan [path]` (load plan file, switch to `general-purpose`, stream one execution turn via modelSubmit); `/memory list|add|delete`. **Sends to the LLM via modelSubmit:** `/btw <text>` (side question — rewrites one user message with a brief-aside preamble). Hooks `SessionStart` / `SessionEnd` fire when the REPL starts and exits.
 

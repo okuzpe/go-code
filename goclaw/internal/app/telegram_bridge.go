@@ -127,27 +127,24 @@ func telegramRunBridgeLoop(cmd *cobra.Command, token string) error {
 	var offset int64
 
 	for {
-		if err := ctx.Err(); err != nil {
-			if errors.Is(err, context.Canceled) {
-				slog.Info("telegram bridge: stopped")
-				return nil
-			}
-			return err
+		// NotifyContext only ends on SIGINT/SIGTERM — any ctx error is a deliberate stop.
+		if ctx.Err() != nil {
+			slog.Info("telegram bridge: stopped")
+			return nil
 		}
 		updates, err := client.GetUpdates(ctx, offset)
 		if err != nil {
-			if errors.Is(err, context.Canceled) {
+			// After Ctrl+C, Windows HTTP sometimes returns an error that does not unwrap
+			// to context.Canceled even though the request context is already done.
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 				slog.Info("telegram bridge: stopped")
 				return nil
 			}
 			slog.Warn("telegram getUpdates failed", "err", err)
 			select {
 			case <-ctx.Done():
-				if errors.Is(ctx.Err(), context.Canceled) {
-					slog.Info("telegram bridge: stopped")
-					return nil
-				}
-				return ctx.Err()
+				slog.Info("telegram bridge: stopped")
+				return nil
 			case <-time.After(2 * time.Second):
 			}
 			continue
@@ -170,14 +167,14 @@ func telegramRunBridgeLoop(cmd *cobra.Command, token string) error {
 			}
 			slog.Info("telegram bridge: running turn", "from_user_id", userID, "chat_id", chatID, "text_preview", truncate(strings.TrimSpace(text), 120))
 			if err := runTelegramTurn(ctx, rt, client, chatID, text); err != nil {
-				if errors.Is(err, context.Canceled) {
+				if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 					slog.Info("telegram bridge: stopped")
 					return nil
 				}
 				slog.Warn("telegram bridge: turn failed", "err", err)
 				msg := fmt.Sprintf("[goclaw] turn error: %v", err)
 				if sendErr := client.SendMessageText(ctx, chatID, msg); sendErr != nil {
-					if errors.Is(sendErr, context.Canceled) {
+					if ctx.Err() != nil || errors.Is(sendErr, context.Canceled) {
 						slog.Info("telegram bridge: stopped")
 						return nil
 					}
@@ -208,10 +205,17 @@ func runTelegramTurn(ctx context.Context, rt *ChatRuntime, tg *telegram.Client, 
 	}
 
 	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, withAutomationOutputToolApprover(rt.OrchOpts)...)
+	stopTyping := startTelegramTypingLoop(ctx, tg, chatID)
+	defer stopTyping()
+	t0 := time.Now()
+	slog.Info("telegram bridge: model turn started", "provider", rt.Cfg.Provider, "model", rt.Cfg.Model())
 	reply, err := orch.RunStreaming(ctx, line, NopStreamSink{})
+	elapsed := time.Since(t0)
 	if err != nil {
+		slog.Warn("telegram bridge: model turn failed", "err", err, "elapsed", elapsed)
 		return err
 	}
+	slog.Info("telegram bridge: model turn completed", "elapsed", elapsed, "reply_runes", utf8.RuneCountInString(reply))
 	if err := tg.SendMessageText(ctx, chatID, reply); err != nil {
 		return fmt.Errorf("send telegram reply: %w", err)
 	}
@@ -221,3 +225,31 @@ func runTelegramTurn(ctx context.Context, rt *ChatRuntime, tg *telegram.Client, 
 	}
 	return nil
 }
+
+// startTelegramTypingLoop calls sendChatAction(typing) until cancel; Telegram hides the indicator after ~5s, so refresh every 4s while the model runs.
+func startTelegramTypingLoop(parent context.Context, tg *telegram.Client, chatID int64) (stop func()) {
+	child, cancel := context.WithCancel(parent)
+	go func() {
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		sendOnce := func() {
+			c, c2 := context.WithTimeout(context.Background(), sendChatActionHTTPTimeout)
+			defer c2()
+			if err := tg.SendTyping(c, chatID); err != nil {
+				slog.Debug("telegram bridge: sendChatAction typing failed", "err", err)
+			}
+		}
+		sendOnce()
+		for {
+			select {
+			case <-child.Done():
+				return
+			case <-ticker.C:
+				sendOnce()
+			}
+		}
+	}()
+	return cancel
+}
+
+const sendChatActionHTTPTimeout = 12 * time.Second

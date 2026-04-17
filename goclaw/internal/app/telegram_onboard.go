@@ -50,6 +50,9 @@ func runTelegramConfigureWizard(cfg config.Config) error {
 	fmt.Fprintf(os.Stdout, "Telegram setup — values merge into %s\n", path)
 	fmt.Fprintln(os.Stdout, "See docs/goclaw/telegram-bridge.md. Input is echoed; use a private terminal.")
 	fmt.Fprintln(os.Stdout, "")
+	fmt.Fprintln(os.Stdout, "Allowlist: use the numeric id of the account that will message this bot (e.g. from @userinfobot or Telegram settings), or @YourPublicUsername. Do not use the bot’s id or @botname.")
+	fmt.Fprintln(os.Stdout, "If the bridge ignores your messages, check the terminal log for from_user_id — that value must appear in telegram_allowed_user_ids.")
+	fmt.Fprintln(os.Stdout, "")
 
 	reader := bufio.NewReader(os.Stdin)
 
@@ -58,7 +61,7 @@ func runTelegramConfigureWizard(cfg config.Config) error {
 		return err
 	}
 
-	rawIDs, err := readNonEmptyLine(reader, "Your Telegram allowlist: user id(s) (digits or #digits) and/or @YourPublicUsername, comma-separated. Your personal account, not the bot: ")
+	rawIDs, err := readNonEmptyLine(reader, "Your Telegram allowlist (comma-separated): digits, optional leading # on each id, and/or @YourPublicUsername — your personal account, not the bot: ")
 	if err != nil {
 		return err
 	}

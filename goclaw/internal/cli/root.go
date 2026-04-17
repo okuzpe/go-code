@@ -25,10 +25,11 @@ type TelegramCommands struct {
 	Start     TelegramSubcommandFunc // guided setup (TTY) then bridge; used by make telegram
 	Bridge    TelegramSubcommandFunc // strict: exit if settings incomplete
 	Configure TelegramSubcommandFunc // merge settings.local.json only
+	UserAdd   TelegramSubcommandFunc // append resolved ids to telegram_allowed_user_ids in ~/.goclaw/settings.local.json
 }
 
 func telegramWired(tg *TelegramCommands) bool {
-	return tg != nil && (tg.Start != nil || tg.Bridge != nil || tg.Configure != nil)
+	return tg != nil && (tg.Start != nil || tg.Bridge != nil || tg.Configure != nil || tg.UserAdd != nil)
 }
 
 // NewRootCmd builds the Cobra command tree. runChat and listSessions are injected so tests
@@ -125,6 +126,29 @@ Tool runs that would prompt in Ask mode fail in this path; set tool_permissions 
 			RunE: tg.Bridge,
 		}
 		telegram.AddCommand(bridge)
+	}
+	if tg.UserAdd != nil {
+		user := &cobra.Command{
+			Use:   "user",
+			Short: "Manage allowlisted Telegram user ids (stored in ~/.goclaw/settings.local.json)",
+		}
+		add := &cobra.Command{
+			Use:   "add [entries...]",
+			Short: "Append resolved user id(s) to telegram_allowed_user_ids (deduplicated)",
+			Long: `Each entry is a numeric Telegram user id (optional leading #), or @PublicUsername (resolved via Bot API using your bot token).
+
+Existing ids in ~/.goclaw/settings.local.json are kept; new ones are merged and the list is sorted.
+
+Examples:
+  goclaw telegram user add 123456789
+  goclaw telegram user add @alice,987654321
+
+Requires telegram_bot_token in settings (or GOCLAW_TELEGRAM_BOT_TOKEN) for @username resolution.`,
+			Args: cobra.MinimumNArgs(1),
+			RunE: tg.UserAdd,
+		}
+		user.AddCommand(add)
+		telegram.AddCommand(user)
 	}
 	return telegram
 }

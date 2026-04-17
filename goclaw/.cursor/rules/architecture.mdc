@@ -44,7 +44,7 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 | `internal/planfile/` | Workspace `.goclaw/plan.md` path, template, size limits, handoff message |
 | `internal/todos/` | Session-scoped task list store (`todo_write` tool backend) |
 | `internal/ide/` | Optional localhost POST notifier (`GOCLAW_IDE_NOTIFY_URL`) after each tool |
-| `internal/telegram/` | Optional Bot API client for `goclaw telegram bridge` (`api.telegram.org` only) |
+| `internal/telegram/` | Optional Bot API client for `goclaw telegram start` / `bridge` / `user add` (`api.telegram.org` only) |
 | `internal/ui/chat/` | BubbleTea TUI model (viewport + text input + streaming + compact approval strip above input) |
 | `testutil/mockopenai/` | HTTP mock for OpenAI-style chat completions tests without API tokens |
 

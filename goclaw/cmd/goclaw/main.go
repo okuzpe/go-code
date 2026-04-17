@@ -27,6 +27,7 @@ func main() {
 			Start:     app.RunTelegramStart,
 			Bridge:    app.RunTelegramBridge,
 			Configure: app.RunTelegramConfigure,
+			UserAdd:   app.RunTelegramUserAdd,
 		},
 	)
 	if err := root.Execute(); err != nil {

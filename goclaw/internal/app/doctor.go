@@ -620,6 +620,7 @@ func telegramDoctorLines(rt *ChatRuntime) []string {
 		out = append(out, fmt.Sprintf("    allowlist count: %d", n))
 	} else if hasToken {
 		out = append(out, "    warning: token set but allowlist empty — goclaw telegram bridge will exit")
+		out = append(out, "    hint: goclaw telegram user add <numeric-id-or-@username>")
 	}
 	if sid := strings.TrimSpace(cfg.TelegramSessionID); sid != "" {
 		out = append(out, fmt.Sprintf("  telegram_session_id: %s (when --session is omitted)", sid))

@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	apiHost              = "api.telegram.org"
-	maxMessageRunes      = 4096
-	getUpdatesTimeoutSec = 50
-	httpSendTimeout      = 60 * time.Second
+	apiHost               = "api.telegram.org"
+	maxMessageRunes       = 4096
+	getUpdatesTimeoutSec  = 50
+	httpSendTimeout       = 60 * time.Second
+	sendChatActionTimeout = 12 * time.Second
 )
 
 // Client calls only https://api.telegram.org with the given bot token.
@@ -101,6 +102,48 @@ func (c *Client) GetUpdates(ctx context.Context, offset int64) ([]Update, error)
 		return nil, fmt.Errorf("telegram getUpdates: decode result: %w", err)
 	}
 	return updates, nil
+}
+
+// SendTyping posts sendChatAction with action "typing" so Telegram shows a typing indicator (~5s; call periodically while waiting on the model).
+func (c *Client) SendTyping(ctx context.Context, chatID int64) error {
+	payload := map[string]any{
+		"chat_id": chatID,
+		"action":  "typing",
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("telegram sendChatAction: marshal: %w", err)
+	}
+	sendCtx, cancel := context.WithTimeout(ctx, sendChatActionTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(sendCtx, http.MethodPost, c.baseURL()+"/sendChatAction", bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("telegram sendChatAction: new request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("telegram sendChatAction: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return fmt.Errorf("telegram sendChatAction: read body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("telegram sendChatAction: http %d: %s", resp.StatusCode, truncateForLog(body, 256))
+	}
+	var env struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return fmt.Errorf("telegram sendChatAction: decode: %w", err)
+	}
+	if !env.OK {
+		return fmt.Errorf("telegram sendChatAction: ok=false: %s", strings.TrimSpace(env.Description))
+	}
+	return nil
 }
 
 // SendMessageText sends plain text to chatID, splitting when longer than maxMessageRunes.

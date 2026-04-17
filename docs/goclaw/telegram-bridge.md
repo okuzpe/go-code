@@ -1,6 +1,6 @@
 # Telegram bridge (optional)
 
-Run goclaw from Telegram for **your** account only: the bridge refuses to start unless you configure a **non-empty allowlist** of Telegram numeric user ids. Incoming messages from anyone else are ignored (no agent run, no reply).
+Run goclaw from Telegram for **your** account only: the bridge refuses to start unless you configure a **non-empty allowlist** of Telegram numeric user ids. Incoming messages from anyone else are ignored (no agent run, no reply). That allowlist is **required on purpose**: without it, anyone who discovers your bot handle could trigger your agent and tools. Use **`goclaw telegram user add`** to append ids without re-running the full wizard.
 
 ## What it does
 
@@ -11,6 +11,7 @@ Run goclaw from Telegram for **your** account only: the bridge refuses to start 
 | **`goclaw telegram start`** | Default for humans: if bot token or allowlist is missing **and** stdin/stdout are TTYs, runs a short interactive wizard that **merges** keys into `~/.goclaw/settings.local.json`, then starts the bridge. |
 | **`goclaw telegram configure`** | Only the wizard (merge settings); does not start the bridge. |
 | **`goclaw telegram bridge`** | Strict: exits immediately if settings are incomplete (for scripts, CI, or when you already edited JSON / env). |
+| **`goclaw telegram user add …`** | Merge one or more resolved user ids into `telegram_allowed_user_ids` in `~/.goclaw/settings.local.json` (digits, optional `#`, or `@PublicUsername`; deduplicated). |
 
 This path **cannot** show interactive tool-approval prompts. Tools that are in **ask** mode will fail the turn with an error (same behavior as `--output-format json`). For remote use, set `tool_permissions` to **`allow`** for the tools you need, use a **read-only** profile, or **`--no-tools`**.
 
@@ -21,6 +22,7 @@ This path **cannot** show interactive tool-approval prompts. Tools that are in *
    - **Numeric user id** (e.g. `123456789` or `#123456789` if your client copies it with a hash): from Telegram → **Settings**, or bots like **@userinfobot**, or any client that shows id.
    - **Or `@YourPublicUsername`**: during `goclaw telegram configure` / `telegram start`, goclaw calls Bot API **`getChat`** to resolve `@username` to an id. This only works for **public** usernames; Telegram may reject hidden or invalid handles.
    - **Not** your bot's `@BotName`: that resolves to the **bot's** id, which is rejected (it would never match `message.from.id` when *you* write to the bot). **Do not** run the bridge with an empty allowlist.
+   - If the bridge **ignores** your messages, check the terminal (info logs) for **`from_user_id`** — that value must be listed in `telegram_allowed_user_ids` (confirm your id with [@userinfobot](https://t.me/userinfobot) if needed).
 3. Put secrets in **`~/.goclaw/settings.local.json`** (not committed), for example:
 
 ```json
@@ -56,8 +58,9 @@ Stop with Ctrl+C or SIGTERM.
 ## Troubleshooting (“no reply” in Telegram)
 
 1. **Watch the terminal** where the bridge runs (default log level is `info`). After you send a message you should see either:
-   - `telegram bridge: received updates` then `telegram bridge: running turn` and `telegram bridge: reply sent`, or
+   - `telegram bridge: received updates` then `telegram bridge: running turn`, **`model turn started` / `model turn completed`**, then `telegram bridge: reply sent`, or
    - `telegram bridge: ignored message (sender not in telegram_allowed_user_ids)` with **`from_user_id`**. If that number differs from what you put in `telegram_allowed_user_ids`, update settings to match **`from_user_id`** (e.g. confirm with [@userinfobot](https://t.me/userinfobot)).
+   - While the model runs, Telegram should show **typing** (refreshed every few seconds). A **local Ollama** large model can take **minutes** before the first token; the client HTTP timeout is long by design. If `model turn failed` appears, check Ollama and the model name.
 2. **Chat with the bot in private**, with **plain text** (stickers, photos only, or group chats without addressing the bot often produce no handled message).
 3. **`GOCLAW_LOG=debug`** for more detail (including skipped non-text updates).
 4. If you see **`turn error`** in Telegram, the model or tools failed (e.g. Ollama down, or a tool in **ask** mode — see the table above). Fix the error text shown in the chat or in the terminal.

@@ -219,7 +219,7 @@ flowchart LR
 
 | Primary doc | Secondary | Code |
 |-------------|-----------|------|
-| [`telegram-bridge.md`](../goclaw/telegram-bridge.md) | [`security.md`](../goclaw/security.md) | `telegram/client.go`, `app/telegram_bridge.go`, `config` keys + `loader.go` |
+| [`telegram-bridge.md`](../goclaw/telegram-bridge.md) | [`security.md`](../goclaw/security.md) | `telegram/client.go`, `app/telegram_bridge.go`, `app/telegram_user.go`, `app/telegram_onboard.go`, `config` keys + `loader.go` |
 
 ---
 
