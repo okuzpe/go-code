@@ -3,6 +3,8 @@ name: write-tests
 description: Use when the user asks to write tests, add coverage, or test a specific goclaw package.
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 ## Writing tests in goclaw
 
 ### Mock OpenAI-compatible server

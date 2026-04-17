@@ -18,10 +18,6 @@ var autoSessionQuota struct {
 	counts map[string]int
 }
 
-func init() {
-	autoSessionQuota.counts = make(map[string]int)
-}
-
 // MaybeAutoCaptureFromTool appends a short project memory line after successful write_file / edit_file / patch
 // when cfg.MemoryAutoExtract is true. Best-effort; capped per session.
 func MaybeAutoCaptureFromTool(cfg config.Config, store *Store, sessionID, toolName, toolInput string, isError bool) {
@@ -39,6 +35,9 @@ func MaybeAutoCaptureFromTool(cfg config.Config, store *Store, sessionID, toolNa
 	}
 
 	autoSessionQuota.mu.Lock()
+	if autoSessionQuota.counts == nil {
+		autoSessionQuota.counts = make(map[string]int)
+	}
 	if autoSessionQuota.counts[sessionID] >= maxAutoEntriesPerSession {
 		autoSessionQuota.mu.Unlock()
 		slog.Info("memory: auto-capture quota reached", "session", sessionID)

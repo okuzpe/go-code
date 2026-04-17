@@ -1,0 +1,29 @@
+---
+description: Bubble Tea as TUI engine, Bubbles for interactive widgets, Lip Gloss for layout and styles in goclaw.
+globs: goclaw/internal/ui/**/*.go,goclaw/internal/app/**/*.go,goclaw/cmd/**/*.go
+alwaysApply: false
+---
+
+# goclaw — Bubble Tea · Bubbles · Lip Gloss
+
+## Capas (no mezclar responsabilidades)
+
+| Capa           | Rol                                                                                                                                                         | Ejemplos en el repo                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Bubble Tea** | Ciclo de vida del programa: `Init` / `Update` / `View`, mensajes, `tea.Program`, tamaño de ventana, salida. **Motor único** del TUI fullscreen.             | `internal/ui/chat/chat.go`, `internal/app/onboarding_tui.go`, `internal/app/doctor_tui.go` |
+| **Bubbles**    | Controles reutilizables: `viewport`, `textarea`, `list`, `spinner`, `textinput`, etc. Reciben `tea.Msg` y exponen estado; **no** sustituyen al modelo raíz. | Chat compose + transcript viewport; onboarding viewport                                    |
+| **Lip Gloss**  | Cadenas ya renderizadas: colores, bordes, padding, alineación, anchos. Componer el **árbol visual** en `View()` del modelo (o helpers dedicados).           | `Theme`, banners, bordes de paneles                                                        |
+
+## Reglas prácticas
+
+1. **Un `tea.Model` (o puntero a él) por pantalla** — Los hijos Bubbles viven como campos; en `Update` reenvías `tea.Msg` y fusionas `tea.Cmd` devueltos.
+2. **Receivers en puntero** cuando el modelo o un Bubbles muta entre ticks (p. ej. `viewport.Model`, listas con cursor).
+3. **Bubble Tea v2** — Patrón de vista: `tea.NewView` + `AltScreen` en la vista cuando haga falta fullscreen; no asumir opciones obsoletas de v1.
+4. **Estilo fuera de la lógica de negocio** — `Update` decide datos y foco; `View` (y funciones `render*` con Lip Gloss) ensamblan cadenas. Evita ANSI manual salvo utilidades (`x/ansi`) alineadas con el resto del stack.
+5. **Tema y Markdown en terminal** — Paleta y Glamour siguen la regla **`terminal-rendering.mdc`** (`ui_appearance`, `GlamourTermRendererOptions`, etc.).
+
+## Anti‑patrones
+
+- Implementar un “mini viewport” o input propio cuando **Bubbles** ya cubre el caso.
+- Pintar colores con `fmt` y secuencias sueltas en código que debería ser Lip Gloss + tema.
+- Lógica de negocio pesada dentro de `View()` (solo formateo y delegación a hijos).

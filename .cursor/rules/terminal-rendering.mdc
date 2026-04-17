@@ -31,6 +31,8 @@ alwaysApply: false
 
 ## Quick references
 
+- **Minimal cyberpunk-style terminal look (optional):** Cursor skill `terminal-cyberpunk-aesthetic` (`.cursor/skills/terminal-cyberpunk-aesthetic/SKILL.md`) and Claude `.claude/skills/terminal-cyberpunk-aesthetic.md`.
+- **Engine vs widgets vs styles:** `bubbletea-bubbles-lipgloss.mdc` (Bubble Tea, Bubbles, Lip Gloss roles).
 - Theme presets and Glamour keys: `internal/ui/chat/theme_appearance.go`
 - Shared Glamour options for any package: `internal/config/glamour_opts.go`
 - First-run onboarding security step (summary + **s** full doc viewport): `internal/app/onboarding_tui.go` + `onboarding_render.go` — Bubble Tea + `bubbles/viewport`, Glamour for the embedded `onboarding_security_full.md` (keep in sync with `docs/goclaw/security.md`).

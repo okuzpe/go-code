@@ -3,6 +3,8 @@ name: code-review
 description: Use when the user wants a structured PR-style or git-diff review without applying edits (severity tags, security and correctness focus).
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 ## Code review workflow (goclaw)
 
 Use the **`code-review`** agent profile and the REPL **`/review`** slash command so the diff is anchored to real `git` output (see [docs/goclaw/code-review-workflow.md](../../../docs/goclaw/code-review-workflow.md)).

@@ -110,10 +110,11 @@ type Model struct {
 	welcomeOpts     WelcomeOptions
 	welcomeBlockEnd int // exclusive index in m.lines after dashboard + trailing blank line; 0 if none
 
-	// TUI help overlay (/help): viewport shows helpFullText; transcript stays in m.lines underneath.
-	helpOpen     bool
-	helpFullText string
-	appVersion   string
+	// docOverlay shows markdown (glamour) in the viewport for /help, /capabilities, /doctor, etc.
+	docOverlayOpen     bool
+	docOverlayTitle    string
+	docOverlaySourceMD string
+	appVersion         string
 
 	// Interactive /theme overlay (arrow keys + Enter).
 	themePickOpen     bool
@@ -594,6 +595,20 @@ type ctrlCExitArmExpiredMsg struct {
 	expected time.Time
 }
 
+// clearTranscriptLikeCtrlL clears the in-memory transcript (same as Ctrl+L in the TUI).
+func (m *Model) clearTranscriptLikeCtrlL() {
+	m.exitTranscriptBrowse()
+	m.lines = nil
+	m.lineMeta = nil
+	m.toolWaitQueue = nil
+	m.assistantPlaceholder = false
+	m.spinnerActive = false
+	m.curAssistantLineIdx = -1
+	m.idleTranscriptHint = ""
+	m.footerHint = ""
+	m.setLinesContent(true)
+}
+
 func (m *Model) handleKeyString(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	k := msg.String()
 	if m.pending != nil {
@@ -702,16 +717,7 @@ func (m *Model) handleKeyString(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		m.layout()
 		return m, nil, true
 	case "ctrl+l":
-		m.exitTranscriptBrowse()
-		m.lines = nil
-		m.lineMeta = nil
-		m.toolWaitQueue = nil
-		m.assistantPlaceholder = false
-		m.spinnerActive = false
-		m.curAssistantLineIdx = -1
-		m.idleTranscriptHint = ""
-		m.footerHint = ""
-		m.setLinesContent(true)
+		m.clearTranscriptLikeCtrlL()
 		return m, nil, true
 	case "tab":
 		if m.transcriptBrowse {
@@ -878,11 +884,18 @@ func (m *Model) runDispatchAfterUserEcho(txt string) tea.Cmd {
 		if handled {
 			if err != nil {
 				m.appendError(fmt.Sprintf("error: %v", err))
-			} else if strings.TrimSpace(out) != "" {
-				if slashcmd.PlainHelpREPLRequest(txt) {
-					m.openHelpOverlay(out)
-				} else {
-					m.appendSystem(out)
+			} else {
+				if hints.TUIClearTranscript {
+					m.clearTranscriptLikeCtrlL()
+				}
+				if strings.TrimSpace(out) != "" {
+					if hints.TUIDocOverlay {
+						m.openDocOverlay(hints.TUIDocTitle, out)
+					} else if slashcmd.PlainHelpREPLRequest(txt) {
+						m.openHelpDocOverlay(out)
+					} else {
+						m.appendSystem(out)
+					}
 				}
 			}
 			m.applySlashHints(hints)
@@ -1029,8 +1042,7 @@ func (m *Model) syncInputPlaceholder() {
 	m.input.Placeholder = placeholderForWidth(m.width)
 }
 
-// footerWorkspaceBrand is the idle-footer left “brand”: IDE-style chip with workspace basename,
-// or the plain word Context when no workspace is set.
+// footerWorkspaceBrand is the idle-footer left label: workspace basename (no folder glyph), or Context.
 func (m *Model) footerWorkspaceBrand() string {
 	th := m.theme
 	if th == nil {
@@ -1044,8 +1056,7 @@ func (m *Model) footerWorkspaceBrand() string {
 	if base == "." || base == "/" || base == string(filepath.Separator) {
 		return th.FooterDim.Render("Context")
 	}
-	chipText := th.Icons.WorkspaceGlyph() + " " + base
-	return th.FooterWorkspaceChip.Render(chipText)
+	return th.FooterWorkspaceChip.Render(base)
 }
 
 func (m *Model) footerPrimaryStatus() string {
@@ -1237,9 +1248,17 @@ func (m *Model) layout() {
 		m.lastTranscript = m.toolLogText
 		return
 	}
-	if m.helpOpen {
-		m.viewport.SetContent(m.helpFullText)
-		m.lastTranscript = m.helpFullText
+	if m.docOverlayOpen {
+		th := m.theme
+		if th == nil {
+			th = DefaultTheme()
+		}
+		rendered := ""
+		if strings.TrimSpace(m.docOverlaySourceMD) != "" {
+			rendered = th.RenderMarkdown(m.docOverlaySourceMD, m.width, 0)
+		}
+		m.viewport.SetContent(rendered)
+		m.lastTranscript = rendered
 		return
 	}
 	if m.agentPickOpen {
@@ -1258,34 +1277,47 @@ func (m *Model) layout() {
 	}
 }
 
-func (m *Model) openHelpOverlay(replBody string) {
+func (m *Model) openDocOverlay(title, sourceMD string) {
 	m.exitTranscriptBrowse()
 	m.exitConfirmDeadline = time.Time{}
+	m.toolLogOpen = false
+	m.toolLogDetail = false
+	m.toolLogText = ""
 	m.themePickOpen = false
 	m.themePickFullText = ""
 	m.agentPickOpen = false
 	m.agentPickFullText = ""
-	var b strings.Builder
-	if m.appVersion != "" {
-		b.WriteString("goclaw · v")
-		b.WriteString(m.appVersion)
-	} else {
-		b.WriteString("goclaw")
-	}
-	b.WriteString("\n\n")
-	b.WriteString(slashcmd.TUIHelpShortcutsText())
-	b.WriteString("\n\n")
-	b.WriteString(strings.TrimSpace(replBody))
-	m.helpFullText = b.String()
-	m.helpOpen = true
+	m.docOverlayTitle = strings.TrimSpace(title)
+	m.docOverlaySourceMD = strings.TrimSpace(sourceMD)
+	m.docOverlayOpen = true
 	m.syncViewportKeyMapForOverlay()
 	m.layout()
 	m.viewport.GotoTop()
 }
 
-func (m *Model) closeHelpOverlay() {
-	m.helpOpen = false
-	m.helpFullText = ""
+func (m *Model) openHelpDocOverlay(replBodyMD string) {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	var b strings.Builder
+	if m.appVersion != "" {
+		b.WriteString("# goclaw · v")
+		b.WriteString(m.appVersion)
+	} else {
+		b.WriteString("# goclaw")
+	}
+	b.WriteString("\n\n")
+	b.WriteString(slashcmd.TUIHelpShortcutsMarkdown(th.Icons))
+	b.WriteString("\n\n")
+	b.WriteString(strings.TrimSpace(replBodyMD))
+	m.openDocOverlay("Help", b.String())
+}
+
+func (m *Model) closeDocOverlay() {
+	m.docOverlayOpen = false
+	m.docOverlayTitle = ""
+	m.docOverlaySourceMD = ""
 	m.syncViewportKeyMapForCompose()
 	m.layout()
 	m.viewport.GotoBottom()
@@ -1308,7 +1340,7 @@ func (m *Model) footerView() string {
 		}
 		return th.FooterDim.Render(line)
 	}
-	if m.helpOpen {
+	if m.docOverlayOpen {
 		line := "Esc · Ctrl+C quit"
 		if m.width > 4 {
 			return th.FooterDim.Width(m.width).Render(line)
@@ -1447,7 +1479,7 @@ func (m *Model) footerView() string {
 
 // prefixSuggestStripView shows @ path picks, / slash picks, or short ! / & hints above the input.
 func (m *Model) prefixSuggestStripView() string {
-	if m.toolLogOpen || m.helpOpen || m.themePickOpen || m.agentPickOpen || m.streaming || m.pending != nil || m.transcriptBrowse {
+	if m.toolLogOpen || m.docOverlayOpen || m.themePickOpen || m.agentPickOpen || m.streaming || m.pending != nil || m.transcriptBrowse {
 		return ""
 	}
 	if s := m.atSuggestStripView(); s != "" {
@@ -1754,7 +1786,8 @@ func (m *Model) approvalStripView() string {
 	toolPlain := m.pending.ToolName
 	previewPlain := m.pending.Preview
 
-	title := th.ModalTitle.Render("⚡ Allow")
+	st := th.Icons
+	title := th.ModalTitle.Render(st.ApprovalPromptGlyph() + " Allow")
 	sep := th.ToolCardBorder.Render(" │ ")
 	hint := th.Dim.Render("  y/n/esc")
 

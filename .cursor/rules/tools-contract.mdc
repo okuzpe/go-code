@@ -25,7 +25,7 @@ type Result struct {
 **User-facing failures** → `Result{IsError: true, Content: msg}`, return `nil` error  
 **System failures** → return non-nil `error` (bugs, unexpected I/O)
 
-## Nine built-in tools (registered in `internal/app/run.go`)
+## Built-in tools (registered in `internal/app/chat_wiring.go` — `PrepareChatRuntime`)
 
 ### read_file
 ```
@@ -118,38 +118,32 @@ Cap:    50 items max; 500 runes per content field
 Risk:   session_meta — in-memory only; cleared on /new; snapshot injected into system prompt via WithTodoStore
 ```
 
-## LLM HTTP clients (`internal/llm`)
-
-- Anthropic and Ollama streaming POSTs use **`doHTTPWithRetry`**: retry 429 / 503 / 504 (and transient network errors) with exponential backoff (base 500ms, ceiling 5min, max 10 attempts); respect `Retry-After` when present.
-- Do not add ad-hoc `http.Client.Do` loops in clients; extend `retry.go` if policy changes.
-
-## Orchestrator loop budgets (do not change without consensus)
-- Max LLM iterations per user message: **32**
-- Max tool calls per user message: **64**
-
-## Registration in `internal/app/run.go` (actual current location)
-
-```go
-reg := tools.New()
-reg.Register(tools.NewReadFile(workdir))
-reg.Register(tools.NewGlob(workdir))
-reg.Register(tools.NewGrep(workdir))
-reg.Register(tools.NewBashWithTimeout(cfg.BashTimeoutSeconds()))
-reg.Register(tools.NewWriteFile(workdir))
-reg.Register(tools.NewEditFile(workdir))
-reg.Register(tools.NewWebFetch())
-reg.Register(tools.NewWebSearch(tools.WebSearchOptions{}))
-reg.Register(tools.NewTodoWrite(todoStore))
-// MCP tools registered after: mcp.RegisterSessionTools(ctx, reg, mcpSess, srv.ID)
+### patch
+```
+Name:   "patch"
+Input:  { "path": string, "diff": string }  // unified diff, single file
+Output: result message
+Cap:    1 MiB diff; 1 MiB result (MaxWriteFileBytes)
+Risk:   write — same workspace rules as write_file; stripped from ReadOnly profiles
 ```
 
-> Note: registration is in `internal/app/chat_wiring.go` (`PrepareChatRuntime`), not `main.go`.
+### script
+```
+Name:   "script"
+Input:  { "script": string, "cwd"?: string }
+Output: combined stdout + stderr from full shell
+Cap:    256 KiB truncated; same bash timeout settings as `bash`
+Risk:   shell — full shell features (pipes, redirects); opt-out via `allow_script: false`; high risk score in Ask mode
+```
 
 ## MCP tools (`mcp__<server_id>__<tool_name>`)
 - Registered at startup for each server in `cfg.MCPServers` (stdio JSON-RPC subprocess).
 - Stripped from `ReadOnly` profiles by `stripMCPNames` in the orchestrator.
 - Each tool call routed through `mcp.ToolAdapter.Execute` → JSON-RPC `tools/call`.
 
+## Coordinator and Swarm (outside the core table above)
+- **`spawn_agent` / `stop_task`** — coordinator profile tools (`internal/coordinator/`); registered with the main registry when the coordinator profile is active.
+- **Team/Swarm** — disk mailboxes (`internal/swarm/`); not the same as `spawn_agent`.
+
 ## Not yet implemented
-- `agent` / `spawn_worker` / `stop_task` — v2 multi-agent coordinator (D16)
-- `send_message` — v3 Team/Swarm
+- **`send_message`** — v3 Team/Swarm peer messaging (see roadmap)

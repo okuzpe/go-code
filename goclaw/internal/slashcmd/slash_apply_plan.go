@@ -32,19 +32,43 @@ func parseApplyPlanRest(rest string) (pathArg string, preview, hub bool) {
 	return strings.Join(pathParts, " "), preview, hub
 }
 
-// formatPlanPreviewOutput builds human-readable output for /apply-plan --preview.
+// formatPlanPreviewOutput builds markdown for /apply-plan --preview and plan review excerpts.
 func formatPlanPreviewOutput(planPath, body string) string {
 	display := filepath.ToSlash(planPath)
 	excerpt := truncateRunesPlanPreview(body, planPreviewMaxRunes)
 	var b strings.Builder
-	b.WriteString("Plan preview (not sent to the model yet)\n")
-	b.WriteString("File: ")
+	b.WriteString("## Plan preview\n\n")
+	b.WriteString("_Not sent to the model yet._\n\n")
+	b.WriteString("- **File:** `")
 	b.WriteString(display)
-	b.WriteString(fmt.Sprintf("\nSize: %d bytes\n\n", len(body)))
-	b.WriteString(excerpt)
-	b.WriteString("\n\nRun /apply-plan or /plan run to execute (general-purpose or coordinator with --hub / plan_apply_use_coordinator; one model turn; /plan run saves the latest assistant message first).")
-	b.WriteString("\nOptional: /plan review, /plan approve (when plan_require_apply_approval is true), /plan steps.")
+	b.WriteString(fmt.Sprintf("`\n- **Size:** %d bytes\n\n", len(body)))
+	b.WriteString(MarkdownFencedPlain(excerpt))
+	b.WriteString("\n\nRun `/apply-plan` or `/plan run` to execute (general-purpose or coordinator with `--hub` / `plan_apply_use_coordinator`; one model turn; `/plan run` saves the latest assistant message first).\n")
+	b.WriteString("\nOptional: `/plan review`, `/plan approve` (when `plan_require_apply_approval` is true), `/plan steps`.")
 	return b.String()
+}
+
+// parsePlanRunFields parses tokens after `/plan run` (or `/plan apply`): optional `--hub`, then optional plan path.
+func parsePlanRunFields(fields []string) (hub bool, pathTail string) {
+	if len(fields) < 3 {
+		return false, ""
+	}
+	var pathParts []string
+	for _, f := range fields[2:] {
+		t := strings.TrimSpace(f)
+		if t == "" {
+			continue
+		}
+		if strings.EqualFold(t, "--hub") {
+			hub = true
+			continue
+		}
+		if strings.HasPrefix(t, "-") {
+			continue
+		}
+		pathParts = append(pathParts, t)
+	}
+	return hub, strings.Join(pathParts, " ")
 }
 
 func truncateRunesPlanPreview(s string, maxRunes int) string {

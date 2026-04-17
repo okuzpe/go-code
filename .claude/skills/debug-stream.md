@@ -3,6 +3,8 @@ name: debug-stream
 description: Use when the LLM misbehaves, streaming looks wrong, or tool calls are not applied correctly.
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 ## Debug: streaming and tool calls
 
 ### Checklist

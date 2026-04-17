@@ -156,7 +156,7 @@ Requires telegram_bot_token in settings (or GOCLAW_TELEGRAM_BOT_TOKEN) for @user
 func newDoctorCmd(runDoctor RunDoctorFunc) *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
-		Short: "Print a short preflight health check and exit",
+		Short: "Preflight health check: Bubble Tea pager on a TTY, plain text when stdout is not a terminal",
 		RunE:  runDoctor,
 	}
 }

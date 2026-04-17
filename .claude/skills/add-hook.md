@@ -3,6 +3,8 @@ name: add-hook
 description: Use when the user asks to add a hook, register a lifecycle handler, or react to tool/session events in goclaw.
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 ## Adding a hook in goclaw
 
 ### Read first

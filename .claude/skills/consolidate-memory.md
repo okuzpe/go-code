@@ -3,6 +3,8 @@ name: consolidate-memory
 description: Consolidate, deduplicate, and prune the goclaw memory store into at most 7 standalone facts per file
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 # Memory Consolidation
 
 Use this skill when the user runs `/memory consolidate` or asks to clean up / deduplicate memory.

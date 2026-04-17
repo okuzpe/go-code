@@ -48,7 +48,7 @@ The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings
 - `GOCLAW_NO_ONBOARDING=1` — skip the wizard (advanced; you still need safe usage practices — see [security.md](./security.md))
 - `GOCLAW_ONBOARDING=1` — force the wizard even if `settings.json` already exists (useful for testing)
 
-**`goclaw doctor` does not run onboarding** — it loads config and prints a health report. Run `doctor` for a quick check; run `goclaw` once to complete first-time setup.
+**`goclaw doctor` does not run onboarding** — it loads config and shows a health report: **Bubble Tea** fullscreen pager on a TTY (scroll with arrows / PgUp / PgDn; **q**, **Esc**, or **Ctrl+C** to exit), or plain **`fmt.Println`** when stdin/stdout are not both terminals. Run `doctor` for a quick check; run `goclaw` once to complete first-time setup.
 
 The wizard runs in the **same fullscreen Bubble Tea stack** as the main app (when stdin/stdout are TTY). During setup you pick **`coordinator`** or **`general-purpose`**; afterward use `/profile` or `agent_profile` in settings — see [Agent profiles](#agent-profiles). If you never run the wizard, **`config.Default()`** still starts from **`coordinator`**.
 
@@ -57,12 +57,12 @@ The wizard runs in the **same fullscreen Bubble Tea stack** as the main app (whe
 - **Default on a TTY** — fullscreen Bubble Tea (`internal/ui/chat`): transcript, compact tool approval above the input, `/focus` hint in the footer. The ASCII startup banner is **not** printed to stdout (welcome panel + footer carry session context).
 - **`GOCLAW_USE_TUI=0` on a TTY** is **unsupported** — there is no line-at-a-time REPL. Use a real terminal for interactive chat, or **`--output-format json`** / **`goclaw prompt`** for automation.
 
-Exit: `Esc` (TUI) or `Ctrl+C`. Clear transcript: `Ctrl+L` (TUI). Prior submit lines: **↑** / **↓** in the compose box (single-line recall; persisted under `~/.goclaw/history`).
+Exit: `Esc` (TUI) or `Ctrl+C`. Clear transcript: `Ctrl+L` or slash **`/clear`** (both clear inside the Bubble Tea model; no raw ANSI screen erase). Prior submit lines: **↑** / **↓** in the compose box (single-line recall; persisted under `~/.goclaw/history`).
 
 ### Slash commands, autocomplete, and help
 
 - **Slash line** — Type `/` on a **single line** to see a **filtered list** of commands as you keep typing (prefix match). **Tab** completes the command (longest shared prefix, or the only match). After the command name, the strip shows **argument** suggestions where supported (e.g. `/profile`, `/memory`, `/plan`, `/resume`, `/focus`, `/theme`, `/export`); **Tab** completes the argument token at the cursor the same way.
-- **`/help` overlay** — Opens a **dismissible help panel** over the transcript (same text as the slash handler). **Esc** closes the panel; **↑** / **↓** (or `k` / `j`) and **PgUp** / **PgDn** scroll long output. **Ctrl+C** still quits the app from the panel.
+- **Document overlay** — **`/help`** (also `help` / `?`) opens a dismissible panel with **Markdown** (rendered for the terminal, including shortcuts + slash reference). **`/capabilities`**, **`/doctor`**, **`/sessions`**, **`/memory list`**, bare **`/agents`**, **`/plan review`**, **`/plan steps`**, **`/apply-plan --preview`**, and **`/init`** use the same overlay when output is structured as a document. **Esc** closes the panel; **↑** / **↓** (or `k` / `j`) and **PgUp** / **PgDn** scroll; the panel **re-wraps** when you resize the terminal. **Ctrl+C** still quits the app from the panel.
 
 ### Prefix input (`!`, `@`, `&`, `/btw`)
 
@@ -251,20 +251,23 @@ Persistent flags apply to the default command and `chat`:
 |------------|---------|
 | `chat` | Interactive session (same as default) |
 | `prompt <text>...` | One turn from argv |
-| `doctor` | Preflight check (shows `task_model_router` / `task_models` when set) |
+| `doctor` | Preflight check — Bubble Tea pager on TTY, plain print otherwise (`task_model_router` / `task_models` when set) |
 | `sessions list` | Same as `--list-sessions` |
 | `telegram start` | Telegram bridge; prompts for missing token/allowlist in a TTY, then long-polls (same as `make telegram`) |
 | `telegram configure` | Interactive wizard only: merge Telegram keys into `~/.goclaw/settings.local.json` |
 | `telegram bridge` | Telegram bridge without prompts; fails if settings incomplete (scripts / CI) |
 | `telegram user add …` | Append allowlisted Telegram user id(s) to `~/.goclaw/settings.local.json` (see [telegram-bridge.md](./telegram-bridge.md)) |
 
-## Plan file (`.goclaw/plan.md`)
+## Plan file (`.goclaw/plan.md`) and mini plans (`.goclaw/plans/`)
 
-Use profile `plan` to draft the plan as chat output. In the REPL:
+This mirrors the usual **plan → review → execute** loop (similar in spirit to [Cursor Plan Mode](https://cursor.com/docs/agent/planning)): keep intent in **Markdown on disk**, then run **one execution turn** per **`/apply-plan`** / **`/plan run`** — local models often need **several turns** for a large plan, so split work into **small plans** with verifiable **## Steps**.
 
-- `/plan init` — create `.goclaw/plan.md` from template
-- `/plan save` — save the last assistant message in this session to `.goclaw/plan.md`
-- **`/plan run`** (alias **`/plan apply`**) — save the last assistant message, then immediately run the same execution path as **`/apply-plan`** (one model turn). Append **`--hub`** to run under the **`coordinator`** profile (same as **`/apply-plan --hub`**). When **`plan_apply_use_coordinator`** is true in settings, execution uses the coordinator profile even without **`--hub`**.
+Use profile **`plan`** to draft text without touching the repo; then save and execute from the REPL.
+
+- `/plan init` — create `.goclaw/plan.md` from template (if missing)
+- **`/plan new my-feature`** — create **`.goclaw/plans/my-feature.md`** from a compact template (name is sanitized to a safe filename stem). Edit the file in your editor, then **`/apply-plan .goclaw/plans/my-feature.md`** (or **`/plan run .goclaw/plans/my-feature.md`** after saving the latest assistant line into that file).
+- `/plan save` — save the last assistant message to **`.goclaw/plan.md`** (default). **`/plan save .goclaw/plans/foo.md`** saves to another path under the workspace (same rule as **`/apply-plan`** paths).
+- **`/plan run`** (alias **`/plan apply`**) — save the last assistant message, then run the same path as **`/apply-plan`** (one model turn). Optional **`--hub`**. Optional plan path: **`/plan run --hub .goclaw/plans/foo.md`** saves into that file then executes it. When **`plan_apply_use_coordinator`** is true in settings, execution uses the coordinator profile even without **`--hub`**.
 - `/plan path` / `/plan template` — inspect the default path and template skeleton
 - **`/plan review`** — print a bounded excerpt, approval status, and **parsed `## Steps`** lines (optional plan path argument).
 - **`/plan approve`** — write **`.goclaw/plan.meta.json`** with a SHA-256 of the current plan file so **`/apply-plan`** / **`/plan run`** can proceed when **`plan_require_apply_approval`** is true. Re-run after any edit to the plan file.
@@ -274,7 +277,7 @@ Use profile `plan` to draft the plan as chat output. In the REPL:
 
 **Structured steps:** add a markdown heading **`## Steps`** and numbered lines (`1. …`, `2. …`) so goclaw can inject a short ordered checklist into the handoff. Default execution policy is **sequential** (especially under coordinator); parallel **`spawn_agent`** is left to the model only when steps are clearly independent.
 
-Typical workflow: `/profile plan` → ask for a plan → **`/plan review`** → **`/plan approve`** (if your project sets **`plan_require_apply_approval`**) → **`/plan run`** **or** `/plan save` → `/apply-plan --preview` (optional) → **`/apply-plan`** (add **`--hub`** for multi-worker hub mode). In the **TUI**, **Ctrl+P** opens the agent profile picker. Hide built-in clutter from that picker with **`agent_picker_hidden_profiles`** (array of profile names, e.g. `["guide","statusline"]`). See [agent-profiles.md](../reference/agent-profiles.md).
+Typical workflow: `/profile plan` → ask for a plan → **`/plan review`** → **`/plan approve`** (if your project sets **`plan_require_apply_approval`**) → **`/plan run`** **or** `/plan save` → `/apply-plan --preview` (optional) → **`/apply-plan`** (add **`--hub`** for multi-worker hub mode). For coding that stalls in prose, switch to **`/profile general-purpose`** or **`/profile builder`**, use **mini plans** under **`.goclaw/plans/`**, and send **follow-up** turns until **`## Steps`** are done. In the **TUI**, **Ctrl+P** opens the agent profile picker. Hide built-in clutter with **`agent_picker_hidden_profiles`**. See [agent-profiles.md](../reference/agent-profiles.md).
 
 ## Slash commands (REPL)
 

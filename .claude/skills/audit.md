@@ -3,6 +3,8 @@ name: audit
 description: Use at the end of any development phase, before closing a milestone, or when the user asks for a quality/security audit of goclaw.
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 ## End-of-Phase Audit for goclaw
 
 Run this checklist before closing any development phase. Fix every failing item before marking the phase done.

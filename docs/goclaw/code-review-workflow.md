@@ -28,7 +28,7 @@ Use **`/profile general-purpose`** (or `/audit`) when the user wants edits, not 
 
 ## Skill template
 
-Optional checklist copy lives in [`.claude/skills/code-review.md`](../../goclaw/.claude/skills/code-review.md). If that file is present under a [skills search root](../../goclaw/internal/skills/), its body is injected into the system prompt (bounded size).
+Optional checklist copy lives in [`.claude/skills/code-review.md`](../../.claude/skills/code-review.md). If that file is present under a [skills search root](../../goclaw/internal/skills/), its body is injected into the system prompt (bounded size).
 
 ## Verification after fixes
 

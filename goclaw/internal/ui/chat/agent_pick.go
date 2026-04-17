@@ -96,6 +96,9 @@ func agentProfileByName(m *Model, name string) (agents.Profile, bool) {
 func (m *Model) openAgentPicker() {
 	m.exitTranscriptBrowse()
 	m.exitConfirmDeadline = time.Time{}
+	m.docOverlayOpen = false
+	m.docOverlayTitle = ""
+	m.docOverlaySourceMD = ""
 	m.themePickOpen = false
 	m.themePickFullText = ""
 	items := m.agentPickNames()
@@ -159,7 +162,11 @@ func (m *Model) applyAgentPick() {
 	}
 	if handled {
 		if strings.TrimSpace(out) != "" {
-			m.appendSystem(out)
+			if hints.TUIDocOverlay {
+				m.openDocOverlay(hints.TUIDocTitle, out)
+			} else {
+				m.appendSystem(out)
+			}
 		}
 		m.applySlashHints(hints)
 		if strings.TrimSpace(modelSubmit) != "" && m.submitter != nil && m.submitter.fn != nil {

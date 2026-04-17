@@ -166,3 +166,31 @@ func (st Set) WelcomeBottomRightCorner() string {
 	}
 	return "╯"
 }
+
+// ApprovalPromptGlyph prefixes the inline tool-approval strip (single width; avoids hardcoded emoji in chat).
+func (st Set) ApprovalPromptGlyph() string {
+	switch st {
+	case ASCII:
+		return "!"
+	case Emoji:
+		return "\u26a1" // high voltage (common single-cell lightning)
+	case Nerd:
+		return "\uf0e7" // nf-fa-bolt
+	default:
+		return "\u26a1"
+	}
+}
+
+// DoctorBadge prefixes the fullscreen doctor report title (single cell where possible).
+func (st Set) DoctorBadge() string {
+	switch st {
+	case ASCII:
+		return "i "
+	case Emoji:
+		return "\u2022 " // bullet + space (narrow; avoids wide pictographs in the header)
+	case Nerd:
+		return "\uf0f9 " // nf-fa-stethoscope
+	default:
+		return "\u2023 " // ‣ triangular bullet + space
+	}
+}

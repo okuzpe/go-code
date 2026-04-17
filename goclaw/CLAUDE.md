@@ -63,7 +63,17 @@ func join(re, str string) string { ... }
 func join(prefix, suffix string) string { ... }
 ```
 
-**Artifacts:** Cursor — `.cursor/rules/naming-full-words.mdc`. Claude Code skill — `.claude/skills/naming-full-words.md` (use for refactors or name reviews).
+**Artifacts:** Cursor — [`naming-full-words.mdc`](../.cursor/rules/naming-full-words.mdc). Claude Code skill — [`naming-full-words.md`](../.claude/skills/naming-full-words.md) (use for refactors or name reviews).
+
+---
+
+## TUI stack — Bubble Tea, Bubbles, Lip Gloss
+
+For fullscreen terminal UI, treat **Bubble Tea** as the program engine (`Init` / `Update` / `View`), **Bubbles** as embedded widgets (viewport, list, textarea, spinner, textinput), and **Lip Gloss** as layout and styling in `View`. Do not duplicate widget behavior that Bubbles already provides; keep theme, Glamour, and `ui_appearance` consistent with the terminal-rendering guidance.
+
+**Artifacts:** Cursor — [`bubbletea-bubbles-lipgloss.mdc`](../.cursor/rules/bubbletea-bubbles-lipgloss.mdc) (layer split and anti-patterns). Complement — [`terminal-rendering.mdc`](../.cursor/rules/terminal-rendering.mdc) (theme, Glamour, non-TTY). **Claude Code skill** — [`bubbletea-bubbles-lipgloss.md`](../.claude/skills/bubbletea-bubbles-lipgloss.md).
+
+**Optional terminal look (minimal cyberpunk neon on dark):** [`terminal-cyberpunk-aesthetic/SKILL.md`](../.cursor/skills/terminal-cyberpunk-aesthetic/SKILL.md) · [`terminal-cyberpunk-aesthetic.md`](../.claude/skills/terminal-cyberpunk-aesthetic.md).
 
 ---
 
@@ -85,7 +95,7 @@ See the `audit` skill for the full checklist.
 | **agent** | Profile with model + tool allowlist + permissionMode + system prompt |
 | **orchestrator** | The `internal/orchestrator` package — the **agent loop runtime**. Drives one agent turn: user message → LLM stream → tool calls → LLM feedback → repeat. Every agent profile (including coordinator) runs *inside* an orchestrator. Not a user-visible concept — it is the engine. |
 | **coordinator** | An agent **profile** (hub mode, `--profile coordinator`). When the orchestrator runs this profile, the agent uses `spawn_agent` to create isolated child orchestrators (workers) and synthesizes their results. The coordinator never touches files or shell directly — all work is delegated. Contrast: "orchestrator" = runtime; "coordinator" = a mode the runtime can run. |
-| **skill** | Reusable Markdown prompt template (`.claude/skills/*.md`) |
+| **skill** | Reusable Markdown at monorepo root ([`.claude/skills/`](../.claude/skills/), [`.cursor/skills/`](../.cursor/skills/)); English-only ([`agent-artifacts-english.mdc`](../.cursor/rules/agent-artifacts-english.mdc)) |
 | **command** | REPL **slash command** (`/help`, `/compact`, `/memory`, etc.); do not use this term for Cobra subcommands |
 | **CLI command** / **subcommand** | Cobra entry (e.g. `goclaw`, `goclaw sessions list`); agent profile is selected via **`--profile`**, not a slash command |
 | **hook** | Handler for an `EventType` — Go `On(...)`, or `external_hooks` / `.goclaw/hooks.json` (command / HTTP) |
@@ -147,7 +157,7 @@ goclaw/
 │   │   ├── registry.go          ← interface Tool, Registry{Get/Register/Specs}
 │   │   ├── read_file.go, write_file.go, edit_file.go, patch.go, glob.go, grep.go, bash.go, web_fetch.go, web_search.go, todo_write.go
 │   │   └── limits.go, ssrf.go   ← shared caps / SSRF checks for web_fetch
-│   ├── planfile/                ← workspace `.goclaw/plan.md` path, template, handoff message text
+│   ├── planfile/                ← workspace `.goclaw/plan.md` + `.goclaw/plans/*.md`, templates, handoff text
 │   ├── todos/                   ← session task list store (todo_write)
 │   ├── permissions/             ← Policy{Evaluate(toolName) Decision}
 │   │   └── permissions.go       ← ModeAsk|ModeAllow|ModeDeny → DecisionAllow|DecisionDeny|DecisionAsk
@@ -220,11 +230,11 @@ goclaw/
 - **`goclaw telegram bridge`** — same bridge as `start` but **fails** if settings are incomplete (automation).
 - **`goclaw telegram user add …`** — merge resolved ids into `telegram_allowed_user_ids` in `~/.goclaw/settings.local.json` (no full wizard).
 
-**REPL slash commands** (do not go to the LLM): `/help` or `help` or `?`; `/session`; `/sessions` (list saved ids); `/quit` or `/exit` (save and exit); `/new` (save current JSONL, start empty session); `/save` (persist without exit); `/compact` (force compaction); `/profile <name>` (switch profile without restart); `/workers` (interactive `spawn_agent` workers); `/focus <task_id_prefix>` or `/focus parent`; `/detach` (back to coordinator); `/plan path|init|save|run|template` (`run` = save last assistant + same as `/apply-plan`); `/apply-plan [path]` (load plan file, switch to `general-purpose`, stream one execution turn via modelSubmit); `/memory list|add|delete`. **Sends to the LLM via modelSubmit:** `/btw <text>` (side question — rewrites one user message with a brief-aside preamble). Hooks `SessionStart` / `SessionEnd` fire when the REPL starts and exits.
+**REPL slash commands** (do not go to the LLM): `/help` or `help` or `?`; `/session`; `/sessions` (list saved ids); `/quit` or `/exit` (save and exit); `/new` (save current JSONL, start empty session); `/save` (persist without exit); `/compact` (force compaction); `/profile <name>` (switch profile without restart); `/workers` (interactive `spawn_agent` workers); `/focus <task_id_prefix>` or `/focus parent`; `/detach` (back to coordinator); `/plan path|init|new|save|run|template` (`new` → `.goclaw/plans/<name>.md`; `save` optional path; `run` = save last assistant + `/apply-plan`, optional `--hub` and plan path); `/apply-plan [path]` (load plan file, switch to `general-purpose`, stream one execution turn via modelSubmit); `/memory list|add|delete`. **Sends to the LLM via modelSubmit:** `/btw <text>` (side question — rewrites one user message with a brief-aside preamble). Hooks `SessionStart` / `SessionEnd` fire when the REPL starts and exits.
 
 **Default `agent_profile`:** `coordinator` (hub — delegate with `spawn_agent`). Use `agent_profile`, `GOCLAW_AGENT_PROFILE`, or `--profile` for `general-purpose` / `builder` when you want direct tools in the main session without delegation.
 
-**Plan → execute:** `/profile plan` → ask for a plan → **`/plan run`** (writes last assistant message to `.goclaw/plan.md` and starts one execution turn; switches to `general-purpose`) **or** `/plan save` then `/apply-plan` (optional `/apply-plan --preview`). See [`internal/planfile/planfile.go`](internal/planfile/planfile.go). D16 coordinator sketch: [`coordinator.md`](../docs/goclaw/coordinator.md).
+**Plan → execute:** `/profile plan` → ask for a plan → save to **`.goclaw/plan.md`** or a **mini plan** under **`.goclaw/plans/`** (`/plan new <name>`, or `/plan save <path>`). Then **`/plan run`** (optional path + `--hub`) or **`/apply-plan`** / **`--preview`** (optional `/apply-plan --preview`). Each apply/run is **one** model turn — use **small plans** + follow-ups for big work. See [`internal/planfile/planfile.go`](internal/planfile/planfile.go). D16 coordinator sketch: [`coordinator.md`](../docs/goclaw/coordinator.md).
 
 Example **`settings.json`:**
 
@@ -540,7 +550,7 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 14. ~~D12 in base system prompt~~ — dedicated tools before bash; [`internal/orchestrator/request.go`](internal/orchestrator/request.go) `baseSystemPrompt`.
 15. ~~stdin smoke test in CI~~ — `.github/workflows/goclaw-ci.yml` runs `printf 'ping\n' \| go run ... --no-tools --mock --output-format json` with `GOCLAW_MOCK_FAST=1` on Ubuntu.
 
-When adding sections to this file, keep them in English (Language Rule — STRICT). Cursor rules (`.cursor/rules/*.mdc`) and agent skills (`.claude/skills/*.md`) are also maintained in English.
+When adding sections to this file, keep them in English (Language Rule — STRICT). Cursor rules, Cursor skills, and Claude Code skills at the **monorepo root** ([`.cursor/`](../.cursor/), [`.claude/skills/`](../.claude/skills/)) are **English only** — see [`agent-artifacts-english.mdc`](../.cursor/rules/agent-artifacts-english.mdc).
 
 ---
 

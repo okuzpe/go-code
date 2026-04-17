@@ -62,10 +62,6 @@ func WelcomeDashboardLines(th *Theme, opt WelcomeOptions, termWidth int) []strin
 	return welcomeDashboardNarrow(th, opt, v, termWidth, contentMax)
 }
 
-func welcomeBorderColor() lipgloss.TerminalColor {
-	return lipgloss.AdaptiveColor{Light: "#C7CCD6", Dark: "#3D4450"}
-}
-
 // welcomeOSUser returns a short display name for "Welcome back …" (USER / USERNAME).
 func welcomeOSUser() string {
 	if s := strings.TrimSpace(os.Getenv("USER")); s != "" {
@@ -102,12 +98,12 @@ func welcomeBrandRibbon(th *Theme, columnWidth int) string {
 }
 
 func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWidth int) []string {
-	borderFG := welcomeBorderColor()
-	border := lipgloss.NewStyle().Foreground(borderFG)
+	border := th.WelcomeFrame
 	titleAccent := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
 	welcomeHi := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
 	dim := th.Dim
-	section := lipgloss.NewStyle().Bold(true).Foreground(th.ToolCardHead.GetForeground())
+	// Section labels use the same accent family as slash pickers (calmer than tool warning color).
+	section := th.SlashPickerName
 
 	inner := termWidth - 2
 	if inner < 1 {
@@ -252,7 +248,7 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termWidth int, contentMax int) []string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
 	dim := th.Dim
-	accent := lipgloss.NewStyle().Bold(true).Foreground(th.ToolCardHead.GetForeground())
+	accent := th.SlashPickerName
 
 	var body strings.Builder
 	writeJoined := func(lines []string, render func(...string) string) {
@@ -356,9 +352,8 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 		trimmed = trimmed + "\n" + ribbon
 	}
 
-	frameStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(welcomeBorderColor()).
+	frameStyle := th.WelcomeFrame.Copy().
+		Border(lipgloss.RoundedBorder(), true, true, true, true).
 		Padding(0, 1)
 	if termWidth > 0 {
 		frameStyle = frameStyle.Width(termWidth)

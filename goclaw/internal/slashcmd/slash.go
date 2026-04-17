@@ -55,6 +55,9 @@ type SlashEnv struct {
 	ToolLog func(n int) string
 	// PlanGate optional; supplies plan approval / hub / agent-picker flags from settings. Nil → all off.
 	PlanGate func() PlanGateConfig
+	// FullscreenTUI is true when slash commands run inside the Bubble Tea chat (cmd/goclaw fullscreen runner).
+	// Used to avoid raw stdout control sequences that would fight the TUI (e.g. /clear).
+	FullscreenTUI bool
 }
 
 // SlashContext carries dependencies for HandleSlash (memory, orchestrator, session pointer, disk store).
@@ -121,7 +124,9 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 		if derr != nil {
 			return true, "", false, "", derr
 		}
-		return true, out, false, "", nil
+		setTUIDocOverlay(hintsOut, "Doctor")
+		doc := "## Doctor\n\n" + MarkdownFencedPlain(out)
+		return true, doc, false, "", nil
 
 	case "model":
 		if env.SetSessionModel == nil || env.SessionModel == nil {
@@ -170,19 +175,28 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 		if len(entries) == 0 {
 			return true, "(no saved sessions on disk)", false, "", nil
 		}
+		setTUIDocOverlay(hintsOut, "Sessions")
 		var b strings.Builder
+		b.WriteString("## Saved sessions\n\n")
 		for _, e := range entries {
 			age := formatSessionModAge(e.ModTime)
+			b.WriteString("- `")
 			b.WriteString(e.ID)
-			b.WriteString("  ")
+			b.WriteString("` — ")
 			b.WriteString(age)
-			b.WriteString("  (")
+			b.WriteString(" — (")
 			b.WriteString(e.ModTime.UTC().Format(time.RFC3339))
 			b.WriteString(")\n")
 		}
-		return true, strings.TrimSuffix(b.String(), "\n"), false, "", nil
+		return true, strings.TrimSpace(b.String()), false, "", nil
 
 	case "clear":
+		if env.FullscreenTUI {
+			if hintsOut != nil {
+				hintsOut.TUIClearTranscript = true
+			}
+			return true, "(transcript cleared)", false, "", nil
+		}
 		if term.IsTerminal(int(os.Stdout.Fd())) {
 			_, _ = fmt.Fprint(os.Stdout, "\x1b[2J\x1b[H")
 			return true, "(screen cleared)", false, "", nil
@@ -260,6 +274,7 @@ use /sessions to list saved ids; current session is auto-saved before switching`
 		return handleSlashTheme(env, fields)
 
 	case "capabilities":
+		setTUIDocOverlay(hintsOut, "Capabilities")
 		return true, UserCapabilitiesGuide(), false, "", nil
 
 	case "copy":
@@ -356,7 +371,9 @@ use /sessions to list saved ids; current session is auto-saved before switching`
 		if ierr != nil {
 			return true, "", false, "", ierr
 		}
-		return true, msg, false, "", nil
+		setTUIDocOverlay(hintsOut, "Init")
+		md := "## /init\n\n" + MarkdownFencedPlain(msg)
+		return true, md, false, "", nil
 
 	case "memory":
 		if len(fields) < 2 {
@@ -373,7 +390,9 @@ example: /memory add project style Prefer tabs over spaces for Go imports`)
 			if len(list) == 0 {
 				return true, "(no memory entries)", false, "", nil
 			}
+			setTUIDocOverlay(hintsOut, "Memory")
 			var b strings.Builder
+			b.WriteString("## Memory entries\n\n")
 			for _, e := range list {
 				b.WriteString("- ")
 				b.WriteString(e.Filename)
@@ -469,6 +488,7 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 			} else if used {
 				return true, out, false, "", nil
 			}
+			setTUIDocOverlay(hintsOut, "Agents")
 			return true, formatAgentsList(profs, orch.ProfileName(), env), false, "", nil
 		}
 		msg, err := switchOrchestratorProfile(orch, env, fields[1])
@@ -499,12 +519,13 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 			return true, "", false, "", fmt.Errorf("/plan: workspace directory not set")
 		}
 		if len(fields) < 2 {
-			return true, "", false, "", fmt.Errorf(`usage: /plan path | init | save | run | template | review | approve | revoke | steps
+			return true, "", false, "", fmt.Errorf(`usage: /plan path | init | new | save | run | template | review | approve | revoke | steps
 path     — show default plan file path
 init     — create .goclaw/plan.md from template if missing
-save     — save last assistant message in this session to .goclaw/plan.md
-run      — same as save, then start one execute turn (optional --hub; alias: apply)
-template — print the template to the terminal
+new NAME — create .goclaw/plans/<name>.md from mini template (name is sanitized to a filename stem)
+save     — save last assistant message to plan file (optional path; default .goclaw/plan.md)
+run      — save then execute one turn (optional --hub; optional plan path; alias: apply)
+template — print the default plan template to the terminal
 review   — show plan excerpt, approval status, and parsed ## Steps (optional path)
 approve  — record approval for the current plan file hash (optional path)
 revoke   — clear recorded approval (plan.meta.json)
@@ -519,6 +540,7 @@ steps    — list parsed ## Steps only (optional path)`)
 				return true, "", false, "", fmt.Errorf("/plan review: %w", rerr)
 			}
 			setFooterHint(hintsOut, "Review done — /plan approve then /apply-plan (or /plan run) when ready.")
+			setTUIDocOverlay(hintsOut, "Plan review")
 			return true, out, false, "", nil
 		case "approve":
 			pathTail := strings.TrimSpace(strings.Join(fields[2:], " "))
@@ -544,6 +566,7 @@ steps    — list parsed ## Steps only (optional path)`)
 			if serr != nil {
 				return true, "", false, "", fmt.Errorf("/plan steps: %w", serr)
 			}
+			setTUIDocOverlay(hintsOut, "Plan steps")
 			return true, out, false, "", nil
 		case "path":
 			return true, planfile.Path(wd), false, "", nil
@@ -556,11 +579,28 @@ steps    — list parsed ## Steps only (optional path)`)
 				return true, fmt.Sprintf("created %s", planfile.Path(wd)), false, "", nil
 			}
 			return true, fmt.Sprintf("already exists: %s", planfile.Path(wd)), false, "", nil
+		case "new":
+			if len(fields) < 3 {
+				return true, "", false, "", fmt.Errorf(`usage: /plan new <name> — creates .goclaw/plans/<name>.md (sanitized) if it does not exist`)
+			}
+			raw := strings.TrimSpace(strings.Join(fields[2:], " "))
+			p, created, ierr := planfile.InitMiniPlan(wd, raw)
+			if ierr != nil {
+				return true, "", false, "", fmt.Errorf("/plan new: %w", ierr)
+			}
+			if created {
+				rel, _ := filepath.Rel(wd, p)
+				setFooterHint(hintsOut, "Mini plan created — edit the file, then /apply-plan "+filepath.ToSlash(rel))
+				return true, fmt.Sprintf("created %s\nOpen or edit this file, then /plan review (optional path) → /apply-plan (same path).", p), false, "", nil
+			}
+			setFooterHint(hintsOut, "Mini plan file already exists — edit it or pick another name.")
+			return true, fmt.Sprintf("already exists: %s", p), false, "", nil
 		case "save":
 			if sc.Sess == nil || *sc.Sess == nil {
 				return true, "", false, "", fmt.Errorf("/plan save: no messages in current session")
 			}
-			planPath, sErr := savePlanFromLastAssistant(wd, *sc.Sess)
+			pathTailSave := strings.TrimSpace(strings.Join(fields[2:], " "))
+			planPath, sErr := savePlanFromLastAssistant(wd, *sc.Sess, pathTailSave)
 			if sErr != nil {
 				return true, "", false, "", fmt.Errorf("/plan save: %w", sErr)
 			}
@@ -571,23 +611,18 @@ steps    — list parsed ## Steps only (optional path)`)
 			setFooterHint(hintsOut, h)
 			return true, fmt.Sprintf("plan saved to %s\nRun /plan review → /plan approve if required, then /plan run or /apply-plan.", planPath), false, "", nil
 		case "run", "apply":
-			hub := false
-			for _, f := range fields[2:] {
-				if strings.EqualFold(strings.TrimSpace(f), "--hub") {
-					hub = true
-				}
-			}
+			hub, pathTailRun := parsePlanRunFields(fields)
 			if orch == nil {
 				return true, "", false, "", fmt.Errorf("/plan run requires a running agent")
 			}
 			if sc.Sess == nil || *sc.Sess == nil {
 				return true, "", false, "", fmt.Errorf("/plan run: no messages in current session")
 			}
-			planPath, sErr := savePlanFromLastAssistant(wd, *sc.Sess)
+			planPath, sErr := savePlanFromLastAssistant(wd, *sc.Sess, pathTailRun)
 			if sErr != nil {
 				return true, "", false, "", fmt.Errorf("/plan run: %w", sErr)
 			}
-			notice, modelSubmit, aErr := applyPlanExecute(env, orch, wd, "", hintsOut, ApplyPlanOptions{Hub: hub})
+			notice, modelSubmit, aErr := applyPlanExecute(env, orch, wd, pathTailRun, hintsOut, ApplyPlanOptions{Hub: hub})
 			if aErr != nil {
 				return true, "", false, "", fmt.Errorf("/plan run: %w", aErr)
 			}
@@ -597,7 +632,7 @@ steps    — list parsed ## Steps only (optional path)`)
 		case "template":
 			return true, planfile.Template(), false, "", nil
 		default:
-			return true, "", false, "", fmt.Errorf("unknown /plan %q — use path, init, save, run, apply, template, review, approve, revoke, or steps", fields[1])
+			return true, "", false, "", fmt.Errorf("unknown /plan %q — use path, init, new, save, run, apply, template, review, approve, revoke, or steps", fields[1])
 		}
 
 	case "workers":
@@ -671,6 +706,7 @@ use /workers to list interactive worker ids`)
 		if preview {
 			out := formatPlanPreviewOutput(p, body)
 			setFooterHint(hintsOut, "Review complete — run /apply-plan to execute (or /apply-plan --preview again).")
+			setTUIDocOverlay(hintsOut, "Plan preview")
 			return true, out, false, "", nil
 		}
 		notice, msg, err := applyPlanExecute(env, orch, wd, pathTail, hintsOut, ApplyPlanOptions{Hub: hub})

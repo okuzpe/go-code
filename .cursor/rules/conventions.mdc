@@ -9,6 +9,8 @@ globs: ["**/*.go"]
 ## Language Rule — STRICT
 **All code, comments, identifiers, error messages, and log strings must be in English.**
 
+**Agent-authored Markdown** at the repo root — `.cursor/rules/*.mdc`, `.cursor/skills/**/*.md`, `.claude/skills/*.md` — must also be **English only** (headings, body, examples, frontmatter `description:`). See `.cursor/rules/agent-artifacts-english.mdc`.
+
 ```go
 // CORRECT
 // Execute runs the tool with the given JSON input.

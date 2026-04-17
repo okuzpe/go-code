@@ -25,6 +25,16 @@ type UIHints struct {
 	FooterHint *string
 	// ReloadTranscript when non-nil means the in-memory session was replaced; the TUI should rebuild the transcript view.
 	ReloadTranscript *session.Session
+
+	// TUIDocOverlay when true means the fullscreen TUI should show the markdown document overlay for out
+	// (glamour) instead of appendSystem. Ignored outside the Bubble Tea chat.
+	TUIDocOverlay bool
+	// TUIDocTitle is an optional short label for the overlay (e.g. Help, Capabilities, Doctor).
+	TUIDocTitle string
+
+	// TUIClearTranscript when true tells the fullscreen chat to clear the transcript in-model
+	// (same effect as Ctrl+L) instead of writing ANSI to stdout.
+	TUIClearTranscript bool
 }
 
 func clearHints(h *UIHints) {
@@ -64,6 +74,15 @@ func setReloadTranscript(h *UIHints, s *session.Session) {
 		return
 	}
 	h.ReloadTranscript = s
+}
+
+// setTUIDocOverlay marks out as markdown to render in the TUI document overlay.
+func setTUIDocOverlay(h *UIHints, title string) {
+	if h == nil {
+		return
+	}
+	h.TUIDocOverlay = true
+	h.TUIDocTitle = strings.TrimSpace(title)
 }
 
 // formatSessionModAge renders modification time as a short relative label, falling back to RFC3339 for very old files.

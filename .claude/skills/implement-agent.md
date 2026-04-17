@@ -3,6 +3,8 @@ name: implement-agent
 description: Use when the user asks to add, change, or define an agent profile in goclaw.
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 ## Add or change an agent profile
 
 ### Read first

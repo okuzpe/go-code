@@ -11,6 +11,9 @@ Go CLI agent, Claude Code–style. Module: `github.com/okuzpe/goclaw`. Go 1.26. 
 ## Workspace scope
 Sibling folders such as `claw-code/` in the parent directory are **reference only**; they are not part of this module or goclaw’s roadmap. Implement and commit only under `goclaw/`.
 
+## Agent-facing Markdown (English only)
+Cursor rules (`.cursor/rules/`), Cursor skills (`.cursor/skills/`), and Claude Code skills (`.claude/skills/`) at the **monorepo root** are **authored in English** — same bar as `goclaw/CLAUDE.md` Language Rule. Policy: `.cursor/rules/agent-artifacts-english.mdc`.
+
 ## Entry point layout (`cmd/goclaw/`)
 
 | File | Responsibility |
@@ -59,7 +62,7 @@ All REPL wiring, banner, and slash handlers live under `internal/app`, `internal
 ## Glossary
 - **tool** — Go type implementing `internal/tools.Tool`
 - **agent** / **profile** — `Profile` with model override, tool allowlist, read-only flag, system prompt
-- **skill** — reusable Markdown prompt template (`.claude/skills/`)
+- **skill** — reusable Markdown prompt template at repo root (`.claude/skills/`, `.cursor/skills/`); English-only per `agent-artifacts-english.mdc`
 - **command** — REPL **slash command** (`/help`, `/compact`, `/memory`); not a Cobra subcommand
 - **CLI subcommand** — Cobra entry (e.g. `goclaw sessions list`)
 - **hook** — handler for a `hooks.EventType` (Go `On(...)` or external subprocess/HTTP)

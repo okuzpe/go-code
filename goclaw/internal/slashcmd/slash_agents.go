@@ -123,25 +123,28 @@ func formatAgentsList(profs map[string]agents.Profile, active string, env SlashE
 	profs = visibleProfileMap(env, profs)
 	active = strings.TrimSpace(active)
 	var b strings.Builder
-	b.WriteString("Available agents (built-in + custom *.md under agents dirs):\n\n")
+	b.WriteString("## Available agents\n\n")
+	b.WriteString("Built-in + custom `*.md` under agents dirs.\n\n")
 	for _, name := range agents.SortedKeys(profs) {
 		p := profs[name]
-		prefix := "  "
 		if name == active {
-			prefix = "* "
+			b.WriteString("- **")
+			b.WriteString(name)
+			b.WriteString("** (active) — ")
+		} else {
+			b.WriteString("- `")
+			b.WriteString(name)
+			b.WriteString("` — ")
 		}
-		b.WriteString(prefix)
-		b.WriteString(name)
-		b.WriteString(" — ")
 		b.WriteString(p.Summary())
 		b.WriteByte('\n')
 	}
-	b.WriteString("\nUsage: /agents <name>  (same as /profile <name>)\n")
-	b.WriteString("In the fullscreen TUI, use Ctrl+P to pick a profile, or pass a name: /agents <name>.\n")
+	b.WriteString("\nUsage: `/agents <name>` (same as `/profile <name>`).\n")
+	b.WriteString("In the fullscreen TUI, use **Ctrl+P** to pick a profile, or pass a name: `/agents <name>`.\n")
 	if pg := planGateFrom(env); len(pg.AgentPickerHide) > 0 {
-		b.WriteString("\nSome profiles are hidden from the picker (agent_picker_hidden_profiles); /profile <name> still works.\n")
+		b.WriteString("\nSome profiles are hidden from the picker (`agent_picker_hidden_profiles`); `/profile <name>` still works.\n")
 	}
-	return b.String()
+	return strings.TrimSpace(b.String())
 }
 
 func tryInteractiveAgentsPick(env SlashEnv, orch *orchestrator.Orchestrator, hintsOut *UIHints) (out string, used bool, err error) {

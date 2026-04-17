@@ -26,6 +26,8 @@ type Palette struct {
 	InputBorder   lipgloss.TerminalColor
 	SlashPickName lipgloss.TerminalColor
 	SlashPickDesc lipgloss.TerminalColor
+	// WelcomeBorder frames the startup welcome panel (wide box + narrow rounded frame).
+	WelcomeBorder lipgloss.TerminalColor
 
 	// Banner / onboarding chrome (non-TTY banner and fallbacks).
 	BannerLogo    lipgloss.TerminalColor
@@ -48,8 +50,8 @@ func PaletteForAppearance(raw string) Palette {
 			lipgloss.Color("#34D399"), lipgloss.Color("#C4B5FD"),
 			lipgloss.Color("#9CA3AF"), lipgloss.Color("#6B7280"),
 			lipgloss.Color("#FBBF24"), lipgloss.Color("#D1D5DB"),
-			lipgloss.Color("#F87171"), lipgloss.Color("#374151"),
-			lipgloss.Color("#C4B5FD"), lipgloss.Color("#4B5563"),
+			lipgloss.Color("#F87171"), lipgloss.Color("#2d333b"),
+			lipgloss.Color("#C4B5FD"), lipgloss.Color("#3d4450"),
 		)
 	case config.UIAppearanceLight:
 		return paletteFixed(app, "light",
@@ -64,8 +66,8 @@ func PaletteForAppearance(raw string) Palette {
 			lipgloss.Color("#60A5FA"), lipgloss.Color("#FBBF24"),
 			lipgloss.Color("#9CA3AF"), lipgloss.Color("#6B7280"),
 			lipgloss.Color("#FCD34D"), lipgloss.Color("#D1D5DB"),
-			lipgloss.Color("#F87171"), lipgloss.Color("#374151"),
-			lipgloss.Color("#60A5FA"), lipgloss.Color("#93C5FD"),
+			lipgloss.Color("#F87171"), lipgloss.Color("#2d333b"),
+			lipgloss.Color("#60A5FA"), lipgloss.Color("#3d5568"),
 		)
 	case config.UIAppearanceLightColorblind:
 		return paletteFixed(app, "light",
@@ -104,11 +106,12 @@ func paletteAuto() Palette {
 	toolFG := lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FBBF24"}
 	modalBody := lipgloss.AdaptiveColor{Light: "#374151", Dark: "#D1D5DB"}
 	errorFG := lipgloss.AdaptiveColor{Light: "#DC2626", Dark: "#F87171"}
-	sepFG := lipgloss.AdaptiveColor{Light: "#E5E7EB", Dark: "#374151"}
-	slashPick := lipgloss.AdaptiveColor{Light: "#1D4ED8", Dark: "#60A5FA"}
-	slashDesc := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}
-	modalBorder := lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#C4B5FD"}
-	inputBorder := lipgloss.AdaptiveColor{Light: "#D1D5DB", Dark: "#4B5563"}
+	sepFG := lipgloss.AdaptiveColor{Light: "#E5E7EB", Dark: "#2d333b"}
+	slashPick := lipgloss.AdaptiveColor{Light: "#2563EB", Dark: "#5b9bd5"}
+	slashDesc := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#7c8798"}
+	modalBorder := lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#b8a9e8"}
+	inputBorder := lipgloss.AdaptiveColor{Light: "#D1D5DB", Dark: "#3d4450"}
+	welcomeBorder := lipgloss.AdaptiveColor{Light: "#CBD5E1", Dark: "#3f4a56"}
 	pathEmphasis := lipgloss.AdaptiveColor{Light: "#0F172A", Dark: "#E2E8F0"}
 	return Palette{
 		Appearance:    config.UIAppearanceAuto,
@@ -125,6 +128,7 @@ func paletteAuto() Palette {
 		InputBorder:   inputBorder,
 		SlashPickName: slashPick,
 		SlashPickDesc: slashDesc,
+		WelcomeBorder: welcomeBorder,
 		BannerLogo:    accentAI,
 		BannerKey:     muted,
 		BannerValue:   lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#E5E7EB"},
@@ -138,8 +142,8 @@ func paletteAuto() Palette {
 func paletteFixed(app, glam string,
 	accentUser, accentAI, muted, dimFG, toolFG, modalBody, errorFG, sepFG, modalBorder, inputBorder lipgloss.Color,
 ) Palette {
-	slashPick := lipgloss.AdaptiveColor{Light: "#1D4ED8", Dark: "#60A5FA"}
-	slashDesc := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}
+	slashPick := lipgloss.AdaptiveColor{Light: "#2563EB", Dark: "#5b9bd5"}
+	slashDesc := lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#7c8798"}
 	return Palette{
 		Appearance:    app,
 		GlamourStyle:  glam,
@@ -155,6 +159,7 @@ func paletteFixed(app, glam string,
 		InputBorder:   inputBorder,
 		SlashPickName: slashPick,
 		SlashPickDesc: slashDesc,
+		WelcomeBorder: sepFG,
 		BannerLogo:    accentAI,
 		BannerKey:     muted,
 		BannerValue:   lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#E5E7EB"},
@@ -173,5 +178,6 @@ func paletteANSI(app, glam string,
 	)
 	p.SlashPickName = lipgloss.Color("4")
 	p.SlashPickDesc = lipgloss.Color("8")
+	p.WelcomeBorder = p.SepFG
 	return p
 }

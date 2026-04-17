@@ -17,7 +17,7 @@ This reference maps **monorepo documentation** to **goclaw Go packages**. Use it
 | [`docs/goclaw/`](../goclaw/) | Operators, product topics (usage, roadmap, coordinator, security, …) |
 | [`docs/reference/`](./) | Cross-cutting contracts (tools, hooks, MCP, profiles, retry, IDE, …) |
 
-**Cursor rules (workflow):** [`goclaw/.cursor/rules/`](../../goclaw/.cursor/rules/) — e.g. [`architecture.mdc`](../../goclaw/.cursor/rules/architecture.mdc), [`workflow.mdc`](../../goclaw/.cursor/rules/workflow.mdc).
+**Cursor rules (workflow):** [`.cursor/rules/`](../../.cursor/rules/) — e.g. [`architecture.mdc`](../../.cursor/rules/architecture.mdc), [`workflow.mdc`](../../.cursor/rules/workflow.mdc).
 
 ---
 
@@ -79,7 +79,7 @@ flowchart LR
 | Primary doc | Secondary | Code |
 |-------------|-----------|------|
 | [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md) (packages, env vars, flags) | [`docs/goclaw/usage.md`](../goclaw/usage.md) | `cmd/goclaw/main.go`, `tui.go`, `version.go`; `internal/cli/root.go` |
-| [`goclaw/.cursor/rules/architecture.mdc`](../../goclaw/.cursor/rules/architecture.mdc) | — | Injected `RunChat` / tests without TUI |
+| [`.cursor/rules/architecture.mdc`](../../.cursor/rules/architecture.mdc) | — | Injected `RunChat` / tests without TUI |
 
 **Adjustment:** New flags → Cobra in `internal/cli` + document in `usage.md` and env table in `CLAUDE.md`. Do not add `*_test.go` under `cmd/` (use `internal/cli` / `internal/app`).
 
@@ -91,7 +91,7 @@ flowchart LR
 |-------------|-----------|------|
 | `CLAUDE.md` | [`usage.md`](../goclaw/usage.md), [`manual-tui-checklist.md`](../goclaw/manual-tui-checklist.md) | `run.go`, `chat_wiring.go`, `json_output_run.go`, `banner.go`, `onboarding.go`, `onboarding_tui.go`, `telegram_onboard.go`; `replhistory/`; `slashcmd/`; `ui/chat/` |
 
-**Adjustment:** Chat runtime and tool/MCP registration → **`internal/app/chat_wiring.go`**. First-run wizard → `onboarding_tui.go` / `onboarding.go`. Slash commands → `internal/slashcmd`. TUI: async via `tea.Cmd` only; no raw goroutines inside Bubble Tea `Update()` (see architecture rule).
+**Adjustment:** Chat runtime and tool/MCP registration → **`internal/app/chat_wiring.go`**. First-run wizard → `onboarding_tui.go` / `onboarding.go`. Slash commands → `internal/slashcmd`. TUI: async via `tea.Cmd` only; no raw goroutines inside Bubble Tea `Update()` (see architecture rule). Long slash output in the fullscreen chat uses **`slashcmd.UIHints`** (`TUIDocOverlay`, `TUIDocTitle`) plus a **markdown document overlay** in `internal/ui/chat` (`docOverlay*` + `Theme.RenderMarkdown`), not a second Bubble Tea program inside `slashcmd`.
 
 ---
 
@@ -201,7 +201,7 @@ flowchart LR
 
 | Primary doc | Secondary | Code |
 |-------------|-----------|------|
-| `CLAUDE.md` | [`usage.md`](../goclaw/usage.md) | `planfile/`, `todos/`; `/plan`, `/apply-plan` in `slashcmd` |
+| `CLAUDE.md` | [`usage.md`](../goclaw/usage.md) | `planfile/` (`Path`, `PlansDir`, `Init`, `InitMiniPlan`, `ResolvePlanArg`, `EnsurePlanPathUnderWorkspace`, handoff + steps); `todos/`; `/plan`, `/apply-plan` in `slashcmd` |
 
 ---
 
@@ -266,7 +266,7 @@ flowchart LR
 2. Implement under `goclaw/internal/*` or thin `cmd/`.
 3. **User-facing:** [`usage.md`](../goclaw/usage.md) and, if needed, [`changelog.md`](../goclaw/changelog.md).
 4. **Stable contracts:** the relevant [`docs/reference/`](./) file.
-5. **Recurring workflow/architecture changes:** consider updating [`goclaw/.cursor/rules/`](../../goclaw/.cursor/rules/).
+5. **Recurring workflow/architecture changes:** consider updating [`.cursor/rules/`](../../.cursor/rules/).
 
 ---
 

@@ -3,6 +3,8 @@ name: table-driven-tests
 description: Use when adding or refactoring Go tests in goclaw, especially when the user asks for table tests, many cases, functional/integration tests, golden files, or E2E CLI smoke tests.
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 ## Testing strategy (recommended for goclaw)
 
 - Prefer a **pyramid**:

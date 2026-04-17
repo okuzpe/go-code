@@ -325,6 +325,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 			filepath.Join(toolRoot, ".claude", "skills"),
 		}, skillRoots...)
 	}
+	skillRoots = appendMonorepoClaudeSkillRoot(launchDir, skillRoots)
 	skillSnippet, _ := skills.Collect(skillRoots, skillsMaxRunes)
 
 	reg := tools.New()

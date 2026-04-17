@@ -17,20 +17,9 @@ import (
 	"github.com/okuzpe/goclaw/internal/plugin"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/skills"
-	"github.com/spf13/cobra"
 )
 
 const doctorMCPDisplayMaxRunes = 72
-
-// RunDoctor prints a short preflight report and exits.
-func RunDoctor(cmd *cobra.Command, _ []string) error {
-	rt, err := PrepareChatRuntime(cmd)
-	if err != nil {
-		return err
-	}
-	fmt.Println(DoctorReportFromRuntime(context.Background(), rt))
-	return nil
-}
 
 func DoctorReportFromRuntime(_ context.Context, rt *ChatRuntime) string {
 	if rt == nil {
@@ -197,10 +186,11 @@ func workspaceSkillRootsOnly(rt *ChatRuntime) []string {
 	cfg := rt.Cfg
 	launch := strings.TrimSpace(rt.LaunchDir)
 	add := func(wd string) []string {
-		return []string{
+		out := []string{
 			filepath.Join(wd, cfg.ProjectConfigDir, "skills"),
 			filepath.Join(wd, ".claude", "skills"),
 		}
+		return appendMonorepoClaudeSkillRoot(wd, out)
 	}
 	out := add(tool)
 	if launch != "" && filepath.Clean(launch) != filepath.Clean(tool) {

@@ -3,6 +3,8 @@ name: new-phase
 description: Use when starting a new development phase or asking what comes next in goclaw.
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 ## Starting a new phase in goclaw
 
 ### Pre-flight checklist (before any phase)

@@ -20,8 +20,9 @@ func (m *Model) openToolLog() {
 		return
 	}
 	m.exitTranscriptBrowse()
-	m.helpOpen = false
-	m.helpFullText = ""
+	m.docOverlayOpen = false
+	m.docOverlayTitle = ""
+	m.docOverlaySourceMD = ""
 	m.themePickOpen = false
 	m.themePickFullText = ""
 	m.agentPickOpen = false

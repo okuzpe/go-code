@@ -86,7 +86,7 @@ type Theme struct {
 	StatusBar      lipgloss.Style
 	StatusBarLabel lipgloss.Style
 
-	// FooterWorkspaceChip is the IDE-style folder badge in the idle footer (basename + line span).
+	// FooterWorkspaceChip styles the workspace basename in the idle footer (text only, no chip background).
 	FooterWorkspaceChip lipgloss.Style
 
 	// SlashPickerName / SlashPickerDesc style the / command rows above the input (TUI).
@@ -95,6 +95,9 @@ type Theme struct {
 
 	// AtRefChip styles @path tokens inside user messages in the transcript.
 	AtRefChip lipgloss.Style
+
+	// WelcomeFrame colors the startup welcome panel borders (wide ASCII frame + narrow rounded box).
+	WelcomeFrame lipgloss.Style
 
 	// Icons selects transcript/tool/footer glyphs (see config TUIIcons). Zero means Unicode preset.
 	Icons icons.Set

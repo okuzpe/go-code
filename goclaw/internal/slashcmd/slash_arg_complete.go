@@ -249,7 +249,8 @@ func slashArgSuggestionsParsed(sc SlashContext, parsed ParsedSlashLine, line str
 		for _, pair := range []struct{ name, sum string }{
 			{"path", "print default plan file path"},
 			{"init", "create plan file from template"},
-			{"save", "save last assistant message to plan"},
+			{"new", "create .goclaw/plans/<name>.md mini template"},
+			{"save", "save last assistant to plan (optional path)"},
 			{"run", "save then execute plan (one model turn)"},
 			{"apply", "same as run"},
 			{"template", "print plan template"},

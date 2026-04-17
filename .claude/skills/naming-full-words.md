@@ -6,6 +6,8 @@ description: >-
   a PR, or when the user wants clearer identifiers.
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 ## Naming — full words, no lazy abbreviations
 
 Same policy as `.cursor/rules/naming-full-words.mdc` and `CLAUDE.md` (“Naming — full words”).

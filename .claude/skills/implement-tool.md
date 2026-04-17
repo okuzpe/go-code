@@ -3,6 +3,8 @@ name: implement-tool
 description: Use when the user asks to implement, add, or create a new tool for goclaw — interface through registration and tests.
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 ## Implementing a new tool in goclaw
 
 ### 1. Read first

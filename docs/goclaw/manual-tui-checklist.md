@@ -7,7 +7,7 @@ Run from a real TTY with `goclaw` (**TUI is default** on a TTY) or explicitly `g
 3. **Ctrl+L** — Clears the viewport; no panic; pending tool queue cleared per product design.
 4. **Ctrl+C** — Session saves cleanly on exit (check `~/.goclaw/sessions/` for JSONL or use `/session` after restart).
 5. **Slash autocomplete** — On one line, type `/` then a few letters; a filtered command list appears above the input. **Tab** completes; narrow the list by typing more.
-6. **`/help` overlay** — Run `/help` (or `help` / `?`); a bordered help panel replaces the transcript area. **Esc** closes and restores the chat view; **↑↓** / **PgUp**/**PgDn** scroll if needed.
+6. **Document overlay** — Run `/help` (or `help` / `?`): a markdown-styled help panel replaces the transcript area (also try `/capabilities` or `/doctor`). **Esc** closes and restores the chat view; **↑↓** / **PgUp**/**PgDn** scroll; resize the terminal and confirm long sections still wrap sensibly.
 
 ## First-run onboarding (Tier 0)
 

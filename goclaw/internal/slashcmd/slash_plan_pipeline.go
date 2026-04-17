@@ -11,8 +11,10 @@ import (
 	"github.com/okuzpe/goclaw/internal/session"
 )
 
-// savePlanFromLastAssistant writes the latest non-empty assistant message to the default workspace plan file.
-func savePlanFromLastAssistant(wd string, sess *session.Session) (planPath string, err error) {
+// savePlanFromLastAssistant writes the latest non-empty assistant message to a plan file.
+// destArg selects the path: empty → default .goclaw/plan.md; otherwise ResolvePlanArg(wd, destArg)
+// (e.g. .goclaw/plans/refactor-auth.md). The resolved path must stay under the workspace root.
+func savePlanFromLastAssistant(wd string, sess *session.Session, destArg string) (planPath string, err error) {
 	if strings.TrimSpace(wd) == "" {
 		return "", fmt.Errorf("workspace directory not set")
 	}
@@ -30,10 +32,14 @@ func savePlanFromLastAssistant(wd string, sess *session.Session) (planPath strin
 	if lastText == "" {
 		return "", fmt.Errorf("no assistant message in session to save")
 	}
-	if mkErr := os.MkdirAll(filepath.Join(wd, planfile.Subdir), 0o700); mkErr != nil {
+	planPath = planfile.ResolvePlanArg(wd, strings.TrimSpace(destArg))
+	if err := planfile.EnsurePlanPathUnderWorkspace(wd, planPath); err != nil {
+		return "", err
+	}
+	parent := filepath.Dir(planPath)
+	if mkErr := os.MkdirAll(parent, 0o700); mkErr != nil {
 		return "", fmt.Errorf("mkdir: %w", mkErr)
 	}
-	planPath = planfile.Path(wd)
 	if writeErr := os.WriteFile(planPath, []byte(lastText+"\n"), 0o600); writeErr != nil {
 		return "", fmt.Errorf("write: %w", writeErr)
 	}
@@ -112,17 +118,17 @@ func PlanReviewOutput(workdir, pathTail string) (string, error) {
 		return "", err
 	}
 	out := formatPlanPreviewOutput(p, body)
-	out += "\n\n" + planfile.ApprovalStatus(workdir, p, body)
+	out += "\n\n## Approval\n\n" + planfile.ApprovalStatus(workdir, p, body)
 	steps := planfile.ParseImplementationSteps(body)
 	if len(steps) > 0 {
-		out += fmt.Sprintf("\n\nParsed ## Steps (%d):\n", len(steps))
+		out += fmt.Sprintf("\n\n## Parsed steps (%d)\n\n", len(steps))
 		for i, s := range steps {
-			out += fmt.Sprintf("  %d. %s\n", i+1, s)
+			out += fmt.Sprintf("%d. %s\n", i+1, s)
 		}
 	} else {
-		out += "\n\nParsed ## Steps: (none — add a \"## Steps\" section with numbered lines for clearer orchestration.)"
+		out += "\n\n## Parsed steps\n\n_(none — add a \"## Steps\" section with numbered lines for clearer orchestration.)_"
 	}
-	return out, nil
+	return strings.TrimSpace(out), nil
 }
 
 // PlanStepsOutput lists parsed steps only (no full body).
@@ -135,12 +141,14 @@ func PlanStepsOutput(workdir, pathTail string) (string, error) {
 	steps := planfile.ParseImplementationSteps(body)
 	display := filepath.ToSlash(p)
 	if len(steps) == 0 {
-		return fmt.Sprintf("File: %s\nNo numbered/bullet steps found under a \"## Steps\" heading.", display), nil
+		return fmt.Sprintf("## Plan steps\n\n- **File:** `%s`\n\nNo numbered/bullet steps found under a \"## Steps\" heading.", display), nil
 	}
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("File: %s\nParsed ## Steps (%d):\n", display, len(steps)))
+	b.WriteString("## Plan steps\n\n")
+	b.WriteString(fmt.Sprintf("- **File:** `%s`\n\n", display))
+	b.WriteString(fmt.Sprintf("### Parsed ## Steps (%d)\n\n", len(steps)))
 	for i, s := range steps {
-		b.WriteString(fmt.Sprintf("  %d. %s\n", i+1, s))
+		b.WriteString(fmt.Sprintf("%d. %s\n", i+1, s))
 	}
-	return strings.TrimSuffix(b.String(), "\n"), nil
+	return strings.TrimSpace(b.String()), nil
 }

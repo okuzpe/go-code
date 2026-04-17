@@ -58,6 +58,9 @@ func (m *Model) refreshThemePickOverlay() {
 func (m *Model) openThemePicker() {
 	m.exitTranscriptBrowse()
 	m.exitConfirmDeadline = time.Time{}
+	m.docOverlayOpen = false
+	m.docOverlayTitle = ""
+	m.docOverlaySourceMD = ""
 	m.agentPickOpen = false
 	m.agentPickFullText = ""
 	items := m.themePickPresetNames()

@@ -15,12 +15,122 @@ const Subdir = ".goclaw"
 // DefaultFilename is the default plan file name inside Subdir.
 const DefaultFilename = "plan.md"
 
+// PlansDirName is the subdirectory for optional mini plans (one file per task slice).
+const PlansDirName = "plans"
+
 // MaxBytes caps plan file size to keep REPL handoff payloads bounded.
 const MaxBytes = 256 * 1024
 
 // Path returns the default plan file path: <workdir>/.goclaw/plan.md
 func Path(workdir string) string {
 	return filepath.Join(workdir, Subdir, DefaultFilename)
+}
+
+// PlansDir returns <workdir>/.goclaw/plans (mini-plan directory).
+func PlansDir(workdir string) string {
+	return filepath.Join(workdir, Subdir, PlansDirName)
+}
+
+// MiniPlanPath returns <workdir>/.goclaw/plans/<slug>.md (slug must be pre-sanitized).
+func MiniPlanPath(workdir, slug string) string {
+	return filepath.Join(PlansDir(workdir), slug+".md")
+}
+
+// EnsurePlanPathUnderWorkspace rejects resolved paths that escape workdir (e.g. via "..").
+func EnsurePlanPathUnderWorkspace(workdir, resolvedPath string) error {
+	wa, err := filepath.Abs(workdir)
+	if err != nil {
+		return fmt.Errorf("workdir: %w", err)
+	}
+	pa, err := filepath.Abs(resolvedPath)
+	if err != nil {
+		return fmt.Errorf("plan path: %w", err)
+	}
+	wa = filepath.Clean(wa)
+	pa = filepath.Clean(pa)
+	rel, err := filepath.Rel(wa, pa)
+	if err != nil {
+		return fmt.Errorf("plan path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("plan path must stay inside workspace root %q", workdir)
+	}
+	return nil
+}
+
+// SanitizeMiniPlanSlug normalizes a user-provided name into a safe filename stem (lowercase, hyphens, alnum).
+func SanitizeMiniPlanSlug(raw string) (string, error) {
+	s := strings.TrimSpace(strings.ToLower(raw))
+	s = strings.ReplaceAll(s, "_", "-")
+	s = strings.ReplaceAll(s, " ", "-")
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "", fmt.Errorf("mini plan name is empty after sanitizing (use letters, digits, or hyphens)")
+	}
+	const maxSlug = 64
+	if len(out) > maxSlug {
+		out = out[:maxSlug]
+		out = strings.TrimRight(out, "-")
+	}
+	if out == "" {
+		return "", fmt.Errorf("mini plan name is empty after sanitizing")
+	}
+	return out, nil
+}
+
+// MiniPlanTemplate is a compact skeleton for task-scoped plans under .goclaw/plans/.
+func MiniPlanTemplate(slug string) string {
+	return strings.TrimSpace(fmt.Sprintf(`
+# Mini plan: %s
+
+One concrete goal. Execution is **one model turn** per /apply-plan or /plan run — use follow-up turns for the next steps.
+
+## Steps
+
+1. First step — files or symbols to touch.
+2. Second step — edits or commands.
+3. Third step — verify (e.g. go build, go test, or project script).
+
+## Notes
+
+Optional risks or acceptance checks.
+`, slug)) + "\n"
+}
+
+// InitMiniPlan creates <workdir>/.goclaw/plans/<slug>.md from MiniPlanTemplate if the file does not exist.
+// rawSlug is sanitized with SanitizeMiniPlanSlug.
+func InitMiniPlan(workdir, rawSlug string) (absPath string, created bool, err error) {
+	if strings.TrimSpace(workdir) == "" {
+		return "", false, fmt.Errorf("workspace directory not set")
+	}
+	slug, serr := SanitizeMiniPlanSlug(rawSlug)
+	if serr != nil {
+		return "", false, serr
+	}
+	dir := PlansDir(workdir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", false, fmt.Errorf("mkdir plans: %w", err)
+	}
+	p := MiniPlanPath(workdir, slug)
+	if err := EnsurePlanPathUnderWorkspace(workdir, p); err != nil {
+		return "", false, err
+	}
+	if _, statErr := os.Stat(p); statErr == nil {
+		return p, false, nil
+	} else if !os.IsNotExist(statErr) {
+		return "", false, statErr
+	}
+	if err := os.WriteFile(p, []byte(MiniPlanTemplate(slug)), 0o600); err != nil {
+		return "", false, fmt.Errorf("write mini plan: %w", err)
+	}
+	return p, true, nil
 }
 
 // Read loads plan content from path. The file must be regular, non-empty, and at most MaxBytes.

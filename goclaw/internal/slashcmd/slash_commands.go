@@ -34,7 +34,7 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/model", "Show or set default Ollama model tag for this session"},
 	{"/new", "Start a new session (saves current)"},
 	{"/parent", "Return to coordinator (same as /detach)"},
-	{"/plan", "path | init | save | run | review | approve | revoke | steps | template (.goclaw/plan.md)"},
+	{"/plan", "path | init | new | save | run | review | approve | revoke | steps | template (plan.md + .goclaw/plans/)"},
 	{"/profile", "Switch agent profile (hot-reloads custom agents)"},
 	{"/quit", "Save session and quit"},
 	{"/resume", "Load a saved session from disk (auto-saves current session first)"},

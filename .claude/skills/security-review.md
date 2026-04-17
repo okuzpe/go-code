@@ -3,6 +3,8 @@ name: security-review
 description: Use when reviewing code for security, before merging a tool, or when the user asks for a security check.
 ---
 
+> **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
+
 ## Security review checklist — goclaw
 
 ### For each new tool

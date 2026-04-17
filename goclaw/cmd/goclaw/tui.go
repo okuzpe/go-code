@@ -27,6 +27,7 @@ func (fullscreenChat) RunFullscreenChat(ctx context.Context, rt *app.ChatRuntime
 	slashEnv := slashcmd.SlashEnv{
 		Workdir:                     rt.Workdir,
 		UserConfigDir:               rt.Cfg.UserConfigDir,
+		FullscreenTUI:               true,
 		DisableInteractiveThemePick: true,
 		DisableInteractiveAgentPick: true,
 		Profs:                       rt.Profs,

@@ -1,0 +1,32 @@
+---
+description: Cursor rules, Cursor skills, and Claude Code skills at repo root must be authored in English (goclaw-focused content).
+globs: .cursor/rules/**/*.mdc,.cursor/skills/**/*.md,.claude/skills/**/*.md
+alwaysApply: false
+---
+
+# Monorepo — Agent artifact language (English only)
+
+## Scope
+
+Applies to **all** Markdown and YAML frontmatter content in:
+
+- `.cursor/rules/*.mdc`
+- `.cursor/skills/**` (e.g. `SKILL.md`)
+- `.claude/skills/*.md`
+
+Paths above are **relative to the repository (workspace) root** (`go-code/`). Same policy as `goclaw/CLAUDE.md` Language Rule for product code; **the same language bar applies to these agent-facing files** (headings, descriptions, instructions, examples, table cells).
+
+## Allowed exceptions
+
+- **Quoted** UI copy, log samples, or user messages shown as examples (keep quotes clearly labeled as sample data).
+- **Identifiers** or protocol strings that must stay non-English for compatibility (rare).
+- Deliberate **i18n** documentation only when the file’s purpose is explicitly to document localization — still prefer English for the surrounding prose.
+
+## Do not
+
+- Add Spanish or other natural-language instructional prose “for convenience” in these rules or skills.
+- Drift `description:` fields in frontmatter into non-English (agents use them for routing).
+
+## Cross-references
+
+- Product code and repo Markdown: `conventions.mdc` (Language Rule), `goclaw/CLAUDE.md`.

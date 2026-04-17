@@ -122,10 +122,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, vcmd
 			}
 		}
-		if m.helpOpen {
+		if m.docOverlayOpen {
 			switch msg.String() {
 			case "esc":
-				m.closeHelpOverlay()
+				m.closeDocOverlay()
 				return m, nil
 			case "ctrl+c":
 				return m, tea.Quit
@@ -434,7 +434,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// skips this block and is handled below (textarea).
 	if paste, isPaste := msg.(tea.PasteMsg); isPaste &&
 		m.pending == nil &&
-		!m.toolLogOpen && !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
+		!m.toolLogOpen && !m.docOverlayOpen && !m.themePickOpen && !m.agentPickOpen {
 		if m.transcriptBrowse {
 			m.exitTranscriptBrowse()
 			m.layout()
@@ -466,7 +466,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Mouse wheel: with cell mouse mode, scroll the widget under the cursor — compose
 	// (last rows) scrolls the textarea; transcript or footer chrome scrolls the transcript.
 	if mw, ok := msg.(tea.MouseWheelMsg); ok && m.tuiMouseScroll &&
-		!m.toolLogOpen && !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
+		!m.toolLogOpen && !m.docOverlayOpen && !m.themePickOpen && !m.agentPickOpen {
 		m.layout()
 		if m.transcriptBrowse {
 			m.viewport, cmd = m.viewport.Update(msg)
@@ -510,7 +510,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
-	if !m.toolLogOpen && !m.helpOpen && !m.themePickOpen && !m.agentPickOpen {
+	if !m.toolLogOpen && !m.docOverlayOpen && !m.themePickOpen && !m.agentPickOpen {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok && composeTranscriptScrollKey(keyMsg.String()) {
 			m.resizeInput()
 			return m, tea.Batch(cmds...)

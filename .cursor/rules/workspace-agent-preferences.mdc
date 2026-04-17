@@ -11,7 +11,7 @@ When anything here **conflicts** with generic Cursor User Rules, **prefer this f
 
 - **Unless the user explicitly asks for tests:** do **not** run `go test` (any scope), and do **not** add or expand `*_test.go` files. Treat CI as the default full-suite gate.
 - **`go build`** (or `go build ./...` when a compile check is needed) is fine when it directly advances the task.
-- For `goclaw/`, follow `goclaw/.cursor/rules/workflow.mdc`; do not re-introduce stricter “always test” expectations here.
+- For `goclaw/`, follow `.cursor/rules/workflow.mdc` at this repo root; do not re-introduce stricter “always test” expectations here.
 
 ## Shell / commands
 
