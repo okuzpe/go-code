@@ -27,6 +27,21 @@ const (
 	maxToolCalls  = 64
 )
 
+// adaptIterBudget returns an adjusted iteration cap based on the classified task role.
+// Lightweight roles (explore, fast) rarely need the full budget; reducing them saves
+// context and avoids unnecessary LLM calls on simple read-only turns.
+func adaptIterBudget(base int, role string) int {
+	switch role {
+	case "explore", "fast":
+		if half := base / 2; half >= 4 {
+			return half
+		}
+		return 4
+	default:
+		return base
+	}
+}
+
 // ToolApprover is invoked when permissions.Evaluate returns DecisionAsk.
 // It should return true to run the tool, false to deny, or an error to abort.
 type ToolApprover func(ctx context.Context, toolName, toolInput string) (bool, error)
@@ -264,6 +279,10 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	if o.profile.MaxTurns > 0 && o.profile.MaxTurns < iterCap {
 		iterLimit = o.profile.MaxTurns
 	}
+	// Adaptive budget: lightweight roles (explore, fast) rarely need the full cap.
+	if o.taskRole != "" {
+		iterLimit = adaptIterBudget(iterLimit, o.taskRole)
+	}
 	o.budgetLimit = iterLimit
 	o.turnUserMessage = userMessage
 	defer func() {
@@ -334,7 +353,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		slog.Debug("llm stream done", "elapsed", time.Since(streamStart), "tools", len(pendingTools))
 
 		if len(pendingTools) == 0 {
-			if nudgeMsg, ok := o.pickActionContinueNudge(userMessage, toolCalls, lastBatchReadOnly, hadToolRound, actionNudges); ok {
+			if nudgeMsg, ok := o.pickActionContinueNudge(userMessage, toolCalls, lastBatchReadOnly, hadToolRound, actionNudges, response); ok {
 				o.session.AddAssistant(response, nil)
 				actionNudges++
 				o.session.Add("user", nudgeMsg)
@@ -429,6 +448,10 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			appendJSONToolTrace(toolTrace, pendingTools, results)
 		}
 		o.session.AddToolResults(results)
+		if toolResultsHaveEditNotFound(results) {
+			o.session.Add("user", editFileNotFoundNudgeMessage)
+			slog.Debug("orchestrator: edit_file not-found recovery nudge injected")
+		}
 	}
 
 	return "", fmt.Errorf("iteration limit (%d) reached", iterLimit)

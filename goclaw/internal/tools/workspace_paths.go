@@ -99,11 +99,11 @@ func resolveWriteTargetUnrestricted(relBase, userPath string) (string, error) {
 		candidate = filepath.Clean(filepath.Join(base, userPath))
 	}
 	parentDir := filepath.Dir(candidate)
+	if err := os.MkdirAll(parentDir, 0o755); err != nil {
+		return "", fmt.Errorf("create parent directories: %w", err)
+	}
 	evalParent, err := filepath.EvalSymlinks(parentDir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("parent directory does not exist: %s", parentDir)
-		}
 		return "", fmt.Errorf("resolve parent directory: %w", err)
 	}
 	return filepath.Join(evalParent, filepath.Base(candidate)), nil

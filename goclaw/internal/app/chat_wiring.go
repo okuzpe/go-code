@@ -466,6 +466,8 @@ func registerBuiltInTools(r *tools.Registry, toolRoot string, launchDir string, 
 		r.Register(tools.NewScriptWithTimeout(cfg.BashTimeoutSeconds()))
 	}
 	r.Register(tools.NewWriteFileScope(pathScope))
+	r.Register(tools.NewWriteFilesScope(pathScope))
+	r.Register(tools.NewCreateProjectScope(pathScope))
 	r.Register(tools.NewEditFileScope(pathScope))
 	r.Register(tools.NewPatchScope(pathScope))
 	r.Register(tools.NewWebFetch())
@@ -499,11 +501,37 @@ func readProjectFileLines(workdir, name string, maxLines int) ([]string, bool) {
 	return lines, true
 }
 
+// detectProjectType returns a short type tag for the project at workdir.
+// Returns one of "go", "nodejs", "rust", "python", or "" when unrecognized.
+func detectProjectType(workdir string) string {
+	checks := []struct {
+		file string
+		tag  string
+	}{
+		{"go.mod", "go"},
+		{"package.json", "nodejs"},
+		{"Cargo.toml", "rust"},
+		{"pyproject.toml", "python"},
+		{"requirements.txt", "python"},
+	}
+	for _, c := range checks {
+		if _, err := os.Stat(filepath.Join(workdir, c.file)); err == nil {
+			return c.tag
+		}
+	}
+	return ""
+}
+
 // buildProjectContext reads key project files from workdir and returns a compact
 // summary for injection into the system prompt. Returns "" when nothing useful is found.
 // Reads at most two small files; fast enough to call at startup.
 func buildProjectContext(workdir string) string {
 	var parts []string
+
+	// Prepend project type hint so the model knows the stack without warm-up glob calls.
+	if pt := detectProjectType(workdir); pt != "" {
+		parts = append(parts, "project_type: "+pt)
+	}
 
 	// Detect project type from manifest files.
 	type candidate struct {

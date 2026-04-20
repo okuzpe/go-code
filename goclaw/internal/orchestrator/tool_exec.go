@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/okuzpe/goclaw/internal/hooks"
 	"github.com/okuzpe/goclaw/internal/llm"
@@ -42,7 +43,28 @@ func (a *sinkProgressAdapter) OnProgress(_ string, partial string) {
 	a.sink.OnToolProgress(a.name, partial)
 }
 
+// isTransientToolError reports whether a non-fatal tool error message looks like a
+// temporary filesystem condition that a single retry may resolve.
+func isTransientToolError(content string) bool {
+	lower := strings.ToLower(content)
+	return strings.Contains(lower, "access is denied") ||
+		strings.Contains(lower, "file is locked") ||
+		strings.Contains(lower, "create temp file") ||
+		strings.Contains(lower, "rename to target") ||
+		strings.Contains(lower, "resource temporarily unavailable")
+}
+
 func (o *Orchestrator) executeTool(ctx context.Context, tu *llm.ToolUse, sink StreamSink) toolOutcome {
+	out := o.executeToolOnce(ctx, tu, sink)
+	if out.IsError && out.Err == nil && isTransientToolError(out.Content) {
+		slog.Debug("transient tool error, retrying once", "tool", tu.Name, "err", out.Content)
+		time.Sleep(150 * time.Millisecond)
+		out = o.executeToolOnce(ctx, tu, sink)
+	}
+	return out
+}
+
+func (o *Orchestrator) executeToolOnce(ctx context.Context, tu *llm.ToolUse, sink StreamSink) toolOutcome {
 	if sink != nil {
 		ctx = ContextWithStreamSink(ctx, sink)
 		ctx = tools.WithProgressReporter(ctx, &sinkProgressAdapter{name: tu.Name, sink: sink})
@@ -101,7 +123,7 @@ func (o *Orchestrator) checkReadOnly(toolName string) (toolOutcome, bool) {
 		return rejectTool("mcp tools are disabled for read-only profiles"), true
 	}
 	switch toolName {
-	case "bash", "write_file", "edit_file", "patch":
+	case "bash", "write_file", "write_files", "create_project", "edit_file", "patch":
 		return rejectTool(fmt.Sprintf("%s is blocked for read-only profile", toolName)), true
 	}
 	return toolOutcome{}, false

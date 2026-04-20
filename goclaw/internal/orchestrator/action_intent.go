@@ -21,6 +21,13 @@ const (
 	// actionRepairModelEscalationMessage follows exhausted action-continue nudges when action_repair_escalation is on:
 	// the runtime switches to the configured coding-tier model for one more attempt.
 	actionRepairModelEscalationMessage = `[goclaw] Action nudges were exhausted without native tool calls. This turn now uses the configured coding model — reply with tool calls only: read_file/glob/grep as needed, then edit_file/write_file/patch, then bash or script to verify. Do not simulate tools in markdown.`
+
+	// editFileNotFoundNudgeMessage is injected when the most recent tool batch included
+	// an edit_file call that failed with "old_string not found", signalling the model
+	// hallucinated the string instead of reading the file first.
+	editFileNotFoundNudgeMessage = `[goclaw] edit_file failed: old_string not found. ` +
+		`You must read the file first (read_file), find the exact text in the output, ` +
+		`then call edit_file with that exact string. Do not guess or re-invent the string.`
 )
 
 func (o *Orchestrator) effectiveMaxActionNudges() int {
@@ -91,6 +98,8 @@ var workspaceWriteIntentKeywords = []string{
 
 	"añade ",
 	"crea ",
+	"crear ",   // infinitive form: "crear un proyecto" — "crea " alone misses this
+	"crear un", // "crear un proyecto de X"
 	"actualiza ",
 	"elimina ",
 	"borra ",
@@ -98,6 +107,11 @@ var workspaceWriteIntentKeywords = []string{
 	"aplica el",
 	"completa la implementación",
 	"termina de implementar",
+	"construir",
+	"construye",
+	"hazme un",
+	"hazme el",
+	"hazme la",
 
 	// Spanish (and short phrases) common in operator chat.
 	" no funciona",
@@ -160,7 +174,7 @@ func looksPureExplainOnly(low string) bool {
 func toolSpecsAllowWorkspaceWrite(specs []tools.ToolSpec) bool {
 	for _, s := range specs {
 		switch s.Name {
-		case "write_file", "edit_file", "patch":
+		case "write_file", "write_files", "edit_file", "patch":
 			return true
 		}
 	}
@@ -170,7 +184,43 @@ func toolSpecsAllowWorkspaceWrite(specs []tools.ToolSpec) bool {
 func toolUsesIncludeWorkspaceWrite(uses []llm.ToolUse) bool {
 	for _, u := range uses {
 		switch u.Name {
-		case "write_file", "edit_file", "patch":
+		case "write_file", "write_files", "edit_file", "patch":
+			return true
+		}
+	}
+	return false
+}
+
+// toolResultsHaveEditNotFound reports whether any tool result in the batch
+// is an edit_file failure due to old_string not found.
+func toolResultsHaveEditNotFound(results []llm.ToolResultRecord) bool {
+	for _, r := range results {
+		if r.ToolName == "edit_file" && r.IsError &&
+			strings.Contains(r.Content, "old_string not found") {
+			return true
+		}
+	}
+	return false
+}
+
+// responseAppearsComplete reports whether the assistant's response text looks like a finished
+// answer rather than an incomplete stub. Used to avoid spurious action-continue nudges after
+// genuinely complete replies (e.g. "no changes needed", "done.").
+func responseAppearsComplete(response string) bool {
+	if len(response) < 40 {
+		return false
+	}
+	lower := strings.ToLower(response)
+	completionPhrases := []string{
+		"in summary", "to summarize", "in conclusion",
+		"the changes are complete", "changes are done",
+		"done.", "completed.", "all done", "finished.",
+		"no issues found", "nothing to fix", "no changes needed",
+		"no changes required", "no problems found", "looks good",
+		"everything is ", "task complete", "task is complete",
+	}
+	for _, phrase := range completionPhrases {
+		if strings.Contains(lower, phrase) {
 			return true
 		}
 	}
@@ -180,12 +230,14 @@ func toolUsesIncludeWorkspaceWrite(uses []llm.ToolUse) bool {
 // pickActionContinueNudge returns a synthetic user line to re-prompt the model when it answered
 // with prose but the user turn clearly asked for code/repo changes. Covers (1) first completion
 // with zero tool calls — typical with small local models — and (2) after read-only tools only.
+// response is the assistant's last text output; when it appears complete the nudge is suppressed.
 func (o *Orchestrator) pickActionContinueNudge(
 	userMessage string,
 	toolCalls int,
 	lastBatchReadOnly bool,
 	hadToolRound bool,
 	actionNudges int,
+	response string,
 ) (message string, ok bool) {
 	if o == nil || !o.cfg.AutoContinueActionRequests {
 		return "", false
@@ -200,6 +252,10 @@ func (o *Orchestrator) pickActionContinueNudge(
 		return "", false
 	}
 	if !userMessageWantsWorkspaceWrites(userMessage) {
+		return "", false
+	}
+	// If the response looks genuinely complete, don't nudge — the model is done.
+	if responseAppearsComplete(response) {
 		return "", false
 	}
 	if hadToolRound && lastBatchReadOnly && toolCalls > 0 {

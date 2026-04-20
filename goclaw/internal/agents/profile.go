@@ -243,7 +243,7 @@ func (p Profile) Summary() string {
 	}
 }
 
-var workspaceWriteTools = []string{"write_file", "edit_file", "patch"}
+var workspaceWriteTools = []string{"write_file", "write_files", "create_project", "edit_file", "patch"}
 
 // disallowedToolSet is the set of tool names removed after allowlist filtering (orchestrator.buildRequest).
 func (p Profile) disallowedToolSet() map[string]struct{} {

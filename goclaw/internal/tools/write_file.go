@@ -34,7 +34,7 @@ func (WriteFileTool) Name() string { return "write_file" }
 
 func (WriteFileTool) Description() string {
 	return "Create or overwrite a UTF-8 text file. " +
-		"The parent directory must already exist. Content is written atomically. " +
+		"Missing parent directories are created automatically. Content is written atomically. " +
 		"Symlinks in the parent path are resolved to the real directory; the final path component is not followed, so replacing a symlink file overwrites that path per the OS. " +
 		"Use edit_file for targeted line replacements; use write_file for new files or full rewrites."
 }
@@ -45,11 +45,15 @@ func (WriteFileTool) InputSchema() any {
 		"properties": map[string]any{
 			"path": map[string]any{
 				"type":        "string",
-				"description": "Path relative to launch cwd, or absolute (parent directory must exist). Parent symlinks are resolved; the basename is not symlink-expanded.",
+				"description": "Path relative to launch cwd, or absolute (missing parent directories are created). Parent symlinks are resolved; the basename is not symlink-expanded.",
 			},
 			"content": map[string]any{
 				"type":        "string",
 				"description": "Full UTF-8 content to write (may be empty to create an empty file)",
+			},
+			"append": map[string]any{
+				"type":        "boolean",
+				"description": "If true, append content to the file instead of overwriting. Creates the file if it does not exist. Default: false (overwrite).",
 			},
 		},
 		"required": []string{"path", "content"},
@@ -59,12 +63,13 @@ func (WriteFileTool) InputSchema() any {
 type writeFileInput struct {
 	Path    string `json:"path"`
 	Content string `json:"content"`
+	Append  bool   `json:"append"`
 }
 
 // Execute implements Tool.
 //
 // Path resolution: uses resolveWriteTarget — the target file may not exist yet.
-// EvalSymlinks is called only on the parent directory (which must exist), and the
+// EvalSymlinks is called only on the parent directory (created with MkdirAll if needed), and the
 // filename is appended afterward. This differs from ResolveReadExistingPath,
 // which requires the full path to already exist. Use resolveWriteTarget for any tool
 // that creates or overwrites a file; use ResolveReadExistingPath for read-only tools.
@@ -91,6 +96,13 @@ func (t *WriteFileTool) Execute(_ context.Context, input string) (Result, error)
 		return Result{Content: err.Error(), IsError: true}, nil
 	}
 
+	if in.Append {
+		if err := appendToFile(resolved, []byte(in.Content)); err != nil {
+			return Result{Content: fmt.Sprintf("append file: %v", err), IsError: true}, nil
+		}
+		return Result{Content: fmt.Sprintf("appended %d bytes to %s", len(in.Content), in.Path)}, nil
+	}
+
 	if err := atomicWriteFile(resolved, []byte(in.Content), 0o600); err != nil {
 		return Result{Content: fmt.Sprintf("write file: %v", err), IsError: true}, nil
 	}
@@ -102,6 +114,21 @@ func (t *WriteFileTool) Execute(_ context.Context, input string) (Result, error)
 // EvalSymlinks runs on the parent directory only because the target file may not exist yet.
 func (t *WriteFileTool) resolveWriteTarget(userPath string) (string, error) {
 	return ResolveWriteTargetPath(t.scope, userPath)
+}
+
+// appendToFile opens targetPath for appending (creating it if needed) and writes data.
+// Not atomic — suitable for log-style appends where atomicity is not required.
+func appendToFile(targetPath string, data []byte) error {
+	f, err := os.OpenFile(targetPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open for append: %w", err)
+	}
+	_, writeErr := f.Write(data)
+	closeErr := f.Close()
+	if writeErr != nil {
+		return fmt.Errorf("write: %w", writeErr)
+	}
+	return closeErr
 }
 
 // atomicWriteFile writes data to targetPath atomically via a temp file in the same directory.

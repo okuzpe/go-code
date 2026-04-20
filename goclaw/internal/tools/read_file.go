@@ -75,7 +75,7 @@ type readFileInput struct {
 //
 // Path resolution: ResolveReadExistingPath — the target must already exist.
 // EvalSymlinks is applied to the resolved path. For writes to paths that may not exist yet,
-// use ResolveWriteTargetPath (write_file.go), which resolves only the parent directory.
+// use ResolveWriteTargetPath (write_file.go), which ensures the parent directory exists (MkdirAll) then resolves it.
 func (t *ReadFileTool) Execute(ctx context.Context, input string) (Result, error) {
 	_ = ctx
 	var in readFileInput

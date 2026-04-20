@@ -156,6 +156,94 @@ func (st *Store) RecentContext(max int) (string, error) {
 	if len(list) > max {
 		list = list[:max]
 	}
+	return formatEntryBullets(list), nil
+}
+
+// RelevantContext returns up to max entries ranked by keyword overlap with query.
+// Only entries scoring at or above minScore (0.0–1.0) are included.
+// When query is empty the function falls back to recency order (same as RecentContext).
+func (st *Store) RelevantContext(max int, query string, minScore float64) (string, error) {
+	if max <= 0 {
+		return "", nil
+	}
+	list, err := st.List()
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(query) == "" {
+		if len(list) > max {
+			list = list[:max]
+		}
+		return formatEntryBullets(list), nil
+	}
+	queryTokens := tokenizeQuery(query)
+	type scoredEntry struct {
+		entry Entry
+		score float64
+	}
+	scored := make([]scoredEntry, 0, len(list))
+	for _, e := range list {
+		s := entryRelevanceScore(e, queryTokens)
+		if s >= minScore {
+			scored = append(scored, scoredEntry{entry: e, score: s})
+		}
+	}
+	// Stable sort by score descending; recency (from List) breaks ties.
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+	if len(scored) > max {
+		scored = scored[:max]
+	}
+	out := make([]Entry, len(scored))
+	for i, se := range scored {
+		out[i] = se.entry
+	}
+	return formatEntryBullets(out), nil
+}
+
+// tokenizeQuery lowercases and splits s into unique tokens (3+ chars, stop words removed).
+func tokenizeQuery(s string) map[string]struct{} {
+	tokens := make(map[string]struct{})
+	for _, word := range strings.Fields(strings.ToLower(s)) {
+		word = strings.Trim(word, ".,!?;:\"'`()[]{}")
+		if len(word) >= 3 && !isStopWord(word) {
+			tokens[word] = struct{}{}
+		}
+	}
+	return tokens
+}
+
+// entryRelevanceScore returns the fraction of query tokens found anywhere in the entry text.
+func entryRelevanceScore(e Entry, queryTokens map[string]struct{}) float64 {
+	if len(queryTokens) == 0 {
+		return 0
+	}
+	corpus := strings.ToLower(e.Name + " " + e.Description + " " + e.Body)
+	hits := 0
+	for token := range queryTokens {
+		if strings.Contains(corpus, token) {
+			hits++
+		}
+	}
+	return float64(hits) / float64(len(queryTokens))
+}
+
+var memoryStopWords = map[string]struct{}{
+	"the": {}, "and": {}, "for": {}, "with": {}, "that": {},
+	"this": {}, "are": {}, "was": {}, "has": {}, "have": {},
+	"from": {}, "not": {}, "but": {}, "you": {}, "can": {},
+	"its": {}, "will": {}, "would": {}, "should": {}, "could": {},
+}
+
+func isStopWord(word string) bool {
+	_, ok := memoryStopWords[word]
+	return ok
+}
+
+// formatEntryBullets renders a bullet list from a slice of entries.
+// Extracted from RecentContext so both functions share the same rendering logic.
+func formatEntryBullets(list []Entry) string {
 	var sb strings.Builder
 	for _, e := range list {
 		sb.WriteString("- ")
@@ -168,7 +256,7 @@ func (st *Store) RecentContext(max int) (string, error) {
 		}
 		sb.WriteByte('\n')
 	}
-	return strings.TrimSpace(sb.String()), nil
+	return strings.TrimSpace(sb.String())
 }
 
 func sanitizeBaseName(s string) string {

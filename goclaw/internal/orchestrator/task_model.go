@@ -104,6 +104,11 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 		"implement", "debug", "panic", "stack trace", "compil",
 		"unit test", "typescript", "javascript", "golang", "python", "error:",
 		"stacktrace", "lint ", "pull request", "git commit", "commit message",
+		// Project creation / scaffolding — Spanish + English imperatives.
+		"crear ", "crear un", "crea el", "crear el", "crear la", "crea la",
+		"construir", "hazme", "hazme un", "construye",
+		"create a ", "create an ", "scaffold", "new project", "nuevo proyecto",
+		"proyecto ", " project",
 	}
 	if strings.Contains(m, "```") || containsAny(lower, codeKeywords) {
 		return "code"

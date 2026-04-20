@@ -164,7 +164,11 @@ func pluginSkillMemorySection(rt *ChatRuntime) []string {
 		}
 	}
 	out = append(out, fmt.Sprintf("  memory entries (.md): %d", memCount))
-	out = append(out, checkLine("memory index MEMORY.md present", memIndex))
+	if memIndex {
+		out = append(out, checkLine("memory index MEMORY.md present under ~/.goclaw/memory/", true))
+	} else {
+		out = append(out, "  ✗ memory index MEMORY.md missing (optional; create ~/.goclaw/memory/MEMORY.md or add memory entries)")
+	}
 	return out
 }
 

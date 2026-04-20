@@ -16,9 +16,23 @@ import (
 var baseSystemPrompt string
 
 const (
-	memorySnippetEntries = 4    // max memory entries injected per store
-	memoryMaxBytes       = 4096 // max bytes per memory block to prevent silent context bloat
+	memorySnippetEntries    = 8     // max memory entries injected per store (relevance-scored)
+	memoryMaxBytes          = 4096  // max bytes per memory block to prevent silent context bloat
+	memoryRelevanceMinScore = 0.15  // minimum relevance score (0–1) to include a memory entry
 )
+
+// qwenFamily reports whether the model string refers to a Qwen-family model.
+func qwenFamily(model string) bool {
+	return strings.Contains(strings.ToLower(model), "qwen")
+}
+
+// qwenSystemSuffix is appended to the system prompt when running a Qwen-family model.
+// Qwen 2.5 follows explicit numbered steps more reliably than free-form instructions.
+const qwenSystemSuffix = "\n\n[MODEL NOTE: Follow explicit numbered steps. " +
+	"For multi-step tasks: (1) state what you will do, " +
+	"(2) group tool calls logically, " +
+	"(3) confirm result before the next step. " +
+	"Use <thinking>...</thinking> only for complex trade-off reasoning, not for simple lookups.]"
 
 // effectiveToolSpecs returns registry specs after profile allowlist, disallowed, and read-only stripping.
 func (o *Orchestrator) effectiveToolSpecs() []tools.ToolSpec {
@@ -105,13 +119,13 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		sys = sys + "\n\n## Loaded skills (SKILL.md)\n" + o.skillsPrompt
 	}
 	if o.mem != nil {
-		if block, err := o.mem.RecentContext(memorySnippetEntries); err == nil && block != "" {
+		if block, err := o.mem.RelevantContext(memorySnippetEntries, o.turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
 			block = truncateMemoryBlock(block, memoryMaxBytes)
-			sys = sys + "\n\n## Persistent memory (recent)\n" + block
+			sys = sys + "\n\n## Persistent memory (relevant)\n" + block
 		}
 	}
 	if o.projectMem != nil {
-		if block, err := o.projectMem.RecentContext(memorySnippetEntries); err == nil && block != "" {
+		if block, err := o.projectMem.RelevantContext(memorySnippetEntries, o.turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
 			block = truncateMemoryBlock(block, memoryMaxBytes)
 			sys = sys + "\n\n## Project memory (.goclaw/memory)\n" + block
 		}
@@ -128,6 +142,10 @@ func (o *Orchestrator) buildRequest() llm.Request {
 
 	if hint := userLanguageSystemSuffix(lastUserNaturalText(o.session.Messages), o.cfg); hint != "" {
 		sys = sys + hint
+	}
+
+	if qwenFamily(model) {
+		sys = sys + qwenSystemSuffix
 	}
 
 	// Budget reminder: inject once we are past the halfway point of available iterations,

@@ -112,16 +112,17 @@ func TestWriteFileAtExactSizeCap(t *testing.T) {
 	require.Len(t, got, MaxWriteFileBytes)
 }
 
-func TestWriteFileParentDirectoryMissing(t *testing.T) {
+func TestWriteFileCreatesMissingParentDirectories(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewWriteFile(dir)
 
 	input := mustJSON(t, map[string]any{"path": "nonexistent-dir/file.txt", "content": "x"})
 	res, err := tool.Execute(context.Background(), input)
 	require.NoError(t, err)
-	require.True(t, res.IsError)
-	require.Contains(t, res.Content, "parent directory")
-	require.Contains(t, res.Content, "does not exist")
+	require.False(t, res.IsError, "content=%s", res.Content)
+	got, err := os.ReadFile(filepath.Join(dir, "nonexistent-dir", "file.txt"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("x"), got)
 }
 
 func TestWriteFileRequiresPath(t *testing.T) {
