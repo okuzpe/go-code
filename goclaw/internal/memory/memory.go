@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Type classifies a memory entry.
@@ -32,7 +34,19 @@ type Entry struct {
 	Description string
 	Type        Type
 	Body        string
-	Filename    string // base name on disk, set by Load/List
+	Filename    string    // base name on disk, set by Load/List
+	ExpiresAt   time.Time // zero = never expires; set via "expires_at: YYYY-MM-DD" in frontmatter
+}
+
+// IsExpired reports whether the entry has a non-zero expiry that is in the past.
+func (e Entry) IsExpired() bool {
+	return !e.ExpiresAt.IsZero() && time.Now().After(e.ExpiresAt)
+}
+
+// entryWithMtime pairs an entry with the file's modification time for decay scoring.
+type entryWithMtime struct {
+	entry Entry
+	mtime time.Time
 }
 
 // Store is a filesystem-backed memory store rooted at a directory.
@@ -86,31 +100,39 @@ func (st *Store) Load(basename string) (*Entry, error) {
 	return &e, nil
 }
 
-// List returns all entries sorted by modification time (newest first).
+// List returns all non-expired entries sorted by modification time (newest first).
 func (st *Store) List() ([]Entry, error) {
-	entries, err := os.ReadDir(st.dir)
+	withTimes, err := st.listWithMtime()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Entry, 0, len(withTimes))
+	for _, w := range withTimes {
+		out = append(out, w.entry)
+	}
+	return out, nil
+}
+
+// listWithMtime returns all non-expired entries paired with their file mtime, newest first.
+func (st *Store) listWithMtime() ([]entryWithMtime, error) {
+	dirEntries, err := os.ReadDir(st.dir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("memory store: readdir: %w", err)
 	}
-	type withTime struct {
-		e Entry
-		t int64
-	}
-	tmp := make([]withTime, 0, len(entries))
-	for _, ent := range entries {
-		name := ent.Name()
+	tmp := make([]entryWithMtime, 0, len(dirEntries))
+	for _, de := range dirEntries {
+		name := de.Name()
 		if !strings.HasSuffix(name, ".md") || name == "MEMORY.md" {
 			continue
 		}
-		path := filepath.Join(st.dir, name)
-		info, err := ent.Info()
+		info, err := de.Info()
 		if err != nil {
 			continue
 		}
-		raw, err := os.ReadFile(path)
+		raw, err := os.ReadFile(filepath.Join(st.dir, name))
 		if err != nil {
 			continue
 		}
@@ -118,15 +140,16 @@ func (st *Store) List() ([]Entry, error) {
 		if err != nil {
 			continue
 		}
+		if e.IsExpired() {
+			continue
+		}
 		e.Filename = name
-		tmp = append(tmp, withTime{e: e, t: info.ModTime().UnixNano()})
+		tmp = append(tmp, entryWithMtime{entry: e, mtime: info.ModTime()})
 	}
-	sort.Slice(tmp, func(i, j int) bool { return tmp[i].t > tmp[j].t })
-	out := make([]Entry, 0, len(tmp))
-	for _, w := range tmp {
-		out = append(out, w.e)
-	}
-	return out, nil
+	sort.Slice(tmp, func(i, j int) bool {
+		return tmp[i].mtime.After(tmp[j].mtime)
+	})
+	return tmp, nil
 }
 
 // Delete removes one entry file by basename.
@@ -159,36 +182,66 @@ func (st *Store) RecentContext(max int) (string, error) {
 	return formatEntryBullets(list), nil
 }
 
-// RelevantContext returns up to max entries ranked by keyword overlap with query.
-// Only entries scoring at or above minScore (0.0–1.0) are included.
+// RelevantContext returns up to max entries ranked by BM25 against query,
+// with an age-decay penalty applied to older entries.
+// Only entries scoring at or above minScore (0.0–1.0, normalized) after decay are included.
 // When query is empty the function falls back to recency order (same as RecentContext).
 func (st *Store) RelevantContext(max int, query string, minScore float64) (string, error) {
 	if max <= 0 {
 		return "", nil
 	}
-	list, err := st.List()
+	withTimes, err := st.listWithMtime()
 	if err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(query) == "" {
+		list := make([]Entry, 0, len(withTimes))
+		for _, w := range withTimes {
+			list = append(list, w.entry)
+		}
 		if len(list) > max {
 			list = list[:max]
 		}
 		return formatEntryBullets(list), nil
 	}
-	queryTokens := tokenizeQuery(query)
+
+	// Build BM25 corpus from all entry texts.
+	docTokens := make([][]string, len(withTimes))
+	for i, w := range withTimes {
+		text := w.entry.Name + " " + w.entry.Description + " " + w.entry.Body
+		docTokens[i] = tokenizeTerms(text)
+	}
+	corpus := newBM25Corpus(docTokens)
+	queryTerms := uniqueTerms(tokenizeTerms(query))
+
+	// Score every document; track the max to normalize scores to [0, 1].
+	rawScores := make([]float64, len(withTimes))
+	maxRaw := 0.0
+	for i := range withTimes {
+		s := corpus.score(i, queryTerms)
+		rawScores[i] = s
+		if s > maxRaw {
+			maxRaw = s
+		}
+	}
+
+	now := time.Now()
 	type scoredEntry struct {
 		entry Entry
 		score float64
 	}
-	scored := make([]scoredEntry, 0, len(list))
-	for _, e := range list {
-		s := entryRelevanceScore(e, queryTokens)
-		if s >= minScore {
-			scored = append(scored, scoredEntry{entry: e, score: s})
+	scored := make([]scoredEntry, 0, len(withTimes))
+	for i, w := range withTimes {
+		if rawScores[i] == 0 || maxRaw == 0 {
+			continue
+		}
+		normalized := rawScores[i] / maxRaw // [0, 1] — best match is always 1.0
+		decayed := applyAgeDecay(normalized, w.mtime, now, w.entry.Type)
+		if decayed >= minScore {
+			scored = append(scored, scoredEntry{entry: w.entry, score: decayed})
 		}
 	}
-	// Stable sort by score descending; recency (from List) breaks ties.
+	// Stable sort by score descending; recency (list order) breaks ties.
 	sort.SliceStable(scored, func(i, j int) bool {
 		return scored[i].score > scored[j].score
 	})
@@ -202,38 +255,65 @@ func (st *Store) RelevantContext(max int, query string, minScore float64) (strin
 	return formatEntryBullets(out), nil
 }
 
-// tokenizeQuery lowercases and splits s into unique tokens (3+ chars, stop words removed).
-func tokenizeQuery(s string) map[string]struct{} {
-	tokens := make(map[string]struct{})
-	for _, word := range strings.Fields(strings.ToLower(s)) {
-		word = strings.Trim(word, ".,!?;:\"'`()[]{}")
-		if len(word) >= 3 && !isStopWord(word) {
-			tokens[word] = struct{}{}
-		}
-	}
-	return tokens
-}
-
-// entryRelevanceScore returns the fraction of query tokens found anywhere in the entry text.
-func entryRelevanceScore(e Entry, queryTokens map[string]struct{}) float64 {
-	if len(queryTokens) == 0 {
+// applyAgeDecay multiplies a relevance score by a decay factor based on how old the entry is.
+// Decay rate varies by type: project entries decay faster (2-week half-life) since they go stale,
+// while feedback and user entries decay slowly (12-week half-life) as they remain useful longer.
+// Reference entries do not decay (they point to external systems that don't expire).
+func applyAgeDecay(score float64, mtime, now time.Time, entryType Type) float64 {
+	if score == 0 {
 		return 0
 	}
-	corpus := strings.ToLower(e.Name + " " + e.Description + " " + e.Body)
-	hits := 0
-	for token := range queryTokens {
-		if strings.Contains(corpus, token) {
-			hits++
-		}
+	age := now.Sub(mtime)
+	if age <= 0 {
+		return score
 	}
-	return float64(hits) / float64(len(queryTokens))
+	weeks := age.Hours() / (7 * 24)
+
+	var halfLifeWeeks float64
+	switch entryType {
+	case TypeProject:
+		halfLifeWeeks = 2 // project facts go stale quickly
+	case TypeReference:
+		return score // reference entries point to external systems; no decay
+	case TypeUser:
+		halfLifeWeeks = 16 // user preferences change slowly
+	default: // TypeFeedback and unknown
+		halfLifeWeeks = 12
+	}
+
+	// Exponential decay: score * 0.5^(age/halfLife). Floor at 0.1 so old entries are
+	// never completely invisible — they can still surface if they're the only match.
+	decay := math.Pow(0.5, weeks/halfLifeWeeks)
+	if decay < 0.1 {
+		decay = 0.1
+	}
+	return score * decay
 }
 
+
 var memoryStopWords = map[string]struct{}{
+	// English — articles, pronouns, auxiliaries, prepositions, conjunctions
 	"the": {}, "and": {}, "for": {}, "with": {}, "that": {},
 	"this": {}, "are": {}, "was": {}, "has": {}, "have": {},
 	"from": {}, "not": {}, "but": {}, "you": {}, "can": {},
 	"its": {}, "will": {}, "would": {}, "should": {}, "could": {},
+	"been": {}, "being": {}, "were": {}, "had": {}, "did": {},
+	"does": {}, "into": {}, "over": {}, "also": {}, "just": {},
+	"more": {}, "than": {}, "when": {}, "then": {}, "they": {},
+	"them": {}, "their": {}, "there": {}, "what": {}, "which": {},
+	"who": {}, "how": {}, "all": {}, "each": {}, "any": {},
+	"some": {}, "such": {}, "use": {}, "used": {}, "using": {},
+	"may": {}, "must": {}, "need": {}, "make": {}, "made": {},
+	"only": {}, "very": {}, "well": {}, "even": {}, "here": {},
+	"these": {}, "those": {}, "about": {}, "after": {}, "before": {},
+	// Spanish function words — won't appear in normal English text
+	"los": {}, "las": {}, "del": {}, "por": {}, "con": {},
+	"para": {}, "una": {}, "como": {}, "sus": {}, "les": {},
+	"hay": {}, "cuando": {}, "donde": {}, "entre": {}, "sobre": {},
+	"hasta": {}, "desde": {}, "antes": {}, "también": {}, "porque": {},
+	"aunque": {}, "cada": {}, "todos": {}, "todas": {}, "muy": {},
+	"bien": {}, "entonces": {}, "ahora": {}, "este": {}, "esta": {},
+	"ese": {}, "esa": {}, "eso": {}, "nos": {}, "más": {},
 }
 
 func isStopWord(word string) bool {
@@ -241,8 +321,10 @@ func isStopWord(word string) bool {
 	return ok
 }
 
-// formatEntryBullets renders a bullet list from a slice of entries.
-// Extracted from RecentContext so both functions share the same rendering logic.
+const entryBodySnippetMaxRunes = 220 // max runes of body shown per entry in context injection
+
+// formatEntryBullets renders a bullet list from a slice of entries, including a truncated
+// body snippet so the model sees the actual content (why / how to apply) not just the title.
 func formatEntryBullets(list []Entry) string {
 	var sb strings.Builder
 	for _, e := range list {
@@ -255,8 +337,26 @@ func formatEntryBullets(list []Entry) string {
 			sb.WriteString(e.Description)
 		}
 		sb.WriteByte('\n')
+		if body := strings.TrimSpace(e.Body); body != "" {
+			snippet := truncateRunes(body, entryBodySnippetMaxRunes)
+			// Indent each body line by two spaces for readability.
+			for line := range strings.SplitSeq(snippet, "\n") {
+				sb.WriteString("  ")
+				sb.WriteString(line)
+				sb.WriteByte('\n')
+			}
+		}
 	}
 	return strings.TrimSpace(sb.String())
+}
+
+// truncateRunes returns s truncated to at most max runes, appending "…" when trimmed.
+func truncateRunes(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max]) + "…"
 }
 
 func sanitizeBaseName(s string) string {
@@ -289,6 +389,10 @@ func formatEntryFile(e Entry) string {
 	sb.WriteString(escapeYAMLLine(e.Name))
 	sb.WriteString("\ndescription: ")
 	sb.WriteString(escapeYAMLLine(e.Description))
+	if !e.ExpiresAt.IsZero() {
+		sb.WriteString("\nexpires_at: ")
+		sb.WriteString(e.ExpiresAt.UTC().Format("2006-01-02"))
+	}
 	sb.WriteString("\n---\n")
 	sb.WriteString(strings.TrimSpace(e.Body))
 	if e.Body != "" && !strings.HasSuffix(e.Body, "\n") {
@@ -308,20 +412,19 @@ func parseEntryFile(data string) (Entry, error) {
 		return Entry{}, fmt.Errorf("memory store: missing frontmatter")
 	}
 	rest := strings.TrimPrefix(data, "---\n")
-	end := strings.Index(rest, "\n---\n")
-	if end < 0 {
+	fm, body, ok := strings.Cut(rest, "\n---\n")
+	if !ok {
 		return Entry{}, fmt.Errorf("memory store: invalid frontmatter")
 	}
-	fm := rest[:end]
-	body := strings.TrimSpace(rest[end+len("\n---\n"):])
+	body = strings.TrimSpace(body)
 	var e Entry
-	for _, line := range strings.Split(fm, "\n") {
+	for line := range strings.SplitSeq(fm, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		k, v, ok := strings.Cut(line, ":")
-		if !ok {
+		k, v, found := strings.Cut(line, ":")
+		if !found {
 			continue
 		}
 		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
@@ -332,6 +435,10 @@ func parseEntryFile(data string) (Entry, error) {
 			e.Name = v
 		case "description":
 			e.Description = v
+		case "expires_at":
+			if t, err := time.Parse("2006-01-02", v); err == nil {
+				e.ExpiresAt = t.UTC()
+			}
 		}
 	}
 	e.Body = body

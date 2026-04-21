@@ -64,6 +64,17 @@ func (o *Orchestrator) executeTool(ctx context.Context, tu *llm.ToolUse, sink St
 	return out
 }
 
+// cachableTool reports whether a tool's results may be cached within a single turn.
+// Only pure read-only tools with deterministic-enough output qualify.
+// web_search is included: duplicate queries within the same turn should hit the same results.
+func cachableTool(name string) bool {
+	switch name {
+	case "glob", "grep", "web_search":
+		return true
+	}
+	return false
+}
+
 func (o *Orchestrator) executeToolOnce(ctx context.Context, tu *llm.ToolUse, sink StreamSink) toolOutcome {
 	if sink != nil {
 		ctx = ContextWithStreamSink(ctx, sink)
@@ -75,6 +86,16 @@ func (o *Orchestrator) executeToolOnce(ctx context.Context, tu *llm.ToolUse, sin
 	if outcome, blocked := o.checkApproval(ctx, tu); blocked {
 		return outcome
 	}
+
+	// Serve from per-turn cache for idempotent read-only tools (glob, grep).
+	if cachableTool(tu.Name) && o.turnToolCache != nil {
+		cacheKey := tu.Name + ":" + tu.Input
+		if cached, hit := o.turnToolCache[cacheKey]; hit {
+			slog.Debug("tool cache hit", "tool", tu.Name)
+			return toolOutcome{Content: cached}
+		}
+	}
+
 	if err := o.hooks.Fire(ctx, hooks.Event{
 		Type:     hooks.PreToolUse,
 		ToolName: tu.Name,
@@ -87,7 +108,15 @@ func (o *Orchestrator) executeToolOnce(ctx context.Context, tu *llm.ToolUse, sin
 		return rejectTool(fmt.Sprintf("unknown tool %q", tu.Name))
 	}
 	res, execErr := t.Execute(ctx, tu.Input)
-	return o.finishToolExecution(ctx, tu.Name, tu.Input, res.Content, res.IsError, execErr)
+	outcome := o.finishToolExecution(ctx, tu.Name, tu.Input, res.Content, res.IsError, execErr)
+
+	// Populate cache on success for cachable tools.
+	if cachableTool(tu.Name) && !outcome.IsError && outcome.Err == nil && o.turnToolCache != nil {
+		cacheKey := tu.Name + ":" + tu.Input
+		o.turnToolCache[cacheKey] = outcome.Content
+	}
+
+	return outcome
 }
 
 // finishToolExecution runs post-tool hooks and maps execution result to a toolOutcome.
@@ -123,7 +152,7 @@ func (o *Orchestrator) checkReadOnly(toolName string) (toolOutcome, bool) {
 		return rejectTool("mcp tools are disabled for read-only profiles"), true
 	}
 	switch toolName {
-	case "bash", "write_file", "write_files", "create_project", "edit_file", "patch":
+	case "bash", "script", "write_file", "write_files", "create_project", "edit_file", "patch", "run_tests", "git_tool":
 		return rejectTool(fmt.Sprintf("%s is blocked for read-only profile", toolName)), true
 	}
 	return toolOutcome{}, false

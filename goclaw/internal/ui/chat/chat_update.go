@@ -409,8 +409,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.toolRunLineIdx = nil
 		m.toolWaitQueue = nil
 		if n := len(m.messageQueue); n > 0 {
-			m.messageQueue = nil
-			m.appendSystem(fmt.Sprintf("(dropped %d queued message(s) after error)", n))
+			kept := m.messageQueue[0]
+			m.messageQueue = []string{kept}
+			m.appendSystem(fmt.Sprintf("(kept 1 of %d queued message(s) after error — edit and resend, or use /continue)", n))
 		}
 		m.idleTranscriptHint = ""
 		m.footerHint = ""

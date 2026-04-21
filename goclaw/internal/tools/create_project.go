@@ -32,7 +32,7 @@ func (CreateProjectTool) Name() string { return "create_project" }
 
 func (CreateProjectTool) Description() string {
 	return "Scaffold a new project directory from a built-in template. " +
-		"Supported types: go, nodejs, python, electron. " +
+		"Supported types: go, nodejs, python, electron, react, fastapi. " +
 		"Creates the directory tree and boilerplate files (go.mod, main.go, package.json, main.js, etc.). " +
 		"Does NOT run package managers — use bash after scaffolding to run 'go mod tidy', 'npm install', etc."
 }
@@ -43,7 +43,7 @@ func (CreateProjectTool) InputSchema() any {
 		"properties": map[string]any{
 			"type": map[string]any{
 				"type":        "string",
-				"enum":        []string{"go", "nodejs", "python", "electron"},
+				"enum":        []string{"go", "nodejs", "python", "electron", "react", "fastapi"},
 				"description": "Project template type.",
 			},
 			"name": map[string]any{
@@ -176,6 +176,121 @@ npm start
 ` + "```" + `
 `,
 	},
+	"react": {
+		"package.json": `{
+  "name": "{{NAME}}",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "@vitejs/plugin-react": "^4.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }
+}
+`,
+		"vite.config.js": `import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({ plugins: [react()] });
+`,
+		"index.html": `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{NAME}}</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
+`,
+		"src/main.jsx": `import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.jsx";
+import "./index.css";
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+`,
+		"src/App.jsx": `import React from "react";
+
+export default function App() {
+  return (
+    <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
+      <h1>{{NAME}}</h1>
+      <p>Edit <code>src/App.jsx</code> to get started.</p>
+    </div>
+  );
+}
+`,
+		"src/index.css": `*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; }
+`,
+		".gitignore": "node_modules/\ndist/\n.env\n*.log\n",
+		"README.md": `# {{NAME}}
+
+React app powered by Vite.
+
+## Run
+
+` + "```" + `bash
+npm install
+npm run dev
+` + "```" + `
+`,
+	},
+	"fastapi": {
+		"pyproject.toml": `[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "{{NAME}}"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["fastapi>=0.111", "uvicorn[standard]>=0.29"]
+`,
+		"src/{{NAME}}/main.py": `from fastapi import FastAPI
+
+app = FastAPI(title="{{NAME}}")
+
+
+@app.get("/")
+def root() -> dict:
+    return {"message": "Hello from {{NAME}}!"}
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+`,
+		"src/{{NAME}}/__init__.py": "# {{NAME}}\n",
+		".gitignore":               "__pycache__/\n*.py[cod]\n*.egg-info/\ndist/\nbuild/\n.venv/\n.env\n",
+		"README.md": `# {{NAME}}
+
+FastAPI application.
+
+## Run
+
+` + "```" + `bash
+pip install -e .
+uvicorn {{NAME}}.main:app --reload
+` + "```" + `
+`,
+	},
 }
 
 // Execute implements Tool.
@@ -201,7 +316,7 @@ func (t *CreateProjectTool) Execute(_ context.Context, input string) (Result, er
 
 	tmpl, ok := projectTemplates[in.Type]
 	if !ok {
-		return Result{Content: fmt.Sprintf("unsupported project type %q; valid types: go, nodejs, python, electron", in.Type), IsError: true}, nil
+		return Result{Content: fmt.Sprintf("unsupported project type %q; valid types: go, nodejs, python, electron, react, fastapi", in.Type), IsError: true}, nil
 	}
 
 	results := make([]string, 0, len(tmpl))

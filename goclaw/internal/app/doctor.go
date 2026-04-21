@@ -107,6 +107,7 @@ func DoctorReportFromRuntime(_ context.Context, rt *ChatRuntime) string {
 					lines = append(lines, "    fix: ollama pull "+modelName)
 				}
 			}
+			lines = append(lines, ollamaExtraModelCheckLines(cfg, probe.ModelNames)...)
 		}
 		if OllamaFunctionToolsDropped(rt) {
 			lines = append(lines, "  ✗ ollama rejected tool calling — running text-only this session")
@@ -633,6 +634,40 @@ func telegramDoctorLines(rt *ChatRuntime) []string {
 	}
 	if sid := strings.TrimSpace(cfg.TelegramSessionID); sid != "" {
 		out = append(out, fmt.Sprintf("  telegram_session_id: %s (when --session is omitted)", sid))
+	}
+	return out
+}
+
+// ollamaExtraModelCheckLines verifies that compaction_model and task_models entries are present
+// in the Ollama library and emits ✓/✗ lines for each one that is explicitly configured.
+func ollamaExtraModelCheckLines(cfg config.Config, listedNames []string) []string {
+	var out []string
+	mainModel := strings.TrimSpace(cfg.Model())
+
+	if cm := strings.TrimSpace(cfg.CompactionModel); cm != "" && cm != mainModel {
+		inLibrary := ollamaModelNameListed(cm, listedNames)
+		out = append(out, checkLine("compaction_model in local ollama library ("+cm+")", inLibrary))
+		if !inLibrary {
+			out = append(out, "    fix: ollama pull "+cm)
+		}
+	}
+
+	// De-duplicate task_models values — multiple roles can share the same model tag.
+	seen := make(map[string]struct{})
+	for role, modelTag := range cfg.TaskModels {
+		tag := strings.TrimSpace(modelTag)
+		if tag == "" || tag == mainModel {
+			continue
+		}
+		if _, already := seen[tag]; already {
+			continue
+		}
+		seen[tag] = struct{}{}
+		inLibrary := ollamaModelNameListed(tag, listedNames)
+		out = append(out, checkLine("task_models["+role+"] ("+tag+") in local ollama library", inLibrary))
+		if !inLibrary {
+			out = append(out, "    fix: ollama pull "+tag)
+		}
 	}
 	return out
 }

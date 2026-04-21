@@ -187,6 +187,17 @@ type Config struct {
 	// PluginDeny: manifests with Name in this list never load (deny wins).
 	PluginDeny []string
 
+	// EnableReflectionNudge when true: after reflectionTriggerRounds (3) read-only tool rounds with no
+	// workspace write on a code/fix task, inject a self-assessment prompt asking the model to stop
+	// reading and start editing. Lightweight (no extra LLM call). Default false; JSON: enable_reflection_nudge.
+	EnableReflectionNudge bool
+
+	// NormalizeInputLanguage when true: before each LLM turn, if the user message is detected as
+	// non-English, a lightweight Ollama call translates it to English using the compaction model.
+	// The session stores the English version; the language-reply hint still fires so the model
+	// answers in the user's language. Default false. JSON: normalize_input_language.
+	NormalizeInputLanguage bool
+
 	// MemoryAutoExtract when true: after successful write_file/edit_file, append a short project memory line (path only).
 	MemoryAutoExtract bool
 
@@ -299,6 +310,8 @@ func Default() Config {
 		LLMCompaction:                true,
 		AutoContinueActionRequests:   true,
 		TruthFooterNoWorkspaceWrites: true,
+		EnableReflectionNudge:        true,
+		NormalizeInputLanguage:       true,
 		AutoProfileIntent:            NormalizeAutoProfileIntent(envOr("GOCLAW_AUTO_PROFILE_INTENT", "off")),
 		AutoDirectCodingProfile:      NormalizeAutoDirectCodingProfile(envOr("GOCLAW_AUTO_DIRECT_CODING_PROFILE", "off")),
 		ActionRepairEscalation:       envTruthy("GOCLAW_ACTION_REPAIR_ESCALATION"),
@@ -353,6 +366,7 @@ func defaultTaskModels() map[string]string {
 		"code":      main,
 		"reasoning": coderLarge,
 		"creative":  coderLarge,
+		"research":  coderSmall, // web synthesis is text-heavy, not code-heavy — small model is fine
 		"explore":   coderSmall,
 		"fast":      coderSmall,
 		"default":   coderSmall,

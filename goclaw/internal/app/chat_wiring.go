@@ -468,6 +468,8 @@ func registerBuiltInTools(r *tools.Registry, toolRoot string, launchDir string, 
 	r.Register(tools.NewWriteFileScope(pathScope))
 	r.Register(tools.NewWriteFilesScope(pathScope))
 	r.Register(tools.NewCreateProjectScope(pathScope))
+	r.Register(tools.NewRunTestsScope(pathScope, cfg.BashTimeoutSeconds()))
+	r.Register(tools.NewGitToolScope(pathScope))
 	r.Register(tools.NewEditFileScope(pathScope))
 	r.Register(tools.NewPatchScope(pathScope))
 	r.Register(tools.NewWebFetch())

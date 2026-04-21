@@ -56,6 +56,10 @@ func ToolPhaseHeadline(toolName string) string {
 		return "Reading files"
 	case "write_file", "write_files", "create_project", "edit_file", "patch":
 		return "Workspace edit"
+	case "run_tests":
+		return "Tests"
+	case "git_tool":
+		return "Git"
 	case "bash", "script":
 		return "Shell"
 	case "web_fetch", "web_search":

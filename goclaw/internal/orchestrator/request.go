@@ -140,8 +140,12 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		sys = sys + hint
 	}
 
-	if hint := userLanguageSystemSuffix(lastUserNaturalText(o.session.Messages), o.cfg); hint != "" {
-		sys = sys + hint
+	// When input translation is active (normalize_input_language), the session already holds the
+	// English translation so detecting the language from session text would produce "en" and instruct
+	// the model to reply in English. turnInputLang holds the original language tag detected before
+	// translation; use it directly when available to preserve the user's language.
+	if langHint := langReplyHint(o.turnInputLang, o.cfg, o.session.Messages); langHint != "" {
+		sys = sys + langHint
 	}
 
 	if qwenFamily(model) {

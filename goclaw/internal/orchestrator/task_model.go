@@ -27,7 +27,56 @@ var validTaskRoles = map[string]struct{}{
 	"explore":   {},
 	"creative":  {},
 	"fix":       {},
+	"research":  {},
 }
+
+var fixIntentKeywords = []string{
+	"revisa", "arregla", "arreglalo", "arreglarlo", "encuentra gaps", "find gaps",
+	"fix ", "review and fix", "audit and", "improve", "mejorar", "mejoras",
+	"refactor", "clean up", "find issues", "identify and fix", "diagnose", "detecta",
+	"find and fix", "gaps para", "propon", "propón", "proponer", "pulir", "pulirlo",
+	"puedes mejorar", "puedes arreglar", "puedes revisar", "y arregla", "y mejora",
+	"y propon", "y propón",
+	"pulelo", "puledlo", "encuentres", "analices", "examina",
+	"revisalo", "revísalo", "busca gaps", "busca errores",
+	"arreglame", "arréglame", "encuentra y", "analiza y",
+}
+
+var reasoningIntentKeywords = []string{
+	"why ", "step by step", "prove ", "analiz", "analyze",
+	"trade-off", "tradeoff", "implic", "explain",
+}
+
+var codeIntentKeywords = []string{
+	"implement", "debug", "panic", "stack trace", "compil",
+	"unit test", "typescript", "javascript", "golang", "python", "error:",
+	"stacktrace", "lint ", "pull request", "git commit", "commit message",
+	"crear ", "crear un", "crea el", "crear el", "crear la", "crea la",
+	"construir", "hazme", "hazme un", "construye",
+	"create a ", "create an ", "scaffold", "new project", "nuevo proyecto",
+	"proyecto ", " project",
+}
+
+var researchIntentKeywords = []string{
+	"best practices for", "best practice for",
+	"mejores prácticas", "mejores practicas",
+	"which library", "what library", "qué librería", "que libreria",
+	"compare ", "alternatives to", "alternativas a",
+	"latest version", "última versión", "ultima version",
+	"documentation for", "documentación", "documentacion",
+	"tutorial for", "tutorial de",
+	"how does it work", "how do i", "cómo funciona", "como funciona",
+	"what is the best way", "cuál es la mejor", "cual es la mejor",
+	"pros and cons", "pros y contras",
+	"should i use", "debería usar", "deberia usar",
+	"recommended approach", "enfoque recomendado",
+	"is there a way to", "hay alguna forma de",
+	"what are the", "cuáles son los", "cuales son los",
+	"search the web", "busca en internet", "busca en la web",
+	"look up", "find information about",
+}
+
+var creativeIntentKeywords = []string{"brainstorm", "marketing", "slogan", "poem", "creative", "story "}
 
 func containsAny(s string, keywords []string) bool {
 	for _, kw := range keywords {
@@ -57,11 +106,29 @@ func rulesRouterHighConfidence(msg, rulesRole string) bool {
 	switch rulesRole {
 	case "fast":
 		return runes < 60
-	case "explore":
+	case "explore", "research":
+		// Strong keyword signals — LLM router adds no value.
 		return true
 	default:
 		return false
 	}
+}
+
+func rulesRouterLowConfidence(msg, rulesRole string) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(msg))
+	if trimmed == "" {
+		return true
+	}
+	runes := utf8.RuneCountInString(trimmed)
+	// Ambiguous short asks should prefer default routing over strong role claims.
+	if runes < 24 && (rulesRole == "fix" || rulesRole == "reasoning" || rulesRole == "research") {
+		return true
+	}
+	// Mixed-intent prompts often include both "analyze" and "implement" but remain underspecified.
+	if strings.Contains(trimmed, "analy") && strings.Contains(trimmed, "implement") && runes < 80 {
+		return true
+	}
+	return false
 }
 
 // classifyTaskRoleRules scores the user message with lightweight heuristics (no extra LLM calls).
@@ -77,49 +144,28 @@ func classifyTaskRoleRules(msg string, profile agents.Profile) string {
 
 	// Review-and-fix tasks: checked FIRST — "analyze and improve" is a fix task, not pure reasoning.
 	// Any message that combines analysis intent with improvement/change intent → fix role.
-	fixKeywords := []string{
-		"revisa", "arregla", "arreglalo", "arreglarlo", "encuentra gaps", "find gaps",
-		"fix ", "review and fix", "audit and", "improve", "mejorar", "mejoras",
-		"refactor", "clean up", "find issues", "identify and fix", "diagnose", "detecta",
-		"find and fix", "gaps para", "propon", "propón", "proponer", "pulir", "pulirlo",
-		"puedes mejorar", "puedes arreglar", "puedes revisar", "y arregla", "y mejora",
-		"y propon", "y propón",
-		// Additional Spanish imperative / subjunctive forms.
-		"pulelo", "puledlo", "encuentres", "analices", "examina",
-		"revisalo", "revísalo", "busca gaps", "busca errores",
-		"arreglame", "arréglame", "encuentra y", "analiza y",
-	}
-	reasoningKeywords := []string{
-		"why ", "step by step", "prove ", "analiz", "analyze",
-		"trade-off", "tradeoff", "implic", "explain",
-	}
 	// Fix wins even when the message also has reasoning intent (e.g. "analiza y arregla").
-	hasFix := containsAny(lower, fixKeywords)
-	hasReasoning := containsAny(lower, reasoningKeywords)
+	hasFix := containsAny(lower, fixIntentKeywords)
+	hasReasoning := containsAny(lower, reasoningIntentKeywords)
 	if hasFix || (hasReasoning && containsAny(lower, []string{"arregl", "mejor", "fix", "refactor", "gaps"})) {
 		return "fix"
 	}
 
-	codeKeywords := []string{
-		"implement", "debug", "panic", "stack trace", "compil",
-		"unit test", "typescript", "javascript", "golang", "python", "error:",
-		"stacktrace", "lint ", "pull request", "git commit", "commit message",
-		// Project creation / scaffolding — Spanish + English imperatives.
-		"crear ", "crear un", "crea el", "crear el", "crear la", "crea la",
-		"construir", "hazme", "hazme un", "construye",
-		"create a ", "create an ", "scaffold", "new project", "nuevo proyecto",
-		"proyecto ", " project",
-	}
-	if strings.Contains(m, "```") || containsAny(lower, codeKeywords) {
+	if strings.Contains(m, "```") || containsAny(lower, codeIntentKeywords) {
 		return "code"
 	}
 
-	if containsAny(lower, reasoningKeywords) {
+	if containsAny(lower, reasoningIntentKeywords) {
 		return "reasoning"
 	}
 
-	creativeKeywords := []string{"brainstorm", "marketing", "slogan", "poem", "creative", "story "}
-	if containsAny(lower, creativeKeywords) {
+	// Research: questions about external docs, libraries, best practices, or "what's the latest".
+	// Must appear AFTER fix/code/reasoning so "how to implement X" stays as code.
+	if containsAny(lower, researchIntentKeywords) {
+		return "research"
+	}
+
+	if containsAny(lower, creativeIntentKeywords) {
 		return "creative"
 	}
 
@@ -219,6 +265,13 @@ func taskExplorationHint(role string) string {
 			noNarration + "]"
 	case "reasoning", "explore":
 		return "\n\n[THIS TURN: analysis. IMMEDIATE first output = native tool_use (glob / read_file / grep)." + noNarration + "]"
+	case "research":
+		return "\n\n[THIS TURN: web research. " +
+			"FIRST: use web_search 2–3 times with targeted queries to gather current information. " +
+			"THEN: synthesize findings into a clear, direct answer. " +
+			"If the result is an actionable plan or decision, offer to save it. " +
+			"Do NOT answer from memory alone — run the searches first." +
+			noNarration + "]"
 	case "fast":
 		return "\n\n[THIS TURN: answer directly and briefly in the user's language (same language they wrote). No preamble. If they still need repo facts, use tools first — same narration ban applies. Never say \"no tool call\" or similar meta to the user.]"
 	default:
@@ -278,6 +331,10 @@ func (o *Orchestrator) resolveTaskModel(ctx context.Context, userMsg string) Tas
 		if mode == "llm" && rulesRouterHighConfidence(userMsg, role) {
 			reason = fmt.Sprintf("rules_confident:%s", role)
 		}
+	}
+	if rulesRouterLowConfidence(userMsg, role) {
+		role = "default"
+		reason = fmt.Sprintf("%s low_confidence->default", reason)
 	}
 
 	if m, ok := cfg.TaskModels[role]; ok && strings.TrimSpace(m) != "" {

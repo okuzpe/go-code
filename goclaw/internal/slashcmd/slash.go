@@ -23,6 +23,60 @@ import (
 	"golang.org/x/term"
 )
 
+func slashNextStepError(cause, nextStep string) error {
+	cause = strings.TrimSpace(cause)
+	nextStep = strings.TrimSpace(nextStep)
+	if nextStep == "" {
+		return errors.New(cause)
+	}
+	return fmt.Errorf("%s\nnext step: %s", cause, nextStep)
+}
+
+func isHelpAlias(input string) bool {
+	low := strings.ToLower(strings.TrimSpace(input))
+	return low == "help" || low == "?"
+}
+
+func parseSlashCommand(input string) (fields []string, cmd string, ok bool) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" || !strings.HasPrefix(trimmed, "/") {
+		return nil, "", false
+	}
+	fields = strings.Fields(trimmed)
+	if len(fields) == 0 {
+		return nil, "", false
+	}
+	return fields, strings.ToLower(strings.TrimPrefix(fields[0], "/")), true
+}
+
+func requireRunningAgent(command string, orch *orchestrator.Orchestrator) error {
+	if orch != nil {
+		return nil
+	}
+	return fmt.Errorf("/%s requires a running agent", strings.TrimPrefix(strings.TrimSpace(command), "/"))
+}
+
+func requireSessionStore(command string, store *session.Store) error {
+	if store != nil {
+		return nil
+	}
+	return fmt.Errorf("/%s: no session store configured", strings.TrimPrefix(strings.TrimSpace(command), "/"))
+}
+
+func requireActiveSession(command string, sess **session.Session) error {
+	if sess != nil && *sess != nil {
+		return nil
+	}
+	return fmt.Errorf("/%s: no active session", strings.TrimPrefix(strings.TrimSpace(command), "/"))
+}
+
+func requireFocusRouter(command string, env SlashEnv) error {
+	if env.Focus != nil {
+		return nil
+	}
+	return fmt.Errorf("focus routing not enabled (/%s)", strings.TrimPrefix(strings.TrimSpace(command), "/"))
+}
+
 // PlanGateConfig mirrors plan workflow flags from runtime settings (see config.Config).
 type PlanGateConfig struct {
 	RequireApplyApproval bool
@@ -91,27 +145,21 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 	if s == "" {
 		return false, "", false, "", nil
 	}
-	low := strings.ToLower(s)
-	if low == "help" || low == "?" {
+	if isHelpAlias(s) {
 		return true, replHelpText(env, sess, orch), false, "", nil
 	}
-	if !strings.HasPrefix(s, "/") {
+	fields, cmd, ok := parseSlashCommand(s)
+	if !ok {
 		return false, "", false, "", nil
 	}
-
-	fields := strings.Fields(s)
-	if len(fields) == 0 {
-		return false, "", false, "", nil
-	}
-	cmd := strings.ToLower(strings.TrimPrefix(fields[0], "/"))
 
 	switch cmd {
 	case "help":
 		return true, replHelpText(env, sess, orch), false, "", nil
 
 	case "btw":
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/btw requires a running agent")
+		if err := requireRunningAgent("btw", orch); err != nil {
+			return true, "", false, "", err
 		}
 		rest := strings.TrimSpace(strings.Join(fields[1:], " "))
 		if rest == "" {
@@ -133,7 +181,7 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 
 	case "model":
 		if env.SetSessionModel == nil || env.SessionModel == nil {
-			return true, "", false, "", fmt.Errorf("/model: not available in this mode")
+			return true, "", false, "", slashNextStepError("/model is not available in this mode", "use /doctor to inspect provider mode")
 		}
 		if len(fields) < 2 {
 			return true, fmt.Sprintf("current model: %s\nusage: /model <id>", env.SessionModel()), false, "", nil
@@ -168,8 +216,8 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 		return true, "bye", true, "", ErrReplQuit
 
 	case "sessions":
-		if store == nil {
-			return true, "", false, "", fmt.Errorf("/sessions: no session store configured")
+		if err := requireSessionStore("sessions", store); err != nil {
+			return true, "", false, "", err
 		}
 		entries, err := store.ListSessionEntries()
 		if err != nil {
@@ -207,18 +255,18 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 		return true, "(screen clear skipped — stdout is not a terminal)", false, "", nil
 
 	case "resume":
-		if store == nil {
-			return true, "", false, "", fmt.Errorf("/resume: no session store configured")
+		if err := requireSessionStore("resume", store); err != nil {
+			return true, "", false, "", err
 		}
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/resume requires a running agent")
+		if err := requireRunningAgent("resume", orch); err != nil {
+			return true, "", false, "", err
 		}
 		if sess == nil {
 			return true, "", false, "", fmt.Errorf("/resume: session pointer missing")
 		}
 		if len(fields) < 2 {
-			return true, "", false, "", fmt.Errorf(`usage: /resume <session_id_or_prefix>
-use /sessions to list saved ids; current session is auto-saved before switching`)
+			return true, "", false, "", slashNextStepError(`usage: /resume <session_id_or_prefix>
+use /sessions to list saved ids; current session is auto-saved before switching`, "run /sessions, then /resume <id>")
 		}
 		arg := strings.TrimSpace(strings.Join(fields[1:], " "))
 		if *sess != nil {
@@ -239,8 +287,8 @@ use /sessions to list saved ids; current session is auto-saved before switching`
 		return true, fmt.Sprintf("resumed session %s (%d messages).", loaded.ID, loaded.Len()), false, "", nil
 
 	case "new":
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/new requires a running agent (internal error)")
+		if err := requireRunningAgent("new", orch); err != nil {
+			return true, "", false, "", err
 		}
 		if sess == nil {
 			return true, "", false, "", fmt.Errorf("/new: session pointer missing")
@@ -256,11 +304,11 @@ use /sessions to list saved ids; current session is auto-saved before switching`
 		return true, fmt.Sprintf("new empty session (previous transcript saved if a store is configured).\nnew session id: %s", next.ID), false, "", nil
 
 	case "save":
-		if store == nil {
-			return true, "", false, "", fmt.Errorf("/save: no session store configured")
+		if err := requireSessionStore("save", store); err != nil {
+			return true, "", false, "", err
 		}
-		if sess == nil || *sess == nil {
-			return true, "", false, "", fmt.Errorf("/save: no active session")
+		if err := requireActiveSession("save", sess); err != nil {
+			return true, "", false, "", err
 		}
 		if err := store.Save(*sess); err != nil {
 			return true, "", false, "", fmt.Errorf("save session: %w", err)
@@ -282,8 +330,8 @@ use /sessions to list saved ids; current session is auto-saved before switching`
 
 	case "copy":
 		const maxClipBytes = 768 * 1024
-		if sess == nil || *sess == nil {
-			return true, "", false, "", fmt.Errorf("/copy: no active session")
+		if err := requireActiveSession("copy", sess); err != nil {
+			return true, "", false, "", err
 		}
 		body := (*sess).PlainTranscript()
 		if strings.TrimSpace(body) == "" {
@@ -326,20 +374,22 @@ use /sessions to list saved ids; current session is auto-saved before switching`
 		return true, fmt.Sprintf("(wrote %d bytes to %s)", len(body), outPath), false, "", nil
 
 	case "compact":
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/compact requires a running agent")
+		if err := requireRunningAgent("compact", orch); err != nil {
+			return true, "", false, "", err
 		}
 		if sess == nil || *sess == nil {
 			return true, "", false, "", fmt.Errorf("/compact: no active session")
 		}
 		before := (*sess).Len()
+		tokensBefore := orchestrator.SessionMessagesTokenEstimate((*sess).Messages)
 		orch.ForceCompact()
 		after := (*sess).Len()
-		return true, fmt.Sprintf("(compaction applied: %d → %d messages; older turns summarized; tail preserved)", before, after), false, "", nil
+		tokensAfter := orchestrator.SessionMessagesTokenEstimate((*sess).Messages)
+		return true, fmt.Sprintf("(compaction applied: %d → %d messages, ~%d → ~%d tokens; tail preserved)", before, after, tokensBefore, tokensAfter), false, "", nil
 
 	case "continue":
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/continue requires a running agent")
+		if err := requireRunningAgent("continue", orch); err != nil {
+			return true, "", false, "", err
 		}
 		if sess == nil || *sess == nil {
 			return true, "", false, "", fmt.Errorf("/continue: no active session")
@@ -357,8 +407,8 @@ use /sessions to list saved ids; current session is auto-saved before switching`
 		return true, fmt.Sprintf("(follow-up for: %s)\n", snippet), false, continueSubmit, nil
 
 	case "edit":
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/edit requires a running agent")
+		if err := requireRunningAgent("edit", orch); err != nil {
+			return true, "", false, "", err
 		}
 		body, eerr := openPromptEditor(ctx, env.Workdir)
 		if eerr != nil {
@@ -462,8 +512,8 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		}
 
 	case "profile":
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/profile requires a running agent")
+		if err := requireRunningAgent("profile", orch); err != nil {
+			return true, "", false, "", err
 		}
 		if len(fields) < 2 {
 			profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
@@ -481,8 +531,8 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		return true, msg, false, "", nil
 
 	case "agents":
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/agents requires a running agent")
+		if err := requireRunningAgent("agents", orch); err != nil {
+			return true, "", false, "", err
 		}
 		profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
 		if len(fields) < 2 {
@@ -506,8 +556,8 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		return true, msg, false, "", nil
 
 	case "allow-writes":
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/allow-writes requires a running agent")
+		if err := requireRunningAgent("allow-writes", orch); err != nil {
+			return true, "", false, "", err
 		}
 		for _, toolName := range []string{"write_file", "edit_file", "patch"} {
 			orch.SetToolPermission(toolName, permissions.ModeAllow)
@@ -615,8 +665,8 @@ steps    — list parsed ## Steps only (optional path)`)
 			return true, fmt.Sprintf("plan saved to %s\nRun /plan review → /plan approve if required, then /plan run or /apply-plan.", planPath), false, "", nil
 		case "run", "apply":
 			hub, pathTailRun := parsePlanRunFields(fields)
-			if orch == nil {
-				return true, "", false, "", fmt.Errorf("/plan run requires a running agent")
+			if err := requireRunningAgent("plan run", orch); err != nil {
+				return true, "", false, "", err
 			}
 			if sc.Sess == nil || *sc.Sess == nil {
 				return true, "", false, "", fmt.Errorf("/plan run: no messages in current session")
@@ -659,15 +709,15 @@ steps    — list parsed ## Steps only (optional path)`)
 		return true, strings.TrimSuffix(b.String(), "\n"), false, "", nil
 
 	case "detach", "back", "parent", "hub":
-		if env.Focus == nil {
-			return true, "", false, "", fmt.Errorf("focus routing not enabled (/detach, /back)")
+		if err := requireFocusRouter("detach", env); err != nil {
+			return true, "", false, "", err
 		}
 		env.Focus.Detach()
 		return true, "focus: coordinator (parent session)", false, "", nil
 
 	case "focus", "in":
-		if env.Focus == nil {
-			return true, "", false, "", fmt.Errorf("focus routing not enabled (/focus, /in)")
+		if err := requireFocusRouter("focus", env); err != nil {
+			return true, "", false, "", err
 		}
 		if len(fields) < 2 {
 			return true, "", false, "", fmt.Errorf(`usage: /focus <task_id_prefix> | /focus parent   (alias: /in)
@@ -682,7 +732,7 @@ use /workers to list interactive worker ids`)
 		prefix := strings.TrimSpace(fields[1])
 		full, ok := coordinator.ResolveInteractiveTaskID(prefix)
 		if !ok {
-			return true, "", false, "", fmt.Errorf("no unique interactive worker matches prefix %q (try /workers)", prefix)
+			return true, "", false, "", slashNextStepError(fmt.Sprintf("no unique interactive worker matches prefix %q", prefix), "run /workers and choose a longer prefix")
 		}
 		env.Focus.FocusTaskID(full)
 		out := fmt.Sprintf("focus: worker %s (input goes here until /back or /detach)", full)
@@ -692,8 +742,8 @@ use /workers to list interactive worker ids`)
 		return true, out, false, "", nil
 
 	case "apply-plan":
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/apply-plan requires a running agent")
+		if err := requireRunningAgent("apply-plan", orch); err != nil {
+			return true, "", false, "", err
 		}
 		wd := strings.TrimSpace(env.Workdir)
 		if wd == "" {
@@ -719,8 +769,8 @@ use /workers to list interactive worker ids`)
 		return true, notice, false, msg, nil
 
 	case "audit":
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/audit requires a running agent")
+		if err := requireRunningAgent("audit", orch); err != nil {
+			return true, "", false, "", err
 		}
 		if env.Profs == nil {
 			return true, "", false, "", fmt.Errorf("/audit: profile map not configured")
@@ -756,8 +806,8 @@ use /workers to list interactive worker ids`)
 		return true, notice, false, auditMsg, nil
 
 	case "review":
-		if orch == nil {
-			return true, "", false, "", fmt.Errorf("/review requires a running agent")
+		if err := requireRunningAgent("review", orch); err != nil {
+			return true, "", false, "", err
 		}
 		if env.Profs == nil {
 			return true, "", false, "", fmt.Errorf("/review: profile map not configured")
@@ -799,7 +849,32 @@ use /workers to list interactive worker ids`)
 		setWelcomeHints(hintsOut, orch, sub)
 		return true, notice, false, reviewMsg, nil
 
+	case "research":
+		if err := requireRunningAgent("research", orch); err != nil {
+			return true, "", false, "", err
+		}
+		query := strings.TrimSpace(strings.Join(fields[1:], " "))
+		if query == "" {
+			return true, "", false, "", fmt.Errorf("usage: /research <query>\nexample: /research best practices for Go HTTP middleware")
+		}
+		// Build a self-contained prompt: web search → synthesize → save plan.
+		slug := researchSlug(query)
+		planPath := ".goclaw/plans/research-" + slug + ".md"
+		researchMsg := fmt.Sprintf(
+			"## Research task\n\n"+
+				"Goal: research the following topic and produce an actionable implementation plan.\n\n"+
+				"**Query:** %s\n\n"+
+				"## Instructions\n\n"+
+				"1. Use web_search with 2–3 targeted queries to find recent best practices, examples, and relevant documentation.\n"+
+				"2. Synthesize the findings into a concrete, numbered step-by-step implementation plan tailored to this workspace.\n"+
+				"3. Write the plan to `%s` using write_file.\n"+
+				"4. End with a one-paragraph summary of what you found and what the plan covers.\n\n"+
+				"Do not ask for clarification — make a reasonable interpretation and start searching immediately.",
+			query, planPath,
+		)
+		return true, fmt.Sprintf("researching: %q — plan will be saved to %s", query, planPath), false, researchMsg, nil
+
 	default:
-		return true, "", false, "", fmt.Errorf("unknown command /%s — try /help", cmd)
+		return true, "", false, "", slashNextStepError(fmt.Sprintf("unknown command /%s", cmd), "run /help for the full command list")
 	}
 }

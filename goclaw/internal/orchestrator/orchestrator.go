@@ -37,6 +37,9 @@ func adaptIterBudget(base int, role string) int {
 			return half
 		}
 		return 4
+	case "research":
+		// Research turns need full iterations: multiple web_search rounds + synthesis.
+		return base
 	default:
 		return base
 	}
@@ -189,6 +192,41 @@ type Orchestrator struct {
 	turnUserMessage       string
 	turnHadToolRound      bool
 	turnWorkspaceWriteOK  bool
+
+	// turnToolCache is a per-turn cache for read-only tool results (glob, grep).
+	// Key: "<toolname>:<input>". Cleared at the start of each runUserTurn.
+	// Prevents the model from issuing the same glob/grep multiple times in one turn.
+	turnToolCache map[string]string
+
+	// turnInputLang is the BCP-47 language tag detected from the raw user message BEFORE any
+	// translation. Set in runUserTurn so buildRequest can use the original language for the
+	// reply-language hint even when normalize_input_language translated the message to English.
+	// Empty means detection was inconclusive or the message was already English.
+	turnInputLang string
+}
+
+type turnMetrics struct {
+	start       time.Time
+	translation time.Duration
+	stream      time.Duration
+	tool        time.Duration
+	toolCalls   int
+	status      string
+}
+
+func (o *Orchestrator) logTurnMetrics(metrics turnMetrics) {
+	attrs := []any{
+		"role", o.taskRole,
+		"translation_ms", metrics.translation.Milliseconds(),
+		"stream_ms", metrics.stream.Milliseconds(),
+		"tool_ms", metrics.tool.Milliseconds(),
+		"tool_calls", metrics.toolCalls,
+		"turn_ms", time.Since(metrics.start).Milliseconds(),
+	}
+	if strings.TrimSpace(metrics.status) != "" {
+		attrs = append(attrs, "status", metrics.status)
+	}
+	slog.Info("turn metrics", attrs...)
 }
 
 // New creates an Orchestrator with the provided subsystems.
@@ -268,6 +306,27 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		return "", fmt.Errorf("orchestrator: session is required")
 	}
 	defer o.session.ClearStreamingAssistant()
+
+	// Detect the user's original language BEFORE any translation so the reply-language hint in
+	// buildRequest can instruct the model to respond in the right language even after the message
+	// has been normalized to English. turnInputLang is cleared in the defer below.
+	metrics := turnMetrics{start: time.Now()}
+
+	origLang := classifyUserLanguage(userMessage)
+	if origLang == "" {
+		origLang = whatlanggoToTag(userMessage)
+	}
+	o.turnInputLang = origLang
+
+	// Translate non-English input to English before the LLM sees it (opt-in or default-on).
+	// The language-reply hint uses turnInputLang (the original) so the model answers in the
+	// user's language even though the session now holds the English translation.
+	if o.cfg.NormalizeInputLanguage && origLang != "" && origLang != "en" {
+		translateStart := time.Now()
+		userMessage = normalizeInputToEnglish(ctx, o.llm, o.cfg.ModelForCompaction(), userMessage)
+		metrics.translation = time.Since(translateStart)
+	}
+
 	o.session.Add("user", userMessage)
 
 	o.prepareTurnModel(ctx, userMessage)
@@ -285,6 +344,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	}
 	o.budgetLimit = iterLimit
 	o.turnUserMessage = userMessage
+	o.turnToolCache = make(map[string]string)
 	defer func() {
 		o.budgetIter = 0
 		o.budgetLimit = 0
@@ -292,6 +352,8 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		o.turnUserMessage = ""
 		o.turnHadToolRound = false
 		o.turnWorkspaceWriteOK = false
+		o.turnToolCache = nil
+		o.turnInputLang = ""
 	}()
 
 	actionNudges := 0
@@ -299,6 +361,8 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	hadToolRound := false
 	lastBatchReadOnly := false
 	workspaceWriteOK := false
+	readOnlyToolRounds := 0  // consecutive tool rounds with no workspace write
+	reflectionFired := false // at most one reflection nudge per turn
 
 	for iter := range iterLimit {
 		o.budgetIter = iter + 1
@@ -350,6 +414,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		if err := <-errc; err != nil {
 			return "", fmt.Errorf("llm stream: %w", err)
 		}
+		metrics.stream += time.Since(streamStart)
 		slog.Debug("llm stream done", "elapsed", time.Since(streamStart), "tools", len(pendingTools))
 
 		if len(pendingTools) == 0 {
@@ -384,6 +449,8 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				}
 				memory.ScheduleSilentTurnLLMExtract(o.cfg, o.llm, o.mem, extractModel, userMessage, response)
 			}
+			metrics.toolCalls = toolCalls
+			o.logTurnMetrics(metrics)
 			return response, nil
 		}
 
@@ -405,8 +472,10 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		var results []llm.ToolResultRecord
 
 		if parallel {
+			parallelStart := time.Now()
 			var atomicCalls atomic.Int64
 			results = o.executeToolsParallel(ctx, pendingTools, &atomicCalls, sink)
+			metrics.tool += time.Since(parallelStart)
 			toolCalls += int(atomicCalls.Load())
 			for i, r := range results {
 				input := ""
@@ -427,6 +496,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				toolCalls++
 				toolStart := time.Now()
 				out := o.executeTool(ctx, &tu, sink)
+				metrics.tool += time.Since(toolStart)
 				slog.Debug("tool done", "name", tu.Name, "elapsed", time.Since(toolStart), "bytes", len(out.Content), "isError", out.IsError)
 				if out.Err != nil {
 					return "", out.Err
@@ -448,12 +518,35 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			appendJSONToolTrace(toolTrace, pendingTools, results)
 		}
 		o.session.AddToolResults(results)
+
 		if toolResultsHaveEditNotFound(results) {
 			o.session.Add("user", editFileNotFoundNudgeMessage)
 			slog.Debug("orchestrator: edit_file not-found recovery nudge injected")
 		}
+
+		// Track consecutive read-only rounds for the reflection nudge.
+		if lastBatchReadOnly {
+			readOnlyToolRounds++
+		} else {
+			readOnlyToolRounds = 0
+		}
+		if workspaceWriteOK {
+			readOnlyToolRounds = 0
+		}
+		if !reflectionFired && o.cfg.EnableReflectionNudge &&
+			readOnlyToolRounds >= reflectionTriggerRounds &&
+			!workspaceWriteOK && !o.profile.ReadOnly &&
+			toolSpecsAllowWorkspaceWrite(o.effectiveToolSpecs()) &&
+			userMessageWantsWorkspaceWrites(userMessage) {
+			o.session.Add("user", reflectionNudgeMessage)
+			reflectionFired = true
+			slog.Debug("orchestrator: reflection nudge injected", "readOnlyRounds", readOnlyToolRounds)
+		}
 	}
 
+	metrics.toolCalls = toolCalls
+	metrics.status = "iteration_limit"
+	o.logTurnMetrics(metrics)
 	return "", fmt.Errorf("iteration limit (%d) reached", iterLimit)
 }
 

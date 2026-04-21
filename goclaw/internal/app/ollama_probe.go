@@ -24,6 +24,9 @@ type OllamaStartupProbe struct {
 	Err             error // transport or context failure before a response status is known
 	// ModelInLibrary is true when /api/tags lists a model whose name exactly matches ConfiguredModel.
 	ModelInLibrary bool
+	// ModelNames is the full list of model names returned by /api/tags (empty when not reachable).
+	// Used by /doctor to verify compaction_model and task_models entries.
+	ModelNames []string
 }
 
 // ollamaTagsProbeURL returns the GET /api/tags URL for the given host (empty host → default localhost).
@@ -84,6 +87,7 @@ func probeOllamaStartup(cfg config.Config, timeout time.Duration) OllamaStartupP
 		return out
 	}
 	out.ModelInLibrary = ollamaModelNameListed(out.ConfiguredModel, names)
+	out.ModelNames = names
 	return out
 }
 

@@ -123,21 +123,31 @@ func (t *WebSearchTool) Execute(ctx context.Context, input string) (Result, erro
 	}
 
 	var res Result
+	provenance := ""
 	switch t.backend {
 	case "ddg":
 		res = t.searchDuckDuckGo(ctx, q)
+		provenance = "backend used: ddg"
 	case "brave":
 		res = t.searchBrave(ctx, q)
+		provenance = "backend used: brave"
 		if t.shouldFallbackToDDG(res) {
 			res = t.searchDuckDuckGo(ctx, q)
+			provenance = "backend used: ddg (fallback from brave)"
 		}
 	case "serpapi":
 		res = t.searchSerpAPI(ctx, q)
+		provenance = "backend used: serpapi"
 		if t.shouldFallbackToDDG(res) {
 			res = t.searchDuckDuckGo(ctx, q)
+			provenance = "backend used: ddg (fallback from serpapi)"
 		}
 	default:
 		res = t.searchDuckDuckGo(ctx, q)
+		provenance = "backend used: ddg (default)"
+	}
+	if strings.TrimSpace(provenance) != "" && !res.IsError && strings.TrimSpace(res.Content) != "" {
+		res.Content = provenance + "\n\n" + strings.TrimSpace(res.Content)
 	}
 	return attachWebSearchReplyHint(res), nil
 }

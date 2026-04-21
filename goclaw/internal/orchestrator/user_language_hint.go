@@ -120,6 +120,21 @@ func hintForDetectedTag(tag string) string {
 	}
 }
 
+// langReplyHint returns the system-prompt language hint to inject.
+// When turnInputLang is non-empty (set before input translation), it takes priority over
+// detecting the language from session text — which would yield "en" after translation.
+// Falls back to the full userLanguageSystemSuffix logic when no pre-detected tag is available.
+func langReplyHint(turnInputLang string, cfg config.Config, msgs []llm.Message) string {
+	if turnInputLang != "" {
+		pref := config.NormalizePreferredResponseLanguage(cfg.PreferredResponseLanguage)
+		if pref != "auto" && pref != "from_os" {
+			return hintForPreferredTag(pref)
+		}
+		return hintForDetectedTag(turnInputLang)
+	}
+	return userLanguageSystemSuffix(lastUserNaturalText(msgs), cfg)
+}
+
 func looksLikeStructuredToolInput(text string) bool {
 	t := strings.TrimSpace(text)
 	if len(t) > 800 {

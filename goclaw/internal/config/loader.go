@@ -54,6 +54,8 @@ type settingsFile struct {
 	PluginDirs                   []string            `json:"plugin_dirs,omitempty"`
 	PluginAllow                  []string            `json:"plugin_allow,omitempty"`
 	PluginDeny                   []string            `json:"plugin_deny,omitempty"`
+	EnableReflectionNudge        *bool               `json:"enable_reflection_nudge,omitempty"`
+	NormalizeInputLanguage       *bool               `json:"normalize_input_language,omitempty"`
 	MemoryAutoExtract            *bool               `json:"memory_auto_extract,omitempty"`
 	MemoryLLMSilentExtract       *bool               `json:"memory_llm_silent_extract,omitempty"`
 	TUIMouseScroll               *bool               `json:"tui_mouse_scroll,omitempty"`
@@ -277,6 +279,14 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if len(sf.PluginDeny) > 0 {
 		cfg.PluginDeny = append(cfg.PluginDeny, sf.PluginDeny...)
+	}
+	// EnableReflectionNudge and NormalizeInputLanguage default to true.
+	// A settings.json entry of false explicitly disables them; omitting the key keeps the default.
+	if sf.EnableReflectionNudge != nil {
+		cfg.EnableReflectionNudge = *sf.EnableReflectionNudge
+	}
+	if sf.NormalizeInputLanguage != nil {
+		cfg.NormalizeInputLanguage = *sf.NormalizeInputLanguage
 	}
 	if sf.MemoryAutoExtract != nil && *sf.MemoryAutoExtract {
 		cfg.MemoryAutoExtract = true

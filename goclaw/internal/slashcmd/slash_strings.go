@@ -9,11 +9,32 @@ import (
 	"github.com/okuzpe/goclaw/internal/session"
 )
 
+func slashNamesByGroup(group string) string {
+	names := make([]string, 0, len(slashCommandTable))
+	for _, cmd := range slashCommandTable {
+		if cmd.Group == group {
+			names = append(names, cmd.Name)
+		}
+	}
+	return strings.Join(names, "   ")
+}
+
 // PopularSlashHint is a compact slash reference (e.g. after /help topics or automation banners).
 func PopularSlashHint(workdir string) string {
 	var b strings.Builder
-	b.WriteString("Popular slash commands (most are local; /btw and /continue also send one user line to the model):\n")
-	b.WriteString("  /help   /capabilities   /doctor   /plan   /apply-plan [--preview] [--hub]   /review   /btw   /continue   /copy   /export   /init   /memory   /model   /theme   /workers   /focus   /in   /detach   /back   /compact   /agents   /profile   /allow-writes   /resume   /clear   /quit\n")
+	b.WriteString("Quick start by intent:\n")
+	b.WriteString("  Start:      ")
+	b.WriteString(slashNamesByGroup("start"))
+	b.WriteByte('\n')
+	b.WriteString("  Build flow: ")
+	b.WriteString(slashNamesByGroup("build"))
+	b.WriteByte('\n')
+	b.WriteString("  Session:    ")
+	b.WriteString(slashNamesByGroup("session"))
+	b.WriteByte('\n')
+	b.WriteString("  Workers:    ")
+	b.WriteString(slashNamesByGroup("workers"))
+	b.WriteByte('\n')
 	b.WriteString("Prefix input (see docs/goclaw/prefix-input-modes.md):  !cmd   @path   &task\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan: ")
@@ -118,6 +139,33 @@ func previewRunes(s string, max int) string {
 		return string(r)
 	}
 	return string(r[:max]) + "…"
+}
+
+// researchSlug converts a research query into a short filename-safe slug (max 32 chars).
+func researchSlug(query string) string {
+	var b strings.Builder
+	limit := 32
+	wrote := 0
+	prevDash := false
+	for _, r := range strings.ToLower(query) {
+		if wrote >= limit {
+			break
+		}
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			wrote++
+			prevDash = false
+		} else if !prevDash && wrote > 0 {
+			b.WriteByte('-')
+			wrote++
+			prevDash = true
+		}
+	}
+	result := strings.TrimRight(b.String(), "-")
+	if result == "" {
+		return "query"
+	}
+	return result
 }
 
 // sortedProfileNames returns a comma-separated sorted list of profile names for error messages.

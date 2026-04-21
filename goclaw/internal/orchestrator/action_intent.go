@@ -28,6 +28,17 @@ const (
 	editFileNotFoundNudgeMessage = `[goclaw] edit_file failed: old_string not found. ` +
 		`You must read the file first (read_file), find the exact text in the output, ` +
 		`then call edit_file with that exact string. Do not guess or re-invent the string.`
+
+	// reflectionNudgeMessage is injected after several read-only tool rounds with no workspace
+	// write, on tasks that should produce file changes. It prompts the model to self-assess
+	// progress and act rather than continue reading indefinitely.
+	reflectionNudgeMessage = `[goclaw] Reflection checkpoint: you have run several tool rounds without writing any files yet. ` +
+		`Assess: do you have enough context to act? If yes — stop reading and start editing: ` +
+		`use edit_file or write_file now. ` +
+		`If something is blocking you, state the blocker in one sentence and then take the next concrete step.`
+
+	// reflectionTriggerRounds is how many read-only tool rounds must pass before the reflection nudge fires.
+	reflectionTriggerRounds = 3
 )
 
 func (o *Orchestrator) effectiveMaxActionNudges() int {
