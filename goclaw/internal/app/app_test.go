@@ -34,7 +34,7 @@ func TestShortSessionID(t *testing.T) {
 		{"empty", "", ""},
 		{"short", "abc", "abc"},
 		{"twelve", "123456789012", "123456789012"},
-		{"thirteen", "1234567890123", "1234567d89012…"},
+		{"thirteen", "1234567890123", "123456789012…"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

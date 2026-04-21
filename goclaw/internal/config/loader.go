@@ -64,6 +64,9 @@ type settingsFile struct {
 	MemoryLLMSilentExtract               *bool               `json:"memory_llm_silent_extract,omitempty"`
 	TUIMouseScroll                       *bool               `json:"tui_mouse_scroll,omitempty"`
 	TUIIcons                             *string             `json:"tui_icons,omitempty"`
+	TUIFooterDensity                     *string             `json:"tui_footer_density,omitempty"`
+	TUIInteractMode                      *string             `json:"tui_interact_mode,omitempty"`
+	TUIProfileCycle                      []string            `json:"tui_profile_cycle,omitempty"`
 	UIAppearance                         *string             `json:"ui_appearance,omitempty"`
 	ToolWorkspaceRoot                    *string             `json:"tool_workspace_root,omitempty"`
 	PlanRequireApplyApproval             *bool               `json:"plan_require_apply_approval,omitempty"`
@@ -316,6 +319,21 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.TUIIcons != nil {
 		cfg.TUIIcons = icons.CanonicalTUIIcons(*sf.TUIIcons)
+	}
+	if sf.TUIFooterDensity != nil {
+		cfg.TUIFooterDensity = NormalizeTUIFooterDensity(*sf.TUIFooterDensity)
+	}
+	if sf.TUIInteractMode != nil {
+		cfg.TUIInteractMode = NormalizeTUIInteractMode(*sf.TUIInteractMode)
+	}
+	if len(sf.TUIProfileCycle) > 0 {
+		cfg.TUIProfileCycle = nil
+		for _, s := range sf.TUIProfileCycle {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				cfg.TUIProfileCycle = append(cfg.TUIProfileCycle, s)
+			}
+		}
 	}
 	if len(sf.ExternalHooks) > 0 {
 		cfg.ExternalHooks = append(cfg.ExternalHooks, sf.ExternalHooks...)

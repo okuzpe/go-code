@@ -232,6 +232,19 @@ type Config struct {
 	// JSON: tui_icons; env: GOCLAW_TUI_ICONS (merged settings override env default from Default()).
 	TUIIcons string
 
+	// TUIFooterDensity selects idle footer detail: minimal (messages + profile, compact only when high),
+	// standard (adds token estimate and compaction %), debug (legacy hub/ro/tools/role line).
+	// JSON: tui_footer_density; env: GOCLAW_TUI_FOOTER_DENSITY (see Default()).
+	TUIFooterDensity string
+
+	// TUIProfileCycle is an optional ordered list of agent profile names cycled by Ctrl+Shift+←/→ in the
+	// fullscreen chat. Unknown names are skipped. Empty uses a built-in default order. JSON: tui_profile_cycle.
+	TUIProfileCycle []string
+
+	// TUIInteractMode is a UI-only label (chat | code | agent) shown in the idle footer and cycled with Ctrl+M.
+	// Does not switch agent profiles or orchestrator behavior. JSON: tui_interact_mode; env: GOCLAW_TUI_INTERACT_MODE.
+	TUIInteractMode string
+
 	// UIAppearance selects TUI colors and markdown style: auto, dark, light, dark_colorblind, light_colorblind, dark_ansi, light_ansi.
 	// JSON key: ui_appearance. Empty or "auto" uses terminal-adaptive styling.
 	UIAppearance string
@@ -335,6 +348,8 @@ func Default() Config {
 		ActionRepairEscalation:       envTruthy("GOCLAW_ACTION_REPAIR_ESCALATION"),
 		TUIMouseScroll:               envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
 		TUIIcons:                     icons.CanonicalTUIIcons(os.Getenv("GOCLAW_TUI_ICONS")),
+		TUIFooterDensity:             NormalizeTUIFooterDensity(os.Getenv("GOCLAW_TUI_FOOTER_DENSITY")),
+		TUIInteractMode:              NormalizeTUIInteractMode(os.Getenv("GOCLAW_TUI_INTERACT_MODE")),
 		UIAppearance:                 "auto",
 	}
 	if v := strings.TrimSpace(os.Getenv("GOCLAW_OLLAMA_HTTP_TIMEOUT_SEC")); v != "" {

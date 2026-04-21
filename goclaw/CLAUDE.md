@@ -143,7 +143,7 @@ End-user details: [usage.md — Project context and standing orders](../docs/goc
 ```
 goclaw/
 ├── cmd/goclaw/
-│   ├── main.go                  ← slog (stderr + `loglevel.FromEnv`) + `cli.NewRootCmd` wiring `app.RunChat` + `app.RunPrompt` + `fullscreenChat{}`
+│   ├── main.go                  ← slog (stderr + `loglevel.FromEnv`) + `cli.NewRootCmd` wiring `app.RunChat` + `app.RunPrompt` + `app.FullscreenChat{Version}`
 │   ├── tui.go                   ← Bubble Tea TUI (`FullscreenChatRunner`); keeps `internal/app` tests free of `ui/chat` import
 │   └── version.go               ← `Version` (ldflags)
 ├── internal/

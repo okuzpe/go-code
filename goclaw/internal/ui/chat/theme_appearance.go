@@ -70,5 +70,12 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 		AtRefChip: lipgloss.NewStyle().Bold(true).Foreground(p.SlashPickName),
 
 		WelcomeFrame: lipgloss.NewStyle().Foreground(p.WelcomeBorder),
+
+		AgentDeckMicro: lipgloss.NewStyle().Foreground(p.Muted).Faint(true),
+		AgentDeckRail: lipgloss.NewStyle().
+			Foreground(p.AccentUser),
+		AgentDeckBracket: lipgloss.NewStyle().Foreground(p.Muted),
+		AgentDeckTrace: lipgloss.NewStyle().Foreground(p.SepFG).Faint(true),
+		AgentDeckChord: lipgloss.NewStyle().Foreground(p.Muted),
 	}
 }

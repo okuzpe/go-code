@@ -22,5 +22,8 @@ func TestTUIHelpShortcutsText_nonEmpty(t *testing.T) {
 	s := TUIHelpShortcutsText()
 	require.NotEmpty(t, strings.TrimSpace(s))
 	require.Contains(t, s, "Tab")
+	require.Contains(t, s, "Ctrl+Shift")
+	require.Contains(t, s, "Ctrl+M")
+	require.Contains(t, s, "Ctrl+E")
 	require.Contains(t, s, "/edit")
 }

@@ -170,7 +170,7 @@ func (m *Model) applyAgentPick() {
 		}
 		m.applySlashHints(hints)
 		if strings.TrimSpace(modelSubmit) != "" && m.submitter != nil && m.submitter.fn != nil {
-			m.runModelSubmit(modelSubmit)
+			m.runModelSubmit(modelSubmit, m.interactMode)
 		}
 		if quit {
 			// /agents does not quit; ignore

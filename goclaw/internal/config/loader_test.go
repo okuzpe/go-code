@@ -55,6 +55,36 @@ func TestLoadSettingsLocalOverridesProject(t *testing.T) {
 	require.Equal(t, "verification", cfg.AgentProfile)
 }
 
+func TestLoadTUIFooterDensity(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	cwd := t.TempDir()
+	userDir := filepath.Join(home, ".goclaw")
+	require.NoError(t, os.MkdirAll(userDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(userDir, "settings.json"), []byte(`{"tui_footer_density":"debug"}`), 0o600))
+	base := Default()
+	base.UserConfigDir = userDir
+	base.ProjectConfigDir = ".goclaw"
+	cfg, err := Load(base, cwd)
+	require.NoError(t, err)
+	require.Equal(t, TUIFooterDensityDebug, cfg.TUIFooterDensity)
+}
+
+func TestLoadTUIProfileCycle(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	cwd := t.TempDir()
+	userDir := filepath.Join(home, ".goclaw")
+	require.NoError(t, os.MkdirAll(userDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(userDir, "settings.json"), []byte(`{"tui_profile_cycle":[" plan ", "coordinator"]}`), 0o600))
+	base := Default()
+	base.UserConfigDir = userDir
+	base.ProjectConfigDir = ".goclaw"
+	cfg, err := Load(base, cwd)
+	require.NoError(t, err)
+	require.Equal(t, []string{"plan", "coordinator"}, cfg.TUIProfileCycle)
+}
+
 func TestLoadBashTimeoutSec(t *testing.T) {
 	home := t.TempDir()
 	cwd := t.TempDir()

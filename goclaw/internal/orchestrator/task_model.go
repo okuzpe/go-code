@@ -260,7 +260,7 @@ func taskExplorationHint(role string) string {
 	case "fix":
 		return "\n\n[THIS TURN: review-and-fix. FIRST output must be a tool call (glob). " +
 			"After reading enough files (see base prompt analysis rules): apply fixes with edit_file or write_file, then verify with bash or script. " +
-			"If bash/script returns non-zero, diagnose the error, apply the targeted fix, and re-verify (max 2 retries). After 2 failed retries, stop and report the failure with full evidence. " +
+			"If bash/script returns non-zero, diagnose the error, apply the targeted fix, and re-verify (max 3 retries). After 3 failed retries, stop and report the failure with full evidence. " +
 			"End with one short paragraph — not a suggestion list." +
 			noNarration + "]"
 	case "reasoning", "explore":

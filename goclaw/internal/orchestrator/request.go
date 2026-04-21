@@ -155,6 +155,10 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		sys = sys + langHint
 	}
 
+	if hint := tuiInteractModePromptBlock(o.tuiInteractApply, o.tuiInteractMode); hint != "" {
+		sys = sys + hint
+	}
+
 	if qwenFamily(model) {
 		sys = sys + qwenSystemSuffix
 	}

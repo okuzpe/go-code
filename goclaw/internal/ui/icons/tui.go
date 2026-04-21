@@ -181,6 +181,20 @@ func (st Set) ApprovalPromptGlyph() string {
 	}
 }
 
+// AgentDeckRailGlyph prefixes the lower profile rail (single-cell where possible).
+func (st Set) AgentDeckRailGlyph() string {
+	switch st {
+	case ASCII:
+		return "#"
+	case Emoji:
+		return "\u25ce" // bullseye — single-cell lane marker (distinct from approval lightning)
+	case Nerd:
+		return "\uf0e7" // nf-fa-bolt
+	default:
+		return "\u258c" // left half block — solid lane marker without emoji width issues
+	}
+}
+
 // DoctorBadge prefixes the fullscreen doctor report title (single cell where possible).
 func (st Set) DoctorBadge() string {
 	switch st {

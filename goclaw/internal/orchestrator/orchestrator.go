@@ -214,6 +214,11 @@ type Orchestrator struct {
 	// Empty means detection was inconclusive or the message was already English.
 	turnInputLang string
 
+	// tuiInteractApply / tuiInteractMode are set by the fullscreen TUI before RunStreaming (Ctrl+M
+	// mode) and cleared when the user turn completes. When apply is false, no extra prompt is injected.
+	tuiInteractApply bool
+	tuiInteractMode  string
+
 	// scratchDir is an absolute session scratch directory (ephemeral notes); empty when disabled.
 	scratchDir string
 
@@ -305,6 +310,27 @@ func (o *Orchestrator) TaskRole() string { return o.taskRole }
 // Returns "" when the default model (cfg.Model()) is used.
 func (o *Orchestrator) TurnModel() string { return o.turnModel }
 
+// SetTurnInteractMode sets the TUI interact mode (chat | code | agent) for the next RunStreaming
+// call. The hint is injected into the system prompt for that user turn only. Call with any value
+// before each submit from the fullscreen chat; omit for non-TUI callers. Empty mode disables the
+// hint until the next SetTurnInteractMode (ClearTurnInteractMode is equivalent).
+func (o *Orchestrator) SetTurnInteractMode(mode string) {
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		o.tuiInteractApply = false
+		o.tuiInteractMode = ""
+		return
+	}
+	o.tuiInteractApply = true
+	o.tuiInteractMode = config.NormalizeTUIInteractMode(mode)
+}
+
+// ClearTurnInteractMode removes the TUI interact hint before the next model call.
+func (o *Orchestrator) ClearTurnInteractMode() {
+	o.tuiInteractApply = false
+	o.tuiInteractMode = ""
+}
+
 // Run processes a single user message and returns the final assistant response.
 func (o *Orchestrator) Run(ctx context.Context, userMessage string) (string, error) {
 	return o.RunStreaming(ctx, userMessage, nil)
@@ -363,6 +389,10 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	if o.taskRole != "" {
 		iterLimit = adaptIterBudget(iterLimit, o.taskRole)
 	}
+	// Chat mode keeps orchestration lighter than full agent loops.
+	if o.tuiInteractApply && config.NormalizeTUIInteractMode(o.tuiInteractMode) == config.TUIInteractModeChat && iterLimit > 10 {
+		iterLimit = 10
+	}
 	o.budgetLimit = iterLimit
 	o.turnUserMessage = intentMessage
 	o.turnToolCache = make(map[string]string)
@@ -375,6 +405,8 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		o.turnWorkspaceWriteOK = false
 		o.turnToolCache = nil
 		o.turnInputLang = ""
+		o.tuiInteractApply = false
+		o.tuiInteractMode = ""
 	}()
 
 	actionNudges := 0

@@ -10,10 +10,19 @@ Prerequisite: Ollama on `http://localhost:11434` with a model pulled (default: `
 cd goclaw
 go run ./cmd/goclaw doctor
 go run ./cmd/goclaw              # fullscreen TUI on TTY (default)
+go run ./cmd/localagent          # same CLI as goclaw (alternate entrypoint for local installs)
 printf 'ping\n' | go run ./cmd/goclaw --mock --no-tools --output-format json   # pipes / CI (no TTY REPL)
 ```
 
 Try: a simple repo question, a tool (e.g. web search), and `/doctor` or `goclaw doctor`.
+
+### Local-first agent (sessions, tools, Ollama)
+
+- **Binaries:** `go run ./cmd/goclaw` or `go run ./cmd/localagent` — same Cobra root, fullscreen chat, doctor, and sessions. Build either with `go build -ldflags "-X main.Version=…" ./cmd/goclaw` or `./cmd/localagent`.
+- **Sessions** (roles, tool traces, plain export) persist as JSONL under `~/.goclaw/sessions/<id>.jsonl` on exit or `/save` (see [Sessions and memory](#sessions-and-memory) below).
+- **Ollama:** set `OLLAMA_HOST` / `OLLAMA_MODEL` or `ollama_host` / `ollama_model` in `~/.goclaw/settings.json`. Use a **tools-capable** model (defaults target `qwen2.5-coder`); if the daemon rejects wire tools, the idle footer shows `Ollama text-only (no tool wire · /doctor)` — run **`/doctor`** or `goclaw doctor` for remediation. Raise **`ollama_num_ctx`** if context feels tight (see [Quick start](#quick-start-ollama) and compaction notes below).
+- **Interact mode (Ctrl+M):** cycles **chat · code · agent** in the footer. This now steers the orchestrator for that send (system hint + lower iteration cap in **chat** mode). It is not the same as **`agent_profile`** (`/profile`, `agent_profile` in settings).
+- **Tool output in the TUI:** **Ctrl+T** opens tool history; in **Ctrl+B** transcript browse, **[** / **]** focus a tool card and **e** toggles an expanded raw body in the transcript (large outputs are still capped; use Ctrl+T for the full step log).
 
 ### Advanced / optional
 
@@ -97,6 +106,10 @@ Sessions save as JSONL under `~/.goclaw/sessions/<id>.jsonl` on exit or `/save`.
 - **`/export path.txt`** — writes the same plain text to **`path.txt`**. If the path is relative and a workspace is set, it is resolved under that workspace; use an absolute path to write elsewhere.
 
 The fullscreen TUI keeps **normal terminal mouse behaviour** by default (wheel scrolling is **off** so click–drag selection works as your host terminal allows). Enable wheel-on-transcript with **`tui_mouse_scroll`**: `true` in settings or **`GOCLAW_TUI_MOUSE_SCROLL=1`**. Use **Ctrl+B** in the TUI to scroll the transcript with the keyboard without capturing the mouse. For “everything in the session”, prefer `/copy` or `/export` over selecting the screen.
+
+**Idle footer detail** (message count, token estimate, profile, etc.) uses **`tui_footer_density`** in settings or **`GOCLAW_TUI_FOOTER_DENSITY`**: **`minimal`** (short line; adds token/compact hints only when the context window is nearly full), **`standard`** (default — message count, token estimate, compaction %, profile name), **`debug`** (legacy dense line including `ro:` / `hub:` / tool counts and task-role tags). Omit the key to keep **`standard`**.
+
+**Profile rail + keyboard cycle** in the fullscreen TUI: **`tui_profile_cycle`** in settings is an ordered list of agent profile names (built-in + custom `*.md`). **Ctrl+Shift+←** and **Ctrl+Shift+→** move to the previous/next name in that list (skipped names are not in the cycle). A **single-line rail** above the transcript shows a lane glyph, **‹profile›** (or `<profile>` in ASCII icon mode), an optional short hint (e.g. `hub`), a dotted trace, and a muted **shift+ctrl** chord — all one row so the layout does not break. If **`tui_profile_cycle`** is omitted, the default order is **coordinator → plan → general-purpose → explore** (each entry is still skipped when that profile does not exist).
 
 ```bash
 go run ./cmd/goclaw --list-sessions

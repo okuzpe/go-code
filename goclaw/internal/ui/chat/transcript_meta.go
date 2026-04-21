@@ -34,6 +34,8 @@ type lineMeta struct {
 	toolContent string // raw tool result body for reflow (glob/grep path lists); empty when not needed
 	toolOutcome string // one-line result hint from TranscriptOutcomeSnippet (tool cards only)
 	toolError   bool
+	// toolExpanded (lineKindToolCard) shows raw tool output in the transcript instead of the compact summary.
+	toolExpanded bool
 	// assistant markdown (lineKindAssistantMD)
 	assistantRaw string
 }
@@ -120,8 +122,17 @@ func (m *Model) reflowTranscriptForWidth() {
 		case lineKindToolCard:
 			meta := m.lineMeta[i]
 			label := orchestrator.ToolFinishedPhrase(meta.toolName)
-			summaryBody := orchestrator.ToolCardSummaryBody(meta.toolName, meta.toolSummary, meta.toolContent, meta.toolError)
-			m.lines[i] = th.RenderToolCard(label, summaryBody, meta.toolOutcome, meta.toolError, m.width)
+			var summaryBody string
+			if meta.toolExpanded {
+				summaryBody = expandedToolSummaryBody(meta.toolContent, m.width)
+			} else {
+				summaryBody = orchestrator.ToolCardSummaryBody(meta.toolName, meta.toolSummary, meta.toolContent, meta.toolError)
+			}
+			line := th.RenderToolCard(label, summaryBody, meta.toolOutcome, meta.toolError, m.width)
+			if m.transcriptBrowse && m.browseToolCardLine == i {
+				line = prefixFirstTranscriptLine(th.ToolTag.Render("▸ "), line)
+			}
+			m.lines[i] = line
 		case lineKindThinking:
 			meta := m.lineMeta[i]
 			elapsed := int(time.Since(meta.startedAt).Seconds())

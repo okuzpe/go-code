@@ -35,5 +35,5 @@ func streamBusyTranscriptScrollFooterLine(tuiMouseScroll, emptyCompose, termNarr
 
 // transcriptBrowseFooterLine is the dim footer while Ctrl+B transcript browse mode is active.
 func transcriptBrowseFooterLine(tuiMouseScroll bool) string {
-	return "Browse: ↑↓ j/k PgUp · Ctrl+B editor · Esc back" + transcriptWheelSuffix(tuiMouseScroll)
+	return "Browse: ↑↓ j/k PgUp · [ ] tool · e expand · Ctrl+B editor · Esc back" + transcriptWheelSuffix(tuiMouseScroll)
 }
