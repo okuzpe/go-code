@@ -9,9 +9,10 @@ import (
 const planPreviewMaxRunes = 4000
 
 // parseApplyPlanRest parses tokens after `/apply-plan`. Supports `--preview` (or `-preview`);
-// `--hub` selects coordinator execution; `--yes` / `-y` are accepted and ignored (execution is the default when not previewing).
+// `--hub` selects coordinator execution; `--steps` queues one model turn per parsed ## Steps line;
+// `--yes` / `-y` are accepted and ignored (execution is the default when not previewing).
 // Remaining non-flag tokens are joined with a single space as an optional plan path.
-func parseApplyPlanRest(rest string) (pathArg string, preview, hub bool) {
+func parseApplyPlanRest(rest string) (pathArg string, preview, hub, allSteps bool) {
 	parts := strings.Fields(rest)
 	var pathParts []string
 	for _, p := range parts {
@@ -20,6 +21,8 @@ func parseApplyPlanRest(rest string) (pathArg string, preview, hub bool) {
 			preview = true
 		case "--hub":
 			hub = true
+		case "--steps":
+			allSteps = true
 		case "--yes", "-y":
 			// no-op: explicit confirm style; same as default execute path
 		default:
@@ -29,7 +32,7 @@ func parseApplyPlanRest(rest string) (pathArg string, preview, hub bool) {
 			pathParts = append(pathParts, p)
 		}
 	}
-	return strings.Join(pathParts, " "), preview, hub
+	return strings.Join(pathParts, " "), preview, hub, allSteps
 }
 
 // formatPlanPreviewOutput builds markdown for /apply-plan --preview and plan review excerpts.
@@ -43,15 +46,15 @@ func formatPlanPreviewOutput(planPath, body string) string {
 	b.WriteString(display)
 	b.WriteString(fmt.Sprintf("`\n- **Size:** %d bytes\n\n", len(body)))
 	b.WriteString(MarkdownFencedPlain(excerpt))
-	b.WriteString("\n\nRun `/apply-plan` or `/plan run` to execute (general-purpose or coordinator with `--hub` / `plan_apply_use_coordinator`; one model turn; `/plan run` saves the latest assistant message first).\n")
+	b.WriteString("\n\nRun `/apply-plan` or `/plan run` to execute (general-purpose or coordinator with `--hub` / `plan_apply_use_coordinator`; one model turn by default; add `--steps` when the plan has a `## Steps` section for one turn per step; `/plan run` saves the latest assistant message first).\n")
 	b.WriteString("\nOptional: `/plan review`, `/plan approve` (when `plan_require_apply_approval` is true), `/plan steps`.")
 	return b.String()
 }
 
-// parsePlanRunFields parses tokens after `/plan run` (or `/plan apply`): optional `--hub`, then optional plan path.
-func parsePlanRunFields(fields []string) (hub bool, pathTail string) {
+// parsePlanRunFields parses tokens after `/plan run` (or `/plan apply`): optional `--hub`, optional `--steps`, then optional plan path.
+func parsePlanRunFields(fields []string) (hub bool, allSteps bool, pathTail string) {
 	if len(fields) < 3 {
-		return false, ""
+		return false, false, ""
 	}
 	var pathParts []string
 	for _, f := range fields[2:] {
@@ -63,12 +66,16 @@ func parsePlanRunFields(fields []string) (hub bool, pathTail string) {
 			hub = true
 			continue
 		}
+		if strings.EqualFold(t, "--steps") {
+			allSteps = true
+			continue
+		}
 		if strings.HasPrefix(t, "-") {
 			continue
 		}
 		pathParts = append(pathParts, t)
 	}
-	return hub, strings.Join(pathParts, " ")
+	return hub, allSteps, strings.Join(pathParts, " ")
 }
 
 func truncateRunesPlanPreview(s string, maxRunes int) string {

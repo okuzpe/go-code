@@ -123,15 +123,28 @@ func fullscreenSetSessionModel(rt *ChatRuntime, orch *orchestrator.Orchestrator,
 func fullscreenWelcomeOptions(uiVersion string, rt *ChatRuntime, orch *orchestrator.Orchestrator) chat.WelcomeOptions {
 	p := orch.ActiveProfile()
 	writeApprovalRequired := p.AllowsWorkspaceFileWrites() && rt.Cfg.YoloThreshold < 60
+	sub := FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName())
+	if hint := coordinatorShortcutSubtitleHint(orch.ProfileName()); hint != "" {
+		sub += hint
+	}
 	return chat.WelcomeOptions{
 		Version:               uiVersion,
-		Subtitle:              FormatChatWindowTitle(rt.Cfg.Provider, rt.Cfg.Model(), orch.ProfileName()),
+		Subtitle:              sub,
 		Workdir:               rt.Workdir,
 		Profile:               orch.ProfileName(),
 		FileWriteToolsHidden:  !p.AllowsWorkspaceFileWrites(),
 		HubDelegatesCoding:    p.AllowsSpawnAgentDelegation(),
 		WriteApprovalRequired: writeApprovalRequired,
 		OllamaWarning:         FormatOllamaWelcomeWarning(rt),
+	}
+}
+
+func coordinatorShortcutSubtitleHint(profileName string) string {
+	switch strings.ToLower(strings.TrimSpace(profileName)) {
+	case "coordinator", "plan", "":
+		return ""
+	default:
+		return " · hub: /profile coordinator"
 	}
 }
 

@@ -1,5 +1,5 @@
 ---
-description: Development workflow for goclaw — build locally; tests only when the user asks (CI otherwise).
+description: Development workflow for goclaw — compile locally; no agent test policy in-repo.
 alwaysApply: true
 ---
 
@@ -8,26 +8,10 @@ alwaysApply: true
 ## Before / after edits (local workflow)
 
 - **`go build ./...`** — run after substantive edits so the module compiles; fix compile errors before stacking more work.
-- **`go test`** — in agent sessions, **do not run** and **do not add or expand** `*_test.go` unless the **user explicitly asks** for tests. (Full suite can be slow or awkward on Windows with Bubble Tea linked paths.) **CI** ([`.github/workflows/goclaw-ci.yml`](../../../.github/workflows/goclaw-ci.yml)) remains the default gate for `go test`.
 
 ```bash
 go build ./...   # recommended after edits that affect compilation
-# go test ...     # only when the user requests tests
 ```
-
-## Testing without spending API tokens
-
-```go
-// Use the mock server in testutil/mockopenai/
-srv := mockopenai.New([]mockopenai.Scenario{
-    {Match: "ping", Response: "pong"},
-})
-defer srv.Close()
-
-client := llm.NewOpenAICompat("test-key", srv.URL+"/v1")
-```
-
-For Ollama, point `OLLAMA_HOST` at a local Ollama instance or an HTTP mock.
 
 ## Do NOT
 
@@ -56,26 +40,13 @@ All phases are **done**. The project has: ten core built-in tools + **`script`**
 3. Enforce output limits from the tool contract (`limits.go`)
 4. Apply security (path boundary + symlinks / SSRF / allowlist) — see `security.mdc`
 5. Register in **`internal/app/chat_wiring.go`** inside `PrepareChatRuntime` (not `cmd/goclaw/main.go`): builtin tools in the `if !disableTools` block; MCP servers use the same file’s `cfg.MCPServers` loop (`mcp.StartStdioSession` or `mcp.NewHTTPSession` + `mcp.RegisterSessionTools`)
-6. `go build ./...` (optional: `internal/tools/<name>_test.go` **only if the user asks** for tests)
+6. `go build ./...`
 
 ## Adding an agent profile
 1. Read `internal/agents/profile.go`
 2. Add `var MyProfile = Profile{...}` after the built-ins
 3. Append to the `All()` slice
 4. `go build ./...`
-
-## Race detector (`go test -race`)
-- **Linux CI:** `goclaw-ci.yml` runs `go test -race` on `ubuntu-latest`.
-- **Local Windows:** the race detector requires **CGO** and a C toolchain (`CGO_ENABLED=1`). If `-race` fails or is unavailable, rely on Linux CI for race coverage, or install a compatible toolchain (e.g. MSYS2/LLVM) for parity.
-
-## Ollama-dependent tests
-Tests that call `OllamaClient` directly require a live Ollama instance. Guard them:
-```go
-if os.Getenv("OLLAMA_HOST") == "" {
-    t.Skip("requires OLLAMA_HOST to be set")
-}
-```
-CI (`goclaw-ci.yml`) does not start Ollama — these tests must not run in `go test ./...` by default.
 
 ## Config paths (fixed — do not change)
 - User: `~/.goclaw/settings.json` and `~/.goclaw/settings.local.json`

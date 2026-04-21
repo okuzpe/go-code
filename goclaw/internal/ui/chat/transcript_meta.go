@@ -121,28 +121,26 @@ func (m *Model) reflowTranscriptForWidth() {
 			m.lines[i] = th.SeparatorLine(m.width)
 		case lineKindToolCard:
 			meta := m.lineMeta[i]
-			label := orchestrator.ToolFinishedPhrase(meta.toolName)
-			var summaryBody string
+			label := orchestrator.ToolWorkingPhrase(meta.toolName)
+			var content string
 			if meta.toolExpanded {
-				summaryBody = expandedToolSummaryBody(meta.toolContent, m.width)
+				content = expandedToolSummaryBody(meta.toolContent, m.width)
 			} else {
-				summaryBody = orchestrator.ToolCardSummaryBody(meta.toolName, meta.toolSummary, meta.toolContent, meta.toolError)
+				content = meta.toolContent
 			}
-			line := th.RenderToolCard(label, summaryBody, meta.toolOutcome, meta.toolError, m.width)
+			line := th.RenderToolPair(label, meta.toolSummary, content, meta.toolError, m.width)
 			if m.transcriptBrowse && m.browseToolCardLine == i {
 				line = prefixFirstTranscriptLine(th.ToolTag.Render("▸ "), line)
 			}
 			m.lines[i] = line
 		case lineKindThinking:
-			meta := m.lineMeta[i]
-			elapsed := int(time.Since(meta.startedAt).Seconds())
-			m.lines[i] = th.RenderThinkingRow(meta.thinkingLabel, elapsed, m.width)
+			// Thinking state is shown only in the status line; the transcript slot stays empty.
+			m.lines[i] = th.RenderThinkingRow(m.lineMeta[i].thinkingLabel, 0, m.width)
 		case lineKindToolRunning:
 			meta := m.lineMeta[i]
 			elapsed := int(time.Since(meta.startedAt).Seconds())
 			label := orchestrator.ToolWorkingPhrase(meta.toolName)
-			sum := meta.toolSummary
-			m.lines[i] = th.RenderToolInProgressRow(label, sum, elapsed, m.width)
+			m.lines[i] = th.RenderToolRunning(label, meta.toolSummary, elapsed, m.width)
 		case lineKindAssistantMD:
 			raw := m.lineMeta[i].assistantRaw
 			m.lines[i] = renderAssistantMarkdownSegment(th, raw, m.width, prefix, prefixW)

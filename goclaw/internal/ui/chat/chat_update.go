@@ -387,7 +387,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.toolWaitQueue) > 0 && !m.toolWaitStartedAt.IsZero() {
 				elapsed = int(time.Since(m.toolWaitStartedAt).Seconds())
 			}
-			m.lines[lineIdx] = th.RenderToolInProgressRow(label, newSummary, elapsed, m.widthOrDefault())
+			m.lines[lineIdx] = th.RenderToolRunning(label, newSummary, elapsed, m.widthOrDefault())
 			m.setLinesContent(false)
 		}
 		return m, nil

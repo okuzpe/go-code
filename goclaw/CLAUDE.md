@@ -81,7 +81,7 @@ For fullscreen terminal UI, treat **Bubble Tea** as the program engine (`Init` /
 
 **Before closing any development phase, run `/audit` to verify quality, security, and correctness.**
 
-Audit covers: clean build, security checklist, error handling review, no TODOs left from previous phase. In agent-led work, **do not** run `go test` or add `*_test.go` unless the user explicitly asks — rely on CI for the default test gate (and add tests/coverage when the user wants that scope).
+Audit covers: clean build, security checklist, error handling review, no TODOs left from previous phase. Use whatever verification the user asks for; CI runs the default `go test` gate for the module.
 
 See the `audit` skill for the full checklist.
 
@@ -108,7 +108,7 @@ See the `audit` skill for the full checklist.
 
 | Layer | What goclaw does |
 |-------|------------------|
-| **Hub-and-spoke coordinator** | Implemented: default `agent_profile` is **`coordinator`** (hub — `spawn_agent`, `stop_task`, `todo_write` on the parent); use **`general-purpose`** or **`builder`** for direct single-session coding (`/profile` or settings). Workers use `general-purpose`, `explore`, `plan`, `verification`, or `code-review` (and custom worker profiles from the merged map) with isolated `session.Session`. Optional `spawn_agent` **`interactive: true`** plus REPL **`/focus`** / **`/detach`**. Worker runs stream to the parent UI via [`ContextWithStreamSink`](internal/orchestrator/sink_context.go). If multiple tools are auto-approved in one message, **`spawn_agent` is not parallelized** with other tools ([`pendingToolsIncludeSpawnAgent`](internal/orchestrator/orchestrator.go)) to avoid duplicate workers and GPU contention. End-user notes: [usage.md — Agent profiles](../docs/goclaw/usage.md) (`timeout_sec`, coordinator vs `general-purpose`). Code: [`internal/coordinator`](internal/coordinator/), wiring in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go). Design notes: [`coordinator.md`](../docs/goclaw/coordinator.md), product comparison [`coordinator-mode.md`](../docs/reference/coordinator-mode.md). |
+| **Hub-and-spoke coordinator** | Implemented: default `agent_profile` is **`general-purpose`** (direct tools in the main session). Use **`coordinator`** for hub mode (`spawn_agent`, `stop_task`, `todo_write` on the parent — `/profile` or settings). Workers use `general-purpose`, `explore`, `plan`, `verification`, or `code-review` (and custom worker profiles from the merged map) with isolated `session.Session`. Optional `spawn_agent` **`interactive: true`** plus REPL **`/focus`** / **`/detach`**. Worker runs stream to the parent UI via [`ContextWithStreamSink`](internal/orchestrator/sink_context.go). If multiple tools are auto-approved in one message, **`spawn_agent` is not parallelized** with other tools ([`internal/toolpolicy`](internal/toolpolicy/toolpolicy.go)) to avoid duplicate workers and GPU contention. End-user notes: [usage.md — Agent profiles](../docs/goclaw/usage.md) (`timeout_sec`, coordinator vs `general-purpose`). Code: [`internal/coordinator`](internal/coordinator/), wiring in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go). Design notes: [`coordinator.md`](../docs/goclaw/coordinator.md), product comparison [`coordinator-mode.md`](../docs/reference/coordinator-mode.md). |
 | **Team/Swarm (peer agents)** | **Minimal disk hub** — [`internal/swarm`](internal/swarm/): mailboxes under a user-chosen directory (tests + future tools). Not the same as `spawn_agent`; see [`swarm.md`](../docs/goclaw/swarm.md). |
 | **External orchestration** | Optional: wrap `goclaw` with your own scheduler/event bus (analogous in spirit to claw-code + clawhip + Discord). Not a goclaw dependency. |
 
@@ -118,7 +118,7 @@ See the `audit` skill for the full checklist.
 
 ## Iterative work and standing orders (project bootstrap)
 
-goclaw injects a **project context** block into the system prompt on each session (see `buildProjectContext` in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go)). Use it like OpenClaw-style **standing orders**: durable scope, triggers in plain language, approval boundaries, escalation, and an **execute → verify → report** habit.
+goclaw injects a **project context** block into the system prompt on each session (see `projectcontext.Build` in [`internal/projectcontext/context.go`](internal/projectcontext/context.go), wired from [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go)). Use it like OpenClaw-style **standing orders**: durable scope, triggers in plain language, approval boundaries, escalation, and an **execute → verify → report** habit.
 
 **What gets loaded automatically**
 
@@ -254,7 +254,7 @@ goclaw/
 
 **REPL slash commands** (do not go to the LLM): `/help` or `help` or `?`; `/session`; `/sessions` (list saved ids); `/quit` or `/exit` (save and exit); `/new` (save current JSONL, start empty session); `/save` (persist without exit); `/compact` (force compaction); `/profile <name>` (switch profile without restart); `/workers` (interactive `spawn_agent` workers); `/focus <task_id_prefix>` or `/focus parent`; `/detach` (back to coordinator); `/plan path|init|new|save|run|template` (`new` → `.goclaw/plans/<name>.md`; `save` optional path; `run` = save last assistant + `/apply-plan`, optional `--hub` and plan path); `/apply-plan [path]` (load plan file, switch to `general-purpose`, stream one execution turn via modelSubmit); `/memory list|add|delete`. **Sends to the LLM via modelSubmit:** `/btw <text>` (side question — rewrites one user message with a brief-aside preamble). Hooks `SessionStart` / `SessionEnd` fire when the REPL starts and exits.
 
-**Default `agent_profile`:** `coordinator` (hub — delegate with `spawn_agent`). Use `agent_profile`, `GOCLAW_AGENT_PROFILE`, or `--profile` for `general-purpose` / `builder` when you want direct tools in the main session without delegation.
+**Default `agent_profile`:** `general-purpose` (direct tools in the main session). Use `agent_profile`, `GOCLAW_AGENT_PROFILE`, or `--profile` for `coordinator` (hub — delegate with `spawn_agent`) or `builder` when you want a different rhythm.
 
 **Plan → execute:** `/profile plan` → ask for a plan → save to **`.goclaw/plan.md`** or a **mini plan** under **`.goclaw/plans/`** (`/plan new <name>`, or `/plan save <path>`). Then **`/plan run`** (optional path + `--hub`) or **`/apply-plan`** / **`--preview`** (optional `/apply-plan --preview`). Each apply/run is **one** model turn — use **small plans** + follow-ups for big work. See [`internal/planfile/planfile.go`](internal/planfile/planfile.go). D16 coordinator sketch: [`coordinator.md`](../docs/goclaw/coordinator.md).
 
@@ -507,23 +507,17 @@ var _ llm.Client = (*OllamaClient)(nil)
 
 ---
 
-## How to test
-
-**Agent sessions:** do not run `go test` or create/expand `*_test.go` unless the user explicitly asks. The commands below are for humans, CI, or when the user requests verification.
+## How to verify locally
 
 ```bash
 # Full build (must be clean)
 go build ./...
 
-# Unit tests (when you choose to run them locally or in CI)
-go test ./...
-
-# Race detector (requires CGO; on Windows use WSL/Linux CI or install a C toolchain)
-# go test -race ./...
-
 # Manual run against local Ollama
 OLLAMA_HOST=http://localhost:11434 OLLAMA_MODEL=qwen2.5-coder:7b go run ./cmd/goclaw
 ```
+
+CI runs `go test` (see [`.github/workflows/goclaw-ci.yml`](../.github/workflows/goclaw-ci.yml)). Run `go test ./...` locally only when you want that feedback.
 
 ### Non-interactive smoke
 
@@ -535,9 +529,9 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 4. **JSON one-shot:** `printf 'hello\n' | go run ./cmd/goclaw --output-format json --no-tools` prints one JSON object on stdout (`--json-output` is equivalent; use `--mock` for a canned response without the provider). **Text one-shot:** `go run ./cmd/goclaw prompt "hello" --no-tools`.
 5. **Full TUI (manual, TTY):** run without `--no-tools`, press **↑** for prior-line recall, trigger a tool in Ask mode; confirm the compact approval strip above the input accepts **`y` / `n`**.
 
-**Mock server** in `testutil/mockopenai/`:
+**Mock server** in `testutil/mockopenai/` (for unit tests in the module):
 - Start with `mockopenai.New(scenarios)` → returns `*Server` with `.URL`
-- Point `NewOpenAICompat` at `server.URL + "/v1"` in tests (see `internal/orchestrator/*_test.go`).
+- Point `NewOpenAICompat` at `server.URL + "/v1"` (see `internal/orchestrator/*_test.go`).
 
 ---
 

@@ -95,27 +95,6 @@ go func() {
 }()
 ```
 
-## Testing
-```go
-// Table-driven tests — preferred
-tests := []struct{ name string; input string; want string }{...}
-for _, tt := range tests {
-    t.Run(tt.name, func(t *testing.T) { ... })
-}
-
-// t.TempDir() for temp files — auto-cleaned
-dir := t.TempDir()
-
-// t.Helper() in test helpers
-func assertResult(t *testing.T, got, want Result) {
-    t.Helper()
-    if got != want { t.Errorf("got %v, want %v", got, want) }
-}
-
-// Race detector — always run in CI
-// go test -race ./...
-```
-
 ## Dependency Injection
 ```go
 // CORRECT — inject all dependencies
@@ -128,8 +107,6 @@ var globalClient llm.Client
 ## Naming
 - Tool names exposed to the model: `snake_case` (read_file, web_fetch)
 - Internal Go types: `CamelCase` (ReadFileTool, AnthropicClient)
-- Test files: `<package>_test.go`
-- Test functions: `TestSomething(t *testing.T)`
 
 ### Full words — no lazy abbreviations
 No lazy truncations (`fun`, `re`, generic `str`, vague `cnt`/`tmp`, …). Use domain-clear names at call sites. Idiomatic Go shorts stay OK (`ctx`, `err`, `ok`, `i`/`j`, `t`/`tb`, HTTP `r`/`w`, `mu`, tight-scope `buf`). Details: `.cursor/rules/naming-full-words.mdc` and `.claude/skills/naming-full-words.md`.

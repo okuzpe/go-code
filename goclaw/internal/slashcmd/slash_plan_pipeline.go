@@ -50,6 +50,8 @@ func savePlanFromLastAssistant(wd string, sess *session.Session, destArg string)
 type ApplyPlanOptions struct {
 	// Hub when true selects coordinator profile for execution (also combined with settings plan_apply_use_coordinator).
 	Hub bool
+	// Steps when true and the plan has a parsed ## Steps section, queues one model turn per step via UIHints.ModelSubmitQueue.
+	Steps bool
 }
 
 func planGateFrom(env SlashEnv) PlanGateConfig {
@@ -84,6 +86,38 @@ func applyPlanExecute(env SlashEnv, orch *orchestrator.Orchestrator, wd, pathTai
 	useCoord := opt.Hub || gate.ApplyUseCoordinator
 	steps := planfile.ParseImplementationSteps(body)
 	hOpts := planfile.HandoffOptions{UseCoordinator: useCoord, ParsedSteps: steps}
+
+	if opt.Steps && len(steps) > 0 {
+		msgs := planfile.StepExecutionUserMessages(p, body, steps, hOpts)
+		if len(msgs) == 0 {
+			return "", "", fmt.Errorf("plan steps execution produced no messages")
+		}
+		setModelSubmitQueue(hintsOut, msgs[1:])
+		notice := ""
+		if useCoord {
+			coord, ok := env.Profs["coordinator"]
+			if !ok {
+				return "", "", fmt.Errorf("coordinator profile missing (required for hub plan execution)")
+			}
+			orch.SetProfile(coord)
+			notice = fmt.Sprintf("switched to profile coordinator; executing plan steps (%d turns): %s", len(msgs), p)
+		} else {
+			gp, ok := env.Profs["general-purpose"]
+			if !ok {
+				return "", "", fmt.Errorf("general-purpose profile missing")
+			}
+			orch.SetProfile(gp)
+			notice = fmt.Sprintf("switched to profile general-purpose; executing plan steps (%d turns): %s", len(msgs), p)
+		}
+		sub := ""
+		if env.ChatSubtitle != nil {
+			sub = env.ChatSubtitle()
+		}
+		setWelcomeHints(hintsOut, orch, sub)
+		setFooterHint(hintsOut, "")
+		return notice, msgs[0], nil
+	}
+
 	msg := planfile.HandoffUserMessageWithOptions(p, body, hOpts)
 
 	if useCoord {

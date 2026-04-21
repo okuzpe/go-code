@@ -78,42 +78,6 @@ func (r *Registry) Get(name string) (Tool, bool) {
 }
 ```
 
-## Testing patterns
-
-```go
-// Table-driven tests — always preferred
-func TestPolicyEvaluate(t *testing.T) {
-    cases := []struct {
-        name string; mode Mode; want Decision
-    }{
-        {"allow", ModeAllow, DecisionAllow},
-        {"deny",  ModeDeny,  DecisionDeny},
-        {"ask",   ModeAsk,   DecisionAsk},
-    }
-    for _, tc := range cases {
-        t.Run(tc.name, func(t *testing.T) {
-            p := NewPolicy()
-            p.Set("bash", tc.mode)
-            if got := p.Evaluate("bash"); got != tc.want {
-                t.Errorf("got %v, want %v", got, tc.want)
-            }
-        })
-    }
-}
-
-// Use t.TempDir() — never os.TempDir() in tests
-dir := t.TempDir()
-
-// Mark helpers with t.Helper()
-func requireNoError(t *testing.T, err error) {
-    t.Helper()
-    if err != nil { t.Fatalf("unexpected error: %v", err) }
-}
-
-// Run with race detector
-// go test -race ./...
-```
-
 ## Dependency injection
 
 ```go
@@ -172,5 +136,4 @@ reg.Register(&ReadFileTool{})
 ```bash
 go vet ./...
 staticcheck ./...       # go install honnef.co/go/tools/cmd/staticcheck@latest
-# go test -race ./...   # when you choose to run tests locally; agents skip unless the user asks
 ```

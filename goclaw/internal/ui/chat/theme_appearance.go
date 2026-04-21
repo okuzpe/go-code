@@ -21,10 +21,9 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 	return &Theme{
 		AssistantName:  "",
 		UserLabel:      "",
-		UserEmoji:      ">",
-		AssistantEmoji: "●",
-		// Empty: compose uses a line-number gutter instead of a per-line ">" prompt.
-		InputPrompt: "",
+		UserEmoji:      "→",
+		AssistantEmoji: "·",
+		InputPrompt:    "→",
 		mdGlamourStyle: p.GlamourStyle,
 		appearance:     p.Appearance,
 

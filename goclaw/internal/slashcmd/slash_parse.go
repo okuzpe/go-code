@@ -48,8 +48,12 @@ func ParseSlashLineAtCursor(line string, runeCol int) (p ParsedSlashLine, ok boo
 	for lead < len(runes) && (runes[lead] == ' ' || runes[lead] == '\t') {
 		lead++
 	}
-	if lead >= len(runes) || runes[lead] != '/' {
+	if lead >= len(runes) || (runes[lead] != '/' && runes[lead] != ':') {
 		return
+	}
+	// Normalize ':' prefix to '/' so the rest of the parser and all callers see a uniform slash command.
+	if runes[lead] == ':' {
+		runes[lead] = '/'
 	}
 
 	var tokens []runeSpan

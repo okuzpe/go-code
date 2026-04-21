@@ -50,7 +50,7 @@ var slashCommandTable = []SlashCommandSuggest{
 }
 
 func slashFirstToken(line string) string {
-	line = strings.TrimSpace(line)
+	line = strings.TrimSpace(normalizeCommandPrefix(line))
 	if !strings.HasPrefix(line, "/") {
 		return ""
 	}
@@ -77,12 +77,13 @@ func filterSlashByToken(token string) []SlashCommandSuggest {
 }
 
 // TUISlashSuggestions returns commands whose name prefix-matches the first /token in buffer.
-// The buffer must be a single logical line (no newlines). Empty or non-slash input returns nil.
+// The buffer must be a single logical line (no newlines). Accepts both '/' and ':' prefixes.
+// Empty or non-slash/colon input returns nil.
 func TUISlashSuggestions(buffer string) []SlashCommandSuggest {
 	if strings.Contains(buffer, "\n") {
 		return nil
 	}
-	raw := strings.TrimSpace(buffer)
+	raw := strings.TrimSpace(normalizeCommandPrefix(buffer))
 	if raw == "" || !strings.HasPrefix(raw, "/") {
 		return nil
 	}
@@ -90,12 +91,13 @@ func TUISlashSuggestions(buffer string) []SlashCommandSuggest {
 }
 
 // SlashTabExpand applies prefix completion for a single-line slash buffer (Tab-longest-prefix style).
+// Accepts both '/' and ':' prefixes; the replacement always uses '/'.
 // If ok is false, the caller should forward the key to the input widget.
 func SlashTabExpand(line string) (replacement string, ok bool) {
 	if strings.Contains(line, "\n") {
 		return "", false
 	}
-	raw := strings.TrimSpace(line)
+	raw := strings.TrimSpace(normalizeCommandPrefix(line))
 	if raw == "" || !strings.HasPrefix(raw, "/") {
 		return "", false
 	}

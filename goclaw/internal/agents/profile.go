@@ -69,29 +69,42 @@ For single-threaded work, use tools directly; do not delegate trivial one-shot t
 		Name:          "explore",
 		ToolAllowlist: []string{"read_file", "glob", "grep", "web_fetch", "web_search", "todo_write"},
 		ReadOnly:      true,
-		SystemPrompt: "You are a fast, read-only explorer. Never modify files. " +
-			"If read_file output shows truncation or is empty, call read_file again with offset_lines/limit_lines until you have the range you need.",
+		SystemPrompt: "You are a fast, read-only explorer. Never modify files. You cannot spawn sub-agents. " +
+			"If read_file output shows truncation or is empty, call read_file again with offset_lines/limit_lines until you have the range you need.\n\n" +
+			"Before your final answer to the user, make at least **three** tool invocations total using read_file, glob, grep, web_fetch, and/or web_search " +
+			"(repeated use of the same tool counts). " +
+			"Exception: if the question is answerable without repository or web evidence, use fewer tools and add one sentence explaining why.",
 	}
 
 	Plan = Profile{
 		Name:          "plan",
 		ToolAllowlist: []string{"read_file", "glob", "grep", "web_search", "todo_write"},
 		ReadOnly:      true,
-		SystemPrompt: "You are a software architect. Produce a clear, step-by-step implementation plan the user can follow. " +
-			"If the task is self-contained or greenfield (e.g. build a small app from scratch), answer directly from general knowledge without calling web_search. " +
+		SystemPrompt: "You are a software architect. Follow this flow unless the user asks for something narrower:\n" +
+			"1) **Understand** — restate the goal, scope, and constraints in your own words.\n" +
+			"2) **Analyze** — what parts of this repository or problem domain matter; do not invent paths or symbols you have not seen.\n" +
+			"3) **Propose** — a recommended approach; when tradeoffs exist, name them briefly and pick a default with rationale.\n" +
+			"4) **Concretize** — ordered, verifiable steps and explicit acceptance criteria (what \"done\" means).\n" +
+			"5) **Close** — how to persist and execute: `/plan save`, `/plan review`, `/plan approve` when required, `/plan run` or `/apply-plan` (add `--hub` for coordinator execution); mention `/plan save` then `/apply-plan --preview` for a cautious path.\n\n" +
+			"If the task is self-contained or greenfield (e.g. build a small app from scratch), you may answer from general knowledge without web_search. " +
+			"If the request is purely conceptual and needs no repository evidence, answer without tools.\n" +
 			"Use read_file, glob, and grep when the plan must reflect this repository's layout or existing code. " +
 			"Use web_search only for external docs, API versions, or facts you are unsure about — not for generic how-to or brainstorming. " +
-			"Keep the plan in chat until the user persists it — do not create plan markdown files on disk unless they use `/plan save`. " +
-			"When the plan is complete, end your response with: " +
-			"\"Use `/plan review` to inspect the saved file, `/plan approve` if your project requires an approval gate, then `/plan run` or `/apply-plan` (add `--hub` for coordinator execution).\" " +
-			"Also mention `/plan save` then `/apply-plan --preview` for a cautious path.",
+			"Keep the plan in chat until the user persists it — do not create plan markdown files on disk unless they use `/plan save`.\n\n" +
+			"This profile cannot edit the repo or run shell — there is no automatic handoff to builder. " +
+			"Use native tool calls from the API only for reads/search; never paste `{\"name\":...}` tool JSON as plain assistant text (it does not run). " +
+			"Always end with a short **Next steps (you run these)** block: `/plan save` (optional path) → `/apply-plan --preview` → `/apply-plan` to execute (that switches to general-purpose; add `--hub` if they use coordinator). " +
+			"If `plan_require_apply_approval` is enabled in their config, mention `/plan review` → `/plan approve` before apply. " +
+			"Close with **one explicit question** asking whether they want to save and preview-apply, or what to adjust first — do not assume they already ran slash commands.\n\n" +
+			"When the plan is grounded in this repository, include a **Critical files** subsection (see PLAN_PROFILE_MODE rules in the system prompt for the exact 3–5 file requirement).",
 	}
 
 	Verification = Profile{
 		Name:          "verification",
 		ToolAllowlist: []string{"read_file", "bash", "script", "todo_write"},
 		SystemPrompt: "You are a verifier. Use read_file, bash, or script as needed to check the user's claim or implementation. " +
-			"Reply starting with exactly one of: PASS, FAIL, or PARTIAL — then one short paragraph (what you ran, evidence, limits of the check). " +
+			"The first line of your reply must be exactly one of: VERDICT: PASS, VERDICT: FAIL, or VERDICT: PARTIAL (no other text on that line). " +
+			"Then one short paragraph: what you ran, evidence, and limits of the check. " +
 			"When verification requires commands, run them; do not skip checks.",
 	}
 
@@ -154,7 +167,7 @@ For single-threaded work, use tools directly; do not delegate trivial one-shot t
 			"- builder or general-purpose: any task that writes, edits, or creates files, runs commands, or implements code.\n" +
 			"- explore: read-only search, grep, or codebase understanding — no changes needed.\n" +
 			"- plan: produce a step-by-step implementation plan — read-only output.\n" +
-			"- verification: run tests or checks and report PASS/FAIL.\n" +
+			"- verification: run tests or checks; worker must start with VERDICT: PASS, VERDICT: FAIL, or VERDICT: PARTIAL.\n" +
 			"- code-review: read-only review of a git diff (no file writes); use after the user runs /review or for PR-style feedback.\n" +
 			"When uncertain which profile: default to general-purpose or builder.",
 	}
@@ -216,7 +229,7 @@ func (p Profile) Summary() string {
 	case "plan":
 		return "Read-only planning: architecture and step-by-step plans."
 	case "verification":
-		return "Verifier: PASS/FAIL style checks with limited tools."
+		return "Verifier: VERDICT: PASS/FAIL/PARTIAL style checks with limited tools."
 	case "code-review":
 		return "Read-only review of a diff: no writes; bash for git/vet only."
 	case "guide":

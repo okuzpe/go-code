@@ -1,6 +1,6 @@
 ---
 name: implement-tool
-description: Use when the user asks to implement, add, or create a new tool for goclaw — interface through registration and tests.
+description: Use when the user asks to implement, add, or create a new tool for goclaw — interface through registration and wiring.
 ---
 
 > **Language:** Author and maintain this file in English only. Rule: `.cursor/rules/agent-artifacts-english.mdc` (paths from the repository root).
@@ -69,48 +69,15 @@ reg.Register(tools.NewFoo(...))
 
 > Registration lives in `internal/app/run.go`, not `main.go`.
 
-### 5. Test `internal/tools/<name>_test.go`
-
-Minimum three cases: happy path, invalid JSON input, boundary/security rejection.
-
-```go
-func TestFooTool(t *testing.T) {
-    tool := NewFoo(t.TempDir())
-
-    // happy path
-    res, err := tool.Execute(context.Background(), `{"field":"value"}`)
-    if err != nil { t.Fatal(err) }
-    if res.IsError { t.Fatalf("unexpected error: %s", res.Content) }
-
-    // invalid JSON → IsError, no Go error
-    res, err = tool.Execute(context.Background(), `not-json`)
-    if err != nil { t.Fatal(err) }
-    if !res.IsError { t.Fatal("expected error for invalid JSON") }
-
-    // path escape (if applicable)
-    res, err = tool.Execute(context.Background(), `{"path":"../../etc/passwd"}`)
-    if err != nil { t.Fatal(err) }
-    if !res.IsError { t.Fatal("expected workspace boundary error") }
-}
-```
-
-For tests that require a live Ollama, add a skip guard:
-```go
-if os.Getenv("OLLAMA_HOST") == "" {
-    t.Skip("requires OLLAMA_HOST")
-}
-```
-
-### 6. Security checklist before marking done
+### 5. Security checklist before marking done
 - [ ] User-visible errors use `Result{IsError: true}`, not a Go `error`
 - [ ] Path tools: workspace boundary checked twice (before and after `EvalSymlinks`)
 - [ ] Write tools: EvalSymlinks on parent dir (not the file); atomic temp+rename
 - [ ] Network tools: SSRF guard applied before HTTP request
 - [ ] Output capped per `limits.go` constants
 
-### 7. Verify
+### 6. Verify
 ```bash
 go build ./...
 go vet ./...
-# go test ./internal/tools/...   # only when the user asks for tests
 ```

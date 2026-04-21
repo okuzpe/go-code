@@ -71,6 +71,8 @@ type settingsFile struct {
 	ToolWorkspaceRoot                    *string             `json:"tool_workspace_root,omitempty"`
 	PlanRequireApplyApproval             *bool               `json:"plan_require_apply_approval,omitempty"`
 	PlanApplyUseCoordinator              *bool               `json:"plan_apply_use_coordinator,omitempty"`
+	AgentVerifyAfterWrite                *bool               `json:"agent_verify_after_write,omitempty"`
+	ParallelToolBatchMax                 *int                `json:"parallel_tool_batch_max,omitempty"`
 	AgentPickerHiddenProfiles            []string            `json:"agent_picker_hidden_profiles,omitempty"`
 	TelegramBotToken                     *string             `json:"telegram_bot_token,omitempty"`
 	TelegramBotTokenFile                 *string             `json:"telegram_bot_token_file,omitempty"`
@@ -349,6 +351,12 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.PlanApplyUseCoordinator != nil && *sf.PlanApplyUseCoordinator {
 		cfg.PlanApplyUseCoordinator = true
+	}
+	if sf.AgentVerifyAfterWrite != nil && *sf.AgentVerifyAfterWrite {
+		cfg.AgentVerifyAfterWrite = true
+	}
+	if sf.ParallelToolBatchMax != nil && *sf.ParallelToolBatchMax > 0 {
+		cfg.ParallelToolBatchMax = *sf.ParallelToolBatchMax
 	}
 	if len(sf.AgentPickerHiddenProfiles) > 0 {
 		for _, s := range sf.AgentPickerHiddenProfiles {

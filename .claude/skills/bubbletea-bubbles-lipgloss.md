@@ -51,4 +51,4 @@ description: >-
 go build ./...
 ```
 
-Run from the `goclaw` module root. Do not expand tests unless the user asks.
+Run from the `goclaw` module root.

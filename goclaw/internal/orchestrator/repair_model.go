@@ -11,21 +11,24 @@ func (o *Orchestrator) applyRepairModelOverride() {
 	if strings.TrimSpace(o.profile.ModelOverride) != "" {
 		return
 	}
-	o.taskRole = "code"
+	if o.ut == nil {
+		return
+	}
+	o.ut.taskRole = "code"
 	cfg := o.cfg
 	if !cfg.TaskModelRoutingActive() {
-		o.turnModel = cfg.NormalizeModelForProvider(cfg.Model())
+		o.ut.turnModel = cfg.NormalizeModelForProvider(cfg.Model())
 		return
 	}
 	if m, ok := cfg.TaskModels["code"]; ok && strings.TrimSpace(m) != "" {
-		o.turnModel = cfg.NormalizeModelForProvider(m)
+		o.ut.turnModel = cfg.NormalizeModelForProvider(m)
 		return
 	}
 	if m, ok := cfg.TaskModels["default"]; ok && strings.TrimSpace(m) != "" {
-		o.turnModel = cfg.NormalizeModelForProvider(m)
+		o.ut.turnModel = cfg.NormalizeModelForProvider(m)
 		return
 	}
-	o.turnModel = cfg.NormalizeModelForProvider(cfg.Model())
+	o.ut.turnModel = cfg.NormalizeModelForProvider(cfg.Model())
 }
 
 // turnModelIsLightweightForRepair reports whether the active turn model matches explore/default/fast tier
@@ -34,7 +37,10 @@ func (o *Orchestrator) turnModelIsLightweightForRepair() bool {
 	if o == nil {
 		return false
 	}
-	cur := strings.TrimSpace(o.turnModel)
+	if o.ut == nil {
+		return false
+	}
+	cur := strings.TrimSpace(o.ut.turnModel)
 	if cur == "" {
 		return true
 	}
@@ -79,7 +85,10 @@ func (o *Orchestrator) tryActionRepairEscalation(
 		return false
 	}
 	mainModel := o.cfg.NormalizeModelForProvider(o.cfg.Model())
-	if strings.TrimSpace(o.turnModel) == mainModel && !o.turnModelIsLightweightForRepair() {
+	if o.ut == nil {
+		return false
+	}
+	if strings.TrimSpace(o.ut.turnModel) == mainModel && !o.turnModelIsLightweightForRepair() {
 		// Already on the primary model id and not a known light tier — avoid a useless loop.
 		return false
 	}

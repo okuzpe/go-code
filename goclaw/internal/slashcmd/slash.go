@@ -37,8 +37,17 @@ func isHelpAlias(input string) bool {
 	return low == "help" || low == "?"
 }
 
-func parseSlashCommand(input string) (fields []string, cmd string, ok bool) {
+// normalizeCommandPrefix converts a leading ':' to '/' so ':cmd' is treated identically to '/cmd'.
+func normalizeCommandPrefix(input string) string {
 	trimmed := strings.TrimSpace(input)
+	if strings.HasPrefix(trimmed, ":") && !strings.HasPrefix(trimmed, "::") {
+		return "/" + trimmed[1:]
+	}
+	return input
+}
+
+func parseSlashCommand(input string) (fields []string, cmd string, ok bool) {
+	trimmed := strings.TrimSpace(normalizeCommandPrefix(input))
 	if trimmed == "" || !strings.HasPrefix(trimmed, "/") {
 		return nil, "", false
 	}
@@ -141,7 +150,7 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 	env := sc.SlashEnv
 	clearHints(hintsOut)
 
-	s := strings.TrimSpace(input)
+	s := strings.TrimSpace(normalizeCommandPrefix(input))
 	if s == "" {
 		return false, "", false, "", nil
 	}
@@ -664,7 +673,7 @@ steps    — list parsed ## Steps only (optional path)`)
 			setFooterHint(hintsOut, h)
 			return true, fmt.Sprintf("plan saved to %s\nRun /plan review → /plan approve if required, then /plan run or /apply-plan.", planPath), false, "", nil
 		case "run", "apply":
-			hub, pathTailRun := parsePlanRunFields(fields)
+			hub, allSteps, pathTailRun := parsePlanRunFields(fields)
 			if err := requireRunningAgent("plan run", orch); err != nil {
 				return true, "", false, "", err
 			}
@@ -675,11 +684,15 @@ steps    — list parsed ## Steps only (optional path)`)
 			if sErr != nil {
 				return true, "", false, "", fmt.Errorf("/plan run: %w", sErr)
 			}
-			notice, modelSubmit, aErr := applyPlanExecute(env, orch, wd, pathTailRun, hintsOut, ApplyPlanOptions{Hub: hub})
+			notice, modelSubmit, aErr := applyPlanExecute(env, orch, wd, pathTailRun, hintsOut, ApplyPlanOptions{Hub: hub, Steps: allSteps})
 			if aErr != nil {
 				return true, "", false, "", fmt.Errorf("/plan run: %w", aErr)
 			}
-			setFooterHint(hintsOut, "Plan saved and execution started — one model turn; follow up if the plan is large.")
+			if allSteps {
+				setFooterHint(hintsOut, "Plan saved — multi-step execution queued (one turn per ## Steps line).")
+			} else {
+				setFooterHint(hintsOut, "Plan saved and execution started — one model turn; follow up if the plan is large.")
+			}
 			combined := fmt.Sprintf("plan saved to %s\n%s", planPath, notice)
 			return true, combined, false, modelSubmit, nil
 		case "template":
@@ -750,7 +763,7 @@ use /workers to list interactive worker ids`)
 			return true, "", false, "", fmt.Errorf("/apply-plan: workspace directory not set")
 		}
 		rest := strings.TrimSpace(strings.TrimPrefix(s, fields[0]))
-		pathTail, preview, hub := parseApplyPlanRest(rest)
+		pathTail, preview, hub, allSteps := parseApplyPlanRest(rest)
 		p := planfile.ResolvePlanArg(wd, pathTail)
 		body, rerr := planfile.Read(p)
 		if rerr != nil {
@@ -762,7 +775,7 @@ use /workers to list interactive worker ids`)
 			setTUIDocOverlay(hintsOut, "Plan preview")
 			return true, out, false, "", nil
 		}
-		notice, msg, err := applyPlanExecute(env, orch, wd, pathTail, hintsOut, ApplyPlanOptions{Hub: hub})
+		notice, msg, err := applyPlanExecute(env, orch, wd, pathTail, hintsOut, ApplyPlanOptions{Hub: hub, Steps: allSteps})
 		if err != nil {
 			return true, "", false, "", fmt.Errorf("/apply-plan: %w", err)
 		}

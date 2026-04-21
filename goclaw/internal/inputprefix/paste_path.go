@@ -176,9 +176,10 @@ func parseQuotedPaths(s string) []string {
 			break
 		}
 		var quote byte
-		if s[0] == '"' {
+		switch s[0] {
+		case '"':
 			quote = '"'
-		} else if s[0] == '\'' {
+		case '\'':
 			quote = '\''
 		}
 		if quote != 0 {

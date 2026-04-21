@@ -3,10 +3,10 @@ package orchestrator
 import (
 	_ "embed"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/llm"
 	"github.com/okuzpe/goclaw/internal/text"
 	"github.com/okuzpe/goclaw/internal/tools"
@@ -15,10 +15,13 @@ import (
 //go:embed base_system_prompt.md
 var baseSystemPrompt string
 
+// planProfileModeMarker is injected when the active profile is "plan"; tests assert it stays present.
+const planProfileModeMarker = "PLAN_PROFILE_MODE"
+
 const (
-	memorySnippetEntries    = 8     // max memory entries injected per store (relevance-scored)
-	memoryMaxBytes          = 4096  // max bytes per memory block to prevent silent context bloat
-	memoryRelevanceMinScore = 0.15  // minimum relevance score (0–1) to include a memory entry
+	memorySnippetEntries    = 8    // max memory entries injected per store (relevance-scored)
+	memoryMaxBytes          = 4096 // max bytes per memory block to prevent silent context bloat
+	memoryRelevanceMinScore = 0.15 // minimum relevance score (0–1) to include a memory entry
 )
 
 // qwenFamily reports whether the model string refers to a Qwen-family model.
@@ -33,6 +36,22 @@ const qwenSystemSuffix = "\n\n[MODEL NOTE: Follow explicit numbered steps. " +
 	"(2) group tool calls logically, " +
 	"(3) confirm result before the next step. " +
 	"Use <thinking>...</thinking> only for complex trade-off reasoning, not for simple lookups.]"
+
+// planProfileWorkflowOverride is appended last in buildRequest so it wins over the generic
+// tool-first and Review-and-Fix instructions in the embedded base prompt when the active profile is plan.
+var planProfileWorkflowOverride = "\n\n## " + planProfileModeMarker + " (overrides conflicting global workflow rules)\n\n" +
+	"You are in the **plan** agent profile for this session.\n\n" +
+	"- **Primary deliverable:** user-facing analysis and a structured markdown plan " +
+	"(context, constraints, acceptance criteria, options or tradeoffs when helpful, ordered steps, risks, suggested verification).\n" +
+	"- **Tools are optional grounding:** read_file, glob, grep, and web_search (when allowlisted) support claims about this repository or external facts. They do not replace the written plan.\n" +
+	"- **Opening text allowed:** a brief framing paragraph before any tool call is permitted when it improves clarity. " +
+	"Do not treat the global \"first output must be a tool call\" rule as mandatory when it conflicts with a readable plan.\n" +
+	"- **Not implementation execution mode:** do not follow the Review-and-Fix execution loop " +
+	"(no mandatory batching of implementation work via todo_write). Omit execution-style todo_write unless the user explicitly wants a visible checklist in session memory.\n" +
+	"- **Honesty:** never claim files were written or commands ran unless a tool actually ran and succeeded.\n" +
+	"- **Critical files (repo-grounded plans only):** when the plan depends on this repository's layout or code, include a subsection **Critical files (3–5)** listing three to five repository-relative paths " +
+	"that an implementer must touch or read first; each line must be a path you have seen via read_file, glob, or grep — never invent paths.\n\n" +
+	"If the request is purely conceptual and needs no repository evidence, answer from reasoning alone without tools."
 
 // effectiveToolSpecs returns registry specs after profile allowlist, disallowed, and read-only stripping.
 func (o *Orchestrator) effectiveToolSpecs() []tools.ToolSpec {
@@ -79,10 +98,14 @@ func (o *Orchestrator) effectiveToolSpecs() []tools.ToolSpec {
 
 func (o *Orchestrator) buildRequest() llm.Request {
 	model := o.cfg.Model()
+	turnModel := ""
+	if o.ut != nil {
+		turnModel = strings.TrimSpace(o.ut.turnModel)
+	}
 	if o.profile.ModelOverride != "" {
 		model = o.profile.ModelOverride
-	} else if o.turnModel != "" {
-		model = o.turnModel
+	} else if turnModel != "" {
+		model = turnModel
 	}
 
 	specs := o.effectiveToolSpecs()
@@ -96,43 +119,44 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		})
 	}
 
-	sys := baseSystemPrompt + o.profile.SystemPrompt
-	if o.workdir != "" {
-		sys = sys + "\n\n## Workspace (tool path root)\n" + o.workdir
-		if ld := strings.TrimSpace(o.launchDir); ld != "" {
-			if filepath.Clean(ld) != filepath.Clean(o.workdir) {
-				sys = sys + "\nProcess started in: " + ld + " — relative paths in file tools resolve from this directory."
-			} else {
-				sys = sys + "\nRelative paths in file tools resolve from this directory unless you pass an absolute path."
-			}
-		}
-		sys = sys + "\n\n### Paths in tool arguments (read_file, glob, grep, write_file, edit_file, patch)\n" +
-			"- If the user pasted or named a **full absolute path** (Windows: `C:\\...` or `c:/...`; Unix: starts with `/`), put that **exact** string in the tool JSON. Do not replace it with only the last segment (e.g. do not use `docs` alone when they meant `c:/project/docs`).\n" +
-			"- **Relative** paths in file tools resolve from the **process / launch directory** (named above when it differs from the tool path root). They are not limited to the tool path root.\n" +
-			"- `glob` without `under` and `grep` without `path` (or with path `.`) search the **tool path root** tree above.\n" +
-			"- For `glob`, use optional `under` to walk a different directory (absolute or relative to launch cwd)."
+	envKey := o.environmentSystemMemoKey(model)
+	if o.cachedEnvSystemKey != envKey || o.cachedEnvSystem == "" {
+		o.cachedEnvSystemKey = envKey
+		o.cachedEnvSystem = o.buildStaticSystemThroughQwen(model)
 	}
-	if sd := strings.TrimSpace(o.scratchDir); sd != "" {
-		sys = sys + "\n\n## Session scratch (ephemeral)\n" +
-			"Directory: " + sd + "\n" +
-			"This folder is deleted when the session ends. Use it for drafts, logs, or scratch files you need without asking for write approval, " +
-			"by passing this absolute path (or paths under it) to write_file, edit_file, patch, or write_files. " +
-			"Do not rely on it for durable project state."
+	sys := o.cachedEnvSystem
+
+	turnUserMessage := ""
+	turnInputLang := ""
+	tuiInteractApply := false
+	tuiInteractMode := ""
+	budgetIter := 0
+	budgetLimit := 0
+	budgetToolCalls := 0
+	turnHadToolRound := false
+	turnWorkspaceWriteOK := false
+	taskRole := ""
+	if o.ut != nil {
+		turnUserMessage = o.ut.turnUserMessage
+		turnInputLang = o.ut.turnInputLang
+		tuiInteractApply = o.ut.tuiInteractApply
+		tuiInteractMode = o.ut.tuiInteractMode
+		budgetIter = o.ut.budgetIter
+		budgetLimit = o.ut.budgetLimit
+		budgetToolCalls = o.ut.budgetToolCalls
+		turnHadToolRound = o.ut.turnHadToolRound
+		turnWorkspaceWriteOK = o.ut.turnWorkspaceWriteOK
+		taskRole = o.ut.taskRole
 	}
-	if o.projectContext != "" {
-		sys = sys + "\n\n## Project context\n" + o.projectContext
-	}
-	if o.skillsPrompt != "" {
-		sys = sys + "\n\n## Loaded skills (SKILL.md)\n" + o.skillsPrompt
-	}
+
 	if o.mem != nil {
-		if block, err := o.mem.RelevantContext(memorySnippetEntries, o.turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
+		if block, err := o.mem.RelevantContext(memorySnippetEntries, turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
 			block = truncateMemoryBlock(block, memoryMaxBytes)
 			sys = sys + "\n\n## Persistent memory (relevant)\n" + block
 		}
 	}
 	if o.projectMem != nil {
-		if block, err := o.projectMem.RelevantContext(memorySnippetEntries, o.turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
+		if block, err := o.projectMem.RelevantContext(memorySnippetEntries, turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
 			block = truncateMemoryBlock(block, memoryMaxBytes)
 			sys = sys + "\n\n## Project memory (.goclaw/memory)\n" + block
 		}
@@ -143,7 +167,7 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		}
 	}
 
-	if hint := taskExplorationHint(o.taskRole); hint != "" {
+	if hint := taskExplorationHint(taskRole); hint != "" {
 		sys = sys + hint
 	}
 
@@ -151,28 +175,24 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	// English translation so detecting the language from session text would produce "en" and instruct
 	// the model to reply in English. turnInputLang holds the original language tag detected before
 	// translation; use it directly when available to preserve the user's language.
-	if langHint := langReplyHint(o.turnInputLang, o.cfg, o.session.Messages); langHint != "" {
+	if langHint := langReplyHint(turnInputLang, o.cfg, o.session.Messages); langHint != "" {
 		sys = sys + langHint
 	}
 
-	if hint := tuiInteractModePromptBlock(o.tuiInteractApply, o.tuiInteractMode); hint != "" {
+	if hint := tuiInteractModePromptBlock(tuiInteractApply, tuiInteractMode); hint != "" {
 		sys = sys + hint
-	}
-
-	if qwenFamily(model) {
-		sys = sys + qwenSystemSuffix
 	}
 
 	// Budget reminder: inject once we are past the halfway point of available iterations,
 	// so the model knows it is approaching its ceiling and should wrap up or report.
-	if o.budgetIter > 0 && o.budgetLimit > 0 && o.budgetIter > o.budgetLimit/2 {
-		remaining := o.budgetLimit - o.budgetIter
-		toolsLeft := o.effectiveMaxToolCalls() - o.budgetToolCalls
+	if budgetIter > 0 && budgetLimit > 0 && budgetIter > budgetLimit/2 {
+		remaining := budgetLimit - budgetIter
+		toolsLeft := o.effectiveMaxToolCalls() - budgetToolCalls
 		softenBudget := !o.profile.ReadOnly &&
 			toolSpecsAllowWorkspaceWrite(specs) &&
-			userMessageWantsWorkspaceWrites(o.turnUserMessage) &&
-			o.turnHadToolRound &&
-			!o.turnWorkspaceWriteOK
+			userMessageWantsWorkspaceWrites(turnUserMessage) &&
+			turnHadToolRound &&
+			!turnWorkspaceWriteOK
 		var body string
 		if softenBudget {
 			body = "You are running low on iteration budget. If the user asked for concrete code changes, prioritize completing in-flight edits (write_file, edit_file, patch) or clearly stating blockers — avoid stopping with analysis-only while edits are still expected."
@@ -181,10 +201,14 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		}
 		sys = sys + fmt.Sprintf(
 			"\n\n<system-reminder>Budget: iteration %d/%d (%d remaining). Tool calls used: %d/%d (%d remaining). %s</system-reminder>",
-			o.budgetIter, o.budgetLimit, remaining,
-			o.budgetToolCalls, o.effectiveMaxToolCalls(), toolsLeft,
+			budgetIter, budgetLimit, remaining,
+			budgetToolCalls, o.effectiveMaxToolCalls(), toolsLeft,
 			body,
 		)
+	}
+
+	if o.profile.Name == agents.Plan.Name {
+		sys = sys + planProfileWorkflowOverride
 	}
 
 	maxTokens := 4096
@@ -215,12 +239,11 @@ func stripToolName(specs []tools.ToolSpec, name string) []tools.ToolSpec {
 }
 
 func stripMCPNames(specs []tools.ToolSpec) []tools.ToolSpec {
-	out := make([]tools.ToolSpec, 0, len(specs))
+	out := specs[:0]
 	for _, s := range specs {
-		if strings.HasPrefix(s.Name, "mcp__") {
-			continue
+		if !strings.HasPrefix(s.Name, "mcp__") {
+			out = append(out, s)
 		}
-		out = append(out, s)
 	}
 	return out
 }

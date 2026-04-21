@@ -19,6 +19,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/todos"
+	"github.com/okuzpe/goclaw/internal/toolpolicy"
 	"github.com/okuzpe/goclaw/internal/tools"
 )
 
@@ -89,6 +90,7 @@ func WithAfterTool(h AfterToolHook) Option {
 func WithSkillsSnippet(s string) Option {
 	return func(o *Orchestrator) {
 		o.skillsPrompt = strings.TrimSpace(s)
+		o.resetEnvSystemCache()
 	}
 }
 
@@ -126,6 +128,7 @@ func WithTodoStore(s *todos.Store) Option {
 func WithWorkdir(dir string) Option {
 	return func(o *Orchestrator) {
 		o.workdir = strings.TrimSpace(dir)
+		o.resetEnvSystemCache()
 	}
 }
 
@@ -135,6 +138,7 @@ func WithWorkdir(dir string) Option {
 func WithLaunchDir(dir string) Option {
 	return func(o *Orchestrator) {
 		o.launchDir = strings.TrimSpace(dir)
+		o.resetEnvSystemCache()
 	}
 }
 
@@ -143,6 +147,7 @@ func WithLaunchDir(dir string) Option {
 func WithScratchDir(dir string) Option {
 	return func(o *Orchestrator) {
 		o.scratchDir = strings.TrimSpace(dir)
+		o.resetEnvSystemCache()
 	}
 }
 
@@ -151,6 +156,7 @@ func WithScratchDir(dir string) Option {
 func WithProjectContext(ctx string) Option {
 	return func(o *Orchestrator) {
 		o.projectContext = strings.TrimSpace(ctx)
+		o.resetEnvSystemCache()
 	}
 }
 
@@ -179,48 +185,19 @@ type Orchestrator struct {
 	// projectContext is a brief project summary injected into the system prompt (optional).
 	projectContext string
 
-	// turnModel is the resolved model id for the current user turn (tool iterations reuse it).
-	// Empty means use cfg.Model() in buildRequest. Cleared after runUserTurn completes.
-	turnModel string
+	// ut holds per-user-turn state; non-nil only during runUserTurn.
+	ut *userTurnState
 
-	// taskRole is the classified task role for the current user turn (e.g. "code", "explore").
-	// Used by buildRequest to inject a per-role system hint. Cleared after runUserTurn completes.
-	taskRole string
-
-	// budgetIter and budgetLimit track iteration progress within the current turn so buildRequest
-	// can inject a budget reminder when the iteration ceiling is approaching.
-	budgetIter  int // current iteration (1-based), 0 = not in a turn
-	budgetLimit int // effective iterLimit for the current turn, 0 = not in a turn
-
-	// budgetToolCalls is the cumulative tool-call count within the current turn.
-	budgetToolCalls int
-
-	// Per-turn snapshot for buildRequest (cleared after runUserTurn): original user message and
-	// whether tools have run without a successful workspace write yet — used to soften budget reminders.
-	turnUserMessage       string
-	turnHadToolRound      bool
-	turnWorkspaceWriteOK  bool
-
-	// turnToolCache is a per-turn cache for read-only tool results (glob, grep).
-	// Key: "<toolname>:<input>". Cleared at the start of each runUserTurn.
-	// Prevents the model from issuing the same glob/grep multiple times in one turn.
-	turnToolCache map[string]string
-	// turnToolCacheMu protects turnToolCache during parallel tool execution.
-	turnToolCacheMu sync.RWMutex
-
-	// turnInputLang is the BCP-47 language tag detected from the raw user message BEFORE any
-	// translation. Set in runUserTurn so buildRequest can use the original language for the
-	// reply-language hint even when normalize_input_language translated the message to English.
-	// Empty means detection was inconclusive or the message was already English.
-	turnInputLang string
-
-	// tuiInteractApply / tuiInteractMode are set by the fullscreen TUI before RunStreaming (Ctrl+M
-	// mode) and cleared when the user turn completes. When apply is false, no extra prompt is injected.
-	tuiInteractApply bool
-	tuiInteractMode  string
+	// nextTUIInteract is copied into ut at the start of the next runUserTurn (SetTurnInteractMode).
+	nextTUIInteractApply bool
+	nextTUIInteractMode  string
 
 	// scratchDir is an absolute session scratch directory (ephemeral notes); empty when disabled.
 	scratchDir string
+
+	// cachedEnvSystem / cachedEnvSystemKey memoize the stable workspace+skills portion of buildRequest.
+	cachedEnvSystemKey string
+	cachedEnvSystem    string
 
 	// compactionIneffectiveStreak counts consecutive phase-2 compactions that failed to drop
 	// estimated context below the auto-compact limit.
@@ -240,8 +217,12 @@ type turnMetrics struct {
 }
 
 func (o *Orchestrator) logTurnMetrics(metrics turnMetrics) {
+	role := ""
+	if o.ut != nil {
+		role = o.ut.taskRole
+	}
 	attrs := []any{
-		"role", o.taskRole,
+		"role", role,
 		"translation_ms", metrics.translation.Milliseconds(),
 		"stream_ms", metrics.stream.Milliseconds(),
 		"tool_ms", metrics.tool.Milliseconds(),
@@ -252,6 +233,11 @@ func (o *Orchestrator) logTurnMetrics(metrics turnMetrics) {
 		attrs = append(attrs, "status", metrics.status)
 	}
 	slog.Info("turn metrics", attrs...)
+}
+
+func (o *Orchestrator) resetEnvSystemCache() {
+	o.cachedEnvSystemKey = ""
+	o.cachedEnvSystem = ""
 }
 
 // New creates an Orchestrator with the provided subsystems.
@@ -304,11 +290,21 @@ func (o *Orchestrator) effectiveMaxToolCalls() int {
 
 // TaskRole returns the classified task role for the current turn (e.g. "fix", "code", "explore").
 // Returns "" between turns.
-func (o *Orchestrator) TaskRole() string { return o.taskRole }
+func (o *Orchestrator) TaskRole() string {
+	if o.ut == nil {
+		return ""
+	}
+	return o.ut.taskRole
+}
 
 // TurnModel returns the model id resolved for the current turn.
 // Returns "" when the default model (cfg.Model()) is used.
-func (o *Orchestrator) TurnModel() string { return o.turnModel }
+func (o *Orchestrator) TurnModel() string {
+	if o.ut == nil {
+		return ""
+	}
+	return o.ut.turnModel
+}
 
 // SetTurnInteractMode sets the TUI interact mode (chat | code | agent) for the next RunStreaming
 // call. The hint is injected into the system prompt for that user turn only. Call with any value
@@ -317,18 +313,18 @@ func (o *Orchestrator) TurnModel() string { return o.turnModel }
 func (o *Orchestrator) SetTurnInteractMode(mode string) {
 	mode = strings.TrimSpace(mode)
 	if mode == "" {
-		o.tuiInteractApply = false
-		o.tuiInteractMode = ""
+		o.nextTUIInteractApply = false
+		o.nextTUIInteractMode = ""
 		return
 	}
-	o.tuiInteractApply = true
-	o.tuiInteractMode = config.NormalizeTUIInteractMode(mode)
+	o.nextTUIInteractApply = true
+	o.nextTUIInteractMode = config.NormalizeTUIInteractMode(mode)
 }
 
 // ClearTurnInteractMode removes the TUI interact hint before the next model call.
 func (o *Orchestrator) ClearTurnInteractMode() {
-	o.tuiInteractApply = false
-	o.tuiInteractMode = ""
+	o.nextTUIInteractApply = false
+	o.nextTUIInteractMode = ""
 }
 
 // Run processes a single user message and returns the final assistant response.
@@ -363,7 +359,16 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	if origLang == "" {
 		origLang = whatlanggoToTag(intentMessage)
 	}
-	o.turnInputLang = origLang
+
+	o.ut = &userTurnState{
+		turnToolCache:        make(map[string]string),
+		tuiInteractApply:     o.nextTUIInteractApply,
+		tuiInteractMode:      o.nextTUIInteractMode,
+	}
+	o.nextTUIInteractApply = false
+	o.nextTUIInteractMode = ""
+	o.ut.turnInputLang = origLang
+	defer func() { o.ut = nil }()
 
 	// Translate non-English input to English before the LLM sees it (opt-in or default-on).
 	// The language-reply hint uses turnInputLang (the original) so the model answers in the
@@ -377,7 +382,6 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	o.session.Add("user", userMessage)
 
 	o.prepareTurnModel(ctx, intentMessage)
-	defer func() { o.turnModel = ""; o.taskRole = "" }()
 
 	toolCalls := 0
 	iterCap := o.effectiveMaxIterations()
@@ -386,28 +390,15 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		iterLimit = o.profile.MaxTurns
 	}
 	// Adaptive budget: lightweight roles (explore, fast) rarely need the full cap.
-	if o.taskRole != "" {
-		iterLimit = adaptIterBudget(iterLimit, o.taskRole)
+	if o.ut.taskRole != "" {
+		iterLimit = adaptIterBudget(iterLimit, o.ut.taskRole)
 	}
 	// Chat mode keeps orchestration lighter than full agent loops.
-	if o.tuiInteractApply && config.NormalizeTUIInteractMode(o.tuiInteractMode) == config.TUIInteractModeChat && iterLimit > 10 {
+	if o.ut.tuiInteractApply && config.NormalizeTUIInteractMode(o.ut.tuiInteractMode) == config.TUIInteractModeChat && iterLimit > 10 {
 		iterLimit = 10
 	}
-	o.budgetLimit = iterLimit
-	o.turnUserMessage = intentMessage
-	o.turnToolCache = make(map[string]string)
-	defer func() {
-		o.budgetIter = 0
-		o.budgetLimit = 0
-		o.budgetToolCalls = 0
-		o.turnUserMessage = ""
-		o.turnHadToolRound = false
-		o.turnWorkspaceWriteOK = false
-		o.turnToolCache = nil
-		o.turnInputLang = ""
-		o.tuiInteractApply = false
-		o.tuiInteractMode = ""
-	}()
+	o.ut.budgetLimit = iterLimit
+	o.ut.turnUserMessage = intentMessage
 
 	actionNudges := 0
 	repairEscalations := 0
@@ -418,17 +409,18 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	reflectionFired := false // at most one reflection nudge per turn
 
 	for iter := range iterLimit {
-		o.budgetIter = iter + 1
-		o.budgetToolCalls = toolCalls
-		o.turnHadToolRound = hadToolRound
-		o.turnWorkspaceWriteOK = workspaceWriteOK
+		o.ut.budgetIter = iter + 1
+		o.ut.budgetToolCalls = toolCalls
+		o.ut.turnHadToolRound = hadToolRound
+		o.ut.turnWorkspaceWriteOK = workspaceWriteOK
 		o.maybeCompact(ctx, sink)
 
 		if sink != nil {
-			phase := ThinkingPhaseLine(iter, o.taskRole, PhaseContext{
+			phase := ThinkingPhaseLine(iter, o.ut.taskRole, PhaseContext{
 				HadToolRound:      hadToolRound,
 				WorkspaceWriteOK:  workspaceWriteOK,
 				LastBatchReadOnly: lastBatchReadOnly,
+				BudgetLimit:       o.ut.budgetLimit,
 			})
 			sink.OnThinkingStart(phase)
 		}
@@ -485,6 +477,13 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				slog.Debug("orchestrator: action-repair model escalation")
 				continue
 			}
+			if verifyGateShouldInjectNudge(o.cfg, o.ut, o.profile.ReadOnly) {
+				o.session.AddAssistant(response, nil)
+				verifyGateApplyNudge(o.ut)
+				o.session.Add("user", verifyAfterWriteNudgeMessage)
+				slog.Debug("orchestrator: verify-after-write nudge")
+				continue
+			}
 			plain := response
 			response = maybeAppendNoWorkspaceWriteFooter(o, response, intentMessage, hadToolRound, workspaceWriteOK)
 			if sink != nil && len(response) > len(plain) {
@@ -498,7 +497,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				extractModel := o.cfg.Model()
 				if mo := strings.TrimSpace(o.profile.ModelOverride); mo != "" {
 					extractModel = o.cfg.NormalizeModelForProvider(mo)
-				} else if tm := strings.TrimSpace(o.turnModel); tm != "" {
+				} else if tm := strings.TrimSpace(o.ut.turnModel); tm != "" {
 					extractModel = tm
 				}
 				memory.ScheduleSilentTurnLLMExtract(o.cfg, o.llm, o.mem, extractModel, intentMessage, response)
@@ -522,7 +521,14 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			return "", fmt.Errorf("tool call limit (%d) reached", toolCap)
 		}
 
-		parallel := len(pendingTools) > 1 && o.allToolsAutoApprove(pendingTools) && !pendingToolsIncludeSpawnAgent(pendingTools)
+		names := make([]string, len(pendingTools))
+		for i, tu := range pendingTools {
+			names[i] = tu.Name
+		}
+		parallel := len(pendingTools) > 1 &&
+			len(pendingTools) <= o.cfg.EffectiveParallelToolBatchMax() &&
+			o.allToolsAutoApprove(pendingTools) &&
+			!toolpolicy.PendingToolsBlockParallel(names)
 		var results []llm.ToolResultRecord
 
 		if parallel {
@@ -548,6 +554,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				}
 			}
 			recordWorkspaceWriteFromResults(&workspaceWriteOK, results)
+			verifyGateProcessToolResults(o.cfg, o.ut, results, intentMessage)
 			appendJSONToolTrace(toolTrace, pendingTools, results)
 		} else {
 			for _, tu := range pendingTools {
@@ -573,6 +580,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				})
 			}
 			recordWorkspaceWriteFromResults(&workspaceWriteOK, results)
+			verifyGateProcessToolResults(o.cfg, o.ut, results, intentMessage)
 			appendJSONToolTrace(toolTrace, pendingTools, results)
 		}
 		o.session.AddToolResults(results)
@@ -622,11 +630,13 @@ func (o *Orchestrator) ReplaceSession(s *session.Session) {
 // SetProfile switches the active agent profile (tool allowlist, read-only flag, system prompt suffix).
 func (o *Orchestrator) SetProfile(p agents.Profile) {
 	o.profile = p
+	o.resetEnvSystemCache()
 }
 
 // SetConfig replaces the orchestrator config snapshot (e.g. after /model in the REPL).
 func (o *Orchestrator) SetConfig(cfg config.Config) {
 	o.cfg = cfg
+	o.resetEnvSystemCache()
 }
 
 // SetToolPermission overrides the permission mode for a single tool in the active policy.
@@ -670,15 +680,6 @@ func (o *Orchestrator) allToolsAutoApprove(pendingTools []llm.ToolUse) bool {
 		}
 	}
 	return true
-}
-
-func pendingToolsIncludeSpawnAgent(pendingTools []llm.ToolUse) bool {
-	for _, tu := range pendingTools {
-		if tu.Name == "spawn_agent" {
-			return true
-		}
-	}
-	return false
 }
 
 // executeToolsParallel runs all tools concurrently and returns results in the

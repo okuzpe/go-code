@@ -87,7 +87,8 @@ type Model struct {
 	toolLogDetail bool // true = showing full content of toolLog[toolLogCursor]
 	toolLogText   string
 
-	sessionID string
+	sessionID  string
+	modelLabel string // e.g. "ollama/qwen2.5-coder:7b"; shown in the header
 
 	focusLine   func() string
 	footerStats func() string
@@ -121,6 +122,10 @@ type Model struct {
 	projectAgentsDir   string
 	activeAgentProfile string
 	agentPickerHidden  []string
+
+	// headerRendered is the optional top banner above the transcript (currently unused).
+	// Built in layout() so height math is consistent between layout() and View().
+	headerRendered string
 
 	// profileBarRendered is built in layout() with the same height math as View() (profile strip between transcript and footer).
 	profileBarRendered string
@@ -242,6 +247,8 @@ type Options struct {
 	// TUIInteractMode is the initial UI-only interact mode label (chat | code | agent); Ctrl+M cycles.
 	// Empty defaults to chat (see config.NormalizeTUIInteractMode).
 	TUIInteractMode string
+	// ModelLabel is a short provider/model string shown in the header (e.g. "ollama/qwen2.5-coder:7b").
+	ModelLabel string
 }
 
 // SlashHandler runs a slash command. If modelSubmit is non-empty, send that text to the model after displaying out (e.g. /edit).
@@ -353,6 +360,7 @@ func New(ctx context.Context, opts Options) Model {
 		curAssistantLineIdx:  -1,
 		thinkingLineIdx:      -1,
 		sessionID:            strings.TrimSpace(opts.SessionID),
+		modelLabel:           strings.TrimSpace(opts.ModelLabel),
 		focusLine:            opts.FocusLine,
 		footerStats:          opts.FooterStats,
 		appVersion:           strings.TrimSpace(opts.Welcome.Version),

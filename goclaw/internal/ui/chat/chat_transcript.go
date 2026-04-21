@@ -287,7 +287,7 @@ func (m *Model) refreshToolRunningTranscriptRows() {
 		job := m.toolWaitQueue[i]
 		elapsed := int(time.Since(m.lineMeta[lineIdx].startedAt).Seconds())
 		label := orchestrator.ToolWorkingPhrase(job.name)
-		m.lines[lineIdx] = th.RenderToolInProgressRow(label, job.summary, elapsed, m.widthOrDefault())
+		m.lines[lineIdx] = th.RenderToolRunning(label, job.summary, elapsed, m.widthOrDefault())
 		changed = true
 	}
 	if changed {
@@ -303,7 +303,7 @@ func (m *Model) appendToolRunningTranscriptRow(toolName, preview string) {
 	now := time.Now()
 	lineIdx := len(m.lines)
 	label := orchestrator.ToolWorkingPhrase(toolName)
-	m.lines = append(m.lines, th.RenderToolInProgressRow(label, preview, 0, m.widthOrDefault()))
+	m.lines = append(m.lines, th.RenderToolRunning(label, preview, 0, m.widthOrDefault()))
 	m.appendToolRunningMeta(toolName, preview, now)
 	m.toolRunLineIdx = append(m.toolRunLineIdx, lineIdx)
 	m.setLinesContent(false)
@@ -314,15 +314,14 @@ func (m *Model) replaceToolRunningWithCard(lineIdx int, toolName, summary, conte
 	if th == nil {
 		th = DefaultTheme()
 	}
-	label := orchestrator.ToolFinishedPhrase(toolName)
 	if lineIdx < 0 || lineIdx >= len(m.lines) {
 		m.appendToolDoneLine(toolName, summary, content, isError)
 		return
 	}
-	summaryBody := orchestrator.ToolCardSummaryBody(toolName, summary, content, isError)
+	label := orchestrator.ToolWorkingPhrase(toolName)
+	pair := th.RenderToolPair(label, summary, content, isError, m.widthOrDefault())
 	outcome := orchestrator.TranscriptOutcomeSnippet(toolName, content, isError)
-	card := th.RenderToolCard(label, summaryBody, outcome, isError, m.widthOrDefault())
-	m.lines[lineIdx] = card
+	m.lines[lineIdx] = pair
 	m.syncLineMetaLen()
 	if lineIdx < len(m.lineMeta) {
 		m.lineMeta[lineIdx] = lineMeta{
@@ -426,18 +425,17 @@ func (m *Model) dequeueToolResult(toolUseID, name string) (lineIdx int, job pend
 	return lineIdx, job
 }
 
-// appendToolDoneLine renders a completed tool call as a compact card (claw-code style)
-// and records it in the session tool log for Ctrl+T drill-down.
+// appendToolDoneLine renders a completed tool call as a compact »/< pair and records it
+// in the session tool log for Ctrl+T drill-down.
 func (m *Model) appendToolDoneLine(toolName, summary, content string, isError bool) {
 	th := m.theme
 	if th == nil {
 		th = DefaultTheme()
 	}
-	label := orchestrator.ToolFinishedPhrase(toolName)
-	summaryBody := orchestrator.ToolCardSummaryBody(toolName, summary, content, isError)
+	label := orchestrator.ToolWorkingPhrase(toolName)
+	pair := th.RenderToolPair(label, summary, content, isError, m.width)
 	outcome := orchestrator.TranscriptOutcomeSnippet(toolName, content, isError)
-	card := th.RenderToolCard(label, summaryBody, outcome, isError, m.width)
-	m.lines = append(m.lines, card)
+	m.lines = append(m.lines, pair)
 	m.appendToolCardMeta(toolName, summary, outcome, isError, content)
 	m.setLinesContent(false)
 	m.appendToToolLog(toolName, summary, content, isError, outcome)

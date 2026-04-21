@@ -255,50 +255,91 @@ func (t *Theme) RenderToolCard(toolLabel, summary, outcome string, isError bool,
 	return b.String()
 }
 
-// RenderThinkingRow is a single transcript line for the LLM phase before the first text delta or tool call.
-// baseLabel is a short English phrase from orchestrator.ThinkingPhaseLine; empty uses "Thinking".
-func (t *Theme) RenderThinkingRow(baseLabel string, elapsedSec int, width int) string {
-	_ = width
-	label := strings.TrimSpace(baseLabel)
-	if label == "" {
-		label = "Thinking"
-	}
-	if elapsedSec >= 1 {
-		label = fmt.Sprintf("%s (%ds)", label, elapsedSec)
-	}
-	label += "…"
-	return "  " + t.FooterDim.Render(label)
+// RenderThinkingRow returns an empty string — thinking state is shown exclusively in the
+// status line (footerPrimaryStatus), not in the transcript. The lineMeta entry is still
+// created so elapsed-time tracking works; this keeps the slot without visual noise.
+func (t *Theme) RenderThinkingRow(_ string, _ int, _ int) string {
+	return ""
 }
 
-// RenderToolInProgressRow is a compact IN block for a tool that has not returned yet.
-func (t *Theme) RenderToolInProgressRow(toolLabel, summary string, elapsedSec int, width int) string {
-	cardW := toolCardInnerWidth(width)
-	headText := toolLabel + " · IN"
-	if elapsedSec >= 1 {
-		headText = fmt.Sprintf("%s (%ds)", headText, elapsedSec)
+// RenderToolRunning renders a single in-flight tool line using the compact »/< pair style.
+// Format: "» toolLabel: summary (Ns)"
+// Used for the transcript row while a tool is executing and for progress updates.
+func (t *Theme) RenderToolRunning(toolLabel, summary string, elapsedSec int, _ int) string {
+	callGlyph := t.Tool.Render("»")
+	name := t.Tool.Render(toolLabel)
+	sum := strings.TrimSpace(summary)
+	if elapsedSec >= 2 {
+		if sum != "" {
+			sum = fmt.Sprintf("%s (%ds)", sum, elapsedSec)
+		} else {
+			sum = fmt.Sprintf("(%ds)", elapsedSec)
+		}
 	}
-	nameRendered := t.ToolCardHead.Render(" " + headText + " ")
-	header := toolCardTopRule(t, nameRendered, cardW)
-	st := icons.Unicode
-	if t != nil {
-		st = t.Icons
+	line := callGlyph + " " + name
+	if sum != "" {
+		line += ": " + t.FooterDim.Render(text.TruncateRunes(sum, toolInProgressSummaryMaxRunes))
 	}
-	footer := t.ToolCardBorder.Render(st.ToolCardBottomLeft()) + t.FooterDim.Render(" …")
+	return "  " + line
+}
 
-	var b strings.Builder
-	b.WriteString("  ")
-	b.WriteString(header)
-	if s := strings.TrimSpace(summary); s != "" {
-		s = text.TruncateRunes(s, toolInProgressSummaryMaxRunes)
-		b.WriteString("\n  ")
-		// Tool-accent color on the vertical bar: matches the completed-card style.
-		b.WriteString(t.ToolTag.Render(st.ToolCardV()))
-		b.WriteString("  ")
-		b.WriteString(t.ToolCardBody.Render(s))
+// RenderToolPair renders a completed tool call as a compact two-line »/< pair.
+//
+//	» read_file: src/main.go
+//	< 142 lines loaded  [+]
+//
+// The first result line is always visible; truncated output appends a dim "[+]" marker.
+// Error results use "!" instead of "<" and are rendered in the error color.
+func (t *Theme) RenderToolPair(toolLabel, summary, content string, isError bool, width int) string {
+	callGlyph := t.Tool.Render("»")
+	name := t.Tool.Render(toolLabel)
+	callLine := "  " + callGlyph + " " + name
+	if sum := strings.TrimSpace(summary); sum != "" {
+		callLine += ": " + t.FooterDim.Render(text.TruncateRunes(sum, toolInProgressSummaryMaxRunes))
 	}
-	b.WriteString("\n  ")
-	b.WriteString(footer)
-	return b.String()
+
+	var resultGlyph string
+	if isError {
+		resultGlyph = t.ErrorStyle.Render("!")
+	} else {
+		resultGlyph = t.ToolCardBody.Render("<")
+	}
+
+	result := strings.TrimSpace(content)
+	firstLine := result
+	truncated := false
+	if nl := strings.IndexByte(result, '\n'); nl >= 0 {
+		firstLine = result[:nl]
+		truncated = true
+	}
+	maxResultW := width - 6
+	if maxResultW < 20 {
+		maxResultW = 60
+	}
+	firstLine = strings.TrimSpace(firstLine)
+	if len([]rune(firstLine)) > maxResultW {
+		firstLine = text.TruncateRunes(firstLine, maxResultW)
+		truncated = true
+	}
+
+	var resultLine string
+	if firstLine == "" && isError {
+		resultLine = "  " + resultGlyph + " " + t.ErrorStyle.Render("tool error")
+	} else {
+		body := t.ToolCardBody.Render(firstLine)
+		if truncated {
+			body += " " + t.FooterDim.Render("[+]")
+		}
+		resultLine = "  " + resultGlyph + " " + body
+	}
+
+	return callLine + "\n" + resultLine
+}
+
+// RenderToolInProgressRow delegates to RenderToolRunning for backward compatibility
+// (called from reflowTranscriptForWidth for lineKindToolRunning rows).
+func (t *Theme) RenderToolInProgressRow(toolLabel, summary string, elapsedSec int, width int) string {
+	return t.RenderToolRunning(toolLabel, summary, elapsedSec, width)
 }
 
 // StatusBarRender renders a one-line status bar with separator and content.

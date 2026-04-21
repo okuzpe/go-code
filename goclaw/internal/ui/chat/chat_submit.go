@@ -64,6 +64,14 @@ func (m *Model) runDispatchAfterUserEcho(txt string) tea.Cmd {
 				}
 			}
 			m.applySlashHints(hints)
+			if len(hints.ModelSubmitQueue) > 0 {
+				for i := len(hints.ModelSubmitQueue) - 1; i >= 0; i-- {
+					q := strings.TrimSpace(hints.ModelSubmitQueue[i])
+					if q != "" {
+						m.messageQueue = append([]string{q}, m.messageQueue...)
+					}
+				}
+			}
 			if strings.TrimSpace(modelSubmit) != "" && m.submitter != nil && m.submitter.fn != nil {
 				m.runModelSubmit(modelSubmit, m.interactMode)
 			}

@@ -46,9 +46,9 @@ func TestOnboardingWelcomeMarkdown_replacesTitle(t *testing.T) {
 }
 
 func TestOnboardingProfileStepInitialCursor(t *testing.T) {
-	require.Equal(t, 0, onboardingProfileStepInitialCursor("coordinator"))
+	require.Equal(t, 1, onboardingProfileStepInitialCursor("coordinator"))
 	require.Equal(t, 0, onboardingProfileStepInitialCursor("plan"))
-	require.Equal(t, 1, onboardingProfileStepInitialCursor("general-purpose"))
+	require.Equal(t, 0, onboardingProfileStepInitialCursor("general-purpose"))
 	require.Len(t, onboardingProfileStepOptions, 2)
 }
 

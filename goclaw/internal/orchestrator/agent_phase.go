@@ -1,6 +1,9 @@
 package orchestrator
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // PhaseContext carries per-iteration state flags so ThinkingPhaseLine can
 // emit a phase label that reflects the current step in the agent loop cycle.
@@ -11,13 +14,24 @@ type PhaseContext struct {
 	WorkspaceWriteOK bool
 	// LastBatchReadOnly is true when the most recent tool batch contained only read-only tools.
 	LastBatchReadOnly bool
+	// BudgetLimit is the effective iteration cap for this turn (0 = unknown/not set).
+	BudgetLimit int
 }
 
 // ThinkingPhaseLine is a short English status for the LLM streaming phase before tool calls or text deltas.
 // iterZeroBased is the orchestrator loop index (0 = first LLM call in this user turn).
 // taskRole is the resolved task_models role (e.g. code, explore, fix); may be empty when routing is off.
 // ctx carries per-iteration state to derive a phase label that reflects the current agent loop step.
+// The returned string is prefixed with "[iter/limit] " when BudgetLimit > 0, e.g. "[2/8] Analyzing findings".
 func ThinkingPhaseLine(iterZeroBased int, taskRole string, ctx PhaseContext) string {
+	label := thinkingPhaseLabel(iterZeroBased, taskRole, ctx)
+	if ctx.BudgetLimit > 0 {
+		return fmt.Sprintf("[%d/%d] %s", iterZeroBased+1, ctx.BudgetLimit, label)
+	}
+	return label
+}
+
+func thinkingPhaseLabel(iterZeroBased int, taskRole string, ctx PhaseContext) string {
 	if iterZeroBased == 0 {
 		switch strings.ToLower(strings.TrimSpace(taskRole)) {
 		case "code", "fix":

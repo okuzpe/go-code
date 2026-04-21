@@ -64,11 +64,12 @@ type SpawnAgentTool struct {
 
 	// Context injected into every worker orchestrator so workers have the same
 	// workspace awareness as the parent agent.
-	workdir       string
-	launchDir     string // process cwd; prompt + PerAgentMemoryDir project root
-	projectCtx    string
-	mem           *memory.Store
-	skillsSnippet string
+	workdir        string
+	launchDir      string // process cwd; prompt + PerAgentMemoryDir project root
+	projectCtx     string // full project summary (manifest, README, CLAUDE.md, standing orders)
+	projectCtxThin string // same without CLAUDE.md / standing orders (explore/plan workers)
+	mem            *memory.Store
+	skillsSnippet  string
 }
 
 var _ tools.Tool = (*SpawnAgentTool)(nil)
@@ -117,9 +118,16 @@ func (t *SpawnAgentTool) workerLaunchDir() string {
 	return t.workdir
 }
 
-// WithProjectContext passes the project summary to every spawned worker.
+// WithProjectContext passes the full project summary to spawned workers that are not explore/plan.
 func (t *SpawnAgentTool) WithProjectContext(ctx string) *SpawnAgentTool {
 	t.projectCtx = strings.TrimSpace(ctx)
+	return t
+}
+
+// WithProjectContextThin passes the project summary without CLAUDE.md or standing orders.
+// explore and plan workers use this so convention files are not injected into read-only agents.
+func (t *SpawnAgentTool) WithProjectContextThin(ctx string) *SpawnAgentTool {
+	t.projectCtxThin = strings.TrimSpace(ctx)
 	return t
 }
 
@@ -145,7 +153,7 @@ func (t *SpawnAgentTool) Description() string {
 		"detail it needs must be in the task description. " +
 		"Set interactive: true to keep the worker running after this call; the user can send more input via /focus <task_id> in the REPL until /detach or stop_task. " +
 		"The profile field must be one of the configured worker profiles (see tool schema enum), typically builder or general-purpose or a full-tool custom profile for coding; " +
-		"explore — read-only search; plan — read-only plan output; verification — PASS/FAIL checks; code-review — read-only diff review (no writes)."
+		"explore — read-only search; plan — read-only plan output; verification — VERDICT: PASS/FAIL/PARTIAL checks; code-review — read-only diff review (no writes)."
 }
 
 func (t *SpawnAgentTool) effectiveProfiles() map[string]agents.Profile {
@@ -258,8 +266,13 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 		workerOpts = append(workerOpts, orchestrator.WithWorkdir(t.workdir))
 		workerOpts = append(workerOpts, orchestrator.WithLaunchDir(t.workerLaunchDir()))
 	}
-	if t.projectCtx != "" {
-		workerOpts = append(workerOpts, orchestrator.WithProjectContext(t.projectCtx))
+	workerProjectCtx := strings.TrimSpace(t.projectCtx)
+	if profile.Name == "explore" || profile.Name == "plan" {
+		// Never inject full context (with CLAUDE.md / standing orders) for these profiles.
+		workerProjectCtx = strings.TrimSpace(t.projectCtxThin)
+	}
+	if workerProjectCtx != "" {
+		workerOpts = append(workerOpts, orchestrator.WithProjectContext(workerProjectCtx))
 	}
 	// Per-agent memory: if the worker profile declares a MemoryScope, give it an isolated store
 	// instead of the parent (coordinator) store so each agent's memory stays scoped.

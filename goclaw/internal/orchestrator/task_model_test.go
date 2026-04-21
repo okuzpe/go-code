@@ -61,20 +61,21 @@ func TestPrepareTurnModel_UsesTaskMap(t *testing.T) {
 		perms:   permissions.NewPolicy(),
 		hooks:   hooks.New(),
 		profile: agents.GeneralPurpose,
+		ut:      &userTurnState{},
 	}
 
 	// "implement" triggers code role (not fix).
 	o.prepareTurnModel(context.Background(), "implement a function to parse JSON")
-	require.Equal(t, "coder:14b", o.turnModel)
+	require.Equal(t, "coder:14b", o.ut.turnModel)
 
 	// general-purpose fallback is "default"; short vague prompts use the fast path → default task model.
-	o.turnModel = ""
+	o.ut.turnModel = ""
 	o.prepareTurnModel(context.Background(), "synthetic vague message that matches no strong keyword")
-	require.Equal(t, "fallback:7b", o.turnModel)
+	require.Equal(t, "fallback:7b", o.ut.turnModel)
 
-	o.turnModel = ""
+	o.ut.turnModel = ""
 	o.prepareTurnModel(context.Background(), "hola")
-	require.Equal(t, "fallback:7b", o.turnModel)
+	require.Equal(t, "fallback:7b", o.ut.turnModel)
 }
 
 func TestBuildRequestTurnModelOverridesGlobal(t *testing.T) {
@@ -84,13 +85,13 @@ func TestBuildRequestTurnModelOverridesGlobal(t *testing.T) {
 	cfg.OllamaModel = "global:latest"
 
 	o := &Orchestrator{
-		cfg:       cfg,
-		session:   session.New(),
-		tools:     tools.New(),
-		perms:     permissions.NewPolicy(),
-		hooks:     hooks.New(),
-		profile:   agents.GeneralPurpose,
-		turnModel: "worker:tag",
+		cfg:     cfg,
+		session: session.New(),
+		tools:   tools.New(),
+		perms:   permissions.NewPolicy(),
+		hooks:   hooks.New(),
+		profile: agents.GeneralPurpose,
+		ut:      &userTurnState{turnModel: "worker:tag"},
 	}
 	req := o.buildRequest()
 	require.Equal(t, "worker:tag", req.Model)

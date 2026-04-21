@@ -17,12 +17,12 @@ var onboardingProfileStepOptions = []struct {
 	label   string
 }{
 	{
-		profile: "coordinator",
-		label:   "Hub (coordinator) — delegate work with spawn_agent; parent session has no direct file/bash tools",
-	},
-	{
 		profile: "general-purpose",
 		label:   "Direct coding (general-purpose) — full toolset in this session",
+	},
+	{
+		profile: "coordinator",
+		label:   "Hub (coordinator) — delegate work with spawn_agent; parent session has no direct file/bash tools",
 	},
 }
 

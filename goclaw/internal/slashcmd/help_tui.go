@@ -43,7 +43,7 @@ func TUIHelpShortcutsMarkdown(st icons.Set) string {
 	b.WriteString(" Footer/workspace glyphs follow **tui_icons** / **GOCLAW_TUI_ICONS** (emoji · unicode · ascii · nerd).\n\n")
 	b.WriteString("- **Enter** — send message\n")
 	b.WriteString("- **Ctrl+P** — open agent profile picker (same as /agents Enter)\n")
-	b.WriteString("- **Ctrl+Shift+←** / **Ctrl+Shift+→** — cycle the active agent profile (order from **tui_profile_cycle** in settings; default coordinator → plan → general-purpose → explore). A one-line **profile rail** above the transcript shows the name, a short lane hint, and the key chord (no block box around the name — keeps one row).\n")
+	b.WriteString("- **Ctrl+Shift+←** / **Ctrl+Shift+→** — cycle the active agent profile (order from **tui_profile_cycle** in settings; default general-purpose → plan → explore → coordinator). A one-line **profile rail** above the transcript shows the name, a short lane hint, and the key chord (no block box around the name — keeps one row).\n")
 	b.WriteString("- **Shift+Enter** / **Alt+Enter** — newline in the input\n")
 	b.WriteString("- **Slash then type** — filter slash commands (single-line input only)\n")
 	b.WriteString("- **Tab** — complete slash commands or the argument under the cursor (profiles, /memory …, paths for /export)\n")

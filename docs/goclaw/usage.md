@@ -56,7 +56,7 @@ The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings
 1. Security summary (optional full text is bundled; same content as [security.md](./security.md))
 2. Workspace trust for the current directory (`trusted_workspace` in project `.goclaw/settings.json`)
 3. **TUI appearance** preset (fullscreen mode only; change later with `/theme`)
-4. **Agent profile** — hub (**`coordinator`**) or direct coding (**`general-purpose`**); written to `agent_profile` in `~/.goclaw/settings.json` (defaults to **`coordinator`** in `config.Default()` if you skip onboarding with `GOCLAW_NO_ONBOARDING=1`). **Esc** on this step goes back to appearance.
+4. **Agent profile** — direct coding (**`general-purpose`**) or hub (**`coordinator`**); written to `agent_profile` in `~/.goclaw/settings.json` (defaults to **`general-purpose`** in `config.Default()` if you skip onboarding with `GOCLAW_NO_ONBOARDING=1`). **Esc** on this step goes back to appearance.
 5. **Provider**: Ollama (local); host and model are written under `~/.goclaw/` as described below
 
 **Files written:** `~/.goclaw/settings.json` (and `settings.local.json` if you enter an API key); project `.goclaw/settings.json` when you confirm trust.
@@ -68,7 +68,7 @@ The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings
 
 **`goclaw doctor` does not run onboarding** — it loads config and shows a health report: **Bubble Tea** fullscreen pager on a TTY (scroll with arrows / PgUp / PgDn; **q**, **Esc**, or **Ctrl+C** to exit), or plain **`fmt.Println`** when stdin/stdout are not both terminals. Run `doctor` for a quick check; run `goclaw` once to complete first-time setup.
 
-The wizard runs in the **same fullscreen Bubble Tea stack** as the main app (when stdin/stdout are TTY). During setup you pick **`coordinator`** or **`general-purpose`**; afterward use `/profile` or `agent_profile` in settings — see [Agent profiles](#agent-profiles). If you never run the wizard, **`config.Default()`** still starts from **`coordinator`**.
+The wizard runs in the **same fullscreen Bubble Tea stack** as the main app (when stdin/stdout are TTY). During setup you pick **`general-purpose`** or **`coordinator`**; afterward use `/profile` or `agent_profile` in settings — see [Agent profiles](#agent-profiles). If you never run the wizard, **`config.Default()`** still starts from **`general-purpose`**.
 
 ### Interactive chat (TTY)
 
@@ -91,7 +91,7 @@ Interpreted **after** slash commands and **before** the model (interactive TUI).
 | `!` + command | Run the **`bash`** tool with that command (allowlist and metacharacter rules apply). |
 | `@` + path (standalone) | Run **`read_file`** for a path inside the workspace. Matching paths appear under the input as you type; **Tab** completes anywhere in the line. Drag-and-drop a file/folder onto the terminal to insert `@relpath` automatically. |
 | `@token` inline | When `@path` tokens appear inside a larger message (e.g. `explain @go.mod`), the file is silently pre-loaded before the model call — no separate read step needed. |
-| `&` + task | Run **`spawn_agent`** with worker profile **`general-purpose`** (requires **`spawn_agent`** on the active profile — default **`coordinator`** includes it; use **`/profile coordinator`** if you switched away). |
+| `&` + task | Run **`spawn_agent`** with worker profile **`general-purpose`** (requires **`spawn_agent`** on the active profile — use **`/profile coordinator`** for hub mode if your current profile does not include it). |
 | `/btw` + text | Slash command: submit **one** user message wrapped as a short “side question” to the model. |
 
 Full grammar and security notes: [prefix-input-modes.md](./prefix-input-modes.md).
@@ -150,7 +150,7 @@ defaults → ~/.goclaw/settings.json → .goclaw/settings.json
 
 Do not commit `settings.local.json`.
 
-**Common keys:** `provider` (must be `ollama` for a normal run; legacy values error at startup), `agent_profile`, `ollama_model`, `ollama_host`, `ollama_num_ctx`, `bash_timeout_sec`, `tool_permissions`, `auto_continue_action_requests`, `auto_continue_action_max_nudges`, `truth_footer_no_workspace_writes`, `plan_require_apply_approval`, `plan_apply_use_coordinator`, `agent_picker_hidden_profiles`, `mcp_servers` (stdio or HTTP; HTTP entries may set `bearer_token_file` for a static bearer token), `mcp_allow_remote_urls`, `trusted_workspace`, `external_hooks`, `plugin_dirs`, `plugin_allow`, `plugin_deny`, `memory_auto_extract`, `ide_bridge_mcp`. CLI: `--plugin-dir` (repeatable) appends plugin roots.
+**Common keys:** `provider` (must be `ollama` for a normal run; legacy values error at startup), `agent_profile`, `ollama_model`, `ollama_host`, `ollama_num_ctx`, `bash_timeout_sec`, `tool_permissions`, `auto_continue_action_requests`, `auto_continue_action_max_nudges`, `truth_footer_no_workspace_writes`, `agent_verify_after_write`, `parallel_tool_batch_max`, `plan_require_apply_approval`, `plan_apply_use_coordinator`, `agent_picker_hidden_profiles`, `mcp_servers` (stdio or HTTP; HTTP entries may set `bearer_token_file` for a static bearer token), `mcp_allow_remote_urls`, `trusted_workspace`, `external_hooks`, `plugin_dirs`, `plugin_allow`, `plugin_deny`, `memory_auto_extract`, `ide_bridge_mcp`. CLI: `--plugin-dir` (repeatable) appends plugin roots.
 
 Example:
 
@@ -285,6 +285,8 @@ Persistent flags apply to the default command and `chat`:
 This mirrors the usual **plan → review → execute** loop (similar in spirit to [Cursor Plan Mode](https://cursor.com/docs/agent/planning)): keep intent in **Markdown on disk**, then run **one execution turn** per **`/apply-plan`** / **`/plan run`** — local models often need **several turns** for a large plan, so split work into **small plans** with verifiable **## Steps**.
 
 Use profile **`plan`** to draft text without touching the repo; then save and execute from the REPL.
+
+The **`plan`** profile prioritizes **written analysis and a structured markdown plan** in the transcript. Optional read-only tools (`read_file`, `glob`, `grep`, `web_search`) are for **grounding** claims in the repo or in external facts — they do not replace reasoning. **Execution** (edits, verify loops, applying steps to disk) happens after you save and run **`/plan run`** or **`/apply-plan`**, which switches to **`general-purpose`** or **`coordinator`** — not while you stay on the plan profile.
 
 - `/plan init` — create `.goclaw/plan.md` from template (if missing)
 - **`/plan new my-feature`** — create **`.goclaw/plans/my-feature.md`** from a compact template (name is sanitized to a safe filename stem). Edit the file in your editor, then **`/apply-plan .goclaw/plans/my-feature.md`** (or **`/plan run .goclaw/plans/my-feature.md`** after saving the latest assistant line into that file).

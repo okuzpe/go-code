@@ -258,6 +258,14 @@ type Config struct {
 	// PlanApplyUseCoordinator when true makes /apply-plan and /plan run switch to coordinator and use hub-style handoff (spawn_agent).
 	// JSON: plan_apply_use_coordinator (default false).
 	PlanApplyUseCoordinator bool
+
+	// AgentVerifyAfterWrite when true: after successful workspace writes on coding-intent turns, the orchestrator
+	// injects short nudges until bash, script, or run_tests succeeds (or nudge cap). JSON: agent_verify_after_write (default false).
+	AgentVerifyAfterWrite bool
+
+	// ParallelToolBatchMax caps how many tools may run concurrently in one assistant batch when provider is Ollama.
+	// 0 uses built-in default (3). Values above 16 are clamped. Non-Ollama providers ignore this (high cap). JSON: parallel_tool_batch_max.
+	ParallelToolBatchMax int
 	// AgentPickerHiddenProfiles lists profile names hidden from the TUI Ctrl+P /agents picker (built-in names, lower-case).
 	// JSON: agent_picker_hidden_profiles (array of strings).
 	AgentPickerHiddenProfiles []string
@@ -331,7 +339,7 @@ func Default() Config {
 		MicroCompactThreshold:        0, // normalized by NormalizeCompactionThresholds
 		UserConfigDir:                filepath.Join(home, ".goclaw"),
 		ProjectConfigDir:             ".goclaw",
-		AgentProfile:                 "coordinator",
+		AgentProfile:                 "general-purpose",
 		ModelContextTokens:           DefaultOllamaNumCtx,
 		PermissionModes:              nil,
 		YoloThreshold:                60,
@@ -404,6 +412,21 @@ func defaultTaskModels() map[string]string {
 // Model returns the Ollama model name to pass to the API.
 func (c Config) Model() string {
 	return strings.TrimSpace(c.OllamaModel)
+}
+
+// EffectiveParallelToolBatchMax returns the max tools allowed in one parallel batch for the active provider.
+func (c Config) EffectiveParallelToolBatchMax() int {
+	if strings.ToLower(strings.TrimSpace(c.Provider)) != "ollama" {
+		return 64
+	}
+	n := c.ParallelToolBatchMax
+	if n <= 0 {
+		return 3
+	}
+	if n > 16 {
+		return 16
+	}
+	return n
 }
 
 // ModelForCompaction returns the model id for LLM compaction summaries. When CompactionModel is set,

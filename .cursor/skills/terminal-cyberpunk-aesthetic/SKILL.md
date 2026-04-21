@@ -48,5 +48,3 @@ Cyberpunk here means **controlled neon on a dark field**, not decorative noise.
 
 - `go build ./...` from the `goclaw` module root.
 - Manual TTY pass: welcome, transcript, footer, `/` picker, tool approval strip, modal—readable at a glance.
-
-Do not expand tests unless the user asks.

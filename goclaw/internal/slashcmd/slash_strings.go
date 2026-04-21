@@ -94,7 +94,7 @@ func ReplHelpMarkdown(env SlashEnv, sess **session.Session, orch *orchestrator.O
 	b.WriteString("- `/theme [preset]` — show or set TUI `ui_appearance` (restart TUI to apply)\n")
 	b.WriteString("- `/workers` — list workers; `/focus` or `/in <prefix>` — jump into worker; `/back` or `/detach` — return to coordinator\n")
 	b.WriteString("- `/plan path|init|new|save|run|review|approve|revoke|steps|template` — plan workflow + mini plans under `.goclaw/plans/`\n")
-	b.WriteString("- `/apply-plan [--preview] [--hub] [path]` — preview or execute (one turn)\n")
+	b.WriteString("- `/apply-plan [--preview] [--hub] [--steps] [path]` — preview or execute; `--steps` runs one turn per `## Steps` line when present\n")
 	b.WriteString("- `/audit [path]` — switch to general-purpose; audit-and-fix on path (default: workspace)\n")
 	b.WriteString("- `/review [args]` — inject git diff; code-review profile (`docs/goclaw/code-review-workflow.md`)\n")
 	b.WriteString("- `/btw <text>` — side question (sent to the model)\n")

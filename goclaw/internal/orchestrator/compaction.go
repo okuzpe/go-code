@@ -159,8 +159,14 @@ func (o *Orchestrator) compactToTailWithLLM(ctx context.Context, preserve int) {
 	head := msgs[:len(msgs)-preserve]
 
 	// Build a plain-text excerpt for the LLM to summarize.
+	// Cap at compactionExcerptMaxBytes to prevent an oversized head (e.g. many large bash outputs)
+	// from flooding the compaction model's context window.
+	const compactionExcerptMaxBytes = 8 * 1024
 	var excerpt strings.Builder
 	for _, m := range head {
+		if excerpt.Len() >= compactionExcerptMaxBytes {
+			break
+		}
 		excerpt.WriteString(m.Role)
 		excerpt.WriteString(": ")
 		if m.Content != "" {

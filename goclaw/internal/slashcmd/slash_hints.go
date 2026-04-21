@@ -35,6 +35,10 @@ type UIHints struct {
 	// TUIClearTranscript when true tells the fullscreen chat to clear the transcript in-model
 	// (same effect as Ctrl+L) instead of writing ANSI to stdout.
 	TUIClearTranscript bool
+
+	// ModelSubmitQueue lists extra user texts to submit after the primary modelSubmit (FIFO).
+	// Used for multi-step plan execution (`/apply-plan --steps`, `/plan run --steps`).
+	ModelSubmitQueue []string
 }
 
 func clearHints(h *UIHints) {
@@ -74,6 +78,13 @@ func setReloadTranscript(h *UIHints, s *session.Session) {
 		return
 	}
 	h.ReloadTranscript = s
+}
+
+func setModelSubmitQueue(h *UIHints, queue []string) {
+	if h == nil || len(queue) == 0 {
+		return
+	}
+	h.ModelSubmitQueue = append([]string(nil), queue...)
 }
 
 // setTUIDocOverlay marks out as markdown to render in the TUI document overlay.

@@ -2,7 +2,6 @@ package chat
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -13,7 +12,6 @@ import (
 	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/slashcmd"
 	"github.com/okuzpe/goclaw/internal/text"
-	"github.com/okuzpe/goclaw/internal/ui/footerline"
 )
 
 func (m *Model) syncInputComposeWidth() {
@@ -119,23 +117,15 @@ func (m *Model) syncInputPlaceholder() {
 	m.input.Placeholder = placeholderForWidth(m.width)
 }
 
-// footerWorkspaceBrand is the idle-footer left label: workspace basename (no folder glyph), or Context.
-func (m *Model) footerWorkspaceBrand() string {
-	th := m.theme
-	if th == nil {
-		th = DefaultTheme()
-	}
-	w := strings.TrimSpace(m.workdir)
-	if w == "" {
-		return th.FooterDim.Render("Context")
-	}
-	base := filepath.Base(w)
-	if base == "." || base == "/" || base == string(filepath.Separator) {
-		return th.FooterDim.Render("Context")
-	}
-	return th.FooterWorkspaceChip.Render(base)
+
+// headerView is reserved for a top banner; it is intentionally empty so profile
+// (agent deck rail), footer stats, and model context are not duplicated above the transcript.
+func (m *Model) headerView() string {
+	return ""
 }
 
+// footerPrimaryStatus returns the live status indicator for the single status line between
+// transcript and input. Format: "~ [N/M] phase_label..." or "» tool: summary (Ns)..."
 func (m *Model) footerPrimaryStatus() string {
 	th := m.theme
 	if th == nil {
@@ -143,20 +133,46 @@ func (m *Model) footerPrimaryStatus() string {
 	}
 	status := strings.TrimSpace(m.statusLine)
 	if m.spinnerActive {
-		spin := strings.TrimSpace(m.spinner.View())
-		base := strings.TrimSpace(status)
-		if base == "" {
-			if m.assistantPlaceholder {
-				lab := strings.TrimSpace(m.lastThinkingPhase)
-				if lab == "" {
-					lab = "Thinking"
+		if m.assistantPlaceholder {
+			// Thinking state: parse "[N/M] label" from lastThinkingPhase.
+			phase := strings.TrimSpace(m.lastThinkingPhase)
+			var iterPart, labelPart string
+			if strings.HasPrefix(phase, "[") {
+				if close := strings.Index(phase, "]"); close > 0 {
+					iterPart = phase[1:close]
+					labelPart = strings.TrimSpace(phase[close+1:])
 				}
-				base = th.StatusBarLabel.Render(lab) + th.FooterDim.Render("…")
-			} else {
-				base = th.StatusBarLabel.Render("Responding") + th.FooterDim.Render("…")
 			}
+			if iterPart == "" {
+				labelPart = phase
+				if labelPart == "" {
+					labelPart = "Thinking"
+				}
+			}
+
+			elapsed := ""
+			if m.thinkingLineIdx >= 0 && m.thinkingLineIdx < len(m.lineMeta) &&
+				m.lineMeta[m.thinkingLineIdx].kind == lineKindThinking &&
+				!m.lineMeta[m.thinkingLineIdx].startedAt.IsZero() {
+				secs := int(time.Since(m.lineMeta[m.thinkingLineIdx].startedAt).Seconds())
+				if secs >= 1 {
+					elapsed = fmt.Sprintf(" (%ds)", secs)
+				}
+			}
+
+			tilde := th.FooterDim.Render("~")
+			var iterLabel string
+			if iterPart != "" {
+				iterLabel = " " + th.FooterDim.Render("["+iterPart+"]")
+			}
+			label := th.StatusBarLabel.Render(labelPart) + th.FooterDim.Render(elapsed+"…")
+			return tilde + iterLabel + " " + label
 		}
-		return strings.TrimSpace(spin + "  " + base)
+		// Tool executing or text generating — use existing status line content.
+		if status != "" {
+			return th.FooterDim.Render("»") + " " + th.StatusBarLabel.Render(status)
+		}
+		return th.StatusBarLabel.Render("Responding") + th.FooterDim.Render("…")
 	}
 	return status
 }
@@ -167,16 +183,17 @@ func (m *Model) View() tea.View {
 	// the transcript viewport could be sized for the wrong footer and clip or overlap the UI.
 	m.layout()
 	var content string
+	header := m.headerRendered
 	if strings.TrimSpace(m.profileBarRendered) != "" {
-		// Profile rail sits between the scrollable transcript (welcome + chat) and the compose
-		// footer so the welcome panel is the first thing at the top of the screen.
 		content = lipgloss.JoinVertical(lipgloss.Left,
+			header,
 			m.viewport.View(),
 			m.profileBarRendered,
 			m.footerRendered,
 		)
 	} else {
 		content = lipgloss.JoinVertical(lipgloss.Left,
+			header,
 			m.viewport.View(),
 			m.footerRendered,
 		)
@@ -243,12 +260,15 @@ func (m *Model) profileModeBarView() string {
 
 func (m *Model) layout() {
 	m.syncInputComposeWidth()
+	header := m.headerView()
+	m.headerRendered = header
+	headerH := lipgloss.Height(header)
 	m.profileBarRendered = m.profileModeBarView()
 	barH := lipgloss.Height(m.profileBarRendered)
 	foot := m.footerView()
 	m.footerRendered = foot
 	footerH := lipgloss.Height(foot)
-	h := m.height - footerH - barH
+	h := m.height - headerH - footerH - barH
 	if h < 1 {
 		h = 1
 	}
@@ -401,18 +421,6 @@ func (m *Model) footerView() string {
 			b.WriteString(th.FooterDim.Render(statusRow))
 		}
 		b.WriteString("\n")
-	} else if stats != "" {
-		// Idle: show stats (message/token budget for the LLM context window — not assistant output).
-		// Leading workspace chip (basename) plus optional #session id on the right.
-		session := footerline.AlignedHintsSession(m.footerWorkspaceBrand(), stats, "", m.sessionID, fw)
-		if strings.TrimSpace(session) != "" {
-			if fw > 4 {
-				b.WriteString(th.FooterDim.Width(fw).Render(session))
-			} else {
-				b.WriteString(th.FooterDim.Render(session))
-			}
-			b.WriteString("\n")
-		}
 	}
 
 	if fh := strings.TrimSpace(m.footerHint); fh != "" {
@@ -586,11 +594,16 @@ func (m *Model) atSuggestStripView() string {
 	return out
 }
 
-// slashSuggestStripView renders filtered /commands or argument picks above the input (single-line buffer only).
+// slashSuggestStripView renders filtered /commands or :commands above the input (single-line buffer only).
 func (m *Model) slashSuggestStripView() string {
 	raw := m.input.Value()
 	if strings.Contains(raw, "\n") {
 		return ""
+	}
+	// Treat ':cmd' as '/cmd' for the purpose of suggestion rendering.
+	trimmedRaw := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmedRaw, ":") && !strings.HasPrefix(trimmedRaw, "::") {
+		raw = "/" + trimmedRaw[1:]
 	}
 	row := m.input.Line()
 	col := m.input.Column()

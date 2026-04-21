@@ -15,6 +15,7 @@ func TestTuiProfileCycleOrder_defaultFiltersUnknown(t *testing.T) {
 		ProjectAgentsDir: "",
 	}
 	got := tuiProfileCycleOrder(rt)
+	require.Equal(t, "general-purpose", got[0], "default cycle starts with general-purpose")
 	require.Contains(t, got, "coordinator")
 	require.Contains(t, got, "plan")
 	require.Contains(t, got, "general-purpose")

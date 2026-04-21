@@ -21,6 +21,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/plugin"
+	"github.com/okuzpe/goclaw/internal/projectcontext"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/skills"
 	"github.com/okuzpe/goclaw/internal/todos"
@@ -327,7 +328,10 @@ func prepareChatRuntime(cmd *cobra.Command, allocateScratch bool) (*ChatRuntime,
 	_ = hookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionStart})
 
 	// Build project context and skills early so they can be shared with workers.
-	projectCtx := buildProjectContext(toolRoot, cfg)
+	// Full context includes CLAUDE.md and standing orders; thin omits them for explore/plan
+	// (Claude Code–style agent context; see agents profile docs).
+	projectCtxFull := projectcontext.Build(toolRoot, cfg, true)
+	projectCtxThin := projectcontext.Build(toolRoot, cfg, false)
 	skillRoots := []string{
 		filepath.Join(launchDir, cfg.ProjectConfigDir, "skills"),
 		filepath.Join(launchDir, ".claude", "skills"),
@@ -367,7 +371,8 @@ func prepareChatRuntime(cmd *cobra.Command, allocateScratch bool) (*ChatRuntime,
 			WithProfiles(profs).
 			WithWorkdir(toolRoot).
 			WithLaunchDir(launchDir).
-			WithProjectContext(projectCtx).
+			WithProjectContext(projectCtxFull).
+			WithProjectContextThin(projectCtxThin).
 			WithMemoryStore(memStore).
 			WithSkillsSnippet(skillSnippet))
 		reg.Register(coordinator.NewStopTask())
@@ -429,8 +434,12 @@ func prepareChatRuntime(cmd *cobra.Command, allocateScratch bool) (*ChatRuntime,
 		if strings.TrimSpace(launchDir) != "" {
 			orchOpts = append(orchOpts, orchestrator.WithLaunchDir(launchDir))
 		}
-		if projectCtx != "" {
-			orchOpts = append(orchOpts, orchestrator.WithProjectContext(projectCtx))
+		projectCtxForSession := projectCtxFull
+		if profile.Name == "explore" || profile.Name == "plan" {
+			projectCtxForSession = projectCtxThin
+		}
+		if projectCtxForSession != "" {
+			orchOpts = append(orchOpts, orchestrator.WithProjectContext(projectCtxForSession))
 		}
 	}
 	if skillSnippet != "" {
@@ -522,156 +531,4 @@ func registerBuiltInTools(r *tools.Registry, toolRoot string, launchDir string, 
 		panic(err)
 	}
 	r.Register(todoTool)
-}
-
-// readProjectFileLines reads a workspace-relative file and returns up to maxLines of trimmed content.
-func readProjectFileLines(workdir, name string, maxLines int) ([]string, bool) {
-	return readProjectFileLinesAt(filepath.Join(workdir, name), maxLines)
-}
-
-// readProjectFileLinesAt reads an absolute file path and returns up to maxLines of trimmed content.
-func readProjectFileLinesAt(absPath string, maxLines int) ([]string, bool) {
-	data, err := os.ReadFile(absPath)
-	if err != nil {
-		return nil, false
-	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) > maxLines {
-		lines = lines[:maxLines]
-	}
-	return lines, true
-}
-
-// projectFileUnderRoot returns the absolute path for userRel joined under workdir when userRel is
-// strictly inside workdir (no absolute path, no ".." escape).
-func projectFileUnderRoot(workdir, userRel string) (string, bool) {
-	workdir = filepath.Clean(workdir)
-	userRel = strings.TrimSpace(userRel)
-	if userRel == "" {
-		return "", false
-	}
-	userRel = filepath.Clean(userRel)
-	if userRel == "." || userRel == ".." || strings.HasPrefix(userRel, ".."+string(filepath.Separator)) {
-		return "", false
-	}
-	if filepath.IsAbs(userRel) {
-		return "", false
-	}
-	full := filepath.Join(workdir, userRel)
-	absRoot, err := filepath.Abs(workdir)
-	if err != nil {
-		return "", false
-	}
-	absFull, err := filepath.Abs(full)
-	if err != nil {
-		return "", false
-	}
-	rel, err := filepath.Rel(absRoot, absFull)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return "", false
-	}
-	return absFull, true
-}
-
-func resolveStandingOrdersPath(workdir string, cfg config.Config) (string, bool) {
-	workdir = filepath.Clean(workdir)
-	if p := strings.TrimSpace(cfg.ProjectContextStandingOrdersPath); p != "" {
-		full, ok := projectFileUnderRoot(workdir, p)
-		if !ok {
-			return "", false
-		}
-		st, err := os.Stat(full)
-		if err != nil || st.IsDir() {
-			return "", false
-		}
-		return full, true
-	}
-	defaultPath := filepath.Join(workdir, ".goclaw", "STANDING_ORDERS.md")
-	if st, err := os.Stat(defaultPath); err == nil && !st.IsDir() {
-		return defaultPath, true
-	}
-	return "", false
-}
-
-// detectProjectType returns a short type tag for the project at workdir.
-// Returns one of "go", "nodejs", "rust", "python", or "" when unrecognized.
-func detectProjectType(workdir string) string {
-	checks := []struct {
-		file string
-		tag  string
-	}{
-		{"go.mod", "go"},
-		{"package.json", "nodejs"},
-		{"Cargo.toml", "rust"},
-		{"pyproject.toml", "python"},
-		{"requirements.txt", "python"},
-	}
-	for _, c := range checks {
-		if _, err := os.Stat(filepath.Join(workdir, c.file)); err == nil {
-			return c.tag
-		}
-	}
-	return ""
-}
-
-// buildProjectContext reads key project files from workdir and returns a compact
-// summary for injection into the system prompt. Returns "" when nothing useful is found.
-// Small bounded reads; safe to call at startup.
-func buildProjectContext(workdir string, cfg config.Config) string {
-	var parts []string
-
-	// Prepend project type hint so the model knows the stack without warm-up glob calls.
-	if pt := detectProjectType(workdir); pt != "" {
-		parts = append(parts, "project_type: "+pt)
-	}
-
-	// Detect project type from manifest files.
-	type candidate struct {
-		file    string
-		maxLine int
-		label   string
-	}
-	manifests := []candidate{
-		{"go.mod", 8, "go.mod"},
-		{"package.json", 6, "package.json"},
-		{"Cargo.toml", 8, "Cargo.toml"},
-		{"pyproject.toml", 8, "pyproject.toml"},
-	}
-	for _, c := range manifests {
-		if lines, ok := readProjectFileLines(workdir, c.file, c.maxLine); ok {
-			parts = append(parts, c.label+":\n  "+strings.Join(lines, "\n  "))
-			break // one manifest is enough
-		}
-	}
-
-	// Append first 20 lines of README if present.
-	for _, name := range []string{"README.md", "README.txt", "README"} {
-		if lines, ok := readProjectFileLines(workdir, name, 20); ok {
-			parts = append(parts, name+":\n  "+strings.Join(lines, "\n  "))
-			break
-		}
-	}
-
-	claudeLines := cfg.ClaudeProjectContextLineLimit()
-	if lines, ok := readProjectFileLines(workdir, "CLAUDE.md", claudeLines); ok {
-		parts = append(parts, fmt.Sprintf("CLAUDE.md (project rules, first %d lines):\n  ", claudeLines)+strings.Join(lines, "\n  "))
-	}
-
-	if soPath, ok := resolveStandingOrdersPath(workdir, cfg); ok {
-		maxL := cfg.StandingOrdersProjectContextLineLimit()
-		if lines, ok2 := readProjectFileLinesAt(soPath, maxL); ok2 {
-			joined := strings.Join(lines, "\n  ")
-			maxBytes := config.StandingOrdersInjectMaxBytes()
-			if len(joined) > maxBytes {
-				joined = joined[:maxBytes] + "\n  ... (truncated)"
-			}
-			relShow, err := filepath.Rel(workdir, soPath)
-			if err != nil {
-				relShow = filepath.Base(soPath)
-			}
-			parts = append(parts, filepath.ToSlash(relShow)+" (standing orders):\n  "+joined)
-		}
-	}
-
-	return strings.Join(parts, "\n\n")
 }

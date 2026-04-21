@@ -11,7 +11,6 @@ description: Use when starting a new development phase or asking what comes next
 
 ```bash
 go build ./...
-# go test ./...   # only when the user asks — CI otherwise
 grep -rE "TODO (Phase|Fase)" ./internal/  # should be empty (legacy Spanish tag + English)
 ```
 
@@ -25,10 +24,9 @@ Fix failures before continuing.
 Touch:
 - `internal/session/session.go` — UUID + JSONL persistence
 - `cmd/goclaw/main.go` — `log/slog`, signal handling (Ctrl+C)
-- `testutil/mockopenai/` — OpenAI-style `/v1/chat/completions` mock for tests
+- `testutil/mockopenai/` — OpenAI-style `/v1/chat/completions` mock (used by unit tests in the module)
 
-Deliverable: `go run ./cmd/goclaw` returns text via local Ollama.  
-Tests: mock scenarios (text-only, streaming, HTTP 500).
+Deliverable: `go run ./cmd/goclaw` returns text via local Ollama.
 
 ---
 
@@ -40,8 +38,7 @@ Add:
 
 Register in `cmd/goclaw/main.go`.
 
-Deliverable: agent can read files, run allowlisted shell, fetch URLs.  
-Tests: read roundtrip, bash stdout, SSRF blocked, etc.
+Deliverable: agent can read files, run allowlisted shell, fetch URLs.
 
 **Security before marking done**: symlink escape (`security-review`), bash allowlist + timeout, web_fetch SSRF.
 

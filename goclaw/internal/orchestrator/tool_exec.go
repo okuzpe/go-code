@@ -10,6 +10,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/hooks"
 	"github.com/okuzpe/goclaw/internal/llm"
 	"github.com/okuzpe/goclaw/internal/permissions"
+	"github.com/okuzpe/goclaw/internal/toolpolicy"
 	"github.com/okuzpe/goclaw/internal/tools"
 )
 
@@ -28,11 +29,8 @@ type toolOutcome struct {
 	Err     error // fatal: abort the orchestrator Run entirely
 }
 
-// rejectTool returns a non-fatal error outcome shown to the LLM as a tool_result with is_error=true.
-func rejectTool(msg string) toolOutcome {
-	return rejectToolNextStep(msg, "")
-}
-
+// rejectToolNextStep returns a non-fatal error outcome shown to the LLM as a tool_result with is_error=true.
+// When nextStep is empty, only msg is returned (no "next step:" line).
 func rejectToolNextStep(msg, nextStep string) toolOutcome {
 	msg = strings.TrimSpace(msg)
 	nextStep = strings.TrimSpace(nextStep)
@@ -113,17 +111,6 @@ func (o *Orchestrator) executeTool(ctx context.Context, tu *llm.ToolUse, sink St
 	return out
 }
 
-// cachableTool reports whether a tool's results may be cached within a single turn.
-// Only pure read-only tools with deterministic-enough output qualify.
-// web_search is included: duplicate queries within the same turn should hit the same results.
-func cachableTool(name string) bool {
-	switch name {
-	case "glob", "grep", "web_search":
-		return true
-	}
-	return false
-}
-
 func (o *Orchestrator) executeToolOnce(ctx context.Context, tu *llm.ToolUse, sink StreamSink) toolOutcome {
 	if sink != nil {
 		ctx = ContextWithStreamSink(ctx, sink)
@@ -136,10 +123,10 @@ func (o *Orchestrator) executeToolOnce(ctx context.Context, tu *llm.ToolUse, sin
 		return outcome
 	}
 
-	// Serve from per-turn cache for idempotent read-only tools (glob, grep).
-	if cachableTool(tu.Name) {
+	// Serve from per-turn cache for idempotent read-only tools (glob, grep, web_search).
+	if toolpolicy.CacheableWithinTurn(tu.Name) && o.ut != nil {
 		cacheKey := tu.Name + ":" + tu.Input
-		if cached, hit := o.turnToolCacheGet(cacheKey); hit {
+		if cached, hit := o.ut.toolCacheGet(cacheKey); hit {
 			slog.Debug("tool cache hit", "tool", tu.Name)
 			return toolOutcome{Content: cached}
 		}
@@ -160,32 +147,17 @@ func (o *Orchestrator) executeToolOnce(ctx context.Context, tu *llm.ToolUse, sin
 	outcome := o.finishToolExecution(ctx, tu.Name, tu.Input, res.Content, res.IsError, execErr)
 
 	// Populate cache on success for cachable tools.
-	if cachableTool(tu.Name) && !outcome.IsError && outcome.Err == nil {
+	if toolpolicy.CacheableWithinTurn(tu.Name) && !outcome.IsError && outcome.Err == nil && o.ut != nil {
 		cacheKey := tu.Name + ":" + tu.Input
-		o.turnToolCacheSet(cacheKey, outcome.Content)
+		o.ut.toolCacheSet(cacheKey, outcome.Content)
 	}
 
 	return outcome
 }
 
-func (o *Orchestrator) turnToolCacheGet(key string) (string, bool) {
-	if o.turnToolCache == nil {
-		return "", false
-	}
-	o.turnToolCacheMu.RLock()
-	defer o.turnToolCacheMu.RUnlock()
-	value, ok := o.turnToolCache[key]
-	return value, ok
-}
-
-func (o *Orchestrator) turnToolCacheSet(key, value string) {
-	if o.turnToolCache == nil {
-		return
-	}
-	o.turnToolCacheMu.Lock()
-	o.turnToolCache[key] = value
-	o.turnToolCacheMu.Unlock()
-}
+// turnToolCacheMaxEntries caps per-turn cache size. Prevents unbounded memory growth
+// during long explore turns with many unique glob/grep patterns.
+const turnToolCacheMaxEntries = 128
 
 // finishToolExecution runs post-tool hooks and maps execution result to a toolOutcome.
 func (o *Orchestrator) finishToolExecution(ctx context.Context, toolName, input, content string, resultIsError bool, execErr error) toolOutcome {

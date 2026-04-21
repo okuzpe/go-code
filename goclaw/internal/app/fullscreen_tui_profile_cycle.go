@@ -13,7 +13,7 @@ import (
 
 // defaultTUIProfileCycleOrder is used when settings do not set tui_profile_cycle (after filtering
 // to profiles that exist in built-in + custom agents).
-var defaultTUIProfileCycleOrder = []string{"coordinator", "plan", "general-purpose", "explore"}
+var defaultTUIProfileCycleOrder = []string{"general-purpose", "plan", "explore", "coordinator"}
 
 // tuiProfileCycleOrder returns distinct lower-case profile keys present in built-in+custom agents.
 func tuiProfileCycleOrder(rt *ChatRuntime) []string {

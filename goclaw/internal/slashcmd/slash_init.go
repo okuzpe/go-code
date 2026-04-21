@@ -17,9 +17,9 @@ Keep this file in **English**. Add conventions, test commands, and anything agen
 
 const gitignoreLocalSettingsBlock = "\n\n# goclaw — machine-local settings (do not commit)\n.goclaw/settings.local.json\n"
 
-// handleSlashProjectInit writes a starter .goclaw/settings.json when missing (coordinator-hub-oriented defaults).
-// Merged config and permissions load at process start; tell the user to restart for tool_permissions,
-// and /profile coordinator for an immediate profile switch in this session if needed.
+// handleSlashProjectInit writes a starter .goclaw/settings.json when missing (general-purpose defaults).
+// Merged config and permissions load at process start; tell the user to restart for tool_permissions.
+// For hub/delegation mode in this session without restarting, run /profile coordinator.
 func handleSlashProjectInit(env SlashEnv) (string, error) {
 	wd := strings.TrimSpace(env.Workdir)
 	if wd == "" {
@@ -35,7 +35,7 @@ func handleSlashProjectInit(env SlashEnv) (string, error) {
 	}
 	// tool_permissions: allow pure reads; ask for shell, network, writes, and hub tools (safer default for local agents).
 	patch := map[string]any{
-		"agent_profile":        "coordinator",
+		"agent_profile":        config.Default().AgentProfile,
 		"provider":             "ollama",
 		"ollama_model":         config.DefaultOllamaModel,
 		"ollama_num_ctx":       config.InitProjectOllamaNumCtx,
@@ -94,7 +94,7 @@ func handleSlashProjectInit(env SlashEnv) (string, error) {
 			}
 		}
 	}
-	msg := fmt.Sprintf("created %s\nfor profile coordinator in this session, run: /profile coordinator\ntool permissions from the new file apply after you restart goclaw.", path)
+	msg := fmt.Sprintf("created %s\nfor hub/delegation in this session, run: /profile coordinator\ntool permissions from the new file apply after you restart goclaw.", path)
 	if len(notes) > 0 {
 		msg += "\n" + strings.Join(notes, "\n")
 	}

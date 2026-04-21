@@ -355,19 +355,22 @@ func (o *Orchestrator) resolveTaskModel(ctx context.Context, userMsg string) Tas
 }
 
 func (o *Orchestrator) prepareTurnModel(ctx context.Context, userMsg string) {
-	o.turnModel = ""
-	o.taskRole = ""
+	if o.ut == nil {
+		return
+	}
+	o.ut.turnModel = ""
+	o.ut.taskRole = ""
 	if strings.TrimSpace(o.profile.ModelOverride) != "" {
 		return
 	}
 	res := o.resolveTaskModel(ctx, userMsg)
-	o.taskRole = res.Role
+	o.ut.taskRole = res.Role
 	if strings.TrimSpace(res.Model) != "" {
-		o.turnModel = strings.TrimSpace(res.Model)
+		o.ut.turnModel = strings.TrimSpace(res.Model)
 	}
 	effective := o.cfg.Model()
-	if o.turnModel != "" {
-		effective = o.turnModel
+	if o.ut.turnModel != "" {
+		effective = o.ut.turnModel
 	}
 	slog.Debug("task model routing", "role", res.Role, "model", effective, "reason", res.Reason)
 }

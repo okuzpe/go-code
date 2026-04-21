@@ -21,7 +21,7 @@ import (
 
 // RunTelegramStart runs the Telegram bridge, prompting to merge ~/.goclaw/settings.local.json when token or allowlist is missing (TTY only).
 func RunTelegramStart(cmd *cobra.Command, _ []string) error {
-	cfg, launchDir, token, err := telegramLoadPreflight(cmd)
+	cfg, token, err := telegramLoadPreflight(cmd)
 	if err != nil {
 		return err
 	}
@@ -32,6 +32,7 @@ func RunTelegramStart(cmd *cobra.Command, _ []string) error {
 		if err := runTelegramConfigureWizard(cfg); err != nil {
 			return err
 		}
+		var launchDir string
 		cfg, launchDir, err = loadMergedConfigForRun(cmd)
 		if err != nil {
 			return fmt.Errorf("telegram start: reload config: %w", err)
@@ -55,7 +56,7 @@ func RunTelegramStart(cmd *cobra.Command, _ []string) error {
 
 // RunTelegramBridge long-polls the Telegram Bot API and runs one orchestrator turn per allowlisted text message (no prompts; fails if unset).
 func RunTelegramBridge(cmd *cobra.Command, _ []string) error {
-	cfg, _, token, err := telegramLoadPreflight(cmd)
+	cfg, token, err := telegramLoadPreflight(cmd)
 	if err != nil {
 		return err
 	}
@@ -65,19 +66,19 @@ func RunTelegramBridge(cmd *cobra.Command, _ []string) error {
 	return telegramRunBridgeLoop(cmd, token)
 }
 
-func telegramLoadPreflight(cmd *cobra.Command) (cfg config.Config, launchDir string, token string, err error) {
-	cfg, launchDir, err = loadMergedConfigForRun(cmd)
+func telegramLoadPreflight(cmd *cobra.Command) (cfg config.Config, token string, err error) {
+	cfg, launchDir, err := loadMergedConfigForRun(cmd)
 	if err != nil {
-		return config.Config{}, "", "", err
+		return config.Config{}, "", err
 	}
 	if err := applyTelegramSessionDefault(cmd, cfg); err != nil {
-		return config.Config{}, "", "", err
+		return config.Config{}, "", err
 	}
 	tok, err := cfg.ResolveTelegramBotToken(launchDir)
 	if err != nil {
-		return config.Config{}, "", "", err
+		return config.Config{}, "", err
 	}
-	return cfg, launchDir, tok, nil
+	return cfg, tok, nil
 }
 
 func applyTelegramSessionDefault(cmd *cobra.Command, cfg config.Config) error {
