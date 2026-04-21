@@ -21,7 +21,9 @@ func TestProjectFileUnderRoot_rejectsEscape(t *testing.T) {
 	require.False(t, ok2)
 	full, ok3 := projectFileUnderRoot(root, filepath.Join("sub", "a.txt"))
 	require.True(t, ok3)
-	require.True(t, strings.HasPrefix(full, sub))
+	want, err := filepath.Abs(filepath.Join(sub, "a.txt"))
+	require.NoError(t, err)
+	require.Equal(t, want, full)
 }
 
 func TestBuildProjectContext_claudeLineCap(t *testing.T) {

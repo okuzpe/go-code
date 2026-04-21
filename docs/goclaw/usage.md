@@ -31,6 +31,15 @@ Not required for a first session on one machine: [telegram-bridge.md](./telegram
 - **Context window** — If **`ollama_num_ctx`** is set in settings and is **below 8192** (see `OllamaNumCtxBannerWarnBelow` in `internal/app/ux_constants.go`), the **non-TTY startup banner** (when printed) warns that long system prompts plus tool schemas may truncate. Raise `ollama_num_ctx` if turns feel “forgetful” or tools behave oddly.
 - **Iteration budget** — Past halfway through the per-turn iteration limit, a `<system-reminder>` warns the model that budget is tight. If you asked for real edits and tools already ran without a successful write, that reminder nudges toward **finishing edits** instead of only wrapping up in prose.
 
+### Project context and standing orders (iterative bootstrap)
+
+Each session, goclaw builds a **project context** string from the tool workspace root and injects it into the system prompt (implementation: `buildProjectContext` in [`internal/app/chat_wiring.go`](../../goclaw/internal/app/chat_wiring.go)).
+
+- **`CLAUDE.md`** at the workspace root — only the **first N lines** are included (default **60**). Put the highest-priority standing rules at the **top** of the file. Override the cap with **`project_context_claude_md_lines`** in `~/.goclaw/settings.json` or project `.goclaw/settings.json` (values are clamped to **1..200**).
+- **Standing orders file** — If **`.goclaw/STANDING_ORDERS.md`** exists under the workspace root, its contents are appended to the project context (after `README` / manifest snippets and `CLAUDE.md`). Alternatively, set **`project_context_standing_orders_path`** to any **workspace-relative** path (must not escape the workspace; absolute paths are rejected). Limit lines with **`project_context_standing_orders_max_lines`** (default **40**, clamped to **1..120**); the injected block is also capped by bytes so prompts stay bounded.
+
+**Workflow tip:** For coordinated multi-step work, keep **`coordinator`** with **`spawn_agent`** and **`todo_write`**, maintain **`.goclaw/plan.md`** (or another progress file) with real **`write_file` / `edit_file` / `patch`** outcomes, or add a custom agent under **`.goclaw/agents/`** (see the `improver` example in the goclaw tree). Maintainer-oriented detail: **[CLAUDE.md](../../goclaw/CLAUDE.md)** — section *Iterative work and standing orders*.
+
 ### First-run setup (onboarding)
 
 The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings.json` does not exist**, a short wizard runs **before** the chat UI:
