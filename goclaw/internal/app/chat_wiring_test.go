@@ -49,6 +49,10 @@ func TestPrepareChatRuntime_MCPServerStartFailureContinues(t *testing.T) {
 	rt, err := PrepareChatRuntime(cmd)
 	require.NoError(t, err)
 	require.Empty(t, rt.McpSessions, "failed MCP servers should not abort runtime or add sessions")
+	require.NotEmpty(t, rt.ScratchDir)
+	info, statErr := os.Stat(rt.ScratchDir)
+	require.NoError(t, statErr)
+	require.True(t, info.IsDir())
 }
 
 func TestPrepareChatRuntime_ProjectHooksOnlyWhenTrusted(t *testing.T) {

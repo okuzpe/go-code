@@ -135,6 +135,9 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 		}
 	}()
 	defer func() {
+		cleanupSessionScratch(rt.ScratchDir)
+	}()
+	defer func() {
 		_ = rt.HookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionEnd})
 	}()
 
@@ -217,6 +220,9 @@ func RunPrompt(cmd *cobra.Command, args []string) error {
 		for _, s := range rt.McpSessions {
 			_ = s.Close()
 		}
+	}()
+	defer func() {
+		cleanupSessionScratch(rt.ScratchDir)
 	}()
 	defer func() {
 		_ = rt.HookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionEnd})

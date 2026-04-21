@@ -7,12 +7,36 @@ import (
 )
 
 func TestFormatPrefixToolReply(t *testing.T) {
-	s := FormatPrefixToolReply("bash", "hello", false)
-	require.Contains(t, s, "bash")
-	require.Contains(t, s, "hello")
-
-	s2 := FormatPrefixToolReply("read_file", "oops", true)
-	require.Contains(t, s2, "read_file")
-	require.Contains(t, s2, "oops")
-	require.Contains(t, s2, "error")
+	tests := []struct {
+		name        string
+		toolName    string
+		body        string
+		isError     bool
+		mustContain []string
+	}{
+		{
+			name:        "success bash reply includes tool name and body",
+			toolName:    "bash",
+			body:        "hello",
+			isError:     false,
+			mustContain: []string{"bash", "hello"},
+		},
+		{
+			name:        "error read_file reply marks error",
+			toolName:    "read_file",
+			body:        "oops",
+			isError:     true,
+			mustContain: []string{"read_file", "oops", "error"},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := FormatPrefixToolReply(tt.toolName, tt.body, tt.isError)
+			for _, fragment := range tt.mustContain {
+				require.Contains(t, got, fragment)
+			}
+		})
+	}
 }

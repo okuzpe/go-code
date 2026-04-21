@@ -66,10 +66,9 @@ func TranscriptOutcomeSnippet(toolName, content string, isError bool) string {
 			return text.TruncateRunes(strings.ReplaceAll(content, "\n", " "), transcriptOutcomeMaxRunes)
 		}
 		return fmt.Sprintf("%d lines · %d chars", lines, chars)
-	case "write_file", "edit_file", "patch", "todo_write", "web_search", "web_fetch":
-		if toolName == "web_search" {
-			return webSearchOutcomeSnippet(content)
-		}
+	case "web_search":
+		return webSearchOutcomeSnippet(content)
+	case "write_file", "edit_file", "patch", "todo_write", "web_fetch":
 		return text.TruncateRunes(firstLineOf(content), transcriptOutcomeMaxRunes)
 	case "bash", "script":
 		if tail := lastNonEmptyLine(content); tail != "" {

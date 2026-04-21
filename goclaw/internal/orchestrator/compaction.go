@@ -17,6 +17,10 @@ const (
 
 	// compactedToolResult is the placeholder written over large tool-result payloads during phase-1 compaction.
 	compactedToolResult = "[compacted]"
+
+	// compactionIneffectiveMaxStreak auto-disables maybeCompact after this many phase-2 runs that
+	// still leave estimated context at or above the full auto-compact threshold.
+	compactionIneffectiveMaxStreak = 3
 )
 
 // compactionPreserveCount is how many tail messages to keep when compacting.
@@ -51,12 +55,25 @@ func (o *Orchestrator) ForceCompact() {
 }
 
 func (o *Orchestrator) maybeCompact(ctx context.Context, sink StreamSink) {
-	if o.cfg.AutoCompactThreshold <= 0 {
+	if o.session == nil {
 		return
 	}
-	budget := o.cfg.EffectiveContextTokens()
-	limit := int(float64(budget) * o.cfg.AutoCompactThreshold)
-	if o.estimatedSessionTokens(ctx, limit) < limit {
+	if o.autoCompactDisabled {
+		return
+	}
+	limits, ok := o.cfg.CompactionAutoLimits()
+	if !ok {
+		return
+	}
+	limitFull := limits.LimitFull
+	limitMicro := limits.LimitMicro
+	est := o.estimatedSessionTokens(ctx, limitFull)
+
+	if est < limitFull {
+		o.compactionIneffectiveStreak = 0
+	}
+
+	if est < limitMicro {
 		return
 	}
 
@@ -65,10 +82,16 @@ func (o *Orchestrator) maybeCompact(ctx context.Context, sink StreamSink) {
 		return
 	}
 
+	// Early band [limitMicro, limitFull): only clear old tool-result payloads (no message collapse).
+	if est < limitFull {
+		o.applyClearOldToolResults(preserve)
+		return
+	}
+
 	// Phase 1: clear tool-result payloads in old turns — cheapest, preserves conversation structure.
-	if msgs, cleared := clearOldToolResults(o.session.Messages, preserve); cleared {
-		o.session.ReplaceMessages(msgs)
-		if o.estimatedSessionTokens(ctx, limit) < limit {
+	if o.applyClearOldToolResults(preserve) {
+		if o.estimatedSessionTokens(ctx, limitFull) < limitFull {
+			o.compactionIneffectiveStreak = 0
 			return
 		}
 	}
@@ -80,6 +103,26 @@ func (o *Orchestrator) maybeCompact(ctx context.Context, sink StreamSink) {
 	} else {
 		o.compactToTail(preserve)
 	}
+	estAfter := o.estimatedSessionTokens(ctx, limitFull)
+	if estAfter >= limitFull {
+		o.compactionIneffectiveStreak++
+		if o.compactionIneffectiveStreak >= compactionIneffectiveMaxStreak {
+			o.autoCompactDisabled = true
+			sid := ""
+			if o.session != nil {
+				sid = o.session.ID
+			}
+			slog.Warn("auto context compaction disabled for this session after repeated ineffective compactions",
+				"session_id", sid,
+				"estimated_tokens", estAfter,
+				"limit_tokens", limitFull,
+				"streak", o.compactionIneffectiveStreak,
+				"max_streak", compactionIneffectiveMaxStreak)
+		}
+	} else {
+		o.compactionIneffectiveStreak = 0
+	}
+
 	if sink != nil {
 		removed := before - len(o.session.Messages)
 		if removed < 0 {
@@ -89,6 +132,17 @@ func (o *Orchestrator) maybeCompact(ctx context.Context, sink StreamSink) {
 			sink.OnCompact(removed)
 		}
 	}
+}
+
+// applyClearOldToolResults runs phase-1 tool-result clearing for messages outside the preserved tail.
+// Returns whether any tool result content was replaced.
+func (o *Orchestrator) applyClearOldToolResults(preserve int) bool {
+	msgs, cleared := clearOldToolResults(o.session.Messages, preserve)
+	if !cleared {
+		return false
+	}
+	o.session.ReplaceMessages(msgs)
+	return true
 }
 
 // compactToTailWithLLM summarizes the head of the conversation using the active LLM
@@ -226,17 +280,11 @@ func SessionCompactionFillPercentLive(msgs []llm.Message, cfg config.Config, ext
 }
 
 func sessionCompactionFillPercentFromTokenEstimate(cfg config.Config, tok int) (int, bool) {
-	if cfg.AutoCompactThreshold <= 0 {
+	limits, ok := cfg.CompactionAutoLimits()
+	if !ok {
 		return 0, false
 	}
-	budget := cfg.EffectiveContextTokens()
-	if budget <= 0 {
-		return 0, false
-	}
-	limit := int(float64(budget) * cfg.AutoCompactThreshold)
-	if limit <= 0 {
-		return 0, false
-	}
+	limit := limits.LimitFull
 	p := int(int64(tok) * 100 / int64(limit))
 	if p < 0 {
 		p = 0

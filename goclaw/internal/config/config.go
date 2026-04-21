@@ -71,6 +71,11 @@ type Config struct {
 
 	// Context & compaction
 	AutoCompactThreshold float64 // fraction of context used before compacting (e.g. 0.85)
+	// MicroCompactThreshold triggers tool-result clearing only (no message collapse) when
+	// estimated usage is in [MicroCompactThreshold, AutoCompactThreshold). 0 after Load means
+	// default 0.70 when auto_compact is on. -1 disables the early band (same as auto threshold).
+	// JSON: micro_compact_threshold.
+	MicroCompactThreshold float64
 
 	// Paths
 	UserConfigDir    string // ~/.goclaw
@@ -153,6 +158,18 @@ type Config struct {
 	// writes were allowed, but no successful write_file/edit_file/patch, append a [goclaw] bilingual
 	// footer to the assistant reply. JSON: truth_footer_no_workspace_writes (default true).
 	TruthFooterNoWorkspaceWrites bool
+
+	// ProjectContextClaudeMdLines caps lines read from CLAUDE.md into the injected project context.
+	// 0 means use the default (60). Clamped to 1..200 by ClaudeProjectContextLineLimit().
+	// JSON: project_context_claude_md_lines
+	ProjectContextClaudeMdLines int
+	// ProjectContextStandingOrdersPath is a workspace-relative path to optional bootstrap markdown.
+	// When empty, goclaw loads ".goclaw/STANDING_ORDERS.md" only if that file exists under the tool workspace root.
+	// JSON: project_context_standing_orders_path
+	ProjectContextStandingOrdersPath string
+	// ProjectContextStandingOrdersMaxLines caps lines for the standing orders file. 0 uses default 40.
+	// Clamped to 1..120 by StandingOrdersProjectContextLineLimit(). JSON: project_context_standing_orders_max_lines
+	ProjectContextStandingOrdersMaxLines int
 
 	// AutoProfileIntent selects profile-type detection before each user send: "off" (default) or "rules".
 	// JSON: auto_profile_intent; env: GOCLAW_AUTO_PROFILE_INTENT.
@@ -296,6 +313,7 @@ func Default() Config {
 		TaskModels:                   defaultTaskModels(),
 		PreferredResponseLanguage:    envOr("GOCLAW_PREFERRED_RESPONSE_LANGUAGE", ""),
 		AutoCompactThreshold:         0.85,
+		MicroCompactThreshold:        0, // normalized by NormalizeCompactionThresholds
 		UserConfigDir:                filepath.Join(home, ".goclaw"),
 		ProjectConfigDir:             ".goclaw",
 		AgentProfile:                 "coordinator",
@@ -324,6 +342,7 @@ func Default() Config {
 			cfg.OllamaHTTPTimeoutSec = n
 		}
 	}
+	NormalizeCompactionThresholds(&cfg)
 	return cfg
 }
 
@@ -443,6 +462,123 @@ func (c Config) RouterModelForLLM() string {
 	}
 	return c.ModelForCompaction()
 }
+
+// NormalizeCompactionThresholds clamps MicroCompactThreshold relative to AutoCompactThreshold.
+// Call after merging settings (and on Default before return).
+// Rules: when AutoCompactThreshold <= 0, MicroCompactThreshold is set to 0 (unused).
+// When AutoCompactThreshold > 0: MicroCompactThreshold < 0 means disable the early-only band
+// (micro is set equal to auto). Zero means default 0.70. Values >= auto are clamped below auto.
+func NormalizeCompactionThresholds(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	if cfg.AutoCompactThreshold <= 0 {
+		cfg.MicroCompactThreshold = 0
+		return
+	}
+	auto := cfg.AutoCompactThreshold
+	disableEarlyMicro := false
+	switch {
+	case cfg.MicroCompactThreshold < 0:
+		cfg.MicroCompactThreshold = auto
+		disableEarlyMicro = true
+	case cfg.MicroCompactThreshold == 0:
+		cfg.MicroCompactThreshold = 0.70
+	}
+	if !disableEarlyMicro && cfg.MicroCompactThreshold >= auto {
+		cfg.MicroCompactThreshold = auto - 0.01
+	}
+	const minMicro = 0.01
+	if !disableEarlyMicro && cfg.MicroCompactThreshold < minMicro {
+		cfg.MicroCompactThreshold = minMicro
+	}
+	if !disableEarlyMicro && cfg.MicroCompactThreshold >= auto {
+		cfg.MicroCompactThreshold = auto * 0.5
+		if cfg.MicroCompactThreshold < minMicro {
+			cfg.MicroCompactThreshold = minMicro
+		}
+	}
+}
+
+// CompactionAutoLimits holds derived token thresholds for auto-compaction (same rules as orchestrator.maybeCompact).
+type CompactionAutoLimits struct {
+	Budget     int
+	LimitMicro int
+	LimitFull  int
+}
+
+// CompactionAutoLimits returns context budget and micro/full token cutoffs when auto_compact_threshold > 0.
+// Callers should run NormalizeCompactionThresholds on the config first; if MicroCompactThreshold is still
+// zero with auto on, limitMicro falls back to limitFull (defensive).
+func (c Config) CompactionAutoLimits() (CompactionAutoLimits, bool) {
+	if c.AutoCompactThreshold <= 0 {
+		return CompactionAutoLimits{}, false
+	}
+	budget := c.EffectiveContextTokens()
+	if budget <= 0 {
+		return CompactionAutoLimits{}, false
+	}
+	limitFull := int(float64(budget) * c.AutoCompactThreshold)
+	if limitFull <= 0 {
+		return CompactionAutoLimits{}, false
+	}
+	microFrac := c.MicroCompactThreshold
+	if microFrac <= 0 {
+		microFrac = c.AutoCompactThreshold
+	}
+	limitMicro := int(float64(budget) * microFrac)
+	if limitMicro > limitFull {
+		limitMicro = limitFull
+	}
+	return CompactionAutoLimits{
+		Budget:     budget,
+		LimitMicro: limitMicro,
+		LimitFull:  limitFull,
+	}, true
+}
+
+const (
+	defaultProjectContextClaudeMdLines    = 60
+	minProjectContextClaudeMdLines        = 1
+	maxProjectContextClaudeMdLinesHardCap = 200
+	defaultStandingOrdersMaxLines         = 40
+	minStandingOrdersMaxLines             = 1
+	maxStandingOrdersMaxLinesHardCap      = 120
+	standingOrdersInjectMaxBytes          = 4096
+)
+
+// ClaudeProjectContextLineLimit returns the CLAUDE.md line cap for project context injection.
+func (c Config) ClaudeProjectContextLineLimit() int {
+	n := c.ProjectContextClaudeMdLines
+	if n <= 0 {
+		n = defaultProjectContextClaudeMdLines
+	}
+	if n < minProjectContextClaudeMdLines {
+		n = minProjectContextClaudeMdLines
+	}
+	if n > maxProjectContextClaudeMdLinesHardCap {
+		n = maxProjectContextClaudeMdLinesHardCap
+	}
+	return n
+}
+
+// StandingOrdersProjectContextLineLimit returns the standing orders file line cap.
+func (c Config) StandingOrdersProjectContextLineLimit() int {
+	n := c.ProjectContextStandingOrdersMaxLines
+	if n <= 0 {
+		n = defaultStandingOrdersMaxLines
+	}
+	if n < minStandingOrdersMaxLines {
+		n = minStandingOrdersMaxLines
+	}
+	if n > maxStandingOrdersMaxLinesHardCap {
+		n = maxStandingOrdersMaxLinesHardCap
+	}
+	return n
+}
+
+// StandingOrdersInjectMaxBytes is the maximum byte length of the standing orders block after line trimming.
+func StandingOrdersInjectMaxBytes() int { return standingOrdersInjectMaxBytes }
 
 // EffectiveContextTokens returns the context window size (in tokens) used for compaction decisions.
 // Priority: explicit ModelContextTokens > provider-aware default (Ollama uses OllamaNumCtx).

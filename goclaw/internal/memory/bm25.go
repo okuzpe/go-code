@@ -16,6 +16,7 @@ const (
 // bm25Corpus holds the pre-computed statistics needed to score documents with BM25.
 type bm25Corpus struct {
 	docs    [][]string     // tokenized documents, one slice per doc (duplicates preserved for TF)
+	tfMaps  []map[string]int // pre-computed term frequencies, one map per doc
 	docFreq map[string]int // number of documents that contain each term (for IDF)
 	avgdl   float64        // average document length in tokens
 }
@@ -23,16 +24,20 @@ type bm25Corpus struct {
 // newBM25Corpus builds corpus statistics from a set of pre-tokenized documents.
 func newBM25Corpus(docs [][]string) bm25Corpus {
 	docFreq := make(map[string]int)
+	tfMaps := make([]map[string]int, len(docs))
 	totalLen := 0
-	for _, doc := range docs {
+	for i, doc := range docs {
 		totalLen += len(doc)
+		tf := make(map[string]int, len(doc))
 		seen := make(map[string]struct{}, len(doc))
 		for _, term := range doc {
+			tf[term]++
 			if _, already := seen[term]; !already {
 				docFreq[term]++
 				seen[term] = struct{}{}
 			}
 		}
+		tfMaps[i] = tf
 	}
 	avgdl := 1.0 // guard against zero-length corpus
 	if len(docs) > 0 {
@@ -41,7 +46,7 @@ func newBM25Corpus(docs [][]string) bm25Corpus {
 			avgdl = 1
 		}
 	}
-	return bm25Corpus{docs: docs, docFreq: docFreq, avgdl: avgdl}
+	return bm25Corpus{docs: docs, tfMaps: tfMaps, docFreq: docFreq, avgdl: avgdl}
 }
 
 // score returns the BM25 score for the document at docIdx against the provided query terms.
@@ -51,14 +56,9 @@ func (c bm25Corpus) score(docIdx int, queryTerms []string) float64 {
 		return 0
 	}
 	doc := c.docs[docIdx]
+	tf := c.tfMaps[docIdx]
 	docLen := float64(len(doc))
 	N := float64(len(c.docs))
-
-	// Build per-document term-frequency map.
-	tf := make(map[string]int, len(doc))
-	for _, term := range doc {
-		tf[term]++
-	}
 
 	var total float64
 	for _, term := range queryTerms {

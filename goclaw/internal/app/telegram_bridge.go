@@ -112,6 +112,9 @@ func telegramRunBridgeLoop(cmd *cobra.Command, token string) error {
 		}
 	}()
 	defer func() {
+		cleanupSessionScratch(rt.ScratchDir)
+	}()
+	defer func() {
 		_ = rt.HookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionEnd})
 	}()
 

@@ -138,6 +138,14 @@ func WithLaunchDir(dir string) Option {
 	}
 }
 
+// WithScratchDir sets the absolute session scratch directory for ephemeral model writes
+// (auto-approved under ask policy when targets stay under this tree). Empty disables.
+func WithScratchDir(dir string) Option {
+	return func(o *Orchestrator) {
+		o.scratchDir = strings.TrimSpace(dir)
+	}
+}
+
 // WithProjectContext injects a brief project summary (e.g. from go.mod / README)
 // into the system prompt so the agent understands the project without a warm-up tool call.
 func WithProjectContext(ctx string) Option {
@@ -205,6 +213,16 @@ type Orchestrator struct {
 	// reply-language hint even when normalize_input_language translated the message to English.
 	// Empty means detection was inconclusive or the message was already English.
 	turnInputLang string
+
+	// scratchDir is an absolute session scratch directory (ephemeral notes); empty when disabled.
+	scratchDir string
+
+	// compactionIneffectiveStreak counts consecutive phase-2 compactions that failed to drop
+	// estimated context below the auto-compact limit.
+	compactionIneffectiveStreak int
+	// autoCompactDisabled stops maybeCompact after repeated ineffective compactions (session-only).
+	// ForceCompact and /compact are unaffected.
+	autoCompactDisabled bool
 }
 
 type turnMetrics struct {

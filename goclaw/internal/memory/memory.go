@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/okuzpe/goclaw/internal/text"
 )
 
 // Type classifies a memory entry.
@@ -195,33 +197,19 @@ func (st *Store) RelevantContext(max int, query string, minScore float64) (strin
 		return "", err
 	}
 	if strings.TrimSpace(query) == "" {
-		list := make([]Entry, 0, len(withTimes))
-		for _, w := range withTimes {
-			list = append(list, w.entry)
-		}
-		if len(list) > max {
-			list = list[:max]
-		}
-		return formatEntryBullets(list), nil
+		return formatEntryBullets(recencySlice(withTimes, max)), nil
 	}
 
 	// Build BM25 corpus from all entry texts.
 	docTokens := make([][]string, len(withTimes))
 	for i, w := range withTimes {
-		text := w.entry.Name + " " + w.entry.Description + " " + w.entry.Body
-		docTokens[i] = tokenizeTerms(text)
+		entryText := w.entry.Name + " " + w.entry.Description + " " + w.entry.Body
+		docTokens[i] = tokenizeTerms(entryText)
 	}
 	corpus := newBM25Corpus(docTokens)
 	queryTerms := uniqueTerms(tokenizeTerms(query))
 	if len(queryTerms) == 0 {
-		list := make([]Entry, 0, len(withTimes))
-		for _, w := range withTimes {
-			list = append(list, w.entry)
-		}
-		if len(list) > max {
-			list = list[:max]
-		}
-		return formatEntryBullets(list), nil
+		return formatEntryBullets(recencySlice(withTimes, max)), nil
 	}
 
 	// Score every document; track the max to normalize scores to [0, 1].
@@ -265,6 +253,19 @@ func (st *Store) RelevantContext(max int, query string, minScore float64) (strin
 	return formatEntryBullets(out), nil
 }
 
+// recencySlice returns at most max entries from withTimes in recency order (newest first).
+// It is the fallback path when a query is empty or reduces to only stop words.
+func recencySlice(withTimes []entryWithMtime, max int) []Entry {
+	out := make([]Entry, 0, len(withTimes))
+	for _, w := range withTimes {
+		out = append(out, w.entry)
+	}
+	if len(out) > max {
+		out = out[:max]
+	}
+	return out
+}
+
 // applyAgeDecay multiplies a relevance score by a decay factor based on how old the entry is.
 // Decay rate varies by type: project entries decay faster (2-week half-life) since they go stale,
 // while feedback and user entries decay slowly (12-week half-life) as they remain useful longer.
@@ -299,7 +300,6 @@ func applyAgeDecay(score float64, mtime, now time.Time, entryType Type) float64 
 	}
 	return score * decay
 }
-
 
 var memoryStopWords = map[string]struct{}{
 	// English — articles, pronouns, auxiliaries, prepositions, conjunctions
@@ -348,7 +348,7 @@ func formatEntryBullets(list []Entry) string {
 		}
 		sb.WriteByte('\n')
 		if body := strings.TrimSpace(e.Body); body != "" {
-			snippet := truncateRunes(body, entryBodySnippetMaxRunes)
+			snippet := text.TruncateRunes(body, entryBodySnippetMaxRunes)
 			// Indent each body line by two spaces for readability.
 			for line := range strings.SplitSeq(snippet, "\n") {
 				sb.WriteString("  ")
@@ -358,18 +358,6 @@ func formatEntryBullets(list []Entry) string {
 		}
 	}
 	return strings.TrimSpace(sb.String())
-}
-
-// truncateRunes returns s truncated to at most max runes, appending "…" when trimmed.
-func truncateRunes(s string, max int) string {
-	if max <= 0 {
-		return ""
-	}
-	runes := []rune(s)
-	if len(runes) <= max {
-		return s
-	}
-	return string(runes[:max]) + "…"
 }
 
 func sanitizeBaseName(s string) string {

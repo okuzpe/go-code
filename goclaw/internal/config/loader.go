@@ -15,60 +15,64 @@ import (
 
 // settingsFile is the JSON shape for ~/.goclaw/settings.json and .goclaw/settings.json.
 type settingsFile struct {
-	Provider                     *string             `json:"provider"`
-	OllamaHost                   *string             `json:"ollama_host"`
-	OllamaModel                  *string             `json:"ollama_model"`
-	OllamaNumCtx                 *int                `json:"ollama_num_ctx,omitempty"`
-	OllamaHTTPTimeoutSec         *int                `json:"ollama_http_timeout_sec,omitempty"`
-	CompactionModel              *string             `json:"compaction_model,omitempty"`
-	TaskModelRouter              *string             `json:"task_model_router,omitempty"`
-	TaskModels                   map[string]string   `json:"task_models,omitempty"`
-	TaskModelRouterModel         *string             `json:"task_model_router_model,omitempty"`
-	PreferredResponseLanguage    *string             `json:"preferred_response_language,omitempty"`
-	AgentProfile                 *string             `json:"agent_profile"`
-	AutoProfileIntent            *string             `json:"auto_profile_intent,omitempty"`
-	AutoDirectCodingProfile      *string             `json:"auto_direct_coding_profile,omitempty"`
-	ActionRepairEscalation       *bool               `json:"action_repair_escalation,omitempty"`
-	AutoCompactThreshold         *float64            `json:"auto_compact_threshold"`
-	BashTimeoutSec               *int                `json:"bash_timeout_sec"`
-	ModelContextTokens           *int                `json:"model_context_tokens"`
-	MaxResponseTokens            *int                `json:"max_response_tokens,omitempty"`
-	MaxOrchestratorIterations    *int                `json:"max_orchestrator_iterations,omitempty"`
-	MaxOrchestratorToolCalls     *int                `json:"max_orchestrator_tool_calls,omitempty"`
-	MCPServers                   []MCPServerConfig   `json:"mcp_servers"`
-	TrustedWorkspace             *bool               `json:"trusted_workspace"`
-	ExternalHooks                []ExternalHookEntry `json:"external_hooks"`
-	ToolPermissions              map[string]string   `json:"tool_permissions"`
-	AllowScript                  *bool               `json:"allow_script"`
-	YoloThreshold                *int                `json:"yolo_threshold"`
-	LLMCompaction                *bool               `json:"llm_compaction"`
-	AutoContinueActionRequests   *bool               `json:"auto_continue_action_requests,omitempty"`
-	AutoContinueActionMaxNudges  *int                `json:"auto_continue_action_max_nudges,omitempty"`
-	TruthFooterNoWorkspaceWrites *bool               `json:"truth_footer_no_workspace_writes,omitempty"`
-	MCPServersAllowRemote        *bool               `json:"mcp_allow_remote_urls,omitempty"`
-	IDEBridgeMCP                 *bool               `json:"ide_bridge_mcp,omitempty"`
-	WebSearchBackend             *string             `json:"web_search_backend,omitempty"`
-	BraveSearchAPIKey            *string             `json:"brave_search_api_key,omitempty"`
-	SerpAPIKey                   *string             `json:"serpapi_api_key,omitempty"`
-	WebSearchFallbackDDG         *bool               `json:"web_search_fallback_ddg,omitempty"`
-	PluginDirs                   []string            `json:"plugin_dirs,omitempty"`
-	PluginAllow                  []string            `json:"plugin_allow,omitempty"`
-	PluginDeny                   []string            `json:"plugin_deny,omitempty"`
-	EnableReflectionNudge        *bool               `json:"enable_reflection_nudge,omitempty"`
-	NormalizeInputLanguage       *bool               `json:"normalize_input_language,omitempty"`
-	MemoryAutoExtract            *bool               `json:"memory_auto_extract,omitempty"`
-	MemoryLLMSilentExtract       *bool               `json:"memory_llm_silent_extract,omitempty"`
-	TUIMouseScroll               *bool               `json:"tui_mouse_scroll,omitempty"`
-	TUIIcons                     *string             `json:"tui_icons,omitempty"`
-	UIAppearance                 *string             `json:"ui_appearance,omitempty"`
-	ToolWorkspaceRoot            *string             `json:"tool_workspace_root,omitempty"`
-	PlanRequireApplyApproval     *bool               `json:"plan_require_apply_approval,omitempty"`
-	PlanApplyUseCoordinator      *bool               `json:"plan_apply_use_coordinator,omitempty"`
-	AgentPickerHiddenProfiles    []string           `json:"agent_picker_hidden_profiles,omitempty"`
-	TelegramBotToken             *string             `json:"telegram_bot_token,omitempty"`
-	TelegramBotTokenFile         *string             `json:"telegram_bot_token_file,omitempty"`
-	TelegramAllowedUserIDs       []int64            `json:"telegram_allowed_user_ids,omitempty"`
-	TelegramSessionID            *string             `json:"telegram_session_id,omitempty"`
+	Provider                             *string             `json:"provider"`
+	OllamaHost                           *string             `json:"ollama_host"`
+	OllamaModel                          *string             `json:"ollama_model"`
+	OllamaNumCtx                         *int                `json:"ollama_num_ctx,omitempty"`
+	OllamaHTTPTimeoutSec                 *int                `json:"ollama_http_timeout_sec,omitempty"`
+	CompactionModel                      *string             `json:"compaction_model,omitempty"`
+	TaskModelRouter                      *string             `json:"task_model_router,omitempty"`
+	TaskModels                           map[string]string   `json:"task_models,omitempty"`
+	TaskModelRouterModel                 *string             `json:"task_model_router_model,omitempty"`
+	PreferredResponseLanguage            *string             `json:"preferred_response_language,omitempty"`
+	AgentProfile                         *string             `json:"agent_profile"`
+	AutoProfileIntent                    *string             `json:"auto_profile_intent,omitempty"`
+	AutoDirectCodingProfile              *string             `json:"auto_direct_coding_profile,omitempty"`
+	ActionRepairEscalation               *bool               `json:"action_repair_escalation,omitempty"`
+	AutoCompactThreshold                 *float64            `json:"auto_compact_threshold"`
+	MicroCompactThreshold                *float64            `json:"micro_compact_threshold,omitempty"`
+	BashTimeoutSec                       *int                `json:"bash_timeout_sec"`
+	ModelContextTokens                   *int                `json:"model_context_tokens"`
+	MaxResponseTokens                    *int                `json:"max_response_tokens,omitempty"`
+	MaxOrchestratorIterations            *int                `json:"max_orchestrator_iterations,omitempty"`
+	MaxOrchestratorToolCalls             *int                `json:"max_orchestrator_tool_calls,omitempty"`
+	MCPServers                           []MCPServerConfig   `json:"mcp_servers"`
+	TrustedWorkspace                     *bool               `json:"trusted_workspace"`
+	ExternalHooks                        []ExternalHookEntry `json:"external_hooks"`
+	ToolPermissions                      map[string]string   `json:"tool_permissions"`
+	AllowScript                          *bool               `json:"allow_script"`
+	YoloThreshold                        *int                `json:"yolo_threshold"`
+	LLMCompaction                        *bool               `json:"llm_compaction"`
+	AutoContinueActionRequests           *bool               `json:"auto_continue_action_requests,omitempty"`
+	AutoContinueActionMaxNudges          *int                `json:"auto_continue_action_max_nudges,omitempty"`
+	TruthFooterNoWorkspaceWrites         *bool               `json:"truth_footer_no_workspace_writes,omitempty"`
+	ProjectContextClaudeMdLines          *int                `json:"project_context_claude_md_lines,omitempty"`
+	ProjectContextStandingOrdersPath     *string             `json:"project_context_standing_orders_path,omitempty"`
+	ProjectContextStandingOrdersMaxLines *int                `json:"project_context_standing_orders_max_lines,omitempty"`
+	MCPServersAllowRemote                *bool               `json:"mcp_allow_remote_urls,omitempty"`
+	IDEBridgeMCP                         *bool               `json:"ide_bridge_mcp,omitempty"`
+	WebSearchBackend                     *string             `json:"web_search_backend,omitempty"`
+	BraveSearchAPIKey                    *string             `json:"brave_search_api_key,omitempty"`
+	SerpAPIKey                           *string             `json:"serpapi_api_key,omitempty"`
+	WebSearchFallbackDDG                 *bool               `json:"web_search_fallback_ddg,omitempty"`
+	PluginDirs                           []string            `json:"plugin_dirs,omitempty"`
+	PluginAllow                          []string            `json:"plugin_allow,omitempty"`
+	PluginDeny                           []string            `json:"plugin_deny,omitempty"`
+	EnableReflectionNudge                *bool               `json:"enable_reflection_nudge,omitempty"`
+	NormalizeInputLanguage               *bool               `json:"normalize_input_language,omitempty"`
+	MemoryAutoExtract                    *bool               `json:"memory_auto_extract,omitempty"`
+	MemoryLLMSilentExtract               *bool               `json:"memory_llm_silent_extract,omitempty"`
+	TUIMouseScroll                       *bool               `json:"tui_mouse_scroll,omitempty"`
+	TUIIcons                             *string             `json:"tui_icons,omitempty"`
+	UIAppearance                         *string             `json:"ui_appearance,omitempty"`
+	ToolWorkspaceRoot                    *string             `json:"tool_workspace_root,omitempty"`
+	PlanRequireApplyApproval             *bool               `json:"plan_require_apply_approval,omitempty"`
+	PlanApplyUseCoordinator              *bool               `json:"plan_apply_use_coordinator,omitempty"`
+	AgentPickerHiddenProfiles            []string            `json:"agent_picker_hidden_profiles,omitempty"`
+	TelegramBotToken                     *string             `json:"telegram_bot_token,omitempty"`
+	TelegramBotTokenFile                 *string             `json:"telegram_bot_token_file,omitempty"`
+	TelegramAllowedUserIDs               []int64             `json:"telegram_allowed_user_ids,omitempty"`
+	TelegramSessionID                    *string             `json:"telegram_session_id,omitempty"`
 }
 
 // Load merges JSON settings into base in this order (later wins for overlapping keys):
@@ -102,6 +106,7 @@ func Load(base Config, cwd string) (Config, error) {
 		cfg.PermissionModes = perms
 	}
 	applyTelegramEnvOverrides(&cfg)
+	NormalizeCompactionThresholds(&cfg)
 	return cfg, nil
 }
 
@@ -206,6 +211,9 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	if sf.AutoCompactThreshold != nil {
 		cfg.AutoCompactThreshold = *sf.AutoCompactThreshold
 	}
+	if sf.MicroCompactThreshold != nil {
+		cfg.MicroCompactThreshold = *sf.MicroCompactThreshold
+	}
 	if sf.BashTimeoutSec != nil && *sf.BashTimeoutSec > 0 {
 		cfg.BashTimeoutSec = *sf.BashTimeoutSec
 	}
@@ -252,6 +260,15 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.TruthFooterNoWorkspaceWrites != nil {
 		cfg.TruthFooterNoWorkspaceWrites = *sf.TruthFooterNoWorkspaceWrites
+	}
+	if sf.ProjectContextClaudeMdLines != nil && *sf.ProjectContextClaudeMdLines > 0 {
+		cfg.ProjectContextClaudeMdLines = *sf.ProjectContextClaudeMdLines
+	}
+	if sf.ProjectContextStandingOrdersPath != nil {
+		cfg.ProjectContextStandingOrdersPath = strings.TrimSpace(*sf.ProjectContextStandingOrdersPath)
+	}
+	if sf.ProjectContextStandingOrdersMaxLines != nil && *sf.ProjectContextStandingOrdersMaxLines > 0 {
+		cfg.ProjectContextStandingOrdersMaxLines = *sf.ProjectContextStandingOrdersMaxLines
 	}
 	if sf.MCPServersAllowRemote != nil && *sf.MCPServersAllowRemote {
 		cfg.MCPServersAllowRemote = true

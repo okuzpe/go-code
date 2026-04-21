@@ -112,6 +112,13 @@ func (o *Orchestrator) buildRequest() llm.Request {
 			"- `glob` without `under` and `grep` without `path` (or with path `.`) search the **tool path root** tree above.\n" +
 			"- For `glob`, use optional `under` to walk a different directory (absolute or relative to launch cwd)."
 	}
+	if sd := strings.TrimSpace(o.scratchDir); sd != "" {
+		sys = sys + "\n\n## Session scratch (ephemeral)\n" +
+			"Directory: " + sd + "\n" +
+			"This folder is deleted when the session ends. Use it for drafts, logs, or scratch files you need without asking for write approval, " +
+			"by passing this absolute path (or paths under it) to write_file, edit_file, patch, or write_files. " +
+			"Do not rely on it for durable project state."
+	}
 	if o.projectContext != "" {
 		sys = sys + "\n\n## Project context\n" + o.projectContext
 	}

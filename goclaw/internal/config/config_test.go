@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultAgentProfileCoordinator(t *testing.T) {
@@ -17,6 +19,70 @@ func TestDefaultOllamaModelMatchesDefaultConfig(t *testing.T) {
 	t.Parallel()
 	if got := Default().OllamaModel; got != DefaultOllamaModel {
 		t.Fatalf("Default().OllamaModel = %q, want DefaultOllamaModel %q", got, DefaultOllamaModel)
+	}
+}
+
+func TestCompactionAutoLimits(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.ModelContextTokens = 10_000
+	cfg.AutoCompactThreshold = 0.85
+	NormalizeCompactionThresholds(&cfg)
+	limits, ok := cfg.CompactionAutoLimits()
+	require.True(t, ok, "CompactionAutoLimits: expected ok")
+	require.Equal(t, 10_000, limits.Budget)
+	require.Equal(t, int(10_000*0.85), limits.LimitFull)
+	require.Less(t, limits.LimitMicro, limits.LimitFull)
+
+	off := Default()
+	off.AutoCompactThreshold = 0
+	_, okOff := off.CompactionAutoLimits()
+	require.False(t, okOff, "CompactionAutoLimits should be false when auto_compact_threshold is off")
+}
+
+func TestNormalizeCompactionThresholds(t *testing.T) {
+	tests := []struct {
+		name  string
+		cfg   Config
+		check func(t *testing.T, got Config)
+	}{
+		{
+			name: "zero micro defaults to 0.70 when auto is 0.85",
+			cfg:  Config{AutoCompactThreshold: 0.85, MicroCompactThreshold: 0},
+			check: func(t *testing.T, got Config) {
+				require.InDelta(t, 0.70, got.MicroCompactThreshold, 1e-9)
+			},
+		},
+		{
+			name: "micro stays strictly below auto when auto is low",
+			cfg:  Config{AutoCompactThreshold: 0.5, MicroCompactThreshold: 0},
+			check: func(t *testing.T, got Config) {
+				require.Less(t, got.MicroCompactThreshold, got.AutoCompactThreshold)
+			},
+		},
+		{
+			name: "micro cleared when auto compaction is off",
+			cfg:  Config{AutoCompactThreshold: 0, MicroCompactThreshold: 0.7},
+			check: func(t *testing.T, got Config) {
+				require.Equal(t, 0.0, got.MicroCompactThreshold)
+			},
+		},
+		{
+			name: "negative micro equals auto to disable early-only band",
+			cfg:  Config{AutoCompactThreshold: 0.85, MicroCompactThreshold: -1},
+			check: func(t *testing.T, got Config) {
+				require.InDelta(t, 0.85, got.MicroCompactThreshold, 1e-9)
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := tt.cfg
+			NormalizeCompactionThresholds(&cfg)
+			tt.check(t, cfg)
+		})
 	}
 }
 
@@ -111,6 +177,50 @@ func TestLoadCompactionModelFromProjectSettings(t *testing.T) {
 	if got := cfg.CompactionModel; got != "phi3:latest" {
 		t.Fatalf("CompactionModel = %q, want phi3:latest", got)
 	}
+}
+
+func TestProjectContextClaudeMdLinesClamp(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, 60, Default().ClaudeProjectContextLineLimit())
+	low := Default()
+	low.ProjectContextClaudeMdLines = 3
+	require.Equal(t, 3, low.ClaudeProjectContextLineLimit())
+	high := Default()
+	high.ProjectContextClaudeMdLines = 9999
+	require.Equal(t, 200, high.ClaudeProjectContextLineLimit())
+	zero := Default()
+	zero.ProjectContextClaudeMdLines = 0
+	require.Equal(t, 60, zero.ClaudeProjectContextLineLimit())
+}
+
+func TestProjectContextStandingOrdersMaxLinesClamp(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, 40, Default().StandingOrdersProjectContextLineLimit())
+	high := Default()
+	high.ProjectContextStandingOrdersMaxLines = 500
+	require.Equal(t, 120, high.StandingOrdersProjectContextLineLimit())
+}
+
+func TestLoadProjectContextFromProjectSettings(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	projectGoclaw := filepath.Join(dir, ".goclaw")
+	require.NoError(t, os.MkdirAll(projectGoclaw, 0o755))
+	path := filepath.Join(projectGoclaw, "settings.json")
+	raw := `{"project_context_claude_md_lines":12,"project_context_standing_orders_path":"orders.md","project_context_standing_orders_max_lines":7}`
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "orders.md"), []byte("ok\n"), 0o644))
+
+	cfg := Default()
+	cfg.UserConfigDir = filepath.Join(dir, "user-goclaw-missing")
+	cfg.ProjectConfigDir = ".goclaw"
+	out, err := Load(cfg, dir)
+	require.NoError(t, err)
+	require.Equal(t, 12, out.ProjectContextClaudeMdLines)
+	require.Equal(t, "orders.md", out.ProjectContextStandingOrdersPath)
+	require.Equal(t, 7, out.ProjectContextStandingOrdersMaxLines)
+	require.Equal(t, 12, out.ClaudeProjectContextLineLimit())
+	require.Equal(t, 7, out.StandingOrdersProjectContextLineLimit())
 }
 
 func TestNormalizePreferredResponseLanguage(t *testing.T) {

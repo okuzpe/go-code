@@ -37,7 +37,7 @@ const (
 
 // ChatRuntime holds shared subsystems built once for an interactive chat session.
 type ChatRuntime struct {
-	Cfg              config.Config
+	Cfg config.Config
 	// Workdir is the default project directory (orchestrator path hints, default glob/grep tree,
 	// project context snippet). File tools still accept absolute paths anywhere on disk.
 	Workdir string
@@ -61,10 +61,12 @@ type ChatRuntime struct {
 	// ExplicitAgentProfileFromCLI is true when the user set --profile on the CLI or GOCLAW_AGENT_PROFILE in the environment.
 	// Auto-elevate from coordinator to a direct coding profile is skipped when this is set.
 	ExplicitAgentProfileFromCLI bool
-	McpSessions      []mcp.Conn
+	McpSessions                 []mcp.Conn
 	// McpConnectedIDs lists MCP server ids that started and registered tools successfully (same order as McpSessions).
 	McpConnectedIDs []string
 	OrchOpts        []orchestrator.Option
+	// ScratchDir is the absolute session scratch path when allocated; empty when omitted (e.g. doctor).
+	ScratchDir string
 	// OllamaProbe is set when provider is ollama: result of GET /api/tags at PrepareChatRuntime (reachability + model in library).
 	OllamaProbe OllamaStartupProbe
 }
@@ -160,6 +162,12 @@ func effectiveToolWorkspaceRoot(cfg config.Config, cmd *cobra.Command) string {
 
 // PrepareChatRuntime builds config, session, tools, hooks, and MCP for one interactive run.
 func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
+	return prepareChatRuntime(cmd, true)
+}
+
+// prepareChatRuntime is the implementation of PrepareChatRuntime. When allocateScratch is false,
+// no per-session scratch directory is created (used by doctor and other non-agent flows).
+func prepareChatRuntime(cmd *cobra.Command, allocateScratch bool) (*ChatRuntime, error) {
 	sessionFlag, err := cmd.Flags().GetString("session")
 	if err != nil {
 		return nil, err
@@ -319,7 +327,7 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	_ = hookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionStart})
 
 	// Build project context and skills early so they can be shared with workers.
-	projectCtx := buildProjectContext(toolRoot)
+	projectCtx := buildProjectContext(toolRoot, cfg)
 	skillRoots := []string{
 		filepath.Join(launchDir, cfg.ProjectConfigDir, "skills"),
 		filepath.Join(launchDir, ".claude", "skills"),
@@ -398,6 +406,19 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 		}
 	}
 
+	var scratchDir string
+	if allocateScratch {
+		scratchDir = filepath.Join(cfg.UserConfigDir, "scratch", sess.ID)
+		if err := os.MkdirAll(scratchDir, privateDirPerm); err != nil {
+			return nil, fmt.Errorf("session scratch dir: %w", err)
+		}
+		absScratch, errAbs := filepath.Abs(scratchDir)
+		if errAbs != nil {
+			return nil, fmt.Errorf("session scratch dir abs: %w", errAbs)
+		}
+		scratchDir = absScratch
+	}
+
 	ideNotifier := ide.FromEnv()
 	orchOpts := []orchestrator.Option{orchestrator.WithMemoryStore(memStore)}
 	if projectMemStore != nil {
@@ -415,6 +436,9 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 	if skillSnippet != "" {
 		orchOpts = append(orchOpts, orchestrator.WithSkillsSnippet(skillSnippet))
 	}
+	if scratchDir != "" {
+		orchOpts = append(orchOpts, orchestrator.WithScratchDir(scratchDir))
+	}
 	if !disableTools {
 		orchOpts = append(orchOpts, orchestrator.WithTodoStore(todoStore))
 		sid := sess.ID
@@ -426,28 +450,38 @@ func PrepareChatRuntime(cmd *cobra.Command) (*ChatRuntime, error) {
 
 	ollamaProbe := ProbeOllamaStartup(cfg)
 	return &ChatRuntime{
-		Cfg:              cfg,
-		Workdir:          toolRoot,
-		LaunchDir:        launchDir,
-		Client:           client,
-		Sess:             sess,
-		Store:            store,
-		Reg:              reg,
-		MemStore:         memStore,
-		Policy:           policy,
-		HookReg:          hookReg,
-		Profile:          profile,
-		Profs:            profs,
-		UserAgentsDir:    userAgentsDir,
-		ProjectAgentsDir: projectAgentsDir,
+		Cfg:                         cfg,
+		Workdir:                     toolRoot,
+		LaunchDir:                   launchDir,
+		Client:                      client,
+		Sess:                        sess,
+		Store:                       store,
+		Reg:                         reg,
+		MemStore:                    memStore,
+		Policy:                      policy,
+		HookReg:                     hookReg,
+		Profile:                     profile,
+		Profs:                       profs,
+		UserAgentsDir:               userAgentsDir,
+		ProjectAgentsDir:            projectAgentsDir,
 		DisableTools:                disableTools,
 		Mock:                        mockFlag,
 		ExplicitAgentProfileFromCLI: explicitAgentProfileFromCLI,
-		McpSessions:      mcpSessions,
-		McpConnectedIDs:  mcpConnectedIDs,
-		OrchOpts:         orchOpts,
-		OllamaProbe:      ollamaProbe,
+		McpSessions:                 mcpSessions,
+		McpConnectedIDs:             mcpConnectedIDs,
+		OrchOpts:                    orchOpts,
+		ScratchDir:                  scratchDir,
+		OllamaProbe:                 ollamaProbe,
 	}, nil
+}
+
+func cleanupSessionScratch(dir string) {
+	if strings.TrimSpace(dir) == "" {
+		return
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		slog.Warn("remove session scratch dir", "dir", dir, "err", err)
+	}
 }
 
 // registerBuiltInTools registers the 10 built-in tools into r (plus optional script when allow_script is true).
@@ -492,7 +526,12 @@ func registerBuiltInTools(r *tools.Registry, toolRoot string, launchDir string, 
 
 // readProjectFileLines reads a workspace-relative file and returns up to maxLines of trimmed content.
 func readProjectFileLines(workdir, name string, maxLines int) ([]string, bool) {
-	data, err := os.ReadFile(filepath.Join(workdir, name))
+	return readProjectFileLinesAt(filepath.Join(workdir, name), maxLines)
+}
+
+// readProjectFileLinesAt reads an absolute file path and returns up to maxLines of trimmed content.
+func readProjectFileLinesAt(absPath string, maxLines int) ([]string, bool) {
+	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil, false
 	}
@@ -501,6 +540,57 @@ func readProjectFileLines(workdir, name string, maxLines int) ([]string, bool) {
 		lines = lines[:maxLines]
 	}
 	return lines, true
+}
+
+// projectFileUnderRoot returns the absolute path for userRel joined under workdir when userRel is
+// strictly inside workdir (no absolute path, no ".." escape).
+func projectFileUnderRoot(workdir, userRel string) (string, bool) {
+	workdir = filepath.Clean(workdir)
+	userRel = strings.TrimSpace(userRel)
+	if userRel == "" {
+		return "", false
+	}
+	userRel = filepath.Clean(userRel)
+	if userRel == "." || userRel == ".." || strings.HasPrefix(userRel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	if filepath.IsAbs(userRel) {
+		return "", false
+	}
+	full := filepath.Join(workdir, userRel)
+	absRoot, err := filepath.Abs(workdir)
+	if err != nil {
+		return "", false
+	}
+	absFull, err := filepath.Abs(full)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(absRoot, absFull)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return "", false
+	}
+	return absFull, true
+}
+
+func resolveStandingOrdersPath(workdir string, cfg config.Config) (string, bool) {
+	workdir = filepath.Clean(workdir)
+	if p := strings.TrimSpace(cfg.ProjectContextStandingOrdersPath); p != "" {
+		full, ok := projectFileUnderRoot(workdir, p)
+		if !ok {
+			return "", false
+		}
+		st, err := os.Stat(full)
+		if err != nil || st.IsDir() {
+			return "", false
+		}
+		return full, true
+	}
+	defaultPath := filepath.Join(workdir, ".goclaw", "STANDING_ORDERS.md")
+	if st, err := os.Stat(defaultPath); err == nil && !st.IsDir() {
+		return defaultPath, true
+	}
+	return "", false
 }
 
 // detectProjectType returns a short type tag for the project at workdir.
@@ -526,8 +616,8 @@ func detectProjectType(workdir string) string {
 
 // buildProjectContext reads key project files from workdir and returns a compact
 // summary for injection into the system prompt. Returns "" when nothing useful is found.
-// Reads at most two small files; fast enough to call at startup.
-func buildProjectContext(workdir string) string {
+// Small bounded reads; safe to call at startup.
+func buildProjectContext(workdir string, cfg config.Config) string {
 	var parts []string
 
 	// Prepend project type hint so the model knows the stack without warm-up glob calls.
@@ -562,9 +652,25 @@ func buildProjectContext(workdir string) string {
 		}
 	}
 
-	// Append CLAUDE.md project rules — this is the primary source of agent instructions.
-	if lines, ok := readProjectFileLines(workdir, "CLAUDE.md", 60); ok {
-		parts = append(parts, "CLAUDE.md (project rules):\n  "+strings.Join(lines, "\n  "))
+	claudeLines := cfg.ClaudeProjectContextLineLimit()
+	if lines, ok := readProjectFileLines(workdir, "CLAUDE.md", claudeLines); ok {
+		parts = append(parts, fmt.Sprintf("CLAUDE.md (project rules, first %d lines):\n  ", claudeLines)+strings.Join(lines, "\n  "))
+	}
+
+	if soPath, ok := resolveStandingOrdersPath(workdir, cfg); ok {
+		maxL := cfg.StandingOrdersProjectContextLineLimit()
+		if lines, ok2 := readProjectFileLinesAt(soPath, maxL); ok2 {
+			joined := strings.Join(lines, "\n  ")
+			maxBytes := config.StandingOrdersInjectMaxBytes()
+			if len(joined) > maxBytes {
+				joined = joined[:maxBytes] + "\n  ... (truncated)"
+			}
+			relShow, err := filepath.Rel(workdir, soPath)
+			if err != nil {
+				relShow = filepath.Base(soPath)
+			}
+			parts = append(parts, filepath.ToSlash(relShow)+" (standing orders):\n  "+joined)
+		}
 	}
 
 	return strings.Join(parts, "\n\n")

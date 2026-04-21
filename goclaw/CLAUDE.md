@@ -116,6 +116,28 @@ See the `audit` skill for the full checklist.
 
 ---
 
+## Iterative work and standing orders (project bootstrap)
+
+goclaw injects a **project context** block into the system prompt on each session (see `buildProjectContext` in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go)). Use it like OpenClaw-style **standing orders**: durable scope, triggers in plain language, approval boundaries, escalation, and an **execute → verify → report** habit.
+
+**What gets loaded automatically**
+
+- `CLAUDE.md` at the **tool workspace root** — first *N* lines only (default **60**; override with `project_context_claude_md_lines` in `settings.json`, hard-capped at **200**). Put the highest-priority rules at the **top** of the file.
+- Optional **`.goclaw/STANDING_ORDERS.md`** under the same root — loaded only if the file exists, unless overridden by `project_context_standing_orders_path` (workspace-relative path; must not escape the workspace). Line cap default **40** (`project_context_standing_orders_max_lines`, hard-capped at **120**); content is also bounded by bytes before injection.
+
+**Profiles and rhythm**
+
+- **Coordinator** (`coordinator`): delegate coding with `spawn_agent`, track slices with `todo_write`, synthesize worker output — best for multi-step work tied to a plan (see `/plan`, `/apply-plan` in the REPL section below).
+- **Single-agent iterative text loop**: add a custom agent under `.goclaw/agents/*.md` (for example the bundled [`improver`](.goclaw/agents/improver.md) pattern: spawn workers or direct tools, `max_turns` in frontmatter, explicit stop conditions).
+
+**Operational rule for long runs**
+
+Keep a **living progress document** (for example `.goclaw/plan.md` or a dedicated `PROGRESS.md`) updated with `write_file` / `edit_file` / `patch` when scope advances. Read-only turns that still signal “make edits” may get a runtime truth footer when no workspace write succeeded — updating the progress file counts as a workspace write and preserves continuity across user messages.
+
+End-user details: [usage.md — Project context and standing orders](../docs/goclaw/usage.md).
+
+---
+
 ## Package Structure
 
 ```

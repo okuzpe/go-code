@@ -108,7 +108,7 @@ func runDoctorBubbleTea(report, uiAppearance string, iconSet icons.Set) error {
 
 // RunDoctor shows the health report: Bubble Tea pager on a TTY, plain print otherwise.
 func RunDoctor(cmd *cobra.Command, _ []string) error {
-	rt, err := PrepareChatRuntime(cmd)
+	rt, err := prepareChatRuntime(cmd, false)
 	if err != nil {
 		return err
 	}

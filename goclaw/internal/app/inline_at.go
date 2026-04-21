@@ -65,14 +65,14 @@ func expandInlineAtRefsWithReader(userText string, readPath func(path string) (c
 		failed = slices.Compact(failed)
 	}
 	var b strings.Builder
-	b.WriteString("[Files loaded via @ references]\n\n")
+	b.WriteString(orchestrator.InlineAtContextStart + "\n\n")
 	if len(failed) > 0 {
 		b.WriteString("! warning: could not preload ")
 		b.WriteString(strings.Join(failed, ", "))
 		b.WriteString("\n\n")
 	}
 	b.WriteString(strings.Join(blocks, "\n\n"))
-	b.WriteString("\n\n[End of @ context]\n\n")
+	b.WriteString("\n\n" + orchestrator.InlineAtContextEnd + "\n\n")
 	b.WriteString(userText)
 	return b.String()
 }

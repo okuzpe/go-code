@@ -233,6 +233,9 @@ func (o *Orchestrator) checkApproval(ctx context.Context, tu *llm.ToolUse) (tool
 	case permissions.DecisionDeny:
 		return rejectToolNextStep(fmt.Sprintf("permission denied for tool %q (policy mode deny)", tu.Name), blockedToolNextStep(tu.Name)), true
 	case permissions.DecisionAsk:
+		if o.writeTargetsUnderScratch(tu.Name, tu.Input) {
+			return toolOutcome{}, false
+		}
 		if o.cfg.YoloThreshold >= 0 {
 			score := permissions.RiskScore(tu.Name, tu.Input)
 			if score <= o.cfg.YoloThreshold {
