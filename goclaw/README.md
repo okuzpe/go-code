@@ -2,7 +2,7 @@
 
 This repository’s **only active project** is **goclaw** (this Go module). Other trees at the repo root (for example `claw-code/`) are **reference only** — not part of `go.mod`, not covered by goclaw issues or roadmap.
 
-Go CLI coding agent — **local-first** with Ollama (`qwen2.5-coder:14b` by default via `config.DefaultOllamaModel`; use `qwen2.5-coder:7b` in settings if VRAM is tight). The CLI talks only to your Ollama daemon; no bundled cloud LLM providers.
+Go CLI coding agent — **local-first** with Ollama (`qwen2.5-coder:7b` by default via `config.DefaultOllamaModel`; override with `ollama_model` / `OLLAMA_MODEL`). The CLI talks only to your Ollama daemon; no bundled cloud LLM providers.
 
 ## Requirements
 

@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- **Defaults & docs:** `config.Default().AgentProfile` is **`coordinator`**; default Ollama context budget uses **`DefaultOllamaNumCtx` (32768)** for **`qwen2.5-coder:14b`**. [usage.md](./usage.md), [coordinator.md](./coordinator.md), [prefix-input-modes.md](./prefix-input-modes.md), [manual-tui-checklist.md](./manual-tui-checklist.md), [agent-profiles.md](../reference/agent-profiles.md), [docs-map.md](../docs-map.md), and **[1.3.0] erratum** below updated to match. Removed unused **`provider`** parameters from **`AugmentOrchestratorErr`** and session token estimate helpers in goclaw.
+- **Defaults & docs:** `config.Default().AgentProfile` is **`coordinator`**; default Ollama model is **`qwen2.5-coder:7b`** with **`DefaultOllamaNumCtx` (32768)** unless settings override; built-in **`task_models`** (rules router) uses **`qwen3:8b`** / **`qwen3:4b`** / **`qwen2.5-coder:3b`** / **`qwen2.5-coder:7b`** as configured in `defaultTaskModels`. **`/init`** writes **`InitProjectOllamaNumCtx` (16384)** for new project settings. [usage.md](./usage.md), [coordinator.md](./coordinator.md), [prefix-input-modes.md](./prefix-input-modes.md), [manual-tui-checklist.md](./manual-tui-checklist.md), [agent-profiles.md](../reference/agent-profiles.md), [docs-map.md](../docs-map.md), and **[1.3.0] erratum** below updated to match. Removed unused **`provider`** parameters from **`AugmentOrchestratorErr`** and session token estimate helpers in goclaw.
 
 ### Added
 

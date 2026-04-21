@@ -1,9 +1,17 @@
 {
   "trusted_workspace": true,
-  "ollama_model": "qwen2.5-coder:14b",
-  "task_model_router": "off",
-  "ollama_num_ctx": 32768,
-  "model_context_tokens": 32768,
+  "ollama_model": "qwen2.5-coder:7b",
+  "task_model_router": "rules",
+  "task_models": {
+    "default": "qwen2.5-coder:7b",
+    "code": "qwen2.5-coder:7b",
+    "reasoning": "qwen3:8b",
+    "explore": "qwen3:4b",
+    "fast": "qwen2.5-coder:3b",
+    "creative": "qwen3:8b"
+  },
+  "ollama_num_ctx": 16384,
+  "model_context_tokens": 16384,
   "preferred_response_language": "es",
   "auto_profile_intent": "rules",
   "auto_direct_coding_profile": "general-purpose",

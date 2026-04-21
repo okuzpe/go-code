@@ -4,7 +4,7 @@ Task-oriented guide: how to run the CLI, configure providers, and use sessions, 
 
 ## Quick start (Ollama)
 
-Prerequisite: Ollama on `http://localhost:11434` with a model pulled (default: `qwen2.5-coder:14b`; use `qwen2.5-coder:7b` in settings on tight VRAM).
+Prerequisite: Ollama on `http://localhost:11434` with models pulled for your `ollama_model` and any **`task_models`** tags (built-in defaults: `qwen2.5-coder:7b`, `qwen2.5-coder:3b`, `qwen3:4b`, `qwen3:8b` — see [model-routing.md](./model-routing.md)).
 
 ```bash
 cd goclaw
@@ -158,7 +158,7 @@ Example:
 {
   "provider": "ollama",
   "agent_profile": "explore",
-  "ollama_model": "qwen2.5-coder:14b",
+  "ollama_model": "qwen2.5-coder:7b",
   "bash_timeout_sec": 120,
   "tool_permissions": {
     "read_file": "allow",
@@ -345,7 +345,7 @@ Work through this list in order (most issues are **profile**, **permissions**, o
 2. **Plan workflow** — If you used **`plan`** to draft steps, that profile is **intentionally** read-only. Use **`/plan review`** / **`/plan approve`** (when **`plan_require_apply_approval`** is true), then **`/plan run`** or **`/plan save`** + **`/apply-plan`**. Add **`--hub`** (or set **`plan_apply_use_coordinator`**) for **coordinator** execution. Each apply runs **one** model turn; large plans may need **follow-up** messages or a smaller plan slice.
 3. **Tools disabled** — **`--no-tools`**, **`GOCLAW_DISABLE_TOOLS=1`**, or **`goclaw prompt … --no-tools`** registers no tools: the model can only emit text. Remove the flag or unset the variable for edits.
 4. **`tool_permissions`** — Default **`ask`** prompts before risky tools. If you decline or never approve, no run occurs. For scripts / CI, set **`allow`** on the tools you need (see [Permissions](#permissions)) or use **`/allow-writes`** in the REPL for the current session (write tools only).
-5. **Ollama model** — Small local models often emit **prose or fake “JSON tool” blobs** instead of native tool calls; those blobs do **not** execute (see the base system prompt in `goclaw/internal/orchestrator/base_system_prompt.md`). Try a stronger coder tag (e.g. **`qwen2.5-coder:14b`** vs 7b) — [ollama-stack.md](./ollama-stack.md).
+5. **Ollama model** — Small local models often emit **prose or fake “JSON tool” blobs** instead of native tool calls; those blobs do **not** execute (see the base system prompt in `goclaw/internal/orchestrator/base_system_prompt.md`). Try a larger or more tool-capable tag (`ollama_model` / **`task_models`** entries) — [ollama-stack.md](./ollama-stack.md).
 6. **Custom agents** — Markdown agents under **`~/.goclaw/agents/`** and **`.goclaw/agents/`** may set **`read_only: true`** or a narrow **`tool_allowlist`** without write tools; same symptom as built-in read-only profiles.
 7. **Auto-continue nudges** — Goclaw may inject up to **`auto_continue_action_max_nudges`** synthetic `[goclaw]` user lines (default **2**, max **5**) when your message signals code changes and the model replies **without** native tool calls — including the **first** completion in the turn (zero tools) or after **read-only** tools only. If the model still ignores tools after nudges, use a stronger **Ollama** tag or **`/profile builder`**.
 8. **Truth-on-disk footer** — If you see **`[goclaw] No workspace files were modified this turn`**, the runtime is reporting that no **`write_file` / `edit_file` / `patch`** succeeded; treat it as ground truth over assistant prose. See the **Truth-on-disk footer** bullet under [Large repo analysis and refactors](#large-repo-analysis-and-refactors).

@@ -14,15 +14,18 @@ import (
 )
 
 // DefaultOllamaModel is the built-in Ollama tag when neither OLLAMA_MODEL nor settings.json
-// set ollama_model. qwen2.5-coder:14b is the default coding model; use qwen2.5-coder:7b (or
-// OLLAMA_MODEL) if you need a smaller VRAM footprint — see defaultTaskModels for lighter roles.
-const DefaultOllamaModel = "qwen2.5-coder:14b"
+// set ollama_model. Default is qwen2.5-coder:7b; override with OLLAMA_MODEL or ollama_model for other tags.
+const DefaultOllamaModel = "qwen2.5-coder:7b"
 
 // DefaultOllamaNumCtx is the default context window (tokens) for Ollama and for compaction estimates
 // when settings do not override ollama_num_ctx / model_context_tokens.
-// Tuned for DefaultOllamaModel (qwen2.5-coder:14b): Qwen2.5-Coder is trained with native context up to
-// 32,768 tokens; higher values need YaRN / Modelfile and more VRAM. Lower in settings on low-VRAM hardware.
+// Tuned for the default Qwen2.5-Coder stack: native context up to 32,768 tokens; higher values need
+// YaRN / Modelfile and more VRAM. Lower in settings on low-VRAM hardware.
 const DefaultOllamaNumCtx = 32768
+
+// InitProjectOllamaNumCtx is the ollama_num_ctx and model_context_tokens written by /init when
+// creating a new project .goclaw/settings.json (VRAM-friendly; merge overrides in settings).
+const InitProjectOllamaNumCtx = 16384
 
 // Config holds all runtime settings for goclaw.
 type Config struct {
@@ -32,10 +35,10 @@ type Config struct {
 
 	// Ollama settings
 	OllamaHost  string // default: http://localhost:11434
-	OllamaModel string // default: DefaultOllamaModel (qwen2.5-coder:14b)
+	OllamaModel string // default: DefaultOllamaModel (qwen2.5-coder:7b)
 	// OllamaNumCtx sets the context window size sent to Ollama.
 	// 0 means use Ollama's model default (often 2048 — too small for tool schemas).
-	// Default: DefaultOllamaNumCtx (32K for qwen2.5-coder:14b). Set via settings.json "ollama_num_ctx".
+	// Default: DefaultOllamaNumCtx (32K). Set via settings.json "ollama_num_ctx".
 	OllamaNumCtx int
 
 	// OllamaHTTPTimeoutSec is the net/http Client timeout for each Ollama request, including
@@ -309,9 +312,8 @@ type ExternalHookEntry struct {
 }
 
 // Default returns a Config that points to a local Ollama instance.
-// Multi-model routing is enabled by default: rules router + task_models map so fast/explore/default
-// turns use qwen2.5-coder:7b while code, fix, reasoning, and creative turns use the main coder model
-// (DefaultOllamaModel / OLLAMA_MODEL, default qwen2.5-coder:14b).
+// Multi-model routing is enabled by default: rules router + task_models map (see defaultTaskModels).
+// Global Model() uses DefaultOllamaModel / OLLAMA_MODEL unless settings override ollama_model.
 // Any settings.json file can override individual task_models entries without replacing the whole map.
 func Default() Config {
 	home, _ := os.UserHomeDir()
@@ -385,25 +387,17 @@ func (c Config) OllamaHTTPClientTimeout() time.Duration {
 // defaultTaskModels returns the built-in per-role model assignments used when task_model_router
 // is active. Settings files merge into this map (later entries override individual keys).
 //
-// Role → model rationale:
-//   - fix, code: same as DefaultOllamaModel / OLLAMA_MODEL unless overridden (default qwen2.5-coder:14b)
-//   - reasoning, creative: qwen2.5-coder:14b — stronger analysis and generation on those turns
-//   - explore, fast, default: qwen2.5-coder:7b — lighter latency for reads and short prompts
+// Roles fix and research are not listed: resolveTaskModel falls back to task_models["default"].
 //
 // Override any role in ~/.goclaw/settings.json under "task_models" without replacing the whole map.
 func defaultTaskModels() map[string]string {
-	main := envOr("OLLAMA_MODEL", DefaultOllamaModel)
-	const coderSmall = "qwen2.5-coder:7b"
-	const coderLarge = "qwen2.5-coder:14b"
 	return map[string]string{
-		"fix":       main,
-		"code":      main,
-		"reasoning": coderLarge,
-		"creative":  coderLarge,
-		"research":  coderSmall, // web synthesis is text-heavy, not code-heavy — small model is fine
-		"explore":   coderSmall,
-		"fast":      coderSmall,
-		"default":   coderSmall,
+		"default":   "qwen2.5-coder:7b",
+		"code":      "qwen2.5-coder:7b",
+		"reasoning": "qwen3:8b",
+		"explore":   "qwen3:4b",
+		"fast":      "qwen2.5-coder:3b",
+		"creative":  "qwen3:8b",
 	}
 }
 

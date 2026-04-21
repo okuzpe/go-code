@@ -20,15 +20,17 @@ In `~/.goclaw/settings.json` and/or `<project>/.goclaw/settings.json` (merged in
 {
   "task_model_router": "rules",
   "task_models": {
-    "default": "qwen2.5-coder:14b",
-    "code": "qwen2.5-coder:14b",
-    "reasoning": "llama3.1:8b-instruct-q4_K_M",
-    "fast": "phi3:mini",
-    "explore": "qwen2.5-coder:7b",
-    "creative": "llama3.1:8b-instruct-q4_K_M"
+    "default": "qwen2.5-coder:7b",
+    "code": "qwen2.5-coder:7b",
+    "reasoning": "qwen3:8b",
+    "explore": "qwen3:4b",
+    "fast": "qwen2.5-coder:3b",
+    "creative": "qwen3:8b"
   }
 }
 ```
+
+This layout matches the built-in defaults in `internal/config/config.go` (`defaultTaskModels`); merge overrides in `settings.json` per role as needed.
 
 Optional keys:
 
@@ -61,18 +63,18 @@ Profile **bias** when heuristics are weak: `plan` → reasoning, `explore` → e
 
 When using [`/review`](./code-review-workflow.md), the injected message is a full **unified diff** — often long and better served by a **reasoning** or larger coding model than by a tiny “fast” model.
 
-**Suggested `task_models` layout:**
+**Suggested `task_models` layout** (same canonical map as above; `/review` and **`code-review`** route to **`reasoning`**, so ensure `task_models.reasoning` is strong enough for long diffs):
 
 ```json
 {
   "task_model_router": "rules",
   "task_models": {
     "default": "qwen2.5-coder:7b",
-    "code": "qwen2.5-coder:14b",
-    "reasoning": "qwen2.5-coder:14b",
-    "explore": "qwen2.5-coder:7b",
-    "fast": "qwen2.5-coder:7b",
-    "fix": "qwen2.5-coder:14b"
+    "code": "qwen2.5-coder:7b",
+    "reasoning": "qwen3:8b",
+    "explore": "qwen3:4b",
+    "fast": "qwen2.5-coder:3b",
+    "creative": "qwen3:8b"
   }
 }
 ```

@@ -4,7 +4,7 @@
 - **Project**: `goclaw` — Go CLI agent, equivalent to Claude Code, focused on local models via Ollama
 - **Go module**: `github.com/okuzpe/goclaw`
 - **Go version**: 1.26
-- **Default provider**: local Ollama (`qwen2.5-coder:14b` via `config.DefaultOllamaModel`; override with `ollama_model` / `OLLAMA_MODEL` for e.g. `qwen2.5-coder:7b` on low VRAM)
+- **Default provider**: local Ollama (`qwen2.5-coder:7b` via `config.DefaultOllamaModel`; override with `ollama_model` / `OLLAMA_MODEL` for another tag)
 - **LLM backend**: **Ollama only** in the shipped CLI (`PrepareChatRuntime`). Legacy `anthropic` and `openai_compatible` values in `settings.json` are **rejected** with a migration hint. `internal/llm/openai_compat.go` + `testutil/mockopenai` remain for **unit tests** (mock HTTP), not for end-user configuration.
 - **Repo root**: clone path + `/goclaw` (module root for `go build` / `go test`)
 
@@ -211,7 +211,7 @@ goclaw/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_MODEL` | `qwen2.5-coder:14b` | Local model name when `provider=ollama` (same as built-in default) |
+| `OLLAMA_MODEL` | `qwen2.5-coder:7b` | Local model name when `provider=ollama` (same as built-in default) |
 | `GOCLAW_COMPACTION_MODEL` | — | Optional model id for LLM-driven compaction only; applied in `config.Default()` before settings merge; a `compaction_model` key in merged `settings.json` overrides; empty keeps main model for compaction |
 | `GOCLAW_TASK_MODEL_ROUTER` | — | Per-turn model routing: `off`, `rules` (heuristics), or `llm` (classifier call); needs non-empty **`task_models`** in merged settings; see [`docs/goclaw/model-routing.md`](../docs/goclaw/model-routing.md) |
 | `GOCLAW_TASK_MODEL_ROUTER_MODEL` | — | Model id for the `llm` router’s short JSON reply only; merged **`task_model_router_model`** overrides; empty uses **`ModelForCompaction()`** |
@@ -264,7 +264,7 @@ Example **`settings.json`:**
 {
   "provider": "ollama",
   "agent_profile": "explore",
-  "ollama_model": "qwen2.5-coder:14b",
+  "ollama_model": "qwen2.5-coder:7b",
   "bash_timeout_sec": 120,
   "tool_permissions": {
     "read_file": "allow",
@@ -286,10 +286,12 @@ Optional keys: **`tui_mouse_scroll`** — when `true`, the fullscreen TUI enable
   "provider": "ollama",
   "task_model_router": "rules",
   "task_models": {
-    "explore": "qwen2.5-coder:7b",
-    "fast":    "qwen2.5-coder:7b",
-    "code":    "qwen2.5-coder:14b",
-    "default": "qwen2.5-coder:14b"
+    "default": "qwen2.5-coder:7b",
+    "code": "qwen2.5-coder:7b",
+    "reasoning": "qwen3:8b",
+    "explore": "qwen3:4b",
+    "fast": "qwen2.5-coder:3b",
+    "creative": "qwen3:8b"
   }
 }
 ```
@@ -520,7 +522,7 @@ go test ./...
 # go test -race ./...
 
 # Manual run against local Ollama
-OLLAMA_HOST=http://localhost:11434 OLLAMA_MODEL=qwen2.5-coder:14b go run ./cmd/goclaw
+OLLAMA_HOST=http://localhost:11434 OLLAMA_MODEL=qwen2.5-coder:7b go run ./cmd/goclaw
 ```
 
 ### Non-interactive smoke
