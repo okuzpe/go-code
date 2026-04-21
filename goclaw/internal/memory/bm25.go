@@ -47,7 +47,7 @@ func newBM25Corpus(docs [][]string) bm25Corpus {
 // score returns the BM25 score for the document at docIdx against the provided query terms.
 // Returns 0 if the document contains none of the query terms.
 func (c bm25Corpus) score(docIdx int, queryTerms []string) float64 {
-	if len(queryTerms) == 0 || docIdx >= len(c.docs) {
+	if len(queryTerms) == 0 || docIdx < 0 || docIdx >= len(c.docs) {
 		return 0
 	}
 	doc := c.docs[docIdx]

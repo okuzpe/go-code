@@ -40,6 +40,9 @@ func MaybeAutoCaptureFromTool(cfg config.Config, store *Store, sessionID, toolNa
 	if err := json.Unmarshal([]byte(toolInput), &in); err != nil || strings.TrimSpace(in.Path) == "" {
 		return
 	}
+	if !isAutoCaptureSignalful(toolName, in.Content, in.OldString, in.NewString, in.Diff) {
+		return
+	}
 
 	autoSessionQuota.mu.Lock()
 	if autoSessionQuota.counts == nil {
@@ -53,7 +56,7 @@ func MaybeAutoCaptureFromTool(cfg config.Config, store *Store, sessionID, toolNa
 		slog.Info("memory: auto-capture quota reached", "session", sessionID)
 		return
 	}
-	dedupKey := toolName + "|" + strings.TrimSpace(in.Path)
+	dedupKey := buildAutoCaptureDedupKey(toolName, strings.TrimSpace(in.Path), in.Content, in.OldString, in.NewString, in.Diff)
 	if autoSessionQuota.last[sessionID] == dedupKey {
 		autoSessionQuota.mu.Unlock()
 		slog.Debug("memory: auto-capture duplicate skipped", "session", sessionID, "path", strings.TrimSpace(in.Path), "tool", toolName)
@@ -70,6 +73,37 @@ func MaybeAutoCaptureFromTool(cfg config.Config, store *Store, sessionID, toolNa
 		Type:        TypeProject,
 		Body:        body,
 	})
+}
+
+func isAutoCaptureSignalful(toolName, content, oldString, newString, diff string) bool {
+	switch toolName {
+	case "write_file":
+		return strings.TrimSpace(content) != ""
+	case "edit_file":
+		oldTrimmed := strings.TrimSpace(oldString)
+		newTrimmed := strings.TrimSpace(newString)
+		if oldTrimmed == "" && newTrimmed == "" {
+			return false
+		}
+		return oldTrimmed != newTrimmed
+	case "patch":
+		return strings.TrimSpace(diff) != ""
+	default:
+		return true
+	}
+}
+
+func buildAutoCaptureDedupKey(toolName, path, content, oldString, newString, diff string) string {
+	switch toolName {
+	case "write_file":
+		return fmt.Sprintf("%s|%s|content:%d", toolName, path, len([]byte(content)))
+	case "edit_file":
+		return fmt.Sprintf("%s|%s|old:%d|new:%d", toolName, path, len([]byte(oldString)), len([]byte(newString)))
+	case "patch":
+		return fmt.Sprintf("%s|%s|diff:%d", toolName, path, len([]byte(diff)))
+	default:
+		return toolName + "|" + path
+	}
 }
 
 func buildAutoCaptureBody(toolName, path, content, oldString, newString, diff string) string {

@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/okuzpe/goclaw/internal/agents"
@@ -12,6 +13,17 @@ import (
 	"github.com/okuzpe/goclaw/internal/tools"
 	"github.com/stretchr/testify/require"
 )
+
+type failingTool struct {
+	name string
+}
+
+func (f failingTool) Name() string        { return f.name }
+func (f failingTool) Description() string { return "failing tool" }
+func (f failingTool) InputSchema() any    { return map[string]any{"type": "object"} }
+func (f failingTool) Execute(context.Context, string) (tools.Result, error) {
+	return tools.Result{}, errors.New("no such file")
+}
 
 func TestRunToolInvocationAllow(t *testing.T) {
 	reg := tools.New()
@@ -62,6 +74,49 @@ func TestRunToolInvocationDeny(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, isError)
 	require.Contains(t, content, "permission denied")
+	require.Contains(t, content, "next step:")
+}
+
+func TestRunToolInvocationUnknownToolIncludesNextStep(t *testing.T) {
+	o := New(
+		config.Default(),
+		nil,
+		session.New(),
+		tools.New(),
+		permissions.NewPolicy(),
+		hooks.New(),
+		agents.GeneralPurpose,
+	)
+
+	content, isError, err := o.RunToolInvocation(context.Background(), "not_a_tool", `{}`, nil)
+	require.NoError(t, err)
+	require.True(t, isError)
+	require.Contains(t, content, `unknown tool "not_a_tool"`)
+	require.Contains(t, content, "next step:")
+}
+
+func TestRunToolInvocationExecutionErrorIncludesNextStep(t *testing.T) {
+	reg := tools.New()
+	reg.Register(failingTool{name: "read_file"})
+
+	pol := permissions.NewPolicy()
+	pol.Set("read_file", permissions.ModeAllow)
+
+	o := New(
+		config.Default(),
+		nil,
+		session.New(),
+		reg,
+		pol,
+		hooks.New(),
+		agents.GeneralPurpose,
+	)
+
+	content, isError, err := o.RunToolInvocation(context.Background(), "read_file", `{}`, nil)
+	require.NoError(t, err)
+	require.True(t, isError)
+	require.Contains(t, content, "no such file")
+	require.Contains(t, content, "next step:")
 }
 
 func TestRunToolInvocationEmptyName(t *testing.T) {

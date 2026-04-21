@@ -88,6 +88,11 @@ func Analyze(raw string) (Analysis, error) {
 			break
 		}
 		path := strings.TrimSpace(strings.TrimPrefix(first, "@"))
+		// Single-line mixed input like "@go.mod explain this" should remain passthrough
+		// so inline @ expansion can preload context and preserve the user instruction.
+		if strings.ContainsAny(path, " \t") {
+			break
+		}
 		if path == "" {
 			return Analysis{}, fmt.Errorf("prefix @ requires a path")
 		}

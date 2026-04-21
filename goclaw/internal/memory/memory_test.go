@@ -52,3 +52,18 @@ func TestWriteIndex(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(b), "a")
 }
+
+func TestRelevantContext_FallbackToRecencyWhenQueryHasNoTerms(t *testing.T) {
+	dir := t.TempDir()
+	st := New(dir)
+	_, err := st.Save(Entry{Name: "first", Type: TypeProject, Body: "alpha change"})
+	require.NoError(t, err)
+	_, err = st.Save(Entry{Name: "second", Type: TypeProject, Body: "beta change"})
+	require.NoError(t, err)
+
+	// Query tokenizes to empty (stopwords only), should still return recency-based context.
+	got, err := st.RelevantContext(2, "the and for with", 0.2)
+	require.NoError(t, err)
+	require.Contains(t, got, "first")
+	require.Contains(t, got, "second")
+}

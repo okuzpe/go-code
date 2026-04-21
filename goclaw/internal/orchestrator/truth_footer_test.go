@@ -137,3 +137,22 @@ func TestMaybeAppendNoWorkspaceWriteFooter(t *testing.T) {
 		}
 	})
 }
+
+func TestSanitizeNarratedToolCallText(t *testing.T) {
+	t.Run("unchanged when marker absent", func(t *testing.T) {
+		input := "No plan yet. Let's inspect files first."
+		got := sanitizeNarratedToolCallText(input)
+		if got != input {
+			t.Fatalf("expected unchanged, got %q", got)
+		}
+	})
+
+	t.Run("removes narrated tool call block", func(t *testing.T) {
+		input := "No, no he creado un plan específico.\n\nTOOL CALL```\n...fake block..."
+		got := sanitizeNarratedToolCallText(input)
+		want := "No, no he creado un plan específico."
+		if got != want {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	})
+}

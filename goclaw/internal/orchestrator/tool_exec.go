@@ -30,7 +30,56 @@ type toolOutcome struct {
 
 // rejectTool returns a non-fatal error outcome shown to the LLM as a tool_result with is_error=true.
 func rejectTool(msg string) toolOutcome {
-	return toolOutcome{Content: msg, IsError: true}
+	return rejectToolNextStep(msg, "")
+}
+
+func rejectToolNextStep(msg, nextStep string) toolOutcome {
+	msg = strings.TrimSpace(msg)
+	nextStep = strings.TrimSpace(nextStep)
+	if nextStep == "" || strings.Contains(strings.ToLower(msg), "next step:") {
+		return toolOutcome{Content: msg, IsError: true}
+	}
+	return toolOutcome{Content: fmt.Sprintf("%s\nnext step: %s", msg, nextStep), IsError: true}
+}
+
+func blockedToolNextStep(toolName string) string {
+	switch toolName {
+	case "read_file", "glob", "grep", "web_fetch", "web_search":
+		return "switch to an agent profile with this tool enabled, or use an allowed read-only tool"
+	case "bash", "script":
+		return "switch mode for command execution, or ask the user to run the command manually"
+	case "write_file", "write_files", "edit_file", "patch", "create_project", "run_tests", "git_tool":
+		return "switch to a profile with write permissions, then retry"
+	default:
+		return "review active tool permissions and retry with an allowed tool"
+	}
+}
+
+func unknownToolNextStep(toolName string) string {
+	if strings.HasPrefix(toolName, "mcp__") {
+		return "run /doctor to verify MCP connectivity and available MCP tools"
+	}
+	return "choose one of the available tools from this session and retry"
+}
+
+func executionErrorNextStep(toolName, message string) string {
+	lower := strings.ToLower(message)
+	switch toolName {
+	case "read_file":
+		if strings.Contains(lower, "not found") || strings.Contains(lower, "no such file") {
+			return "verify the path, run glob first if needed, then retry read_file"
+		}
+		return "verify the file path and permissions, then retry read_file"
+	case "edit_file", "patch", "write_file", "write_files":
+		if strings.Contains(lower, "not found") || strings.Contains(lower, "no such file") {
+			return "read_file the target first to confirm path and current content, then retry"
+		}
+		return "re-read the target content, adjust the edit scope, then retry"
+	case "bash", "script", "run_tests":
+		return "fix the command or run a narrower command to isolate the failure"
+	default:
+		return "inspect tool input and retry with narrower, validated arguments"
+	}
 }
 
 // sinkProgressAdapter bridges StreamSink.OnToolProgress into tools.ProgressReporter.
@@ -88,9 +137,9 @@ func (o *Orchestrator) executeToolOnce(ctx context.Context, tu *llm.ToolUse, sin
 	}
 
 	// Serve from per-turn cache for idempotent read-only tools (glob, grep).
-	if cachableTool(tu.Name) && o.turnToolCache != nil {
+	if cachableTool(tu.Name) {
 		cacheKey := tu.Name + ":" + tu.Input
-		if cached, hit := o.turnToolCache[cacheKey]; hit {
+		if cached, hit := o.turnToolCacheGet(cacheKey); hit {
 			slog.Debug("tool cache hit", "tool", tu.Name)
 			return toolOutcome{Content: cached}
 		}
@@ -101,22 +150,41 @@ func (o *Orchestrator) executeToolOnce(ctx context.Context, tu *llm.ToolUse, sin
 		ToolName: tu.Name,
 		Input:    tu.Input,
 	}); err != nil {
-		return rejectTool(fmt.Sprintf("pre_tool_use hook blocked: %v", err))
+		return rejectToolNextStep(fmt.Sprintf("pre_tool_use hook blocked: %v", err), "fix or disable the blocking hook, then retry")
 	}
 	t, ok := o.tools.Get(tu.Name)
 	if !ok {
-		return rejectTool(fmt.Sprintf("unknown tool %q", tu.Name))
+		return rejectToolNextStep(fmt.Sprintf("unknown tool %q", tu.Name), unknownToolNextStep(tu.Name))
 	}
 	res, execErr := t.Execute(ctx, tu.Input)
 	outcome := o.finishToolExecution(ctx, tu.Name, tu.Input, res.Content, res.IsError, execErr)
 
 	// Populate cache on success for cachable tools.
-	if cachableTool(tu.Name) && !outcome.IsError && outcome.Err == nil && o.turnToolCache != nil {
+	if cachableTool(tu.Name) && !outcome.IsError && outcome.Err == nil {
 		cacheKey := tu.Name + ":" + tu.Input
-		o.turnToolCache[cacheKey] = outcome.Content
+		o.turnToolCacheSet(cacheKey, outcome.Content)
 	}
 
 	return outcome
+}
+
+func (o *Orchestrator) turnToolCacheGet(key string) (string, bool) {
+	if o.turnToolCache == nil {
+		return "", false
+	}
+	o.turnToolCacheMu.RLock()
+	defer o.turnToolCacheMu.RUnlock()
+	value, ok := o.turnToolCache[key]
+	return value, ok
+}
+
+func (o *Orchestrator) turnToolCacheSet(key, value string) {
+	if o.turnToolCache == nil {
+		return
+	}
+	o.turnToolCacheMu.Lock()
+	o.turnToolCache[key] = value
+	o.turnToolCacheMu.Unlock()
 }
 
 // finishToolExecution runs post-tool hooks and maps execution result to a toolOutcome.
@@ -128,7 +196,7 @@ func (o *Orchestrator) finishToolExecution(ctx context.Context, toolName, input,
 		if err := o.hooks.Fire(ctx, ev); err != nil {
 			slog.WarnContext(ctx, "hook fire failed", "event", string(ev.Type), "tool", toolName, "err", err)
 		}
-		return rejectTool(execErr.Error())
+		return rejectToolNextStep(execErr.Error(), executionErrorNextStep(toolName, execErr.Error()))
 	}
 	if resultIsError {
 		ev.Type = hooks.PostToolUseFailure
@@ -149,11 +217,11 @@ func (o *Orchestrator) checkReadOnly(toolName string) (toolOutcome, bool) {
 		return toolOutcome{}, false
 	}
 	if strings.HasPrefix(toolName, "mcp__") {
-		return rejectTool("mcp tools are disabled for read-only profiles"), true
+		return rejectToolNextStep("mcp tools are disabled for read-only profiles", "switch to a non read-only profile to use MCP tools"), true
 	}
 	switch toolName {
 	case "bash", "script", "write_file", "write_files", "create_project", "edit_file", "patch", "run_tests", "git_tool":
-		return rejectTool(fmt.Sprintf("%s is blocked for read-only profile", toolName)), true
+		return rejectToolNextStep(fmt.Sprintf("%s is blocked for read-only profile", toolName), blockedToolNextStep(toolName)), true
 	}
 	return toolOutcome{}, false
 }
@@ -163,7 +231,7 @@ func (o *Orchestrator) checkReadOnly(toolName string) (toolOutcome, bool) {
 func (o *Orchestrator) checkApproval(ctx context.Context, tu *llm.ToolUse) (toolOutcome, bool) {
 	switch o.perms.Evaluate(tu.Name) {
 	case permissions.DecisionDeny:
-		return rejectTool(fmt.Sprintf("permission denied for tool %q (policy mode deny)", tu.Name)), true
+		return rejectToolNextStep(fmt.Sprintf("permission denied for tool %q (policy mode deny)", tu.Name), blockedToolNextStep(tu.Name)), true
 	case permissions.DecisionAsk:
 		if o.cfg.YoloThreshold >= 0 {
 			score := permissions.RiskScore(tu.Name, tu.Input)
@@ -173,14 +241,14 @@ func (o *Orchestrator) checkApproval(ctx context.Context, tu *llm.ToolUse) (tool
 			}
 		}
 		if o.approver == nil {
-			return rejectTool(fmt.Sprintf("tool %q requires approval but no interactive approver is available (running non-interactively)", tu.Name)), true
+			return rejectToolNextStep(fmt.Sprintf("tool %q requires approval but no interactive approver is available (running non-interactively)", tu.Name), "run interactively to approve, or set policy mode allow for this tool"), true
 		}
 		approved, err := o.approver(ctx, tu.Name, tu.Input)
 		if err != nil {
 			return toolOutcome{Err: fmt.Errorf("tool approval: %w", err)}, true
 		}
 		if !approved {
-			return rejectTool(fmt.Sprintf("user declined execution of tool %q", tu.Name)), true
+			return rejectToolNextStep(fmt.Sprintf("user declined execution of tool %q", tu.Name), "ask for approval again with safer/narrower input"), true
 		}
 	}
 	return toolOutcome{}, false

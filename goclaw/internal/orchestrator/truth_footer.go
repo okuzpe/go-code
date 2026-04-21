@@ -40,6 +40,18 @@ func maybeAppendNoWorkspaceWriteFooter(
 	return response + noWorkspaceWriteTruthFooter
 }
 
+// sanitizeNarratedToolCallText trims model-emitted fake tool-call narration in plain text responses.
+// Some models emit "TOOL CALL```" blocks even when there were no native tool calls in the stream.
+// We remove that trailing narrated section to keep transcript UX clean and avoid misleading output.
+func sanitizeNarratedToolCallText(response string) string {
+	marker := "TOOL CALL```"
+	index := strings.Index(response, marker)
+	if index < 0 {
+		return response
+	}
+	return strings.TrimSpace(response[:index])
+}
+
 func recordWorkspaceWriteFromResults(workspaceWriteOK *bool, results []llm.ToolResultRecord) {
 	for _, r := range results {
 		if r.IsError {

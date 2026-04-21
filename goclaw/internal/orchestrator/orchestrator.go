@@ -197,6 +197,8 @@ type Orchestrator struct {
 	// Key: "<toolname>:<input>". Cleared at the start of each runUserTurn.
 	// Prevents the model from issuing the same glob/grep multiple times in one turn.
 	turnToolCache map[string]string
+	// turnToolCacheMu protects turnToolCache during parallel tool execution.
+	turnToolCacheMu sync.RWMutex
 
 	// turnInputLang is the BCP-47 language tag detected from the raw user message BEFORE any
 	// translation. Set in runUserTurn so buildRequest can use the original language for the
@@ -312,9 +314,10 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	// has been normalized to English. turnInputLang is cleared in the defer below.
 	metrics := turnMetrics{start: time.Now()}
 
-	origLang := classifyUserLanguage(userMessage)
+	intentMessage := routingUserMessage(userMessage)
+	origLang := classifyUserLanguage(intentMessage)
 	if origLang == "" {
-		origLang = whatlanggoToTag(userMessage)
+		origLang = whatlanggoToTag(intentMessage)
 	}
 	o.turnInputLang = origLang
 
@@ -329,7 +332,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 
 	o.session.Add("user", userMessage)
 
-	o.prepareTurnModel(ctx, userMessage)
+	o.prepareTurnModel(ctx, intentMessage)
 	defer func() { o.turnModel = ""; o.taskRole = "" }()
 
 	toolCalls := 0
@@ -343,7 +346,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		iterLimit = adaptIterBudget(iterLimit, o.taskRole)
 	}
 	o.budgetLimit = iterLimit
-	o.turnUserMessage = userMessage
+	o.turnUserMessage = intentMessage
 	o.turnToolCache = make(map[string]string)
 	defer func() {
 		o.budgetIter = 0
@@ -418,21 +421,22 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		slog.Debug("llm stream done", "elapsed", time.Since(streamStart), "tools", len(pendingTools))
 
 		if len(pendingTools) == 0 {
-			if nudgeMsg, ok := o.pickActionContinueNudge(userMessage, toolCalls, lastBatchReadOnly, hadToolRound, actionNudges, response); ok {
+			response = sanitizeNarratedToolCallText(response)
+			if nudgeMsg, ok := o.pickActionContinueNudge(intentMessage, toolCalls, lastBatchReadOnly, hadToolRound, actionNudges, response); ok {
 				o.session.AddAssistant(response, nil)
 				actionNudges++
 				o.session.Add("user", nudgeMsg)
 				slog.Debug("orchestrator: action-continue nudge", "nudge", actionNudges)
 				continue
 			}
-			if o.tryActionRepairEscalation(userMessage, toolCalls, hadToolRound, lastBatchReadOnly, actionNudges, &repairEscalations) {
+			if o.tryActionRepairEscalation(intentMessage, toolCalls, hadToolRound, lastBatchReadOnly, actionNudges, &repairEscalations) {
 				o.session.AddAssistant(response, nil)
 				o.session.Add("user", actionRepairModelEscalationMessage)
 				slog.Debug("orchestrator: action-repair model escalation")
 				continue
 			}
 			plain := response
-			response = maybeAppendNoWorkspaceWriteFooter(o, response, userMessage, hadToolRound, workspaceWriteOK)
+			response = maybeAppendNoWorkspaceWriteFooter(o, response, intentMessage, hadToolRound, workspaceWriteOK)
 			if sink != nil && len(response) > len(plain) {
 				sink.OnTextDelta(response[len(plain):])
 			}
@@ -447,7 +451,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				} else if tm := strings.TrimSpace(o.turnModel); tm != "" {
 					extractModel = tm
 				}
-				memory.ScheduleSilentTurnLLMExtract(o.cfg, o.llm, o.mem, extractModel, userMessage, response)
+				memory.ScheduleSilentTurnLLMExtract(o.cfg, o.llm, o.mem, extractModel, intentMessage, response)
 			}
 			metrics.toolCalls = toolCalls
 			o.logTurnMetrics(metrics)
@@ -474,8 +478,12 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		if parallel {
 			parallelStart := time.Now()
 			var atomicCalls atomic.Int64
-			results = o.executeToolsParallel(ctx, pendingTools, &atomicCalls, sink)
+			var parallelErr error
+			results, parallelErr = o.executeToolsParallel(ctx, pendingTools, &atomicCalls, sink)
 			metrics.tool += time.Since(parallelStart)
+			if parallelErr != nil {
+				return "", parallelErr
+			}
 			toolCalls += int(atomicCalls.Load())
 			for i, r := range results {
 				input := ""
@@ -537,7 +545,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			readOnlyToolRounds >= reflectionTriggerRounds &&
 			!workspaceWriteOK && !o.profile.ReadOnly &&
 			toolSpecsAllowWorkspaceWrite(o.effectiveToolSpecs()) &&
-			userMessageWantsWorkspaceWrites(userMessage) {
+			userMessageWantsWorkspaceWrites(intentMessage) {
 			o.session.Add("user", reflectionNudgeMessage)
 			reflectionFired = true
 			slog.Debug("orchestrator: reflection nudge injected", "readOnlyRounds", readOnlyToolRounds)
@@ -627,9 +635,11 @@ func pendingToolsIncludeSpawnAgent(pendingTools []llm.ToolUse) bool {
 // same order as pendingTools. Each goroutine writes to its own index slot so no
 // mutex is needed on the result slice. atomicCalls is incremented for each tool
 // that is dispatched (used by the caller to update the tool-call budget).
-func (o *Orchestrator) executeToolsParallel(ctx context.Context, pendingTools []llm.ToolUse, atomicCalls *atomic.Int64, sink StreamSink) []llm.ToolResultRecord {
+func (o *Orchestrator) executeToolsParallel(ctx context.Context, pendingTools []llm.ToolUse, atomicCalls *atomic.Int64, sink StreamSink) ([]llm.ToolResultRecord, error) {
 	results := make([]llm.ToolResultRecord, len(pendingTools))
 	var wg sync.WaitGroup
+	var fatalErr error
+	var fatalErrMu sync.Mutex
 	for i, tu := range pendingTools {
 		wg.Add(1)
 		atomicCalls.Add(1)
@@ -638,22 +648,24 @@ func (o *Orchestrator) executeToolsParallel(ctx context.Context, pendingTools []
 			toolStart := time.Now()
 			out := o.executeTool(ctx, &toolUse, sink)
 			slog.Debug("tool done (parallel)", "name", toolUse.Name, "elapsed", time.Since(toolStart), "bytes", len(out.Content), "isError", out.IsError)
-			content := out.Content
-			isError := out.IsError
 			if out.Err != nil {
-				// Fatal errors in parallel mode surface as tool errors rather than
-				// aborting the whole run — the sequential path handles fatal errors.
-				content = out.Err.Error()
-				isError = true
+				fatalErrMu.Lock()
+				if fatalErr == nil {
+					fatalErr = out.Err
+				}
+				fatalErrMu.Unlock()
 			}
 			results[index] = llm.ToolResultRecord{
 				ToolUseID: toolUse.ID,
 				ToolName:  toolUse.Name,
-				Content:   content,
-				IsError:   isError,
+				Content:   out.Content,
+				IsError:   out.IsError,
 			}
 		}(i, tu)
 	}
 	wg.Wait()
-	return results
+	if fatalErr != nil {
+		return nil, fatalErr
+	}
+	return results, nil
 }

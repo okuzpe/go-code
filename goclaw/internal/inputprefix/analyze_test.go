@@ -64,6 +64,12 @@ func TestAnalyzeAtMultilinePassthrough(t *testing.T) {
 	require.Equal(t, KindPassthrough, a.Kind)
 }
 
+func TestAnalyzeAtInlineSingleLinePassthrough(t *testing.T) {
+	a, err := Analyze("@go.mod explain this file")
+	require.NoError(t, err)
+	require.Equal(t, KindPassthrough, a.Kind)
+}
+
 func TestBtwRewrite(t *testing.T) {
 	s := BtwRewrite("  what is Go?  ")
 	require.Contains(t, s, "what is Go?")

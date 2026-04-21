@@ -50,19 +50,23 @@ func ExtractAtTokens(s string) []string {
 	seen := map[string]bool{}
 	i := 0
 	for i < len(runes) {
-		if runes[i] == '@' && (i == 0 || runes[i-1] == ' ' || runes[i-1] == '\t' || runes[i-1] == '\n') {
+		if runes[i] == '@' && isAtTokenPrefixBoundary(runes, i) {
 			j := i + 1
-			for j < len(runes) && runes[j] != ' ' && runes[j] != '\t' && runes[j] != '\n' {
+			for j < len(runes) && !isAtTokenTerminator(runes[j]) {
 				j++
 			}
 			if j > i+1 {
 				tok := string(runes[i:j])
 				path := strings.TrimPrefix(tok, "@")
+				path = strings.Trim(path, "'\".,!?;:()[]{}<>")
 				path = strings.TrimSuffix(path, "/")
 				if !strings.Contains(path, "..") && !filepath.IsAbs(path) &&
-					!strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "\\") && !seen[tok] {
-					tokens = append(tokens, tok)
-					seen[tok] = true
+					!strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "\\") && path != "" {
+					canonical := "@" + path
+					if !seen[canonical] {
+						tokens = append(tokens, canonical)
+						seen[canonical] = true
+					}
 				}
 			}
 			i = j
@@ -71,6 +75,28 @@ func ExtractAtTokens(s string) []string {
 		i++
 	}
 	return tokens
+}
+
+func isAtTokenPrefixBoundary(runes []rune, atIndex int) bool {
+	if atIndex == 0 {
+		return true
+	}
+	prev := runes[atIndex-1]
+	switch prev {
+	case ' ', '\t', '\n', '\r', '\'', '"', '(', '[', '{':
+		return true
+	default:
+		return false
+	}
+}
+
+func isAtTokenTerminator(r rune) bool {
+	switch r {
+	case ' ', '\t', '\n', '\r':
+		return true
+	default:
+		return false
+	}
 }
 
 // AtFragmentAtCursor returns the @token the user is currently typing at runeCol in lineText.

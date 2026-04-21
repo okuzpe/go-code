@@ -213,6 +213,16 @@ func (st *Store) RelevantContext(max int, query string, minScore float64) (strin
 	}
 	corpus := newBM25Corpus(docTokens)
 	queryTerms := uniqueTerms(tokenizeTerms(query))
+	if len(queryTerms) == 0 {
+		list := make([]Entry, 0, len(withTimes))
+		for _, w := range withTimes {
+			list = append(list, w.entry)
+		}
+		if len(list) > max {
+			list = list[:max]
+		}
+		return formatEntryBullets(list), nil
+	}
 
 	// Score every document; track the max to normalize scores to [0, 1].
 	rawScores := make([]float64, len(withTimes))
@@ -352,6 +362,9 @@ func formatEntryBullets(list []Entry) string {
 
 // truncateRunes returns s truncated to at most max runes, appending "…" when trimmed.
 func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
 	runes := []rune(s)
 	if len(runes) <= max {
 		return s
@@ -373,6 +386,9 @@ func sanitizeBaseName(s string) string {
 }
 
 func randomHex(nBytes int) string {
+	if nBytes <= 0 {
+		return "deadbeef"
+	}
 	b := make([]byte, nBytes)
 	if _, err := rand.Read(b); err != nil {
 		return "deadbeef"

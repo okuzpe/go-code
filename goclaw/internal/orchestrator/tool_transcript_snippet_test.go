@@ -34,3 +34,17 @@ func TestToolCardSummaryBody_bashSingleLine(t *testing.T) {
 	got := ToolCardSummaryBody("bash", "go test ./...", "ok\n", false)
 	require.Equal(t, "go test ./...", got)
 }
+
+func TestTranscriptOutcomeSnippet_webSearchSkipsProvenanceLine(t *testing.T) {
+	t.Parallel()
+	content := "backend used: ddg (fallback from brave)\n\n1) Example result title"
+	got := TranscriptOutcomeSnippet("web_search", content, false)
+	require.Equal(t, "1) Example result title", got)
+}
+
+func TestTranscriptOutcomeSnippet_webSearchFallsBackToProvenance(t *testing.T) {
+	t.Parallel()
+	content := "backend used: ddg"
+	got := TranscriptOutcomeSnippet("web_search", content, false)
+	require.Equal(t, "backend used: ddg", got)
+}

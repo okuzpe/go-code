@@ -67,6 +67,9 @@ func TranscriptOutcomeSnippet(toolName, content string, isError bool) string {
 		}
 		return fmt.Sprintf("%d lines · %d chars", lines, chars)
 	case "write_file", "edit_file", "patch", "todo_write", "web_search", "web_fetch":
+		if toolName == "web_search" {
+			return webSearchOutcomeSnippet(content)
+		}
 		return text.TruncateRunes(firstLineOf(content), transcriptOutcomeMaxRunes)
 	case "bash", "script":
 		if tail := lastNonEmptyLine(content); tail != "" {
@@ -79,6 +82,21 @@ func TranscriptOutcomeSnippet(toolName, content string, isError bool) string {
 		}
 		return text.TruncateRunes(firstLineOf(content), transcriptOutcomeMaxRunes)
 	}
+}
+
+func webSearchOutcomeSnippet(content string) string {
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		if t == "" {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(t), "backend used:") {
+			continue
+		}
+		return text.TruncateRunes(t, transcriptOutcomeMaxRunes)
+	}
+	return text.TruncateRunes(firstLineOf(content), transcriptOutcomeMaxRunes)
 }
 
 func firstLineOf(s string) string {
