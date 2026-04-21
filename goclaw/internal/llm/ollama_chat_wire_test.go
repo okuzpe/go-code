@@ -130,6 +130,43 @@ func TestOllamaFunctionToolsDroppedAfterWireToolRejection(t *testing.T) {
 	}
 }
 
+func TestOllamaRequireWireToolsReturnsErrorWithoutFallback(t *testing.T) {
+	t.Parallel()
+	var n int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		n++
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":"does not support tools"}`)
+	}))
+	defer srv.Close()
+
+	client := NewOllama(srv.URL)
+	client.RequireWireTools = true
+	req := Request{
+		Model:    "m",
+		System:   "s",
+		Messages: []Message{PlainMessage("user", "x")},
+		Tools: []ToolSpec{{
+			Name:        "glob",
+			Description: "g",
+			InputSchema: map[string]any{"type": "object"},
+		}},
+	}
+	events, errc := client.Stream(context.Background(), req)
+	for range events {
+	}
+	if err := <-errc; err == nil {
+		t.Fatal("expected error when RequireWireTools is true")
+	}
+	if n != 1 {
+		t.Fatalf("want 1 HTTP round-trip (no retry), got %d", n)
+	}
+	if client.FunctionToolsDropped() {
+		t.Fatal("expected FunctionToolsDropped false when wire tools were never accepted")
+	}
+}
+
 func TestOllamaStreamWithToolsIncrementalPlainText(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

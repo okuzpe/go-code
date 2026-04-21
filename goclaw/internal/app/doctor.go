@@ -46,6 +46,8 @@ func DoctorReportFromRuntime(_ context.Context, rt *ChatRuntime) string {
 	)
 	lines = append(lines,
 		fmt.Sprintf("model:     %s", cfg.Model()),
+		fmt.Sprintf("ollama_require_wire_tools: %v", cfg.OllamaRequireWireTools),
+		fmt.Sprintf("tui_chat_max_iterations (effective): %d", cfg.EffectiveTUIChatMaxIterations()),
 		fmt.Sprintf("task_model_router: %s", config.NormalizeTaskModelRouter(cfg.TaskModelRouter)),
 		taskModelsLine,
 		fmt.Sprintf("auto_profile_intent: %s", config.NormalizeAutoProfileIntent(cfg.AutoProfileIntent)),
@@ -99,6 +101,9 @@ func DoctorReportFromRuntime(_ context.Context, rt *ChatRuntime) string {
 		lines = append(lines, checkLine("ollama host reachable", ollamaOK))
 		lines = append(lines, fmt.Sprintf("  - ollama host: %s", ollamaHost))
 		lines = append(lines, fmt.Sprintf("  - ollama_num_ctx: %d", cfg.OllamaNumCtx))
+		if !rt.DisableTools && cfg.OllamaNumCtx > 0 && cfg.OllamaNumCtx < 8192 {
+			lines = append(lines, "  ! ollama_num_ctx below 8192 may be tight for tool schemas — raise toward 16384+ if the model rejects tools or truncates system context")
+		}
 		if ollamaOK {
 			modelName := strings.TrimSpace(cfg.Model())
 			if modelName != "" {
@@ -431,6 +436,13 @@ func hintLines(cfg config.Config, ollamaOK, ollamaModelInLibrary, toolsDisabled,
 			"  2. Ollama version too old — update Ollama to v0.3+ (https://ollama.com)",
 			fmt.Sprintf("  3. Context too small for tool schemas — set \"ollama_num_ctx\": %d (or higher) in ~/.goclaw/settings.json", config.DefaultOllamaNumCtx),
 			fmt.Sprintf("  Current ollama_num_ctx: %d", cfg.OllamaNumCtx),
+			"  4. Prefer a tool-trained tag (e.g. qwen2.5-coder:7b) — see docs/goclaw/ollama-stack.md",
+		)
+	}
+	if cfg.OllamaRequireWireTools {
+		hints = append(hints,
+			"  ollama_require_wire_tools is true: the first tools rejection will error instead of falling back to text-only.",
+			"  - Use a tools-capable model and sufficient ollama_num_ctx, or set ollama_require_wire_tools to false.",
 		)
 	}
 	return hints

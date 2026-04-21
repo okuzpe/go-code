@@ -66,6 +66,7 @@ type settingsFile struct {
 	TUIIcons                             *string             `json:"tui_icons,omitempty"`
 	TUIFooterDensity                     *string             `json:"tui_footer_density,omitempty"`
 	TUIInteractMode                      *string             `json:"tui_interact_mode,omitempty"`
+	TUIChatMaxIterations                 *int                `json:"tui_chat_max_iterations,omitempty"`
 	TUIProfileCycle                      []string            `json:"tui_profile_cycle,omitempty"`
 	UIAppearance                         *string             `json:"ui_appearance,omitempty"`
 	ToolWorkspaceRoot                    *string             `json:"tool_workspace_root,omitempty"`
@@ -73,6 +74,7 @@ type settingsFile struct {
 	PlanApplyUseCoordinator              *bool               `json:"plan_apply_use_coordinator,omitempty"`
 	AgentVerifyAfterWrite                *bool               `json:"agent_verify_after_write,omitempty"`
 	ParallelToolBatchMax                 *int                `json:"parallel_tool_batch_max,omitempty"`
+	OllamaRequireWireTools               *bool               `json:"ollama_require_wire_tools,omitempty"`
 	AgentPickerHiddenProfiles            []string            `json:"agent_picker_hidden_profiles,omitempty"`
 	TelegramBotToken                     *string             `json:"telegram_bot_token,omitempty"`
 	TelegramBotTokenFile                 *string             `json:"telegram_bot_token_file,omitempty"`
@@ -327,6 +329,12 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.TUIInteractMode != nil {
 		cfg.TUIInteractMode = NormalizeTUIInteractMode(*sf.TUIInteractMode)
+	}
+	if sf.TUIChatMaxIterations != nil && *sf.TUIChatMaxIterations > 0 {
+		cfg.TUIChatMaxIterations = *sf.TUIChatMaxIterations
+	}
+	if sf.OllamaRequireWireTools != nil && *sf.OllamaRequireWireTools {
+		cfg.OllamaRequireWireTools = true
 	}
 	if len(sf.TUIProfileCycle) > 0 {
 		cfg.TUIProfileCycle = nil

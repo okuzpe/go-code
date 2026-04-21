@@ -78,6 +78,39 @@ func TestPrepareTurnModel_UsesTaskMap(t *testing.T) {
 	require.Equal(t, "fallback:7b", o.ut.turnModel)
 }
 
+func TestPrepareTurnModel_AmbiguousDefaultUsesCodeModelWhenMapped(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Provider = "ollama"
+	cfg.OllamaModel = "global:latest"
+	cfg.TaskModelRouter = "rules"
+	cfg.TaskModels = map[string]string{
+		"code":    "coder:14b",
+		"default": "fallback:7b",
+	}
+
+	o := &Orchestrator{
+		cfg:     cfg,
+		session: session.New(),
+		tools:   tools.New(),
+		perms:   permissions.NewPolicy(),
+		hooks:   hooks.New(),
+		profile: agents.GeneralPurpose,
+		ut:      &userTurnState{},
+	}
+
+	// Empty message stays at rules "default" after low-confidence collapse; upgrade to code tier when configured.
+	o.prepareTurnModel(context.Background(), "")
+	require.Equal(t, "code", o.ut.taskRole)
+	require.Equal(t, "coder:14b", o.ut.turnModel)
+
+	o.ut.turnModel = ""
+	o.ut.taskRole = ""
+	o.profile = agents.Explore
+	o.prepareTurnModel(context.Background(), "")
+	require.NotEqual(t, "code", o.ut.taskRole, "read-only explore must not get ambiguous_default->code")
+}
+
 func TestBuildRequestTurnModelOverridesGlobal(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()

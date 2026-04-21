@@ -337,6 +337,18 @@ func (o *Orchestrator) resolveTaskModel(ctx context.Context, userMsg string) Tas
 		reason = fmt.Sprintf("%s low_confidence->default", reason)
 	}
 
+	// Ambiguous "default" on direct coding profiles: prefer the configured code-tier model when present
+	// so task_models["default"] alone (often a smaller tag) does not under-power edit-heavy turns.
+	if role == "default" {
+		switch o.profile.Name {
+		case agents.GeneralPurpose.Name, agents.Builder.Name:
+			if m, ok := cfg.TaskModels["code"]; ok && strings.TrimSpace(m) != "" {
+				role = "code"
+				reason = fmt.Sprintf("%s ambiguous_default->code", reason)
+			}
+		}
+	}
+
 	if m, ok := cfg.TaskModels[role]; ok && strings.TrimSpace(m) != "" {
 		return TaskModelResolution{
 			Role:   role,

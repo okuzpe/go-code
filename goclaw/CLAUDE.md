@@ -218,6 +218,8 @@ goclaw/
 | `GOCLAW_PREFERRED_RESPONSE_LANGUAGE` | — | Optional UI reply bias for runtime language hints: `auto`, `from_os`, or `es` / `en` / `fr` / `de` / `pt`; merged `preferred_response_language` in settings overrides |
 | `GOCLAW_DISABLE_TOOLS` | (empty) | Set to `1` to run without tools (same idea as `--no-tools`) |
 | `GOCLAW_MOCK_FAST` | (empty) | Set to `1` to remove pacing delays from `--mock` (CI / scripts) |
+| `GOCLAW_TUI_CHAT_MAX_ITERATIONS` | — | Positive integer merged into `tui_chat_max_iterations`: caps orchestrstrator iterations per turn when the TUI interact hint is **chat** (default cap **10** when unset; see `config.EffectiveTUIChatMaxIterations`) |
+| `GOCLAW_OLLAMA_REQUIRE_WIRE_TOOLS` | (empty) | Set to `1` / `true` / `yes` / `on` so the first Ollama tools rejection returns an error instead of falling back to text-only (`ollama_require_wire_tools` in settings overrides after merge) |
 | `BRAVE_SEARCH_API_KEY` | — | Brave Search API token when `web_search_backend` is `brave` (optional; can use `brave_search_api_key` in settings) |
 | `SERPAPI_API_KEY` | — | SerpAPI key when `web_search_backend` is `serpapi` (optional; can use `serpapi_api_key` in settings) |
 | `GOCLAW_LOG` | `info` | `debug` / `warn` / `error` for slog level. **Fullscreen TUI:** log lines go to `~/.goclaw/logs/goclaw.log` (or `GOCLAW_LOG_FILE`) instead of stderr so the Bubble Tea UI does not corrupt; JSON / `prompt` automation still use stderr. |

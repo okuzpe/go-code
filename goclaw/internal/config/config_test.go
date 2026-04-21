@@ -375,3 +375,13 @@ func TestNormalizeWebSearchBackend(t *testing.T) {
 		}
 	}
 }
+
+func TestEffectiveTUIChatMaxIterations(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, 10, Default().EffectiveTUIChatMaxIterations())
+	cfg := Default()
+	cfg.TUIChatMaxIterations = 24
+	require.Equal(t, 24, cfg.EffectiveTUIChatMaxIterations())
+	cfg.TUIChatMaxIterations = 9999
+	require.Equal(t, 256, cfg.EffectiveTUIChatMaxIterations())
+}

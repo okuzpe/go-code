@@ -245,8 +245,16 @@ type Config struct {
 	TUIProfileCycle []string
 
 	// TUIInteractMode is a UI-only label (chat | code | agent) shown in the idle footer and cycled with Ctrl+M.
-	// Does not switch agent profiles or orchestrator behavior. JSON: tui_interact_mode; env: GOCLAW_TUI_INTERACT_MODE.
+	// Chat mode also caps orchestrstrator iterations per user turn (see TUIChatMaxIterations). JSON: tui_interact_mode; env: GOCLAW_TUI_INTERACT_MODE.
 	TUIInteractMode string
+
+	// TUIChatMaxIterations caps orchestrstrator loop iterations when the TUI interact hint is chat mode.
+	// 0 uses defaultTUIChatMaxIterations (10). Clamped to 1..256 by EffectiveTUIChatMaxIterations. JSON: tui_chat_max_iterations; env: GOCLAW_TUI_CHAT_MAX_ITERATIONS.
+	TUIChatMaxIterations int
+
+	// OllamaRequireWireTools when true: if Ollama rejects the tools field on /api/chat, return an error instead of
+	// falling back to text-only (no on-wire tool execution). JSON: ollama_require_wire_tools; env: GOCLAW_OLLAMA_REQUIRE_WIRE_TOOLS.
+	OllamaRequireWireTools bool
 
 	// UIAppearance selects TUI colors and markdown style: auto, dark, light, dark_colorblind, light_colorblind, dark_ansi, light_ansi.
 	// JSON key: ui_appearance. Empty or "auto" uses terminal-adaptive styling.
@@ -356,6 +364,7 @@ func Default() Config {
 		AutoProfileIntent:            NormalizeAutoProfileIntent(envOr("GOCLAW_AUTO_PROFILE_INTENT", "off")),
 		AutoDirectCodingProfile:      NormalizeAutoDirectCodingProfile(envOr("GOCLAW_AUTO_DIRECT_CODING_PROFILE", "off")),
 		ActionRepairEscalation:       envTruthy("GOCLAW_ACTION_REPAIR_ESCALATION"),
+		OllamaRequireWireTools:       envTruthy("GOCLAW_OLLAMA_REQUIRE_WIRE_TOOLS"),
 		TUIMouseScroll:               envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
 		TUIIcons:                     icons.CanonicalTUIIcons(os.Getenv("GOCLAW_TUI_ICONS")),
 		TUIFooterDensity:             NormalizeTUIFooterDensity(os.Getenv("GOCLAW_TUI_FOOTER_DENSITY")),
@@ -365,6 +374,11 @@ func Default() Config {
 	if v := strings.TrimSpace(os.Getenv("GOCLAW_OLLAMA_HTTP_TIMEOUT_SEC")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.OllamaHTTPTimeoutSec = n
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("GOCLAW_TUI_CHAT_MAX_ITERATIONS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.TUIChatMaxIterations = n
 		}
 	}
 	NormalizeCompactionThresholds(&cfg)
@@ -623,6 +637,23 @@ func (c Config) EffectiveContextTokens() int {
 		return c.OllamaNumCtx
 	}
 	return DefaultOllamaNumCtx
+}
+
+const (
+	defaultTUIChatMaxIterations = 10
+	maxTUIChatMaxIterations     = 256
+)
+
+// EffectiveTUIChatMaxIterations returns the iteration cap when TUI interact mode is chat.
+func (c Config) EffectiveTUIChatMaxIterations() int {
+	n := c.TUIChatMaxIterations
+	if n <= 0 {
+		return defaultTUIChatMaxIterations
+	}
+	if n > maxTUIChatMaxIterations {
+		return maxTUIChatMaxIterations
+	}
+	return n
 }
 
 // BashTimeoutSeconds returns the bash tool timeout in seconds (clamped to 1..3600).

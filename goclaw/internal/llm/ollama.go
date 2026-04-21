@@ -28,6 +28,10 @@ type OllamaClient struct {
 	host string
 	http *http.Client
 
+	// RequireWireTools when true: if Ollama rejects the tools payload, return an error instead of
+	// retrying without wire tools (set from config ollama_require_wire_tools).
+	RequireWireTools bool
+
 	// toolsUnsupportedOnce logs once when we fall back to chat-only after Ollama rejects tools.
 	// Use Debug (not Warn): writing stderr during Bubble Tea alt-screen corrupts the TUI on some terminals (e.g. Windows).
 	toolsUnsupportedOnce sync.Once
@@ -158,6 +162,10 @@ func (c *OllamaClient) streamWithWireTools(ctx context.Context, req Request, out
 		}
 		msg := parseOllamaErrorMessage(errBody)
 		if wireTools && len(req.Tools) > 0 && ollamaReportsToolsUnsupported(resp.StatusCode, msg) {
+			if c.RequireWireTools {
+				return fmt.Errorf("ollama: model rejected wire tools (ollama_require_wire_tools is true): %s — use a tools-capable model or raise ollama_num_ctx (default %d)",
+					msg, config.DefaultOllamaNumCtx)
+			}
 			c.toolsUnsupportedOnce.Do(func() {
 				slog.Warn(fmt.Sprintf("ollama: model rejected tool calling — falling back to text-only (no read_file/bash/etc.). "+
 					"Use a tools-capable model (e.g. qwen2.5-coder:7b) or update Ollama. "+

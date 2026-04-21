@@ -223,7 +223,7 @@ func (p Profile) Summary() string {
 	case "general-purpose":
 		return "Full tools; general coding and edits."
 	case "builder":
-		return "Full tools; action-first coding and edits (default session profile)."
+		return "Full tools; action-first coding and edits."
 	case "explore":
 		return "Read-only explorer: read, search, web — no writes."
 	case "plan":
