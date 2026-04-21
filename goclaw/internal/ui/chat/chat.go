@@ -122,7 +122,7 @@ type Model struct {
 	activeAgentProfile string
 	agentPickerHidden  []string
 
-	// profileBarRendered is built in layout() with the same height math as View() (profile strip above transcript).
+	// profileBarRendered is built in layout() with the same height math as View() (profile strip between transcript and footer).
 	profileBarRendered string
 
 	// footerRendered is built once in layout() so View() joins the same string as used for height math

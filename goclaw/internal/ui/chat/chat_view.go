@@ -168,9 +168,11 @@ func (m *Model) View() tea.View {
 	m.layout()
 	var content string
 	if strings.TrimSpace(m.profileBarRendered) != "" {
+		// Profile rail sits between the scrollable transcript (welcome + chat) and the compose
+		// footer so the welcome panel is the first thing at the top of the screen.
 		content = lipgloss.JoinVertical(lipgloss.Left,
-			m.profileBarRendered,
 			m.viewport.View(),
+			m.profileBarRendered,
 			m.footerRendered,
 		)
 	} else {
@@ -222,7 +224,7 @@ func (m *Model) applySlashHints(hints slashcmd.UIHints) {
 	}
 }
 
-// profileModeBarView returns the single-line profile rail above the transcript (see agent_deck_rail.go).
+// profileModeBarView returns the single-line profile rail between the transcript and footer (see agent_deck_rail.go).
 func (m *Model) profileModeBarView() string {
 	if m.cycleAgentProfileFn == nil {
 		return ""
