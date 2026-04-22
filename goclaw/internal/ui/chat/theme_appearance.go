@@ -74,7 +74,7 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 		AgentDeckRail: lipgloss.NewStyle().
 			Foreground(p.AccentUser),
 		AgentDeckBracket: lipgloss.NewStyle().Foreground(p.Muted),
-		AgentDeckTrace: lipgloss.NewStyle().Foreground(p.SepFG).Faint(true),
-		AgentDeckChord: lipgloss.NewStyle().Foreground(p.Muted),
+		AgentDeckTrace:   lipgloss.NewStyle().Foreground(p.SepFG).Faint(true),
+		AgentDeckChord:   lipgloss.NewStyle().Foreground(p.Muted),
 	}
 }

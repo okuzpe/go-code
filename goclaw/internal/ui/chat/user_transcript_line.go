@@ -10,7 +10,7 @@ import (
 
 const (
 	pathChipMaxRunes = 40
-	pathChipMinBare = 10
+	pathChipMinBare  = 10
 )
 
 var bareAbsPathPrefixes = []string{

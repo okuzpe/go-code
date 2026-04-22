@@ -14,10 +14,10 @@ const (
 
 // pathListProgress batches newline-separated snippets for ProgressReporter (glob paths, grep hits).
 type pathListProgress struct {
-	ctx       context.Context
+	ctx      context.Context
 	reporter ProgressReporter
-	pending   []string
-	lastEmit  time.Time
+	pending  []string
+	lastEmit time.Time
 }
 
 func newPathListProgress(ctx context.Context, r ProgressReporter) *pathListProgress {
@@ -25,10 +25,10 @@ func newPathListProgress(ctx context.Context, r ProgressReporter) *pathListProgr
 		return nil
 	}
 	return &pathListProgress{
-		ctx:       ctx,
-		reporter:  r,
-		lastEmit:  time.Now().Add(-pathListProgressMinInterval),
-		pending:   nil,
+		ctx:      ctx,
+		reporter: r,
+		lastEmit: time.Now().Add(-pathListProgressMinInterval),
+		pending:  nil,
 	}
 }
 

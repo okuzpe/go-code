@@ -69,7 +69,7 @@ func buildAgentDeckCluster(th *Theme, st icons.Set, name, hint string, maxW int)
 	try := func(prof, h string) string {
 		s := th.AgentDeckBracket.Render(o) + th.SlashPickerName.Render(prof) + th.AgentDeckBracket.Render(c)
 		if strings.TrimSpace(h) != "" {
-			s += th.AgentDeckMicro.Render(" · "+h)
+			s += th.AgentDeckMicro.Render(" · " + h)
 		}
 		return s
 	}

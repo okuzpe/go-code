@@ -117,4 +117,3 @@ func readNonEmptyLine(reader *bufio.Reader, prompt string) (string, error) {
 		fmt.Fprintln(os.Stdout, "(value required)")
 	}
 }
-

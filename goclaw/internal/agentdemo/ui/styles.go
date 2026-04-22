@@ -6,16 +6,16 @@ import (
 
 // Styles holds Lip Gloss styles for the demo TUI (dark, minimal accent).
 type Styles struct {
-	Accent   lipgloss.Style
-	Dim      lipgloss.Style
-	User     lipgloss.Style
+	Accent    lipgloss.Style
+	Dim       lipgloss.Style
+	User      lipgloss.Style
 	Assistant lipgloss.Style
-	Tool     lipgloss.Style
-	ToolDim  lipgloss.Style
-	Err      lipgloss.Style
-	Panel    lipgloss.Style
-	Overlay  lipgloss.Style
-	Title    lipgloss.Style
+	Tool      lipgloss.Style
+	ToolDim   lipgloss.Style
+	Err       lipgloss.Style
+	Panel     lipgloss.Style
+	Overlay   lipgloss.Style
+	Title     lipgloss.Style
 }
 
 func defaultStyles() Styles {

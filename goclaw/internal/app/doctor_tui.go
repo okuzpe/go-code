@@ -70,7 +70,7 @@ func (m *doctorPagerModel) View() tea.View {
 		body = "…"
 	} else {
 		p := terminalstyle.PaletteForAppearance(m.uiAppearance)
-		title := lipgloss.NewStyle().Bold(true).Foreground(p.AccentAI).Render(m.iconSet.DoctorBadge()+"goclaw doctor")
+		title := lipgloss.NewStyle().Bold(true).Foreground(p.AccentAI).Render(m.iconSet.DoctorBadge() + "goclaw doctor")
 		hint := lipgloss.NewStyle().Foreground(p.Muted).Render("q / Esc / Ctrl+C quit · arrows · PgUp / PgDn")
 		ruleW := m.termWidth
 		if ruleW < 12 {

@@ -11,8 +11,8 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
-	lipv2 "charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
+	lipv2 "charm.land/lipgloss/v2"
 	"github.com/okuzpe/goclaw/internal/agentdemo"
 	"github.com/okuzpe/goclaw/internal/agentdemo/components"
 	corellm "github.com/okuzpe/goclaw/internal/llm"
@@ -25,7 +25,7 @@ type Phase string
 const (
 	PhaseIdle      Phase = "idle"
 	PhaseThinking  Phase = "thinking"
-	PhaseStreaming  Phase = "streaming"
+	PhaseStreaming Phase = "streaming"
 	PhaseExecuting Phase = "executing"
 )
 
@@ -36,7 +36,7 @@ const maxBlocks = 500
 type InteractMode int
 
 const (
-	ModeChat  InteractMode = iota
+	ModeChat InteractMode = iota
 	ModeAgent
 )
 
@@ -69,12 +69,12 @@ type Model struct {
 	stream   strings.Builder
 
 	streaming     bool
-	phase         Phase  // current execution phase
-	currentTool   string // name of the executing tool; empty when idle
-	lastResult    string // "ok" | "error" | "" — outcome of the last stream
+	phase         Phase     // current execution phase
+	currentTool   string    // name of the executing tool; empty when idle
+	lastResult    string    // "ok" | "error" | "" — outcome of the last stream
 	toolStartTime time.Time // when the current tool execution began
 
-	tokenCount int  // cached approx token estimate (invalidated by block mutations)
+	tokenCount  int  // cached approx token estimate (invalidated by block mutations)
 	tokensDirty bool // true when tokenCount needs recomputation
 
 	mode InteractMode

@@ -83,15 +83,15 @@ var allowedGitSubcommands = map[string]struct{}{
 
 // blockedGitArgs contains flags that could make allowed sub-commands destructive.
 var blockedGitArgs = map[string]struct{}{
-	"--force":      {},
-	"-f":           {},
-	"--hard":       {},
-	"--mixed":      {},
-	"--soft":       {},
-	"--delete":     {},
-	"-D":           {},
-	"--mirror":     {},
-	"--all":        {}, // blocked only for stash drop/clear patterns
+	"--force":  {},
+	"-f":       {},
+	"--hard":   {},
+	"--mixed":  {},
+	"--soft":   {},
+	"--delete": {},
+	"-D":       {},
+	"--mirror": {},
+	"--all":    {}, // blocked only for stash drop/clear patterns
 }
 
 type gitToolInput struct {

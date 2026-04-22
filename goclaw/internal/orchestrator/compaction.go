@@ -185,7 +185,7 @@ func (o *Orchestrator) compactToTailWithLLM(ctx context.Context, preserve int) {
 	}
 
 	req := llm.Request{
-		Model:  o.cfg.ModelForCompaction(),
+		Model: o.cfg.ModelForCompaction(),
 		System: "You are a concise session summarizer for a coding agent. Summarize the excerpt in 3-6 short sentences. " +
 			"Preserve concrete file paths, commands run, errors encountered, and explicit user decisions. " +
 			"Mention open todos or unfinished work if visible. Omit boilerplate and tool-narration chatter. English only.",

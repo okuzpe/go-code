@@ -88,10 +88,10 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 
 		if sink != nil {
 			phase := ThinkingPhaseLine(iter, o.ut.taskRole, PhaseContext{
-				HadToolRound:       hadToolRound,
-				WorkspaceWriteOK: workspaceWriteOK,
-				LastBatchReadOnly:  lastBatchReadOnly,
-				BudgetLimit:        o.ut.budgetLimit,
+				HadToolRound:      hadToolRound,
+				WorkspaceWriteOK:  workspaceWriteOK,
+				LastBatchReadOnly: lastBatchReadOnly,
+				BudgetLimit:       o.ut.budgetLimit,
 			})
 			sink.OnThinkingStart(phase)
 		}

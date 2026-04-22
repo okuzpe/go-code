@@ -101,11 +101,11 @@ type Theme struct {
 
 	// AgentDeck* styles the single-line profile rail above the fullscreen transcript (no block borders:
 	// rounded Lip Gloss borders are multi-line and break layout next to the viewport).
-	AgentDeckMicro    lipgloss.Style // faint secondary (lane hint, keys)
-	AgentDeckRail     lipgloss.Style // left lane glyph
-	AgentDeckBracket  lipgloss.Style // ‹ › / < > around profile name
-	AgentDeckTrace    lipgloss.Style // middle rhythm glyphs
-	AgentDeckChord    lipgloss.Style // keybinding hint (kept subtle — not a second shouty accent)
+	AgentDeckMicro   lipgloss.Style // faint secondary (lane hint, keys)
+	AgentDeckRail    lipgloss.Style // left lane glyph
+	AgentDeckBracket lipgloss.Style // ‹ › / < > around profile name
+	AgentDeckTrace   lipgloss.Style // middle rhythm glyphs
+	AgentDeckChord   lipgloss.Style // keybinding hint (kept subtle — not a second shouty accent)
 
 	// Icons selects transcript/tool/footer glyphs (see config TUIIcons). Zero means Unicode preset.
 	Icons icons.Set

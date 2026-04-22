@@ -117,7 +117,6 @@ func (m *Model) syncInputPlaceholder() {
 	m.input.Placeholder = placeholderForWidth(m.width)
 }
 
-
 // headerView is reserved for a top banner; it is intentionally empty so profile
 // (agent deck rail), footer stats, and model context are not duplicated above the transcript.
 func (m *Model) headerView() string {
@@ -160,19 +159,19 @@ func (m *Model) footerPrimaryStatus() string {
 				}
 			}
 
-			tilde := th.FooterDim.Render("~")
+			frame := m.spinner.View()
 			var iterLabel string
 			if iterPart != "" {
 				iterLabel = " " + th.FooterDim.Render("["+iterPart+"]")
 			}
 			label := th.StatusBarLabel.Render(labelPart) + th.FooterDim.Render(elapsed+"…")
-			return tilde + iterLabel + " " + label
+			return frame + iterLabel + " " + label
 		}
 		// Tool executing or text generating — use existing status line content.
 		if status != "" {
-			return th.FooterDim.Render("»") + " " + th.StatusBarLabel.Render(status)
+			return m.spinner.View() + " " + th.StatusBarLabel.Render(status)
 		}
-		return th.StatusBarLabel.Render("Responding") + th.FooterDim.Render("…")
+		return m.spinner.View() + " " + th.StatusBarLabel.Render("Responding") + th.FooterDim.Render("…")
 	}
 	return status
 }
@@ -398,6 +397,13 @@ func (m *Model) footerView() string {
 	stats := strings.TrimSpace(m.footerStatsLine)
 
 	var b strings.Builder
+
+	// Horizontal rule separating transcript from footer chrome.
+	if fw > 0 {
+		ruler := th.FooterDim.Width(fw).Render(strings.Repeat("─", fw))
+		b.WriteString(ruler)
+		b.WriteString("\n")
+	}
 
 	// Status row: spinner/thinking indicator with accent label, right-aligned stats.
 	// Shown only while active so idle UI does not grow an extra blank line.

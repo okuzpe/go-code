@@ -27,9 +27,9 @@ const (
 
 // Event carries context about what triggered the hook.
 type Event struct {
-	Type        EventType
-	ToolName    string
-	Input       string // JSON input passed to the tool
+	Type     EventType
+	ToolName string
+	Input    string // JSON input passed to the tool
 	// Output is the tool result body on post_tool_use / post_tool_use_failure.
 	// When FailureKind is FailureExecuteError, it is whatever the tool returned
 	// alongside the non-nil Execute error and may be empty or partial.

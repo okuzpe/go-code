@@ -16,7 +16,7 @@ func phaseIcon(phase, spinnerView string, accent, dim lipgloss.Style) string {
 	case "streaming":
 		return accent.Render("▸") + dim.Render(" streaming")
 	case "executing":
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true).Render(spinnerView+" executing")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true).Render(spinnerView + " executing")
 	case "idle":
 		return dim.Render("· idle")
 	default:

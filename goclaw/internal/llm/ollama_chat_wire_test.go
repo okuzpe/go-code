@@ -213,11 +213,11 @@ func TestOllamaStreamWithToolsBuffersLeadingJSONTool(t *testing.T) {
 		_, _ = io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		line, err := json.Marshal(map[string]any{
-			"model":               "m",
-			"message":             map[string]any{"role": "assistant", "content": toolJSON},
-			"done":                true,
-			"prompt_eval_count":   1,
-			"eval_count":          1,
+			"model":             "m",
+			"message":           map[string]any{"role": "assistant", "content": toolJSON},
+			"done":              true,
+			"prompt_eval_count": 1,
+			"eval_count":        1,
 		})
 		if err != nil {
 			t.Errorf("marshal: %v", err)

@@ -3,8 +3,8 @@ package app
 import (
 	"strings"
 
-	uv "github.com/charmbracelet/ultraviolet"
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
 // teaKeyIsEnter reports Enter/Return for onboarding dismissal.

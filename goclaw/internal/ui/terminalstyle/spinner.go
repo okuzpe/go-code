@@ -3,9 +3,9 @@ package terminalstyle
 import (
 	"image/color"
 
-	"github.com/charmbracelet/lipgloss"
 	lipv2 "charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/compat"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/okuzpe/goclaw/internal/config"
 )
 

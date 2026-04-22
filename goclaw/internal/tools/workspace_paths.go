@@ -49,6 +49,7 @@ func writePathCandidate(relBase, userPath string) (string, error) {
 //   - Root: default directory tree for glob (no "under") and grep (no path, or path ".")
 //   - RelativeBase: directory used to resolve relative paths in read/write/edit/patch and in
 //     glob "under" / grep "path" when those are relative (typically goclaw's process cwd at start).
+//
 // Absolute paths are passed through and cleaned; the OS enforces existence and permissions.
 type PathScope struct {
 	Root         string

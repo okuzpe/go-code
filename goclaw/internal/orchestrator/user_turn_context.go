@@ -10,11 +10,11 @@ type userTurnState struct {
 	// taskRole is the classified task role (e.g. "code", "explore") for buildRequest hints.
 	taskRole string
 
-	budgetIter        int
-	budgetLimit       int
-	budgetToolCalls   int
-	turnUserMessage   string
-	turnHadToolRound  bool
+	budgetIter           int
+	budgetLimit          int
+	budgetToolCalls      int
+	turnUserMessage      string
+	turnHadToolRound     bool
 	turnWorkspaceWriteOK bool
 
 	turnToolCache map[string]string

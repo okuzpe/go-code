@@ -78,8 +78,8 @@ func (f FullscreenChat) RunFullscreenChat(ctx context.Context, rt *ChatRuntime) 
 
 	opts := chat.Options{
 		TUIInteractMode: rt.Cfg.TUIInteractMode,
-		TUIMouseScroll: rt.Cfg.TUIMouseScroll,
-		TUIIcons:       rt.Cfg.TUIIcons,
+		TUIMouseScroll:  rt.Cfg.TUIMouseScroll,
+		TUIIcons:        rt.Cfg.TUIIcons,
 		CycleAgentProfile: func(backward bool) (slashcmd.UIHints, error) {
 			hi, err := cycleTUIAgentProfile(ctx, rt, orch, &slashEnv, &sess, backward)
 			rt.Sess = sess

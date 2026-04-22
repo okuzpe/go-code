@@ -22,9 +22,9 @@ func MetaPath(workdir string) string {
 
 // PlanApprovalMeta records an explicit user approval for a specific plan file revision.
 type PlanApprovalMeta struct {
-	Version         int    `json:"version"`
-	PlanPath        string `json:"plan_path"`         // absolute, filepath.Clean
-	ContentSHA256   string `json:"content_sha256"`    // hex of UTF-8 body
+	Version           int    `json:"version"`
+	PlanPath          string `json:"plan_path"`      // absolute, filepath.Clean
+	ContentSHA256     string `json:"content_sha256"` // hex of UTF-8 body
 	ApprovedAtRFC3339 string `json:"approved_at"`    // RFC3339 UTC
 }
 

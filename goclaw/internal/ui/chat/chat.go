@@ -371,11 +371,11 @@ func New(ctx context.Context, opts Options) Model {
 		activeAgentProfile:   strings.TrimSpace(opts.ActiveAgentProfile),
 		agentPickerHidden:    slices.Clone(opts.AgentPickerHiddenProfiles),
 		lastReflowWidth:      -1,
-		tuiMouseScroll:        opts.TUIMouseScroll,
-		cycleAgentProfileFn:   opts.CycleAgentProfile,
-		slashContextFn:        opts.SlashContext,
-		preSubmitSystemLines:  opts.PreSubmitSystemLines,
-		interactMode:            config.NormalizeTUIInteractMode(opts.TUIInteractMode),
+		tuiMouseScroll:       opts.TUIMouseScroll,
+		cycleAgentProfileFn:  opts.CycleAgentProfile,
+		slashContextFn:       opts.SlashContext,
+		preSubmitSystemLines: opts.PreSubmitSystemLines,
+		interactMode:         config.NormalizeTUIInteractMode(opts.TUIInteractMode),
 	}
 	if strings.TrimSpace(opts.Welcome.Version) != "" {
 		if dash := WelcomeDashboardLines(th, opts.Welcome, 0); len(dash) > 0 {

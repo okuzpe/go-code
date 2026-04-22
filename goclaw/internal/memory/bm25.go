@@ -15,10 +15,10 @@ const (
 
 // bm25Corpus holds the pre-computed statistics needed to score documents with BM25.
 type bm25Corpus struct {
-	docs    [][]string     // tokenized documents, one slice per doc (duplicates preserved for TF)
+	docs    [][]string       // tokenized documents, one slice per doc (duplicates preserved for TF)
 	tfMaps  []map[string]int // pre-computed term frequencies, one map per doc
-	docFreq map[string]int // number of documents that contain each term (for IDF)
-	avgdl   float64        // average document length in tokens
+	docFreq map[string]int   // number of documents that contain each term (for IDF)
+	avgdl   float64          // average document length in tokens
 }
 
 // newBM25Corpus builds corpus statistics from a set of pre-tokenized documents.
