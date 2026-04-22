@@ -48,6 +48,11 @@ type Model struct {
 	assistantPlaceholder bool
 	spinnerActive        bool
 
+	// agentState is the canonical state driving the animated status line.
+	// It is the single source of truth — RenderAgentStatus() reads only this.
+	agentState     AgentState
+	lastAgentError string // last error message, shown in AgentStateError footer line
+
 	theme *Theme
 
 	slashHandle SlashHandler
@@ -488,6 +493,12 @@ type footerTickMsg struct{}
 
 func footerStatsTickCmd() tea.Cmd {
 	return tea.Tick(600*time.Millisecond, func(time.Time) tea.Msg { return footerTickMsg{} })
+}
+
+// animTickCmd fires every 80ms while the spinner is active for smooth animation.
+// It is cheap: no O(n) reflow, just spinner frame + elapsed second updates.
+func animTickCmd() tea.Cmd {
+	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return animTickMsg{} })
 }
 
 type Submitter func(ctx context.Context, userText string, interactMode string, sink orchestrator.StreamSink) (string, error)

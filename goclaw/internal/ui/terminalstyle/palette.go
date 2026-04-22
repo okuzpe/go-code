@@ -93,6 +93,8 @@ func PaletteForAppearance(raw string) Palette {
 			lipgloss.Color("1"), lipgloss.Color("7"),
 			lipgloss.Color("5"), lipgloss.Color("7"),
 		)
+	case config.UIAppearanceCyberpunk:
+		return paletteCyberpunk()
 	default:
 		return paletteAuto()
 	}
@@ -180,4 +182,60 @@ func paletteANSI(app, glam string,
 	p.SlashPickDesc = lipgloss.Color("8")
 	p.WelcomeBorder = p.SepFG
 	return p
+}
+
+// paletteCyberpunk returns a dark neon palette — cyan user accent, purple AI accent.
+// On-screen: near-black background with glowing cyan/purple text and tool labels in amber-gold.
+func paletteCyberpunk() Palette {
+	// Neon cyan — user prompt, done states, borders
+	accentUser := lipgloss.Color("#00F5FF")
+	// Electric purple — AI/assistant, spinner
+	accentAI := lipgloss.Color("#BD00FF")
+	// Slate-grey muted text
+	muted := lipgloss.Color("#7B8FA1")
+	// Dimmer version for secondary text
+	dimFG := lipgloss.Color("#4A5568")
+	// Amber-gold for tool labels (warm contrast against the cold cyan/purple)
+	toolFG := lipgloss.Color("#F6C90E")
+	// Bright foreground for card body text
+	modalBody := lipgloss.Color("#D0E8FF")
+	// Hot pink/red for errors
+	errorFG := lipgloss.Color("#FF2D6B")
+	// Very dark separator (barely-visible rule)
+	sepFG := lipgloss.Color("#1E2D3D")
+	// Cyan border for modals — ties back to user accent
+	modalBorder := lipgloss.Color("#00C8D7")
+	// Dark teal for the input box border
+	inputBorder := lipgloss.Color("#1C3A4A")
+	// Brighter cyan for slash-picker names
+	slashPickName := lipgloss.Color("#00F5FF")
+	// Dim purple for slash-picker descriptions
+	slashPickDesc := lipgloss.Color("#7B5EA7")
+	// Neon teal for welcome frame
+	welcomeBorder := lipgloss.Color("#0D2F3F")
+
+	return Palette{
+		Appearance:    config.UIAppearanceCyberpunk,
+		GlamourStyle:  "dark",
+		AccentUser:    accentUser,
+		AccentAI:      accentAI,
+		Muted:         muted,
+		DimFG:         dimFG,
+		ToolFG:        toolFG,
+		ModalBody:     modalBody,
+		ErrorFG:       errorFG,
+		SepFG:         sepFG,
+		ModalBorder:   modalBorder,
+		InputBorder:   inputBorder,
+		SlashPickName: slashPickName,
+		SlashPickDesc: slashPickDesc,
+		WelcomeBorder: welcomeBorder,
+		BannerLogo:    accentAI,
+		BannerKey:     muted,
+		BannerValue:   lipgloss.Color("#D0E8FF"),
+		BannerWarning: lipgloss.Color("#F6C90E"),
+		TrustAccent:   accentAI,
+		TrustAccent2:  lipgloss.Color("#00C8D7"),
+		PathEmphasis:  lipgloss.Color("#E2F5FF"),
+	}
 }

@@ -153,6 +153,8 @@ func (m *Model) runModelSubmit(userText, interactMode string) {
 	m.replHistPos = 0
 	m.replHistDraft = ""
 	m.streaming = true
+	m.agentState = AgentStateIdle
+	m.lastAgentError = ""
 	m.statusLine = ""
 	m.lastThinkingPhase = ""
 	m.curAssistant.Reset()

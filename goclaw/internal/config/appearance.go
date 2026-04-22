@@ -11,6 +11,7 @@ const (
 	UIAppearanceLightColorblind = "light_colorblind"
 	UIAppearanceDarkANSI        = "dark_ansi"
 	UIAppearanceLightANSI       = "light_ansi"
+	UIAppearanceCyberpunk       = "cyberpunk"
 )
 
 // UIAppearanceChoices lists presets shown in onboarding and /theme (excluding auto for picker).
@@ -21,6 +22,7 @@ var UIAppearanceChoices = []string{
 	UIAppearanceLightColorblind,
 	UIAppearanceDarkANSI,
 	UIAppearanceLightANSI,
+	UIAppearanceCyberpunk,
 }
 
 // ThemePresetList returns ui_appearance values for interactive pickers (auto first, then UIAppearanceChoices).
@@ -39,7 +41,8 @@ func NormalizeUIAppearance(raw string) string {
 		return UIAppearanceAuto
 	case UIAppearanceDark, UIAppearanceLight,
 		UIAppearanceDarkColorblind, UIAppearanceLightColorblind,
-		UIAppearanceDarkANSI, UIAppearanceLightANSI:
+		UIAppearanceDarkANSI, UIAppearanceLightANSI,
+		UIAppearanceCyberpunk:
 		return v
 	default:
 		return UIAppearanceAuto

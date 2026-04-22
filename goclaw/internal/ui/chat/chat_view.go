@@ -117,63 +117,88 @@ func (m *Model) syncInputPlaceholder() {
 	m.input.Placeholder = placeholderForWidth(m.width)
 }
 
-// headerView is reserved for a top banner; it is intentionally empty so profile
-// (agent deck rail), footer stats, and model context are not duplicated above the transcript.
+// headerView renders a compact one-line cyberpunk banner when a model label is set.
+// Returns "" when no label is configured so callers that omit it see no change.
 func (m *Model) headerView() string {
-	return ""
-}
-
-// footerPrimaryStatus returns the live status indicator for the single status line between
-// transcript and input. Format: "~ [N/M] phase_label..." or "» tool: summary (Ns)..."
-func (m *Model) footerPrimaryStatus() string {
+	if strings.TrimSpace(m.modelLabel) == "" {
+		return ""
+	}
 	th := m.theme
 	if th == nil {
 		th = DefaultTheme()
 	}
-	status := strings.TrimSpace(m.statusLine)
-	if m.spinnerActive {
-		if m.assistantPlaceholder {
-			// Thinking state: parse "[N/M] label" from lastThinkingPhase.
-			phase := strings.TrimSpace(m.lastThinkingPhase)
-			var iterPart, labelPart string
-			if strings.HasPrefix(phase, "[") {
-				if close := strings.Index(phase, "]"); close > 0 {
-					iterPart = phase[1:close]
-					labelPart = strings.TrimSpace(phase[close+1:])
-				}
-			}
-			if iterPart == "" {
-				labelPart = phase
-				if labelPart == "" {
-					labelPart = "Thinking"
-				}
-			}
-
-			elapsed := ""
-			if m.thinkingLineIdx >= 0 && m.thinkingLineIdx < len(m.lineMeta) &&
-				m.lineMeta[m.thinkingLineIdx].kind == lineKindThinking &&
-				!m.lineMeta[m.thinkingLineIdx].startedAt.IsZero() {
-				secs := int(time.Since(m.lineMeta[m.thinkingLineIdx].startedAt).Seconds())
-				if secs >= 1 {
-					elapsed = fmt.Sprintf(" (%ds)", secs)
-				}
-			}
-
-			frame := m.spinner.View()
-			var iterLabel string
-			if iterPart != "" {
-				iterLabel = " " + th.FooterDim.Render("["+iterPart+"]")
-			}
-			label := th.StatusBarLabel.Render(labelPart) + th.FooterDim.Render(elapsed+"…")
-			return frame + iterLabel + " " + label
-		}
-		// Tool executing or text generating — use existing status line content.
-		if status != "" {
-			return m.spinner.View() + " " + th.StatusBarLabel.Render(status)
-		}
-		return m.spinner.View() + " " + th.StatusBarLabel.Render("Responding") + th.FooterDim.Render("…")
+	w := m.width
+	if w <= 0 {
+		w = defaultTerminalWidthFallback
 	}
-	return status
+
+	// Left title segment.
+	const appName = " GOCLAW "
+	titlePart := th.StatusBarLabel.Render(appName)
+	modelPart := th.FooterDim.Render(" " + m.modelLabel + " ")
+
+	// Build a neon rule that fills the remaining width.
+	// Layout: ╔═ GOCLAW ══ model ═════...═╗
+	const rune_H = "═"
+	const rune_TL = "╔"
+	const rune_TR = "╗"
+
+	uiW := lipgloss.Width
+	// Fixed parts: 2 edges + 2 gaps ("═" before title and after model) + title + model
+	fixed := uiW(rune_TL) + uiW(rune_H) + uiW(titlePart) + uiW(rune_H+rune_H) + uiW(modelPart) + uiW(rune_H) + uiW(rune_TR)
+	fill := w - fixed
+	if fill < 0 {
+		fill = 0
+	}
+
+	border := th.ModalTitle.Render
+	dim := th.FooterDim.Render
+
+	header := border(rune_TL) +
+		dim(rune_H) +
+		titlePart +
+		dim(rune_H+rune_H) +
+		modelPart +
+		dim(strings.Repeat(rune_H, fill)) +
+		border(rune_TR)
+	return header
+}
+
+// footerPrimaryStatus delegates entirely to the centralized RenderAgentStatus().
+// All state-to-text branching lives in agent_state.go; this function is now just a thin adapter.
+func (m *Model) footerPrimaryStatus() string {
+	// Gather thinking elapsed from the transcript meta slot.
+	thinkingElapsed := 0
+	if m.thinkingLineIdx >= 0 && m.thinkingLineIdx < len(m.lineMeta) &&
+		m.lineMeta[m.thinkingLineIdx].kind == lineKindThinking &&
+		!m.lineMeta[m.thinkingLineIdx].startedAt.IsZero() {
+		thinkingElapsed = int(time.Since(m.lineMeta[m.thinkingLineIdx].startedAt).Seconds())
+	}
+
+	// Gather tool status.
+	var toolLabel, toolSummary string
+	toolElapsed := 0
+	if len(m.toolWaitQueue) > 0 {
+		job := m.toolWaitQueue[0]
+		toolLabel = job.name
+		toolSummary = job.summary
+		if !m.toolWaitStartedAt.IsZero() {
+			toolElapsed = int(time.Since(m.toolWaitStartedAt).Seconds())
+		}
+	}
+
+	return RenderAgentStatus(
+		m.theme,
+		m.agentState,
+		m.spinner.View(),
+		m.lastThinkingPhase,
+		thinkingElapsed,
+		toolLabel,
+		toolSummary,
+		toolElapsed,
+		m.curAssistant.Len(),
+		m.lastAgentError,
+	)
 }
 
 func (m *Model) View() tea.View {

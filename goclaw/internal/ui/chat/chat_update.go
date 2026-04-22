@@ -50,6 +50,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshFooterStatsCache()
 		m.layout()
 		return m, footerStatsTickCmd()
+	case animTickMsg:
+		// 80ms lightweight tick — only drives spinner frames + tool elapsed; skips O(n) reflows.
+		if !m.spinnerActive {
+			return m, nil
+		}
+		m.refreshToolRunningTranscriptRows()
+		if m.agentState == AgentStateExecuting && len(m.toolWaitQueue) > 0 {
+			m.statusLine = m.toolQueueStatusLine()
+		}
+		return m, animTickCmd()
 	case spinner.TickMsg:
 		if !m.spinnerActive {
 			return m, nil
@@ -177,6 +187,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.exitTranscriptBrowse()
 		m.streaming = true
 		m.assistantPlaceholder = true
+		m.agentState = AgentStateThinking
+		m.lastAgentError = ""
 		m.statusLine = ""
 		m.lastThinkingPhase = ""
 		m.curAssistant.Reset()
@@ -195,7 +207,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			spinner.WithStyle(th.SpinnerAccentV2()),
 		)
 		m.spinnerActive = true
-		return m, tea.Batch(func() tea.Msg { return m.spinner.Tick() }, footerStatsTickCmd())
+		return m, tea.Batch(func() tea.Msg { return m.spinner.Tick() }, footerStatsTickCmd(), animTickCmd())
 	case assistantDeltaMsg:
 		if !m.streaming {
 			// Drop stray deltas after completion (e.g. race with batching); avoids a second assistant row.
@@ -207,6 +219,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.assistantPlaceholder = false
 			m.statusLine = ""
 		}
+		m.agentState = AgentStateWriting
 		m.curAssistant.WriteString(string(msg))
 		m.refreshAssistantStreamDisplay()
 		// Throttle O(n) footer stats while tokens stream (footerStats scans session messages).
@@ -223,6 +236,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streaming = false
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
+		m.agentState = AgentStateDone
+		m.lastAgentError = ""
 		m.statusLine = ""
 		m.lastThinkingPhase = ""
 		m.clearThinkingLine()
@@ -284,6 +299,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.appendToolRunningTranscriptRow(msg.name, msg.preview)
 		m.spinnerActive = true
+		m.agentState = AgentStateExecuting
 		m.statusLine = m.toolQueueStatusLine()
 		return m, tickToolWait()
 	case toolTickMsg:
@@ -403,6 +419,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streaming = false
 		m.assistantPlaceholder = false
 		m.spinnerActive = false
+		m.agentState = AgentStateError
+		m.lastAgentError = msg.err.Error()
 		m.statusLine = ""
 		m.clearThinkingLine()
 		m.turnHadWorkspaceWrite = false
