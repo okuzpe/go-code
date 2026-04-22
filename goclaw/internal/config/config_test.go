@@ -8,11 +8,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDefaultAgentProfileCoordinator(t *testing.T) {
+func TestDefaultAgentProfileGeneralPurpose(t *testing.T) {
 	t.Parallel()
 	if got := Default().AgentProfile; got != "general-purpose" {
 		t.Fatalf("Default().AgentProfile = %q, want general-purpose", got)
 	}
+}
+
+func TestDefaultAgentVerifyAfterWriteAndTUIAgentMode(t *testing.T) {
+	t.Setenv("GOCLAW_AGENT_VERIFY_AFTER_WRITE", "")
+	t.Setenv("GOCLAW_TUI_INTERACT_MODE", "")
+	cfg := Default()
+	require.True(t, cfg.AgentVerifyAfterWrite, "verify-after-write should default on")
+	require.Equal(t, TUIInteractModeAgent, cfg.TUIInteractMode, "TUI should default to agent when env unset")
+	t.Setenv("GOCLAW_AGENT_VERIFY_AFTER_WRITE", "0")
+	cfgOff := Default()
+	require.False(t, cfgOff.AgentVerifyAfterWrite)
 }
 
 func TestDefaultOllamaModelMatchesDefaultConfig(t *testing.T) {

@@ -28,6 +28,7 @@ func (f fakeTool) Execute(context.Context, string) (tools.Result, error) {
 func TestBuildRequestExploreProfileOmitsBash(t *testing.T) {
 	reg := tools.New()
 	reg.Register(tools.NewBash())
+	reg.Register(tools.NewRunCommandWithTimeout(0))
 	reg.Register(tools.NewReadFile(t.TempDir()))
 
 	o := &Orchestrator{
@@ -41,8 +42,8 @@ func TestBuildRequestExploreProfileOmitsBash(t *testing.T) {
 
 	req := o.buildRequest()
 	for _, s := range req.Tools {
-		if s.Name == "bash" {
-			t.Fatal("explore profile is read-only: bash must not appear in tool specs")
+		if s.Name == "bash" || s.Name == "run_command" {
+			t.Fatalf("explore profile is read-only: %s must not appear in tool specs", s.Name)
 		}
 	}
 }

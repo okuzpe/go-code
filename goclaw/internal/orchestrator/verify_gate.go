@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	verifyAfterWriteNudgeMessage = `[goclaw] You made workspace changes (write_file, edit_file, or patch). Before finishing with prose only, run verification using native tool calls: bash, script, or run_tests (pick what fits the project). Paste command output in the tool result. If verification is impossible, state one sentence why, then stop.`
+	verifyAfterWriteNudgeMessage = `[goclaw] You made workspace changes (write_file, edit_file, or patch). Before finishing with prose only, run verification using native tool calls: bash, run_command, script, or run_tests (pick what fits the project). Paste command output in the tool result. If verification is impossible, state one sentence why, then stop.`
 
 	maxVerifyAfterWriteNudges = 4
 )

@@ -268,7 +268,8 @@ type Config struct {
 	PlanApplyUseCoordinator bool
 
 	// AgentVerifyAfterWrite when true: after successful workspace writes on coding-intent turns, the orchestrator
-	// injects short nudges until bash, script, or run_tests succeeds (or nudge cap). JSON: agent_verify_after_write (default false).
+	// injects short nudges until bash, run_command, script, or run_tests succeeds (or nudge cap).
+	// JSON: agent_verify_after_write. Default true in Default(); set false in settings or GOCLAW_AGENT_VERIFY_AFTER_WRITE=0.
 	AgentVerifyAfterWrite bool
 
 	// ParallelToolBatchMax caps how many tools may run concurrently in one assistant batch when provider is Ollama.
@@ -368,8 +369,12 @@ func Default() Config {
 		TUIMouseScroll:               envTruthy("GOCLAW_TUI_MOUSE_SCROLL"),
 		TUIIcons:                     icons.CanonicalTUIIcons(os.Getenv("GOCLAW_TUI_ICONS")),
 		TUIFooterDensity:             NormalizeTUIFooterDensity(os.Getenv("GOCLAW_TUI_FOOTER_DENSITY")),
-		TUIInteractMode:              NormalizeTUIInteractMode(os.Getenv("GOCLAW_TUI_INTERACT_MODE")),
+		TUIInteractMode:              defaultTUIInteractModeFromEnv(),
 		UIAppearance:                 "auto",
+		AgentVerifyAfterWrite:        true,
+	}
+	if v := strings.TrimSpace(os.Getenv("GOCLAW_AGENT_VERIFY_AFTER_WRITE")); v != "" {
+		cfg.AgentVerifyAfterWrite = envTruthy("GOCLAW_AGENT_VERIFY_AFTER_WRITE")
 	}
 	if v := strings.TrimSpace(os.Getenv("GOCLAW_OLLAMA_HTTP_TIMEOUT_SEC")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -685,6 +690,15 @@ func envTruthy(key string) bool {
 	default:
 		return false
 	}
+}
+
+// defaultTUIInteractModeFromEnv returns agent when GOCLAW_TUI_INTERACT_MODE is unset (agent-first CLI);
+// otherwise normalizes the env value (unknown strings still map to chat via NormalizeTUIInteractMode).
+func defaultTUIInteractModeFromEnv() string {
+	if strings.TrimSpace(os.Getenv("GOCLAW_TUI_INTERACT_MODE")) == "" {
+		return TUIInteractModeAgent
+	}
+	return NormalizeTUIInteractMode(os.Getenv("GOCLAW_TUI_INTERACT_MODE"))
 }
 
 // NormalizePreferredResponseLanguage returns a canonical mode: auto, from_os, or a supported tag (es|en|fr|de|pt).

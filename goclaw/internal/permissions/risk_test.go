@@ -49,6 +49,7 @@ func TestRiskScore_unknownTool(t *testing.T) {
 func TestRiskScore_bashReadOnly(t *testing.T) {
 	input := marshalInput(t, map[string]string{"command": "ls -la"})
 	require.Equal(t, 10, RiskScore("bash", input))
+	require.Equal(t, 10, RiskScore("run_command", input), "run_command aliases bash scoring")
 }
 
 func TestRiskScore_bashWrite(t *testing.T) {

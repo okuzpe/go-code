@@ -16,7 +16,7 @@ func main() {
 	})))
 	root := cli.NewRootCmd(Version,
 		func(cmd *cobra.Command, args []string) error {
-			return app.RunChat(cmd, args)
+			return app.RunChat(cmd, Version, args, app.FullscreenChat{Version: Version})
 		},
 		func(cmd *cobra.Command, args []string) error {
 			return app.RunPrompt(cmd, args)

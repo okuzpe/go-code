@@ -17,7 +17,7 @@ func tuiInteractModePromptBlock(active bool, mode string) string {
 			"The user selected **code** mode. Prefer minimal, scoped edits and short explanations. When changing the repo, use tools (read → edit → verify) rather than dumping large unapplied code blocks."
 	case config.TUIInteractModeAgent:
 		return "\n\n## Terminal interact mode: agent\n" +
-			"The user selected **agent** mode. Drive the task to completion within the iteration budget: discover with read-only tools, apply the smallest viable edits, verify with bash or tests, and finish with a brief factual summary."
+			"The user selected **agent** mode. Drive the task to completion within the iteration budget: discover with read-only tools, apply the smallest viable edits, verify with bash, run_command, run_tests, or script, and finish with a brief factual summary."
 	default:
 		return ""
 	}

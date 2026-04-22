@@ -105,7 +105,7 @@ func formatKnownToolPreview(toolName, input string) string {
 			}
 			return p
 		}
-	case "bash":
+	case "bash", "run_command":
 		var v struct {
 			Command     string `json:"command"`
 			Cwd         string `json:"cwd"`
@@ -241,7 +241,7 @@ func ToolWorkingPhrase(toolName string) string {
 		return "Finding paths"
 	case "grep":
 		return "Searching in files"
-	case "bash":
+	case "bash", "run_command":
 		return "Running a command"
 	case "script":
 		return "Running shell script"
@@ -278,7 +278,7 @@ func ToolFinishedPhrase(toolName string) string {
 		return "Matched paths"
 	case "grep":
 		return "Searched files"
-	case "bash":
+	case "bash", "run_command":
 		return "Ran command"
 	case "script":
 		return "Ran shell script"

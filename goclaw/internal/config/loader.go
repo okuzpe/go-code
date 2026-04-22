@@ -360,8 +360,8 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	if sf.PlanApplyUseCoordinator != nil && *sf.PlanApplyUseCoordinator {
 		cfg.PlanApplyUseCoordinator = true
 	}
-	if sf.AgentVerifyAfterWrite != nil && *sf.AgentVerifyAfterWrite {
-		cfg.AgentVerifyAfterWrite = true
+	if sf.AgentVerifyAfterWrite != nil {
+		cfg.AgentVerifyAfterWrite = *sf.AgentVerifyAfterWrite
 	}
 	if sf.ParallelToolBatchMax != nil && *sf.ParallelToolBatchMax > 0 {
 		cfg.ParallelToolBatchMax = *sf.ParallelToolBatchMax

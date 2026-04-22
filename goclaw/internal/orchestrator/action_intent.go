@@ -15,15 +15,15 @@ const (
 	fakeToolsMarkdownBan = " Do not simulate tools in markdown."
 
 	// actionContinueNudgeMessage follows a batch of read-only tools when the model stopped in prose.
-	actionContinueNudgeMessage = `[goclaw] The user asked for concrete code improvements (not analysis-only). You already ran read-only tools in this turn. Continue with native tool calls: use edit_file, write_file, or patch for real edits, then bash or script to verify. Do not answer with prose-only until edits are done or truly blocked.`
+	actionContinueNudgeMessage = `[goclaw] The user asked for concrete code improvements (not analysis-only). You already ran read-only tools in this turn. Continue with native tool calls: use edit_file, write_file, or patch for real edits, then bash, run_command, or script to verify. Do not answer with prose-only until edits are done or truly blocked.`
 
 	// actionFirstTurnNoToolsNudgeMessage applies when the first model completion in this user turn had zero tool calls
 	// but the user message signals repo/code work (common with local models that narrate instead of calling tools).
-	actionFirstTurnNoToolsNudgeMessage = `[goclaw] The user asked for code or repository changes. Your last completion had no native tool calls — prose alone does not read or edit files. Reply with tool calls only on the next turn: use read_file, glob, or grep first as needed, then edit_file, write_file, or patch to apply changes, then bash or script to verify.` + fakeToolsMarkdownBan
+	actionFirstTurnNoToolsNudgeMessage = `[goclaw] The user asked for code or repository changes. Your last completion had no native tool calls — prose alone does not read or edit files. Reply with tool calls only on the next turn: use read_file, glob, or grep first as needed, then edit_file, write_file, or patch to apply changes, then bash, run_command, or script to verify.` + fakeToolsMarkdownBan
 
 	// actionRepairModelEscalationMessage follows exhausted action-continue nudges when action_repair_escalation is on:
 	// the runtime switches to the configured coding-tier model for one more attempt.
-	actionRepairModelEscalationMessage = `[goclaw] Action nudges were exhausted without native tool calls. This turn now uses the configured coding model — reply with tool calls only: read_file/glob/grep as needed, then edit_file/write_file/patch, then bash or script to verify.` + fakeToolsMarkdownBan
+	actionRepairModelEscalationMessage = `[goclaw] Action nudges were exhausted without native tool calls. This turn now uses the configured coding model — reply with tool calls only: read_file/glob/grep as needed, then edit_file/write_file/patch, then bash, run_command, or script to verify.` + fakeToolsMarkdownBan
 
 	// editFileNotFoundNudgeMessage is injected when the most recent tool batch included
 	// an edit_file call that failed with "old_string not found", signalling the model

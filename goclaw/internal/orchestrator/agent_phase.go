@@ -74,7 +74,7 @@ func ToolPhaseHeadline(toolName string) string {
 		return "Tests"
 	case "git_tool":
 		return "Git"
-	case "bash", "script":
+	case "bash", "run_command", "script":
 		return "Shell"
 	case "web_fetch", "web_search":
 		return "Network"

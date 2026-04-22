@@ -44,7 +44,7 @@ func blockedToolNextStep(toolName string) string {
 	switch toolName {
 	case "read_file", "glob", "grep", "web_fetch", "web_search":
 		return "switch to an agent profile with this tool enabled, or use an allowed read-only tool"
-	case "bash", "script":
+	case "bash", "run_command", "script":
 		return "switch mode for command execution, or ask the user to run the command manually"
 	case "write_file", "write_files", "edit_file", "patch", "create_project", "run_tests", "git_tool":
 		return "switch to a profile with write permissions, then retry"
@@ -73,7 +73,7 @@ func executionErrorNextStep(toolName, message string) string {
 			return "read_file the target first to confirm path and current content, then retry"
 		}
 		return "re-read the target content, adjust the edit scope, then retry"
-	case "bash", "script", "run_tests":
+	case "bash", "run_command", "script", "run_tests":
 		return "fix the command or run a narrower command to isolate the failure"
 	default:
 		return "inspect tool input and retry with narrower, validated arguments"
@@ -192,7 +192,7 @@ func (o *Orchestrator) checkReadOnly(toolName string) (toolOutcome, bool) {
 		return rejectToolNextStep("mcp tools are disabled for read-only profiles", "switch to a non read-only profile to use MCP tools"), true
 	}
 	switch toolName {
-	case "bash", "script", "write_file", "write_files", "create_project", "edit_file", "patch", "run_tests", "git_tool":
+	case "bash", "run_command", "script", "write_file", "write_files", "create_project", "edit_file", "patch", "run_tests", "git_tool":
 		return rejectToolNextStep(fmt.Sprintf("%s is blocked for read-only profile", toolName), blockedToolNextStep(toolName)), true
 	}
 	return toolOutcome{}, false

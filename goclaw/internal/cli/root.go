@@ -37,8 +37,8 @@ func telegramWired(tg *TelegramCommands) bool {
 func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, listSessions RunListSessionsFunc, runDoctor RunDoctorFunc, tg *TelegramCommands) *cobra.Command {
 	root := &cobra.Command{
 		Use:     "goclaw",
-		Short:   "Terminal-native Go CLI agent — verified repo changes via tools (local Ollama)",
-		Long:    "Execution-first coding agent: turn intent into verified edits using file and shell tools against local Ollama. Default profile is coordinator (hub)—delegate with spawn_agent to workers. Sessions and REPL slash commands; run with no arguments for the chat REPL. Override with --profile or agent_profile in settings.",
+		Short:   "Local Ollama coding agent — tools, verification, and multi-turn execution in the terminal",
+		Long:    "Turn intent into repository changes using native tools (read, edit, shell, tests) against local Ollama. Default agent profile is general-purpose (direct tools in-session). Use --profile coordinator for hub mode with spawn_agent workers. Fullscreen TUI on TTY, REPL slash commands, persisted sessions. Override profile with --profile or agent_profile in settings.",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			listSessionsFlag, err := cmd.Flags().GetBool("list-sessions")

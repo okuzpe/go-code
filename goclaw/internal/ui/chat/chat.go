@@ -250,7 +250,7 @@ type Options struct {
 	// CycleAgentProfile switches to the next or previous agent profile (fullscreen TUI; Ctrl+Shift+←/→).
 	CycleAgentProfile func(backward bool) (slashcmd.UIHints, error)
 	// TUIInteractMode is the initial UI-only interact mode label (chat | code | agent); Ctrl+M cycles.
-	// Empty defaults to chat (see config.NormalizeTUIInteractMode).
+	// Empty is normalized to chat in the TUI model; config.Default() supplies agent when env is unset.
 	TUIInteractMode string
 	// ModelLabel is a short provider/model string shown in the header (e.g. "ollama/qwen2.5-coder:7b").
 	ModelLabel string

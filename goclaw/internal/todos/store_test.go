@@ -13,7 +13,8 @@ func TestStoreReplaceAndMerge(t *testing.T) {
 	if err := s.Apply(in1); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.FormatForPrompt(); got != "- [pending] a: one" {
+	want1 := "- [pending] a: one\n\n**Current task:** a: one\n**Next task:** (none queued after current — complete work or update todo_write.)"
+	if got := s.FormatForPrompt(); got != want1 {
 		t.Fatalf("prompt: %q", got)
 	}
 	in2 := `{"merge":true,"todos":[{"id":"a","content":"one done","status":"completed"},{"id":"b","content":"two","status":"in_progress"}]}`

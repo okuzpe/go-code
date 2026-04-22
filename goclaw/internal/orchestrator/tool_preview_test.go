@@ -14,6 +14,7 @@ func TestFormatToolUsePreview(t *testing.T) {
 		{"read_file", `{"path":"internal/app/run.go"}`, "@internal/app/run.go"},
 		{"read_file", `{"path":"internal/orchestrator/tool_transcript_snippet.go"}`, "@tool_transcript"},
 		{"bash", `{"command":"go test ./..."}`, "go test ./..."},
+		{"run_command", `{"command":"go test ./..."}`, "go test ./..."},
 		{"unknown", `{"query":"x","extra":1}`, "x"},
 		{"spawn_agent", `{"profile":"explore","task":"search the web for alog","interactive":false}`, "explore"},
 		{"spawn_agent", `{"profile":"explore","task":"search the web for alog","interactive":false}`, "one-shot"},
@@ -34,7 +35,7 @@ func TestFormatToolUsePreview_empty(t *testing.T) {
 }
 
 func TestToolWorkingPhrase(t *testing.T) {
-	for _, tool := range []string{"web_search", "web_fetch", "read_file", "write_file", "edit_file", "patch", "glob", "grep", "bash", "script", "todo_write"} {
+	for _, tool := range []string{"web_search", "web_fetch", "read_file", "write_file", "edit_file", "patch", "glob", "grep", "bash", "run_command", "script", "todo_write"} {
 		require.NotEmpty(t, ToolWorkingPhrase(tool), "tool=%s", tool)
 	}
 	require.Equal(t, "Running MCP tool", ToolWorkingPhrase("mcp__srv__ping"))
@@ -42,7 +43,7 @@ func TestToolWorkingPhrase(t *testing.T) {
 }
 
 func TestToolFinishedPhrase(t *testing.T) {
-	for _, tool := range []string{"web_search", "web_fetch", "read_file", "write_file", "edit_file", "patch", "glob", "grep", "bash", "script", "todo_write"} {
+	for _, tool := range []string{"web_search", "web_fetch", "read_file", "write_file", "edit_file", "patch", "glob", "grep", "bash", "run_command", "script", "todo_write"} {
 		require.NotEmpty(t, ToolFinishedPhrase(tool), "tool=%s", tool)
 	}
 	require.Equal(t, "Ran MCP tool", ToolFinishedPhrase("mcp__srv__ping"))

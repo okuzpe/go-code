@@ -43,7 +43,7 @@ func RiskScore(toolName, toolInput string) int {
 	case "web_fetch":
 		return riskScoreNetwork
 
-	case "bash":
+	case "bash", "run_command":
 		return bashRiskScore(toolInput)
 
 	case "spawn_agent":

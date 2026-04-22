@@ -70,7 +70,7 @@ func TranscriptOutcomeSnippet(toolName, content string, isError bool) string {
 		return webSearchOutcomeSnippet(content)
 	case "write_file", "edit_file", "patch", "todo_write", "web_fetch":
 		return text.TruncateRunes(firstLineOf(content), transcriptOutcomeMaxRunes)
-	case "bash", "script":
+	case "bash", "run_command", "script":
 		if tail := lastNonEmptyLine(content); tail != "" {
 			return text.TruncateRunes(tail, transcriptOutcomeMaxRunes)
 		}

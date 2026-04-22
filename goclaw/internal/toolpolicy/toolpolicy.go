@@ -36,7 +36,7 @@ func CacheableWithinTurn(toolName string) bool {
 // IsVerifyTool reports whether the tool counts toward satisfying the post-write verify gate.
 func IsVerifyTool(toolName string) bool {
 	switch strings.TrimSpace(toolName) {
-	case "bash", "script", "run_tests":
+	case "bash", "run_command", "script", "run_tests":
 		return true
 	default:
 		return false

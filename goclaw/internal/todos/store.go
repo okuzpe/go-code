@@ -127,5 +127,47 @@ func (s *Store) FormatForPrompt() string {
 		b.WriteString(it.Content)
 		b.WriteByte('\n')
 	}
-	return strings.TrimSuffix(b.String(), "\n")
+	list := strings.TrimSuffix(b.String(), "\n")
+
+	curIdx := -1
+	for i, it := range s.items {
+		if it.Status == "in_progress" {
+			curIdx = i
+			break
+		}
+	}
+	if curIdx < 0 {
+		for i, it := range s.items {
+			if it.Status == "pending" {
+				curIdx = i
+				break
+			}
+		}
+	}
+	var focus strings.Builder
+	focus.WriteString(list)
+	if curIdx >= 0 {
+		cur := s.items[curIdx]
+		focus.WriteString("\n\n**Current task:** ")
+		focus.WriteString(cur.ID)
+		focus.WriteString(": ")
+		focus.WriteString(cur.Content)
+		nextIdx := -1
+		for j := curIdx + 1; j < len(s.items); j++ {
+			if s.items[j].Status == "pending" {
+				nextIdx = j
+				break
+			}
+		}
+		focus.WriteString("\n**Next task:** ")
+		if nextIdx >= 0 {
+			n := s.items[nextIdx]
+			focus.WriteString(n.ID)
+			focus.WriteString(": ")
+			focus.WriteString(n.Content)
+		} else {
+			focus.WriteString("(none queued after current — complete work or update todo_write.)")
+		}
+	}
+	return focus.String()
 }

@@ -495,7 +495,7 @@ func cleanupSessionScratch(dir string) {
 	}
 }
 
-// registerBuiltInTools registers the 10 built-in tools into r (plus optional script when allow_script is true).
+// registerBuiltInTools registers the core built-in tools into r (plus optional script when allow_script is true).
 // It does NOT register spawn_agent — callers that need it do so separately.
 // This is the single source of truth for built-in tool registration.
 func registerBuiltInTools(r *tools.Registry, toolRoot string, launchDir string, cfg config.Config, todoStore *todos.Store) {
@@ -507,6 +507,7 @@ func registerBuiltInTools(r *tools.Registry, toolRoot string, launchDir string, 
 	r.Register(tools.NewGlobScope(pathScope))
 	r.Register(tools.NewGrepScope(pathScope))
 	r.Register(tools.NewBashWithTimeout(cfg.BashTimeoutSeconds()))
+	r.Register(tools.NewRunCommandWithTimeout(cfg.BashTimeoutSeconds()))
 	if cfg.AllowScript {
 		r.Register(tools.NewScriptWithTimeout(cfg.BashTimeoutSeconds()))
 	}

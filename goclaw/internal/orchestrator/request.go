@@ -88,6 +88,7 @@ func (o *Orchestrator) effectiveToolSpecs() []tools.ToolSpec {
 	}
 	if o.profile.ReadOnly {
 		specs = stripToolName(specs, "bash")
+		specs = stripToolName(specs, "run_command")
 		specs = stripToolName(specs, "write_file")
 		specs = stripToolName(specs, "edit_file")
 		specs = stripToolName(specs, "patch")
