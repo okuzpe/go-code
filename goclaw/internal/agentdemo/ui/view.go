@@ -12,7 +12,7 @@ func (m *Model) View() tea.View {
 	status := m.statusLine()
 	vp := m.viewport.View()
 	inputBox := m.st.Panel.Width(m.width).Render(m.input.View())
-	main := lipgloss.JoinVertical(lipgloss.Left, status, vp, inputBox)
+	main := lipgloss.JoinVertical(lipgloss.Left, status, vp, m.agentBar(), inputBox)
 	if m.showLogOverlay && len(m.logLines) > 0 {
 		logText := strings.Join(m.logLines[max(0, len(m.logLines)-12):], "\n")
 		logBox := m.st.Overlay.Width(m.width).Render(

@@ -2,7 +2,7 @@ package ui
 
 import "strings"
 
-var demoCommands = []string{"clear", "demo-tool", "help", "quit"}
+var demoCommands = []string{"clear", "help", "quit"}
 
 // TabExpand replaces the trimmed whole-buffer text when it is a strict prefix of exactly one demo command.
 func TabExpand(buffer string) (newText string, ok bool) {

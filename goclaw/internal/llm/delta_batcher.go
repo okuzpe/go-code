@@ -5,14 +5,14 @@ import (
 	"time"
 )
 
-// Default batching tuned like goclaw chat sink: fewer UI updates, smoother scroll.
+// Default batching constants: fewer UI redraws, smoother scroll.
 const (
 	DefaultDeltaBatchInterval = 42 * time.Millisecond
 	DefaultDeltaBatchMaxBytes = 640
 )
 
-// StreamDeltaBatcher coalesces deltas on a single goroutine (the stream reader).
-// It is not safe for concurrent use from multiple goroutines.
+// StreamDeltaBatcher coalesces streaming text deltas to reduce UI update
+// frequency. It is not safe for concurrent use from multiple goroutines.
 type StreamDeltaBatcher struct {
 	interval time.Duration
 	maxBytes int
@@ -23,7 +23,8 @@ type StreamDeltaBatcher struct {
 	flush func(chunk string)
 }
 
-// NewStreamDeltaBatcher wires flush to receive non-empty chunks after coalescing.
+// NewStreamDeltaBatcher wires flush to receive non-empty coalesced chunks.
+// Zero interval or maxBytes fall back to the package defaults.
 func NewStreamDeltaBatcher(interval time.Duration, maxBytes int, flush func(chunk string)) *StreamDeltaBatcher {
 	if interval <= 0 {
 		interval = DefaultDeltaBatchInterval
@@ -34,7 +35,7 @@ func NewStreamDeltaBatcher(interval time.Duration, maxBytes int, flush func(chun
 	return &StreamDeltaBatcher{interval: interval, maxBytes: maxBytes, flush: flush}
 }
 
-// Feed adds a delta; may invoke flush immediately (byte threshold) or after interval.
+// Feed adds a delta; flushes immediately on byte threshold or after interval.
 func (d *StreamDeltaBatcher) Feed(delta string) {
 	if delta == "" || d.flush == nil {
 		return

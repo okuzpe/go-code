@@ -3,12 +3,14 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/okuzpe/goclaw/internal/agentdemo/components"
+	"github.com/okuzpe/goclaw/internal/replhistory"
 )
 
 func (m *Model) Init() tea.Cmd {
@@ -24,7 +26,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.spinnerActive {
+		if m.spinnerRunning() {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -33,33 +35,67 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case streamDeltaMsg:
 		m.streamAppend(msg.text)
-		if m.phase == "thinking" {
-			m.phase = "streaming"
+		if m.phase == PhaseThinking {
+			m.phase = PhaseStreaming
 		}
 		m.syncTranscript()
 		return m, nil
 
 	case streamDoneMsg:
-		if m.cancelLLM != nil {
-			m.cancelLLM = nil
-		}
+		m.cancelLLM = nil
 		m.streaming = false
-		m.spinnerActive = false
-		m.phase = "idle"
+		m.phase = PhaseIdle
+		m.currentTool = ""
 		if msg.err != nil && errors.Is(msg.err, context.Canceled) {
+			m.lastResult = ""
 			m.streamReset()
 			m.blocks = append(m.blocks, m.st.Dim.Render("(assistant stream canceled)"))
+			m.tokensDirty = true
 		} else {
 			if msg.err != nil {
+				m.lastResult = "error"
 				m.appendErrorBlock(msg.err.Error())
+			} else {
+				m.lastResult = "ok"
 			}
 			m.finalizeAssistantTurn()
 		}
 		m.syncTranscript()
 		return m, nil
 
-	case demoToolDoneMsg:
-		m.appendToolSummary(msg.summary)
+	case agentThinkingMsg:
+		m.phase = PhaseThinking
+		if msg.phase != "" {
+			m.appendLog("agent: " + msg.phase)
+		}
+		m.syncTranscript()
+		return m, nil
+
+	case agentToolStartMsg:
+		m.currentTool = msg.name
+		m.toolStartTime = time.Now()
+		m.appendToolRunning(msg.name)
+		m.syncTranscript()
+		return m, nil
+
+	case agentToolDoneMsg:
+		elapsed := time.Since(m.toolStartTime)
+		m.currentTool = ""
+		dur := fmt.Sprintf("  %dms", elapsed.Milliseconds())
+		summary := msg.name
+		if msg.isError {
+			summary = "✗ " + summary + dur
+		} else {
+			summary = "✓ " + summary + dur
+			if len(msg.content) > 0 {
+				preview := msg.content
+				if len(preview) > 60 {
+					preview = preview[:60] + "…"
+				}
+				summary += "  " + preview
+			}
+		}
+		m.appendToolSummary(summary)
 		m.syncTranscript()
 		return m, nil
 
@@ -98,12 +134,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		return m, nil, true
 
 	case "ctrl+m":
-		switch m.mode {
-		case ModeChat:
-			m.mode = ModeCode
-		case ModeCode:
+		if m.mode == ModeChat {
 			m.mode = ModeAgent
-		default:
+		} else {
 			m.mode = ModeChat
 		}
 		m.appendLog("mode: " + m.mode.String())
@@ -143,7 +176,6 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 		cmd := m.handleSubmit()
-		m.layout()
 		return m, cmd, true
 	}
 	return m, nil, false
@@ -188,6 +220,7 @@ func (m *Model) handleSubmit() tea.Cmd {
 		return nil
 	}
 	m.history = append(m.history, txt)
+	_ = replhistory.Append(m.demoConfigDir, txt)
 	m.histNav = 0
 	m.histDraft = ""
 	m.input.Reset()
@@ -198,26 +231,23 @@ func (m *Model) handleSubmit() tea.Cmd {
 		return tea.Quit
 	case "clear":
 		m.blocks = nil
+		m.chatHistory = nil
 		m.streamReset()
-		m.appendLog("transcript cleared")
+		m.appendLog("transcript and chat history cleared")
 		m.layout()
 		return nil
 	case "help":
 		m.appendUserBlock(txt)
-		m.appendSystemBlock("Built-in: clear, demo-tool, help, quit.\nKeys: Tab completes, Ctrl+M cycles UI label (chat/code/agent), Ctrl+E log overlay, Ctrl+C cancel or quit.\nFull agent: run goclaw from a repo.")
+		tools := "read_file · glob · grep"
+		if m.cfg.Unsafe {
+			tools += " · write_file · edit_file · bash"
+		}
+		m.appendSystemBlock("Commands: clear, help, quit.\n" +
+			"Keys: Ctrl+M toggle chat/agent · Ctrl+E logs · Ctrl+C cancel/quit · Tab complete · ↑↓ history.\n" +
+			"Chat mode: multi-turn conversation (context preserved across turns, cleared by 'clear').\n" +
+			"Agent mode: LLM → tool (" + tools + ") → result → LLM → …")
 		m.layout()
 		return nil
-	case "demo-tool":
-		m.appendUserBlock(txt)
-		m.appendLog("demo-tool: list_files")
-		m.appendToolRunning("list_files")
-		m.layout()
-		return tea.Batch(
-			m.spinner.Tick,
-			tea.Tick(850*time.Millisecond, func(time.Time) tea.Msg {
-				return demoToolDoneMsg{summary: "README.md, go.mod, cmd/ (stub)"}
-			}),
-		)
 	default:
 		m.appendUserBlock(txt)
 		m.appendLog("llm: " + txt)
@@ -234,9 +264,14 @@ func (m *Model) startStream(user string) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancelLLM = cancel
 	m.streaming = true
-	m.phase = "thinking"
-	m.spinnerActive = true
+	m.phase = PhaseThinking
+	m.lastResult = ""
+	m.currentTool = ""
 	m.streamReset()
 	m.syncTranscript()
-	go m.runLLMStream(ctx, user)
+	if m.mode == ModeAgent && m.agentRunner != nil {
+		go m.runAgentTurn(ctx, user)
+	} else {
+		go m.runLLMStream(ctx, user)
+	}
 }

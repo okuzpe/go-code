@@ -9,9 +9,10 @@ func TestTabExpand(t *testing.T) {
 		want string
 		ok   bool
 	}{
-		{"de", "demo-tool", true},
 		{"hel", "help", true},
-		{"demo-tool", "", false},
+		{"cl", "clear", true},
+		{"q", "quit", true},
+		{"help", "", false}, // exact match — no expand
 		{"", "", false},
 		{"xyz", "", false},
 	}

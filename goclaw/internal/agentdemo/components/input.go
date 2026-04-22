@@ -9,17 +9,15 @@ import (
 // NewComposer returns a focused multiline textarea with Shift+Enter / Alt+Enter for newline.
 func NewComposer(accent lipgloss.Style) textarea.Model {
 	in := textarea.New()
-	in.Placeholder = "Message…  Tab completes demo commands · Shift+Enter newline · Ctrl+M mode · Ctrl+E logs"
+	in.Placeholder = "Message… (Enter send · Shift+Enter newline · Tab complete · Ctrl+M chat/agent)"
 	in.Prompt = "> "
-	in.ShowLineNumbers = true
+	in.ShowLineNumbers = false
 	in.SetHeight(1)
 	in.SetWidth(0)
 	in.CharLimit = 0
 	in.Focus()
 	st := in.Styles()
 	st.Focused.Prompt = st.Focused.Prompt.Foreground(accent.GetForeground())
-	st.Focused.LineNumber = st.Focused.LineNumber.Foreground(lipgloss.Color("240"))
-	st.Focused.CursorLineNumber = st.Focused.CursorLineNumber.Foreground(accent.GetForeground())
 	in.SetStyles(st)
 	km := in.KeyMap
 	km.InsertNewline.SetKeys("shift+enter", "alt+enter")

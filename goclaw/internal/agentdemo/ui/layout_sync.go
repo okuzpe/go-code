@@ -3,12 +3,8 @@ package ui
 import (
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/okuzpe/goclaw/internal/agentdemo/components"
-)
-
-const (
-	inputMaxHeight = 8
-	minComposeWidth = 28
 )
 
 func (m *Model) syncInputWidth() {
@@ -80,15 +76,42 @@ func (m *Model) transcriptBody() string {
 
 func (m *Model) statusLine() string {
 	ph := m.phase
-	if m.streaming && ph == "thinking" {
-		ph = "streaming"
-	}
-	if m.toolRunning {
-		ph = "executing"
-	}
-	if m.statusErr != "" {
-		ph = "error"
+	if m.streaming && ph == PhaseThinking {
+		ph = PhaseStreaming
 	}
 	return components.StatusStrip(m.width, m.st.Accent, m.st.Dim, m.st.Panel,
-		m.cfg.Model, m.mode.String(), ph, m.approxTokenEstimate())
+		m.cfg.Model, m.mode.String(), string(ph), m.spinner.View(), m.approxTokenEstimate(), m.cfg.Unsafe)
+}
+
+func (m *Model) agentBar() string {
+	sep := m.st.Dim.Render(strings.Repeat("─", m.width))
+	var content string
+	switch m.phase {
+	case PhaseThinking:
+		// Spinner frame rendered as plain string — no double-wrap.
+		content = m.st.Accent.Render("[") + m.spinner.View() + m.st.Accent.Render("]") +
+			m.st.Dim.Render(" Thinking...")
+	case PhaseStreaming:
+		content = m.st.Accent.Render("[▸]") + m.st.Dim.Render(" Writing...")
+	case PhaseExecuting:
+		tool := m.currentTool
+		if tool == "" {
+			tool = "tool"
+		}
+		content = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("[") +
+			m.spinner.View() +
+			lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("]") +
+			m.st.Dim.Render(" Running → "+tool)
+	default:
+		switch m.lastResult {
+		case "ok":
+			content = m.st.Accent.Render("[✓]") + m.st.Dim.Render(" Ready")
+		case "error":
+			content = m.st.Err.Render("[✖]") + m.st.Dim.Render(" Error")
+		default:
+			content = m.st.Dim.Render("[·] Ready")
+		}
+	}
+	bar := lipgloss.NewStyle().Width(m.width).Render(content)
+	return sep + "\n" + bar
 }

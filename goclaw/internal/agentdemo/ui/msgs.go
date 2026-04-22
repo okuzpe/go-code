@@ -10,7 +10,19 @@ type streamDoneMsg struct {
 	err error
 }
 
-// demoToolDoneMsg completes the stub tool animation.
-type demoToolDoneMsg struct {
-	summary string
+// agentThinkingMsg is posted when the orchestrator starts a new LLM call.
+type agentThinkingMsg struct {
+	phase string
+}
+
+// agentToolStartMsg is posted when the orchestrator calls a tool.
+type agentToolStartMsg struct {
+	name string
+}
+
+// agentToolDoneMsg is posted when a tool finishes execution.
+type agentToolDoneMsg struct {
+	name    string
+	content string
+	isError bool
 }

@@ -12,7 +12,6 @@ func TestStreamDeltaBatcher_thresholdFlush(t *testing.T) {
 	b := NewStreamDeltaBatcher(time.Hour, 10, func(chunk string) {
 		got = append(got, chunk)
 	})
-	// 10 bytes exactly triggers immediate flush
 	b.Feed(strings.Repeat("a", 10))
 	b.FlushRemaining()
 	if len(got) != 1 || got[0] != strings.Repeat("a", 10) {

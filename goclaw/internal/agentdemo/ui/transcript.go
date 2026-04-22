@@ -1,11 +1,11 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func (m *Model) appendLog(line string) {
@@ -19,34 +19,40 @@ func (m *Model) appendLog(line string) {
 	}
 }
 
+func (m *Model) appendBlock(content string, style lipgloss.Style) {
+	m.blocks = append(m.blocks, style.Render(content))
+	if len(m.blocks) > maxBlocks {
+		m.blocks = m.blocks[len(m.blocks)-maxBlocks:]
+	}
+	m.tokensDirty = true
+}
+
 func (m *Model) appendUserBlock(text string) {
 	m.blocks = append(m.blocks,
 		m.st.User.Render("You")+"\n"+m.st.Dim.Render(text))
+	m.tokensDirty = true
 }
 
 func (m *Model) appendSystemBlock(text string) {
-	m.blocks = append(m.blocks, m.st.Dim.Render(text))
+	m.appendBlock(text, m.st.Dim)
 }
 
 func (m *Model) appendErrorBlock(text string) {
-	m.blocks = append(m.blocks, m.st.Err.Render(text))
+	m.appendBlock(text, m.st.Err)
 }
 
 func (m *Model) appendToolRunning(name string) {
-	m.toolRunning = true
-	m.spinnerActive = true
-	m.phase = "executing"
-	line := m.st.Tool.Render("● tool ") + m.st.Dim.Render(name+" …")
+	m.phase = PhaseExecuting
+	line := m.st.Tool.Render("⚙ tool ") + m.st.Dim.Render(name+" …")
 	m.blocks = append(m.blocks, line)
+	m.tokensDirty = true
 }
 
 func (m *Model) appendToolSummary(summary string) {
-	m.toolRunning = false
-	m.spinnerActive = false
-	if m.phase == "executing" {
-		m.phase = "idle"
+	if m.phase == PhaseExecuting {
+		m.phase = PhaseThinking
 	}
-	m.blocks = append(m.blocks, m.st.ToolDim.Render("  "+summary))
+	m.appendBlock("  "+summary, m.st.ToolDim)
 }
 
 func (m *Model) streamAppend(delta string) {
@@ -98,15 +104,20 @@ func (m *Model) finalizeAssistantTurn() {
 		rendered = m.st.Assistant.Render(raw)
 	}
 	m.blocks = append(m.blocks, m.st.Accent.Render("Assistant")+"\n"+rendered)
+	m.tokensDirty = true
 }
 
 func (m *Model) approxTokenEstimate() int {
-	n := 0
-	for _, b := range m.blocks {
-		n += utf8.RuneCountInString(b)
+	if m.tokensDirty || m.streaming {
+		n := 0
+		for _, b := range m.blocks {
+			n += utf8.RuneCountInString(b)
+		}
+		n += utf8.RuneCountInString(m.streamSnapshot())
+		m.tokenCount = max(1, n*3/4)
+		m.tokensDirty = false
 	}
-	n += utf8.RuneCountInString(m.streamSnapshot())
-	return max(1, n*3/4)
+	return m.tokenCount
 }
 
 func (m *Model) welcomeBlock() {
@@ -115,10 +126,18 @@ func (m *Model) welcomeBlock() {
 		host = "http://127.0.0.1:11434"
 	}
 	mod := strings.TrimSpace(m.cfg.Model)
-	m.appendSystemBlock(fmt.Sprintf(
-		"goclaw agentdemo — Ollama %s · model %s\n"+
-			"Commands: help · clear · demo-tool · quit\n"+
-			"Keys: Ctrl+C cancel stream or quit · Ctrl+M mode · Ctrl+E logs · Tab complete\n"+
-			"Note: Ctrl+M may be eaten by the terminal (carriage return); use the visible mode in the status strip.",
-		host, mod))
+	tools := "read_file · glob · grep"
+	if m.cfg.Unsafe {
+		tools += " · write_file · edit_file · bash"
+	}
+	header := m.st.Accent.Render("◆ agentdemo") + "  " + m.st.Dim.Render(host+"  "+mod)
+	keybinds := m.st.Dim.Render("  Ctrl+M") + "  toggle chat/agent" + "    " +
+		m.st.Dim.Render("Ctrl+E") + "  logs" + "    " +
+		m.st.Dim.Render("Ctrl+C") + "  cancel/quit" + "    " +
+		m.st.Dim.Render("↑↓") + "  history"
+	modes := m.st.Dim.Render("  chat") + "  multi-turn conversation\n" +
+		m.st.Dim.Render("  agent") + " LLM → tool (" + tools + ") → result → LLM → …"
+	block := m.st.Panel.Render(header + "\n\n" + keybinds + "\n" + modes)
+	m.blocks = append(m.blocks, block)
+	m.tokensDirty = true
 }
