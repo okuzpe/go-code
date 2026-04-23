@@ -508,3 +508,17 @@ func TestHandleSlashNewAndSave(t *testing.T) {
 		t.Fatalf("unexpected /save output: %q", out)
 	}
 }
+
+func TestHandleSlashUndoNoCheckpoint(t *testing.T) {
+	s := session.New()
+	sp := &s
+	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose)
+	env := SlashEnv{Workdir: t.TempDir(), Profs: agents.All()}
+	handled, out, quit, ms, err := handleSlashTest(context.Background(), SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}, "/undo")
+	require.True(t, handled)
+	require.Empty(t, out)
+	require.False(t, quit)
+	require.Empty(t, ms)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no undo checkpoint")
+}

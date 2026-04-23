@@ -3,8 +3,15 @@ package projectcontext
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/okuzpe/goclaw/internal/config"
@@ -48,6 +55,24 @@ func Build(workdir string, cfg config.Config, includeProjectConventions bool) st
 		}
 	}
 
+	if layout := summarizeWorkspaceLayout(workdir, includeProjectConventions); layout != "" {
+		parts = append(parts, layout)
+	}
+
+	if git := summarizeGitWorkspace(workdir); git != "" {
+		parts = append(parts, git)
+	}
+
+	if repoMap := summarizeRepoMap(workdir); repoMap != "" {
+		parts = append(parts, repoMap)
+	}
+
+	for _, c := range projectDocsCandidates() {
+		if lines, ok := readProjectFileLines(workdir, c.file, c.maxLine); ok {
+			parts = append(parts, c.label+":\n  "+strings.Join(lines, "\n  "))
+		}
+	}
+
 	if includeProjectConventions {
 		claudeLines := cfg.ClaudeProjectContextLineLimit()
 		if lines, ok := readProjectFileLines(workdir, "CLAUDE.md", claudeLines); ok {
@@ -76,6 +101,322 @@ func Build(workdir string, cfg config.Config, includeProjectConventions bool) st
 		return "project_workspace_hint: no stack manifest, requirements.txt, or README found under the tool workspace root; use glob or grep to discover layout if needed."
 	}
 	return out
+}
+
+func projectDocsCandidates() []struct {
+	file    string
+	maxLine int
+	label   string
+} {
+	return []struct {
+		file    string
+		maxLine int
+		label   string
+	}{
+		{"docs/docs-map.md", 24, "docs/docs-map.md"},
+		{"docs/architecture.md", 20, "docs/architecture.md"},
+		{"docs/README.md", 20, "docs/README.md"},
+		{"docs/index.md", 20, "docs/index.md"},
+	}
+}
+
+func summarizeWorkspaceLayout(workdir string, includeProjectConventions bool) string {
+	entries, err := os.ReadDir(workdir)
+	if err != nil {
+		return ""
+	}
+	type item struct {
+		name     string
+		isDir    bool
+		children []string
+	}
+	var items []item
+	for _, entry := range entries {
+		name := strings.TrimSpace(entry.Name())
+		if name == "" || shouldSkipLayoutEntry(name, includeProjectConventions) {
+			continue
+		}
+		current := item{name: name, isDir: entry.IsDir()}
+		if entry.IsDir() {
+			current.children = summarizeDirChildren(filepath.Join(workdir, name), includeProjectConventions)
+		}
+		items = append(items, current)
+	}
+	if len(items) == 0 {
+		return ""
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].isDir != items[j].isDir {
+			return items[i].isDir
+		}
+		return items[i].name < items[j].name
+	})
+	if len(items) > 10 {
+		items = items[:10]
+	}
+	lines := make([]string, 0, len(items))
+	for _, entry := range items {
+		if entry.isDir {
+			line := entry.name + "/"
+			if len(entry.children) > 0 {
+				line += " -> " + strings.Join(entry.children, ", ")
+			}
+			lines = append(lines, line)
+			continue
+		}
+		lines = append(lines, entry.name)
+	}
+	return "workspace_layout:\n  " + strings.Join(lines, "\n  ")
+}
+
+func shouldSkipLayoutEntry(name string, includeProjectConventions bool) bool {
+	if !includeProjectConventions {
+		if name == "CLAUDE.md" || name == "AGENTS.md" || name == "GEMINI.md" {
+			return true
+		}
+		if name == ".goclaw" {
+			return true
+		}
+	}
+	switch name {
+	case ".git", ".idea", ".vscode", "node_modules", "vendor", ".DS_Store":
+		return true
+	default:
+		return strings.HasPrefix(name, ".") && name != ".goclaw"
+	}
+}
+
+func summarizeDirChildren(dir string, includeProjectConventions bool) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	children := make([]string, 0, 4)
+	for _, entry := range entries {
+		name := strings.TrimSpace(entry.Name())
+		if name == "" || shouldSkipLayoutEntry(name, includeProjectConventions) {
+			continue
+		}
+		if entry.IsDir() {
+			children = append(children, name+"/")
+		} else {
+			children = append(children, name)
+		}
+		if len(children) == 4 {
+			break
+		}
+	}
+	if len(children) == 0 {
+		return nil
+	}
+	sort.Strings(children)
+	return children
+}
+
+func summarizeGitWorkspace(workdir string) string {
+	branch, dirtyCount, ok := gitWorkspaceSummary(workdir)
+	if !ok {
+		return ""
+	}
+	status := "clean"
+	if dirtyCount > 0 {
+		status = "dirty files: " + strconv.Itoa(dirtyCount)
+	}
+	if branch == "" {
+		branch = "(detached)"
+	}
+	return fmt.Sprintf("git_workspace: branch=%s, %s", branch, status)
+}
+
+func gitWorkspaceSummary(workdir string) (branch string, dirtyCount int, ok bool) {
+	check := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+	check.Dir = workdir
+	out, err := check.Output()
+	if err != nil || strings.TrimSpace(string(out)) != "true" {
+		return "", 0, false
+	}
+
+	branchCmd := exec.Command("git", "branch", "--show-current")
+	branchCmd.Dir = workdir
+	if out, err := branchCmd.Output(); err == nil {
+		branch = strings.TrimSpace(string(out))
+	}
+
+	statusCmd := exec.Command("git", "status", "--short", "--untracked-files=normal")
+	statusCmd.Dir = workdir
+	if out, err := statusCmd.Output(); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		for _, line := range lines {
+			if strings.TrimSpace(line) != "" {
+				dirtyCount++
+			}
+		}
+	}
+	return branch, dirtyCount, true
+}
+
+func summarizeRepoMap(workdir string) string {
+	const (
+		maxFiles   = 18
+		maxSymbols = 4
+	)
+	goFiles := collectRepoMapGoFiles(workdir, maxFiles)
+	if len(goFiles) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(goFiles))
+	for _, absPath := range goFiles {
+		rel, err := filepath.Rel(workdir, absPath)
+		if err != nil {
+			continue
+		}
+		pkgName, symbols, ok := parseGoFileSummary(absPath, maxSymbols)
+		if !ok {
+			continue
+		}
+		line := filepath.ToSlash(rel)
+		if pkgName != "" {
+			line += " [" + pkgName + "]"
+		}
+		if len(symbols) > 0 {
+			line += ": " + strings.Join(symbols, ", ")
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "repo_map:\n  " + strings.Join(lines, "\n  ")
+}
+
+func collectRepoMapGoFiles(workdir string, maxFiles int) []string {
+	if maxFiles <= 0 {
+		return nil
+	}
+	files := make([]string, 0, maxFiles)
+	_ = filepath.WalkDir(workdir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		name := entry.Name()
+		if entry.IsDir() {
+			if path != workdir && shouldSkipRepoMapDir(name) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		files = append(files, path)
+		if len(files) >= maxFiles {
+			return fs.SkipAll
+		}
+		return nil
+	})
+	sort.Strings(files)
+	return files
+}
+
+func shouldSkipRepoMapDir(name string) bool {
+	switch name {
+	case ".git", ".goclaw", ".idea", ".vscode", "node_modules", "vendor", "testdata":
+		return true
+	default:
+		return strings.HasPrefix(name, ".")
+	}
+}
+
+func parseGoFileSummary(absPath string, maxSymbols int) (pkgName string, symbols []string, ok bool) {
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, absPath, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return "", nil, false
+	}
+	pkgName = strings.TrimSpace(parsed.Name.Name)
+	symbols = topLevelGoSymbols(parsed, maxSymbols)
+	return pkgName, symbols, true
+}
+
+func topLevelGoSymbols(file *ast.File, maxSymbols int) []string {
+	if file == nil || maxSymbols <= 0 {
+		return nil
+	}
+	exported := make([]string, 0, maxSymbols)
+	local := make([]string, 0, maxSymbols)
+	appendSymbol := func(target *[]string, symbol string) {
+		symbol = strings.TrimSpace(symbol)
+		if symbol == "" {
+			return
+		}
+		*target = append(*target, symbol)
+	}
+	for _, decl := range file.Decls {
+		switch typed := decl.(type) {
+		case *ast.FuncDecl:
+			name := typed.Name.Name
+			if typed.Recv != nil && len(typed.Recv.List) > 0 {
+				name = recvTypeName(typed.Recv.List[0].Type) + "." + name
+			}
+			if ast.IsExported(typed.Name.Name) {
+				appendSymbol(&exported, "func "+name)
+			} else {
+				appendSymbol(&local, "func "+name)
+			}
+		case *ast.GenDecl:
+			for _, spec := range typed.Specs {
+				switch current := spec.(type) {
+				case *ast.TypeSpec:
+					name := "type " + current.Name.Name
+					if ast.IsExported(current.Name.Name) {
+						appendSymbol(&exported, name)
+					} else {
+						appendSymbol(&local, name)
+					}
+				case *ast.ValueSpec:
+					for _, ident := range current.Names {
+						prefix := "var "
+						if typed.Tok == token.CONST {
+							prefix = "const "
+						}
+						name := prefix + ident.Name
+						if ast.IsExported(ident.Name) {
+							appendSymbol(&exported, name)
+						} else {
+							appendSymbol(&local, name)
+						}
+					}
+				}
+			}
+		}
+	}
+	out := make([]string, 0, maxSymbols)
+	for _, group := range [][]string{exported, local} {
+		for _, symbol := range group {
+			out = append(out, symbol)
+			if len(out) == maxSymbols {
+				return out
+			}
+		}
+	}
+	return out
+}
+
+func recvTypeName(expr ast.Expr) string {
+	switch typed := expr.(type) {
+	case *ast.Ident:
+		return typed.Name
+	case *ast.StarExpr:
+		return recvTypeName(typed.X)
+	case *ast.IndexExpr:
+		return recvTypeName(typed.X)
+	case *ast.IndexListExpr:
+		return recvTypeName(typed.X)
+	case *ast.SelectorExpr:
+		return typed.Sel.Name
+	default:
+		return "recv"
+	}
 }
 
 func readProjectFileLines(workdir, name string, maxLines int) ([]string, bool) {

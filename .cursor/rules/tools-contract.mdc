@@ -1,7 +1,7 @@
 ---
 description: MVP tool contract for goclaw — names, inputs, limits. Apply when implementing or changing tools.
 alwaysApply: false
-globs: ["internal/tools/**/*.go", "internal/orchestrator/**/*.go", "internal/llm/**/*.go"]
+globs: ["goclaw/internal/tools/**/*.go", "goclaw/internal/orchestrator/**/*.go", "goclaw/internal/llm/**/*.go"]
 ---
 
 # GoClaw — MVP tool contract

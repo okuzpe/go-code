@@ -46,6 +46,8 @@ type settingsFile struct {
 	AutoContinueActionRequests           *bool               `json:"auto_continue_action_requests,omitempty"`
 	AutoContinueActionMaxNudges          *int                `json:"auto_continue_action_max_nudges,omitempty"`
 	TruthFooterNoWorkspaceWrites         *bool               `json:"truth_footer_no_workspace_writes,omitempty"`
+	SkillsMaxRunes               *int `json:"skills_max_runes,omitempty"`
+	MaxMemorySnippetEntries      *int `json:"max_memory_snippet_entries,omitempty"`
 	ProjectContextClaudeMdLines          *int                `json:"project_context_claude_md_lines,omitempty"`
 	ProjectContextStandingOrdersPath     *string             `json:"project_context_standing_orders_path,omitempty"`
 	ProjectContextStandingOrdersMaxLines *int                `json:"project_context_standing_orders_max_lines,omitempty"`
@@ -267,6 +269,12 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if sf.TruthFooterNoWorkspaceWrites != nil {
 		cfg.TruthFooterNoWorkspaceWrites = *sf.TruthFooterNoWorkspaceWrites
+	}
+	if sf.SkillsMaxRunes != nil && *sf.SkillsMaxRunes > 0 {
+		cfg.SkillsMaxRunes = *sf.SkillsMaxRunes
+	}
+	if sf.MaxMemorySnippetEntries != nil && *sf.MaxMemorySnippetEntries > 0 {
+		cfg.MaxMemorySnippetEntries = *sf.MaxMemorySnippetEntries
 	}
 	if sf.ProjectContextClaudeMdLines != nil && *sf.ProjectContextClaudeMdLines > 0 {
 		cfg.ProjectContextClaudeMdLines = *sf.ProjectContextClaudeMdLines

@@ -162,6 +162,16 @@ type Config struct {
 	// footer to the assistant reply. JSON: truth_footer_no_workspace_writes (default true).
 	TruthFooterNoWorkspaceWrites bool
 
+	// SkillsMaxRunes caps the total runes of SKILL.md content injected into the system prompt.
+	// 0 uses the built-in default (8000 runes ≈ 2000 tokens). Increase if you have many large skill files;
+	// decrease on low-VRAM hardware where context budget is tight. JSON: skills_max_runes.
+	SkillsMaxRunes int
+
+	// MaxMemorySnippetEntries caps the number of memory entries injected per store per turn.
+	// 0 uses the built-in default (4). Small local models benefit from fewer entries (better coherence).
+	// JSON: max_memory_snippet_entries.
+	MaxMemorySnippetEntries int
+
 	// ProjectContextClaudeMdLines caps lines read from CLAUDE.md into the injected project context.
 	// 0 means use the default (60). Clamped to 1..200 by ClaudeProjectContextLineLimit().
 	// JSON: project_context_claude_md_lines
@@ -630,6 +640,28 @@ func (c Config) StandingOrdersProjectContextLineLimit() int {
 
 // StandingOrdersInjectMaxBytes is the maximum byte length of the standing orders block after line trimming.
 func StandingOrdersInjectMaxBytes() int { return standingOrdersInjectMaxBytes }
+
+const (
+	defaultSkillsMaxRunes          = 8000 // ~2000 tokens — enough for 2–3 focused skills
+	defaultMaxMemorySnippetEntries = 4    // 4 entries strike a balance for 7B models
+)
+
+// EffectiveSkillsMaxRunes returns the rune cap for SKILL.md injection.
+// Reduces the default from the legacy 24 000 to 8 000 to protect context budget on small models.
+func (c Config) EffectiveSkillsMaxRunes() int {
+	if c.SkillsMaxRunes > 0 {
+		return c.SkillsMaxRunes
+	}
+	return defaultSkillsMaxRunes
+}
+
+// EffectiveMaxMemorySnippetEntries returns the max memory entries injected per store per turn.
+func (c Config) EffectiveMaxMemorySnippetEntries() int {
+	if c.MaxMemorySnippetEntries > 0 {
+		return c.MaxMemorySnippetEntries
+	}
+	return defaultMaxMemorySnippetEntries
+}
 
 // EffectiveContextTokens returns the context window size (in tokens) used for compaction decisions.
 // Priority: explicit ModelContextTokens > provider-aware default (Ollama uses OllamaNumCtx).

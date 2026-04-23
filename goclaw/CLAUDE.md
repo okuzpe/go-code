@@ -122,6 +122,7 @@ goclaw injects a **project context** block into the system prompt on each sessio
 
 **What gets loaded automatically**
 
+- A compact workspace summary from the **tool workspace root**: detected stack manifest (`go.mod`, `package.json`, `Cargo.toml`, `pyproject.toml`), top-of-file `README*`, a bounded **workspace layout** summary, a short **git workspace** summary when inside a repository, a lightweight **repo map** for Go workspaces (selected files + top-level symbols), and, when present, key documentation entry points such as **`docs/docs-map.md`**, **`docs/architecture.md`**, `docs/README.md`, or `docs/index.md`.
 - `CLAUDE.md` at the **tool workspace root** — first *N* lines only (default **60**; override with `project_context_claude_md_lines` in `settings.json`, hard-capped at **200**). Put the highest-priority rules at the **top** of the file.
 - Optional **`.goclaw/STANDING_ORDERS.md`** under the same root — loaded only if the file exists, unless overridden by `project_context_standing_orders_path` (workspace-relative path; must not escape the workspace). Line cap default **40** (`project_context_standing_orders_max_lines`, hard-capped at **120**); content is also bounded by bytes before injection.
 

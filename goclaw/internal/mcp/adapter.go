@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/okuzpe/goclaw/internal/tools"
@@ -29,8 +30,8 @@ func NewToolAdapter(sess Conn, serverID string, info ToolInfo) *ToolAdapter {
 		sess:     sess,
 		serverID: serverID,
 		remote:   info.Name,
-		desc:     info.Description,
-		schema:   info.InputSchema,
+		desc:     compactToolDescription(info.Description),
+		schema:   compactJSONSchema(info.InputSchema),
 	}
 }
 
@@ -73,9 +74,74 @@ func RegisterSessionTools(ctx context.Context, reg *tools.Registry, sess Conn, s
 		if info.Name == "" {
 			continue
 		}
-		if err := reg.Add(NewToolAdapter(sess, serverID, info)); err != nil {
+		if err := reg.AddHidden(NewToolAdapter(sess, serverID, info)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+const maxToolDescriptionRunes = 220
+const maxSchemaDescriptionRunes = 160
+
+func compactToolDescription(desc string) string {
+	desc = strings.Join(strings.Fields(strings.TrimSpace(desc)), " ")
+	if len(desc) == 0 {
+		return ""
+	}
+	runes := []rune(desc)
+	if len(runes) <= maxToolDescriptionRunes {
+		return desc
+	}
+	return string(runes[:maxToolDescriptionRunes]) + "..."
+}
+
+func compactJSONSchema(schema any) any {
+	switch typed := schema.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key, value := range typed {
+			switch key {
+			case "description":
+				if s, ok := value.(string); ok {
+					out[key] = compactSchemaDescription(s)
+				}
+			case "properties":
+				if props, ok := value.(map[string]any); ok {
+					trimmed := make(map[string]any, len(props))
+					for propName, propSchema := range props {
+						trimmed[propName] = compactJSONSchema(propSchema)
+					}
+					out[key] = trimmed
+				}
+			case "items", "additionalProperties":
+				out[key] = compactJSONSchema(value)
+			case "oneOf", "anyOf", "allOf":
+				out[key] = compactJSONSchema(value)
+			case "title", "examples", "example", "default", "$comment", "markdownDescription":
+				// Drop verbose metadata that bloats prompts but does not help tool invocation.
+				continue
+			default:
+				out[key] = compactJSONSchema(value)
+			}
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, compactJSONSchema(item))
+		}
+		return out
+	default:
+		return schema
+	}
+}
+
+func compactSchemaDescription(desc string) string {
+	desc = strings.Join(strings.Fields(strings.TrimSpace(desc)), " ")
+	runes := []rune(desc)
+	if len(runes) <= maxSchemaDescriptionRunes {
+		return desc
+	}
+	return string(runes[:maxSchemaDescriptionRunes]) + "..."
 }

@@ -33,9 +33,10 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	}
 
 	o.ut = &userTurnState{
-		turnToolCache:    make(map[string]string),
-		tuiInteractApply: o.nextTUIInteractApply,
-		tuiInteractMode:  o.nextTUIInteractMode,
+		turnToolCache:     make(map[string]string),
+		revealedToolNames: make(map[string]bool),
+		tuiInteractApply:  o.nextTUIInteractApply,
+		tuiInteractMode:   o.nextTUIInteractMode,
 	}
 	o.nextTUIInteractApply = false
 	o.nextTUIInteractMode = ""

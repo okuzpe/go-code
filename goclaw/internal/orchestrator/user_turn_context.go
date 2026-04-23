@@ -30,6 +30,10 @@ type userTurnState struct {
 	verifySatisfied bool
 	verifyNudges    int
 
+	// revealedToolNames tracks hidden tools (e.g. MCP) revealed via tool_search during this turn.
+	// Revealed tools are included in effectiveToolSpecs for subsequent LLM iterations.
+	revealedToolNames map[string]bool
+
 	// sysPrefixMemo caches the expensive static portion of the system prompt for this turn only.
 	sysPrefixMemo string
 }

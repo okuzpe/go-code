@@ -415,6 +415,17 @@ use /sessions to list saved ids; current session is auto-saved before switching`
 		const continueSubmit = `Continue working on the prior request: use tools to complete pending edits (write_file, edit_file, patch) or bash/script to verify, or state clearly what blocks you.`
 		return true, fmt.Sprintf("(follow-up for: %s)\n", snippet), false, continueSubmit, nil
 
+	case "undo":
+		if err := requireRunningAgent("undo", orch); err != nil {
+			return true, "", false, "", err
+		}
+		msg, err := orch.UndoLastCheckpoint()
+		if err != nil {
+			return true, "", false, "", err
+		}
+		setFooterHint(hintsOut, "Last file change reverted from the session checkpoint.")
+		return true, msg, false, "", nil
+
 	case "edit":
 		if err := requireRunningAgent("edit", orch); err != nil {
 			return true, "", false, "", err

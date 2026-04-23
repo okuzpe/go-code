@@ -347,7 +347,7 @@ func prepareChatRuntime(cmd *cobra.Command, allocateScratch bool) (*ChatRuntime,
 		}, skillRoots...)
 	}
 	skillRoots = appendMonorepoClaudeSkillRoot(launchDir, skillRoots)
-	skillSnippet, _ := skills.Collect(skillRoots, skillsMaxRunes)
+	skillSnippet, _ := skills.Collect(skillRoots, cfg.EffectiveSkillsMaxRunes())
 
 	reg := tools.New()
 	disableTools := noToolsFlag || strings.TrimSpace(os.Getenv("GOCLAW_DISABLE_TOOLS")) == "1"
@@ -364,11 +364,15 @@ func prepareChatRuntime(cmd *cobra.Command, allocateScratch bool) (*ChatRuntime,
 	var todoStore *todos.Store
 	if !disableTools {
 		todoStore = todos.NewStore()
-		registerBuiltInTools(reg, toolRoot, launchDir, cfg, todoStore)
+		if err := registerBuiltInTools(reg, toolRoot, launchDir, cfg, todoStore); err != nil {
+			return nil, fmt.Errorf("register built-in tools: %w", err)
+		}
 
 		// spawn_agent: worker registry excludes spawn_agent itself to prevent infinite nesting.
 		workerReg := tools.New()
-		registerBuiltInTools(workerReg, toolRoot, launchDir, cfg, todos.NewStore())
+		if err := registerBuiltInTools(workerReg, toolRoot, launchDir, cfg, todos.NewStore()); err != nil {
+			return nil, fmt.Errorf("register worker tools: %w", err)
+		}
 		reg.Register(coordinator.New(cfg, client, workerReg, policy, hookReg).
 			WithProfiles(profs).
 			WithWorkdir(toolRoot).
@@ -498,7 +502,7 @@ func cleanupSessionScratch(dir string) {
 // registerBuiltInTools registers the core built-in tools into r (plus optional script when allow_script is true).
 // It does NOT register spawn_agent — callers that need it do so separately.
 // This is the single source of truth for built-in tool registration.
-func registerBuiltInTools(r *tools.Registry, toolRoot string, launchDir string, cfg config.Config, todoStore *todos.Store) {
+func registerBuiltInTools(r *tools.Registry, toolRoot string, launchDir string, cfg config.Config, todoStore *todos.Store) error {
 	pathScope := tools.PathScope{
 		Root:         toolRoot,
 		RelativeBase: launchDir,
@@ -529,9 +533,15 @@ func registerBuiltInTools(r *tools.Registry, toolRoot string, launchDir string, 
 		SerpAPIKey:  cfg.SerpAPIKey,
 		FallbackDDG: cfg.WebSearchFallbackDDG,
 	}))
+	toolSearch, err := tools.NewToolSearch(r)
+	if err != nil {
+		return fmt.Errorf("tool_search: %w", err)
+	}
+	r.Register(toolSearch)
 	todoTool, err := tools.NewTodoWrite(todoStore)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("todo_write: %w", err)
 	}
 	r.Register(todoTool)
+	return nil
 }

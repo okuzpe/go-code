@@ -60,14 +60,23 @@ Use constructor pattern if the tool needs dependencies (e.g. `NewReadFile(root s
 - **Output caps**: read_file 512 KiB / 400 lines; glob 500 paths; grep 200 matches / 512 KiB per file; bash 256 KiB; web_fetch 1 MiB; web_search per `limits.go`
 - **Security**: workspace paths for read_file, glob, grep; bash allowlist; web_fetch SSRF checks
 
-### 4. Register in `internal/app/run.go`
+### 4. Register in `internal/app/chat_wiring.go`
 
-Inside the `if !disableTools { ... }` block:
+Inside `registerBuiltInTools`, after the existing `r.Register(...)` calls:
 ```go
-reg.Register(tools.NewFoo(...))
+r.Register(tools.NewFoo(...))
 ```
 
-> Registration lives in `internal/app/run.go`, not `main.go`.
+For tools that need a registry reference (like `tool_search`), return the error from the constructor:
+```go
+fooTool, err := tools.NewFoo(r)
+if err != nil {
+    return fmt.Errorf("foo: %w", err)
+}
+r.Register(fooTool)
+```
+
+> Registration lives in `registerBuiltInTools` inside `internal/app/chat_wiring.go`, not in `run.go` or `main.go`.
 
 ### 5. Security checklist before marking done
 - [ ] User-visible errors use `Result{IsError: true}`, not a Go `error`

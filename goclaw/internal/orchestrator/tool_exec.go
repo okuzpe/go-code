@@ -143,7 +143,16 @@ func (o *Orchestrator) executeToolOnce(ctx context.Context, tu *llm.ToolUse, sin
 	if !ok {
 		return rejectToolNextStep(fmt.Sprintf("unknown tool %q", tu.Name), unknownToolNextStep(tu.Name))
 	}
+	pendingCheckpoint, checkpointErr := o.capturePendingCheckpoint(tu.Name, tu.Input)
+	if checkpointErr != nil {
+		return rejectToolNextStep(fmt.Sprintf("checkpoint before %s failed: %v", tu.Name, checkpointErr), "retry with a narrower file change or inspect the session scratch directory")
+	}
 	res, execErr := t.Execute(ctx, tu.Input)
+	if execErr != nil || res.IsError {
+		o.discardCheckpoint(pendingCheckpoint)
+	} else {
+		o.commitCheckpoint(pendingCheckpoint)
+	}
 	outcome := o.finishToolExecution(ctx, tu.Name, tu.Input, res.Content, res.IsError, execErr)
 
 	// Populate cache on success for cachable tools.
@@ -152,7 +161,53 @@ func (o *Orchestrator) executeToolOnce(ctx context.Context, tu *llm.ToolUse, sin
 		o.ut.toolCacheSet(cacheKey, outcome.Content)
 	}
 
+	// Reveal hidden tools discovered via tool_search so they appear in the next LLM iteration.
+	if tu.Name == "tool_search" && !outcome.IsError && outcome.Err == nil {
+		o.revealToolSearchMatches(outcome.Content)
+	}
+
 	return outcome
+}
+
+// revealToolSearchMatches parses a tool_search result and marks matched hidden tools as
+// visible for the remainder of this turn. The result format is:
+//
+//	tool_search matches (N):
+//	- tool_name: description
+func (o *Orchestrator) revealToolSearchMatches(content string) {
+	if o.ut == nil {
+		return
+	}
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "- ") {
+			continue
+		}
+		line = line[2:]
+		name := line
+		if idx := strings.Index(line, ":"); idx > 0 {
+			name = strings.TrimSpace(line[:idx])
+		}
+		if name == "" || !isValidToolName(name) || !o.tools.IsHidden(name) {
+			continue
+		}
+		o.ut.revealedToolNames[name] = true
+	}
+}
+
+// isValidToolName reports whether s is a syntactically valid tool name:
+// only lowercase letters, digits, underscores, and hyphens — no spaces or control chars.
+// MCP tool names follow the pattern mcp__serverid__toolname where serverid may include hyphens.
+func isValidToolName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // turnToolCacheMaxEntries caps per-turn cache size. Prevents unbounded memory growth

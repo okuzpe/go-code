@@ -1,0 +1,47 @@
+---
+description: MCP tool hidden/reveal deferral pattern — apply when editing MCP registration, tool registry, or orchestrator tool spec building.
+globs: ["goclaw/internal/mcp/**/*.go", "goclaw/internal/tools/registry.go", "goclaw/internal/orchestrator/request.go", "goclaw/internal/orchestrator/tool_exec.go"]
+alwaysApply: false
+---
+
+# MCP hidden/reveal deferral
+
+MCP tools are hidden from the LLM prompt by default and revealed on-demand via `tool_search`. This keeps the tool list short for small local models.
+
+## Hard rules
+
+- **Register MCP tools with `reg.AddHidden`**, never `reg.Register` — done in `mcp.RegisterSessionTools`.
+- **`tool_search` must query `reg.AllSpecs()`** (not `Specs()`) — otherwise hidden tools are invisible to search.
+- **`effectiveToolSpecs` in `request.go`** handles the filtering: hidden tools are dropped unless in `revealedToolNames` or the profile allowlist.
+- **`revealedToolNames`** is initialized eagerly in `turn_loop.go` (`make(map[string]bool)`) — it is never nil during a turn.
+- **Name validation in `revealToolSearchMatches`**: only `[a-z0-9_-]` chars accepted — reject anything else before looking up in registry.
+
+## Flow summary
+
+```
+MCP server connects
+  → RegisterSessionTools → reg.AddHidden(adapter)   // hidden from LLM prompt
+
+Each LLM turn:
+  effectiveToolSpecs() = visible tools + revealed tools + allowlist-forced tools
+
+Model calls tool_search("I need X"):
+  → AllSpecs() scored → result lines "- mcp__server__tool: …"
+  → revealToolSearchMatches() validates name, checks IsHidden, adds to revealedToolNames
+
+Next LLM iteration:
+  effectiveToolSpecs() now includes the revealed MCP tool
+```
+
+## Anti-patterns
+
+```go
+// WRONG — MCP tool visible in every prompt (context bloat)
+reg.Register(NewToolAdapter(sess, serverID, info))
+
+// WRONG — tool_search can't find hidden tools
+specs := t.reg.Specs()  // must be AllSpecs()
+
+// WRONG — revealed map may be nil on first reveal
+o.ut.revealedToolNames[name] = true  // safe: initialized in turn_loop.go
+```

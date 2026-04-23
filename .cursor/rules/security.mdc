@@ -1,7 +1,7 @@
 ---
 description: Security rules for goclaw tools. Apply when working on read_file, glob, grep, bash, web_fetch, web_search, write_file, edit_file, or mcp.
 alwaysApply: false
-globs: ["internal/tools/**/*.go", "internal/mcp/**/*.go"]
+globs: ["goclaw/internal/tools/**/*.go", "goclaw/internal/mcp/**/*.go"]
 ---
 
 # GoClaw — Tool Security

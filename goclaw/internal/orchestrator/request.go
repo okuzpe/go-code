@@ -19,7 +19,6 @@ var baseSystemPrompt string
 const planProfileModeMarker = "PLAN_PROFILE_MODE"
 
 const (
-	memorySnippetEntries    = 8    // max memory entries injected per store (relevance-scored)
 	memoryMaxBytes          = 4096 // max bytes per memory block to prevent silent context bloat
 	memoryRelevanceMinScore = 0.15 // minimum relevance score (0–1) to include a memory entry
 )
@@ -53,26 +52,58 @@ var planProfileWorkflowOverride = "\n\n## " + planProfileModeMarker + " (overrid
 	"that an implementer must touch or read first; each line must be a path you have seen via read_file, glob, or grep — never invent paths.\n\n" +
 	"If the request is purely conceptual and needs no repository evidence, answer from reasoning alone without tools."
 
-// effectiveToolSpecs returns registry specs after profile allowlist, disallowed, and read-only stripping.
+// effectiveToolSpecs returns registry specs after hidden/revealed filtering, profile allowlist,
+// disallowed tools, and read-only stripping.
+//
+// MCP tools are registered as hidden by default and excluded from the LLM prompt unless:
+//   - the model called tool_search this turn (revealed via revealedToolNames), or
+//   - the active profile's allowlist explicitly names the tool (or matches a wildcard prefix).
 func (o *Orchestrator) effectiveToolSpecs() []tools.ToolSpec {
-	specs := o.tools.Specs()
-	if o.profile.ToolAllowlist != nil {
-		if len(o.profile.ToolAllowlist) == 0 {
+	allSpecs := o.tools.AllSpecs()
+
+	// Build the allowlist map once so it can serve double duty: hidden-override check and
+	// the standard allowlist filter below.
+	var allowlistMap map[string]struct{}
+	hasAllowlist := o.profile.ToolAllowlist != nil
+	if hasAllowlist && len(o.profile.ToolAllowlist) > 0 {
+		allowlistMap = make(map[string]struct{}, len(o.profile.ToolAllowlist))
+		for _, n := range o.profile.ToolAllowlist {
+			allowlistMap[n] = struct{}{}
+		}
+	}
+
+	// Collect tools revealed via tool_search during the current turn.
+	var revealed map[string]bool
+	if o.ut != nil {
+		revealed = o.ut.revealedToolNames
+	}
+
+	// Pass 1: drop hidden tools unless the model revealed them or the allowlist names them.
+	specs := make([]tools.ToolSpec, 0, len(allSpecs))
+	for _, s := range allSpecs {
+		if o.tools.IsHidden(s.Name) {
+			if !revealed[s.Name] && !toolMatchesAllowlist(s.Name, allowlistMap) {
+				continue
+			}
+		}
+		specs = append(specs, s)
+	}
+
+	// Pass 2: apply the profile allowlist (standard filter).
+	if hasAllowlist {
+		if len(allowlistMap) == 0 {
 			specs = nil
 		} else {
-			allow := make(map[string]struct{}, len(o.profile.ToolAllowlist))
-			for _, n := range o.profile.ToolAllowlist {
-				allow[n] = struct{}{}
-			}
 			filtered := make([]tools.ToolSpec, 0, len(specs))
 			for _, s := range specs {
-				if toolMatchesAllowlist(s.Name, allow) {
+				if toolMatchesAllowlist(s.Name, allowlistMap) {
 					filtered = append(filtered, s)
 				}
 			}
 			specs = filtered
 		}
 	}
+
 	if len(o.profile.DisallowedTools) > 0 {
 		denied := make(map[string]struct{}, len(o.profile.DisallowedTools))
 		for _, n := range o.profile.DisallowedTools {
@@ -151,13 +182,13 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	}
 
 	if o.mem != nil {
-		if block, err := o.mem.RelevantContext(memorySnippetEntries, turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
+		if block, err := o.mem.RelevantContext(o.cfg.EffectiveMaxMemorySnippetEntries(), turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
 			block = truncateMemoryBlock(block, memoryMaxBytes)
 			sys = sys + "\n\n## Persistent memory (relevant)\n" + block
 		}
 	}
 	if o.projectMem != nil {
-		if block, err := o.projectMem.RelevantContext(memorySnippetEntries, turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
+		if block, err := o.projectMem.RelevantContext(o.cfg.EffectiveMaxMemorySnippetEntries(), turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
 			block = truncateMemoryBlock(block, memoryMaxBytes)
 			sys = sys + "\n\n## Project memory (.goclaw/memory)\n" + block
 		}

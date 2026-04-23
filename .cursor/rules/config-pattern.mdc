@@ -1,0 +1,61 @@
+---
+description: Apply when adding or modifying any goclaw configuration setting — field, loader, accessor, and call site rules.
+alwaysApply: false
+globs: ["goclaw/internal/config/**", "goclaw/internal/app/chat_wiring.go"]
+---
+
+# Config key pattern
+
+## Three-file rule
+
+Every new setting touches exactly three files:
+
+1. **`config.go`** — struct field + `defaultXxx` constant + `EffectiveXxx()` method
+2. **`loader.go`** — `settingsFile` pointer field + merge guard
+3. **Call site** — use `cfg.EffectiveXxx()`, never the raw field
+
+## config.go template
+
+```go
+// In Config struct:
+FooBar int  // JSON: foo_bar
+
+const defaultFooBar = 42
+
+func (c Config) EffectiveFooBar() int {
+    if c.FooBar > 0 {
+        return c.FooBar
+    }
+    return defaultFooBar
+}
+```
+
+## loader.go template
+
+```go
+// In settingsFile:
+FooBar *int `json:"foo_bar,omitempty"`
+
+// In applySettingsFile():
+if sf.FooBar != nil && *sf.FooBar > 0 {
+    cfg.FooBar = *sf.FooBar
+}
+```
+
+## Rules
+
+- Pointer in `settingsFile` — missing key stays nil, no silent zero override.
+- `EffectiveXxx` maps zero → default; never returns 0 for a setting with a real default.
+- Hard upper bounds go inside `EffectiveXxx` (clamp, do not reject).
+- Defaults live only in `EffectiveXxx` — never set them in `Default()` unless there is a strong reason.
+- Env var override (when needed): read in `Default()` before settings merge, document in CLAUDE.md env table.
+
+## Anti-patterns
+
+```go
+// WRONG — reads raw field, misses default
+limit := cfg.FooBar
+
+// WRONG — default set in settings merge instead of accessor
+if sf.FooBar == nil { cfg.FooBar = 42 }
+```

@@ -1,0 +1,46 @@
+---
+description: System prompt context budget — apply when editing any code that injects text into the LLM system prompt or per-step messages.
+globs: ["goclaw/internal/orchestrator/request.go", "goclaw/internal/planfile/**/*.go", "goclaw/internal/projectcontext/**/*.go", "goclaw/internal/skills/**/*.go", "goclaw/internal/app/chat_wiring.go"]
+alwaysApply: false
+---
+
+# Context budget rules
+
+goclaw targets **qwen2.5-coder:7b** (~8K–32K effective context). Every system prompt injection has a mandatory cap.
+
+## Current caps (do not exceed without a design decision)
+
+| Source | Cap | Enforcement |
+|--------|-----|-------------|
+| Skills snippet | `cfg.EffectiveSkillsMaxRunes()` default **8 000** | `chat_wiring.go` → `skills.Collect` |
+| Each memory block | **4 096 bytes** (`memoryMaxBytes`) | `request.go` `truncateMemoryBlock` |
+| Memory entries per store | `cfg.EffectiveMaxMemorySnippetEntries()` default **4** | `request.go` `RelevantContext` |
+| Plan body (multi-step) | **30 lines** (`planBodyReferenceMaxLines`) | `planfile/step_execution.go` |
+| CLAUDE.md lines | default **60**, hard max **200** | `projectcontext/context.go` |
+| Standing orders | default **40**, hard max **120** | `projectcontext/context.go` |
+| MCP tool descriptions | **220 runes** | `mcp/adapter.go` |
+
+## Required for any new injection
+
+1. Add an explicit cap — use `text.TruncateRunes`, `truncateLines`, or `truncateMemoryBlock`.
+2. Expose the cap via `cfg.EffectiveXxx()` if users should be able to tune it.
+3. Append a truncation note: `"\n…(truncated after N — full content at <path>)"`.
+4. Never inject raw file content, full plan bodies, or unlimited lists.
+
+## Priority when total is too large (high → low)
+
+Static system prompt → profile overrides → project context → skills → user memory → project memory → todo list → hints
+
+## Anti-patterns
+
+```go
+// WRONG — uncapped injection
+sys += "\n## Context\n" + rawFileContent
+
+// WRONG — hard-coded limit at call site
+skills.Collect(roots, 24000)
+
+// CORRECT
+block = truncateMemoryBlock(block, memoryMaxBytes)
+sys += "\n\n## Memory\n" + block
+```

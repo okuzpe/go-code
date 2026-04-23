@@ -46,6 +46,7 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/sessions", "List saved session ids on disk", "session"},
 	{"/theme", "Set TUI appearance preset in settings", "session"},
 	{"/tools", "Show tool call history (plain text when wired); TUI: prefer Ctrl+T; /tools N shows full output of step N", "session"},
+	{"/undo", "Revert the last successful write_file, edit_file, or patch in this session", "build"},
 	{"/workers", "List coordinator workers and task ids", "workers"},
 }
 

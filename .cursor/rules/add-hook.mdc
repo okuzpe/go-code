@@ -1,0 +1,43 @@
+---
+description: Hook registration and event handling rules — apply when editing hooks, tool execution, or lifecycle event handlers.
+globs: ["goclaw/internal/hooks/**/*.go", "goclaw/internal/orchestrator/tool_exec.go", "goclaw/internal/app/chat_wiring.go"]
+alwaysApply: false
+---
+
+# Hook rules
+
+## Event types
+
+```go
+hooks.PreToolUse         // before tool runs — may block by returning error
+hooks.PostToolUse        // after success — best-effort, non-fatal
+hooks.PostToolUseFailure // after tool error — best-effort, non-fatal
+hooks.SessionStart
+hooks.SessionEnd
+```
+
+## Error behavior
+
+| Hook | Non-nil return |
+|------|----------------|
+| `PreToolUse` | Blocks the tool; orchestrator surfaces as `is_error` result |
+| `PostToolUse` / `PostToolUseFailure` | Logged with `slog.WarnContext`; loop continues |
+| `SessionStart` / `SessionEnd` | Logged; session continues |
+
+## Register in `chat_wiring.go`, not `main.go`
+
+```go
+hookReg := hooks.New()
+hookReg.On(hooks.PreToolUse, myHandler)
+```
+
+## PostToolUseFailure — two failure kinds
+
+- `hooks.FailureExecuteError` — `Tool.Execute` returned a non-nil Go error.
+- `hooks.FailureErrorResult` — Execute succeeded but `Result.IsError == true`.
+
+Both are propagated as JSON field `failure_kind` in subprocess/HTTP hooks (`hooks/wire.go`).
+
+## Do not block in PostToolUse
+
+PostToolUse handlers must be fast and non-blocking. Side effects (logging, metrics, memory writes) are fine; HTTP calls or disk I/O that could fail should be done asynchronously or skipped if the context is cancelled.

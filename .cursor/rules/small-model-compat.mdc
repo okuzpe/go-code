@@ -1,0 +1,44 @@
+---
+description: Apply when writing or reviewing orchestrator, prompt injection, plan, or tool code — rules for compatibility with qwen2.5-coder:7b (goclaw default model).
+alwaysApply: false
+globs: ["goclaw/internal/orchestrator/**", "goclaw/internal/planfile/**", "goclaw/internal/projectcontext/**", "goclaw/internal/app/chat_wiring.go", "goclaw/internal/skills/**"]
+---
+
+# Small local model compatibility
+
+goclaw targets **qwen2.5-coder:7b** (7B, ~8K–32K effective context). Every prompt addition must be constrained.
+
+## Context injection limits (do not exceed)
+
+| Source | Limit | Config key |
+|--------|-------|------------|
+| Skills snippet | `EffectiveSkillsMaxRunes()` default 8 000 | `skills_max_runes` |
+| Memory entries per store | `EffectiveMaxMemorySnippetEntries()` default 4 | `max_memory_snippet_entries` |
+| Each memory block | 4 096 bytes | — |
+| Plan body in multi-step | 30 lines | — |
+| MCP tools in prompt | 0 (hidden by default) | — |
+
+## Required
+
+- **Every new injection** must have a size cap with a truncation note on cut.
+- **Caps must use `EffectiveXxx()`** methods — never hard-code a number at the call site.
+- **MCP tools** register via `reg.AddHidden`, not `reg.Register`.
+- **Multi-step plans**: use `StepExecutionUserMessages`; do not re-inject the full plan body.
+- **Tool list size**: keep visible tools ≤ ~15 per turn; rely on `tool_search` for the rest.
+
+## Forbidden
+
+```go
+// WRONG — uncapped file content in system prompt
+sys += "\n## File\n" + entireFileContent
+
+// WRONG — all MCP tools always visible
+reg.Register(mcpAdapter) // use reg.AddHidden instead
+
+// WRONG — hard-coded limit at call site
+skills.Collect(roots, 24000)  // use cfg.EffectiveSkillsMaxRunes()
+```
+
+## Qwen-specific note
+
+`qwenFamily()` check in `request.go` appends a numbered-steps suffix. Keep model-specific hacks in `request.go` only — not in tools or plan files.

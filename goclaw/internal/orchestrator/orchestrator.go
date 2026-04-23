@@ -193,6 +193,9 @@ type Orchestrator struct {
 	// scratchDir is an absolute session scratch directory (ephemeral notes); empty when disabled.
 	scratchDir string
 
+	checkpointMu sync.Mutex
+	checkpoints  []checkpointEntry
+
 	// cachedEnvSystem / cachedEnvSystemKey memoize the stable workspace+skills portion of buildRequest.
 	cachedEnvSystemKey string
 	cachedEnvSystem    string
@@ -347,6 +350,7 @@ func (o *Orchestrator) ReplaceSession(s *session.Session) {
 		return
 	}
 	o.session = s
+	o.clearCheckpoints()
 	if o.todoStore != nil {
 		o.todoStore.Clear()
 	}

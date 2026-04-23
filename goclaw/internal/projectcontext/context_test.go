@@ -2,6 +2,7 @@ package projectcontext
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -116,4 +117,81 @@ func TestBuild_thinOnlyClaudeYieldsHintNotConventions(t *testing.T) {
 	thin := Build(dir, cfg, false)
 	require.NotContains(t, thin, "ONLY_CLAUDE")
 	require.Contains(t, thin, "project_workspace_hint")
+}
+
+func TestBuild_includesProjectDocsSummary(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	docsDir := filepath.Join(dir, "docs")
+	require.NoError(t, os.MkdirAll(docsDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "docs-map.md"), []byte("# Docs Map\nintro\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(docsDir, "architecture.md"), []byte("# Architecture\nflow\n"), 0o600))
+
+	cfg := config.Default()
+	got := Build(dir, cfg, false)
+	require.Contains(t, got, "docs/docs-map.md")
+	require.Contains(t, got, "Docs Map")
+	require.Contains(t, got, "docs/architecture.md")
+	require.Contains(t, got, "Architecture")
+	require.NotContains(t, got, "project_workspace_hint")
+}
+
+func TestBuild_includesWorkspaceLayout(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cmd"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "internal"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/layout\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cmd", "main.go"), []byte("package main\n"), 0o600))
+
+	cfg := config.Default()
+	got := Build(dir, cfg, false)
+	require.Contains(t, got, "workspace_layout:")
+	require.Contains(t, got, "cmd/")
+	require.Contains(t, got, "internal/")
+}
+
+func TestBuild_includesGitWorkspaceSummary(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@example.com")
+	runGit(t, dir, "config", "user.name", "Test User")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "tracked.txt"), []byte("hello\n"), 0o600))
+	runGit(t, dir, "add", "tracked.txt")
+	runGit(t, dir, "commit", "-m", "init")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "tracked.txt"), []byte("changed\n"), 0o600))
+
+	cfg := config.Default()
+	got := Build(dir, cfg, false)
+	require.Contains(t, got, "git_workspace:")
+	require.Contains(t, got, "dirty files: 1")
+}
+
+func TestBuild_includesGoRepoMap(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cmd", "demo"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "internal", "app"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/repomap\n\ngo 1.22\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cmd", "demo", "main.go"), []byte("package main\n\nfunc main() {}\nfunc run() {}\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "internal", "app", "run.go"), []byte("package app\n\ntype Runner struct{}\n\nfunc Run() {}\nfunc (Runner) Start() {}\n"), 0o600))
+
+	cfg := config.Default()
+	got := Build(dir, cfg, false)
+	require.Contains(t, got, "repo_map:")
+	require.Contains(t, got, "cmd/demo/main.go [main]")
+	require.Contains(t, got, "func main")
+	require.Contains(t, got, "internal/app/run.go [app]")
+	require.Contains(t, got, "type Runner")
+	require.Contains(t, got, "func Run")
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(out))
 }

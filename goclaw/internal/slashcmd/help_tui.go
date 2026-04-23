@@ -53,6 +53,7 @@ func TUIHelpShortcutsMarkdown(st icons.Set) string {
 	b.WriteString("- **Ctrl+M** — cycle UI interact mode (**chat** → **code** → **agent**); footer shows `ui:<mode>`. Optional default: **tui_interact_mode** in settings or **GOCLAW_TUI_INTERACT_MODE**. Some terminals send Ctrl+M as carriage return — if nothing changes, check the terminal profile.\n")
 	b.WriteString("- **Ctrl+E** — open the session tool log (same as **Ctrl+T**)\n")
 	b.WriteString("- **/clear** — clear the transcript (same idea as Ctrl+L)\n")
+	b.WriteString("- **/undo** — revert the last successful write_file, edit_file, or patch from this session\n")
 	b.WriteString("- **/edit** — compose a multiline message in $EDITOR\n")
 	b.WriteString("- **/copy** — copy plain session text to the system clipboard\n")
 	b.WriteString("- **/export path.txt** — save plain session text to a file\n\n")
