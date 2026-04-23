@@ -6,24 +6,24 @@ alwaysApply: false
 
 # goclaw — Bubble Tea · Bubbles · Lip Gloss
 
-## Capas (no mezclar responsabilidades)
+## Layer split (do not mix responsibilities)
 
-| Capa           | Rol                                                                                                                                                         | Ejemplos en el repo                                                                        |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| **Bubble Tea** | Ciclo de vida del programa: `Init` / `Update` / `View`, mensajes, `tea.Program`, tamaño de ventana, salida. **Motor único** del TUI fullscreen.             | `internal/ui/chat/chat.go`, `internal/app/onboarding_tui.go`, `internal/app/doctor_tui.go` |
-| **Bubbles**    | Controles reutilizables: `viewport`, `textarea`, `list`, `spinner`, `textinput`, etc. Reciben `tea.Msg` y exponen estado; **no** sustituyen al modelo raíz. | Chat compose + transcript viewport; onboarding viewport                                    |
-| **Lip Gloss**  | Cadenas ya renderizadas: colores, bordes, padding, alineación, anchos. Componer el **árbol visual** en `View()` del modelo (o helpers dedicados).           | `Theme`, banners, bordes de paneles                                                        |
+| Layer | Role | Examples in repo |
+|-------|------|-----------------|
+| **Bubble Tea** | Program lifecycle: `Init` / `Update` / `View`, messages, `tea.Program`, window size, quit. **Only engine** for fullscreen TUI. | `internal/ui/chat/chat.go` |
+| **Bubbles** | Reusable widgets: `viewport`, `textarea`, `list`, `spinner`, `textinput`, etc. Receive `tea.Msg` and expose state; do **not** replace the root model. | Chat compose + transcript viewport |
+| **Lip Gloss** | Pre-rendered strings: colors, borders, padding, alignment, widths. Assemble the **visual tree** in `View()` (or dedicated render helpers). | `Theme`, banners, panel borders |
 
-## Reglas prácticas
+## Rules
 
-1. **Un `tea.Model` (o puntero a él) por pantalla** — Los hijos Bubbles viven como campos; en `Update` reenvías `tea.Msg` y fusionas `tea.Cmd` devueltos.
-2. **Receivers en puntero** cuando el modelo o un Bubbles muta entre ticks (p. ej. `viewport.Model`, listas con cursor).
-3. **Bubble Tea v2** — Patrón de vista: `tea.NewView` + `AltScreen` en la vista cuando haga falta fullscreen; no asumir opciones obsoletas de v1.
-4. **Estilo fuera de la lógica de negocio** — `Update` decide datos y foco; `View` (y funciones `render*` con Lip Gloss) ensamblan cadenas. Evita ANSI manual salvo utilidades (`x/ansi`) alineadas con el resto del stack.
-5. **Tema y Markdown en terminal** — Paleta y Glamour siguen la regla **`terminal-rendering.mdc`** (`ui_appearance`, `GlamourTermRendererOptions`, etc.).
+1. **One `tea.Model` (or pointer to it) per screen** — Bubbles children live as fields; in `Update` forward `tea.Msg` and merge returned `tea.Cmd`.
+2. **Pointer receivers** when the model or a Bubbles widget mutates between ticks (e.g. `viewport.Model`, lists with cursor).
+3. **Bubble Tea v2** — Use `tea.NewView` + `AltScreen` when fullscreen is required; do not assume v1 options.
+4. **Style outside business logic** — `Update` decides data and focus; `View` (and `render*` helpers using Lip Gloss) assembles strings. Avoid manual ANSI sequences except utilities (`x/ansi`) aligned with the rest of the stack.
+5. **Theme and Markdown** — Palette and Glamour follow the `terminal-rendering.mdc` rule (`ui_appearance`, `GlamourTermRendererOptions`).
 
-## Anti‑patrones
+## Anti-patterns
 
-- Implementar un “mini viewport” o input propio cuando **Bubbles** ya cubre el caso.
-- Pintar colores con `fmt` y secuencias sueltas en código que debería ser Lip Gloss + tema.
-- Lógica de negocio pesada dentro de `View()` (solo formateo y delegación a hijos).
+- Implementing a custom mini-viewport or input widget when **Bubbles** already covers the case.
+- Painting colors with `fmt` and raw escape sequences where Lip Gloss + theme should be used.
+- Heavy business logic inside `View()` — only formatting and delegation to children belongs there.
