@@ -2,6 +2,7 @@ package cli
 
 import (
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -26,6 +27,9 @@ func TestChatSubcommandResolved(t *testing.T) {
 	}
 	if cmd.Name() != "chat" {
 		t.Fatalf("expected chat subcommand, got %q", cmd.Name())
+	}
+	if got := cmd.Long; got == "" || !containsAll(got, "general-purpose", "/profile coordinator") {
+		t.Fatalf("chat long help should mention general-purpose default and coordinator hub mode, got: %q", got)
 	}
 }
 
@@ -76,4 +80,13 @@ func TestPromptSubcommandResolved(t *testing.T) {
 	if cmd.Name() != "prompt" {
 		t.Fatalf("expected prompt subcommand, got %q", cmd.Name())
 	}
+}
+
+func containsAll(s string, parts ...string) bool {
+	for _, p := range parts {
+		if !strings.Contains(s, p) {
+			return false
+		}
+	}
+	return true
 }

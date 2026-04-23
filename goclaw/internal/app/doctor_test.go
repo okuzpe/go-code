@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/mcp"
 	"github.com/okuzpe/goclaw/internal/memory"
@@ -172,4 +173,11 @@ func TestMcpSummaryEligibleURLServers(t *testing.T) {
 	lines := mcpSummaryLines(rt)
 	text := strings.Join(lines, "\n")
 	require.Contains(t, text, "mcp servers configured (eligible): 1")
+}
+
+func TestProfileHintLinesSpawnAgentProfileUsesCoordinatorExample(t *testing.T) {
+	lines := profileHintLines(agents.All()["coordinator"])
+	text := strings.Join(lines, "\n")
+	require.Contains(t, text, "profile coordinator")
+	require.NotContains(t, text, "profile general-purpose or stack-coder")
 }

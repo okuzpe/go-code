@@ -56,9 +56,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.refreshToolRunningTranscriptRows()
-		if m.agentState == AgentStateExecuting && len(m.toolWaitQueue) > 0 {
-			m.statusLine = m.toolQueueStatusLine()
-		}
 		return m, animTickCmd()
 	case spinner.TickMsg:
 		if !m.spinnerActive {
@@ -189,7 +186,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.assistantPlaceholder = true
 		m.agentState = AgentStateThinking
 		m.lastAgentError = ""
-		m.statusLine = ""
 		m.lastThinkingPhase = ""
 		m.curAssistant.Reset()
 		m.curAssistantLineIdx = -1
@@ -217,7 +213,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.clearThinkingLine()
 			m.stripAssistantPlaceholderLine()
 			m.assistantPlaceholder = false
-			m.statusLine = ""
 		}
 		m.agentState = AgentStateWriting
 		m.curAssistant.WriteString(string(msg))
@@ -238,7 +233,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinnerActive = false
 		m.agentState = AgentStateDone
 		m.lastAgentError = ""
-		m.statusLine = ""
 		m.lastThinkingPhase = ""
 		m.clearThinkingLine()
 		rawAssistant := m.curAssistant.String()
@@ -300,7 +294,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appendToolRunningTranscriptRow(msg.name, msg.preview)
 		m.spinnerActive = true
 		m.agentState = AgentStateExecuting
-		m.statusLine = m.toolQueueStatusLine()
 		return m, tickToolWait()
 	case toolTickMsg:
 		if len(m.toolWaitQueue) == 0 {
@@ -308,7 +301,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.refreshToolRunningTranscriptRows()
-		m.statusLine = m.toolQueueStatusLine()
 		return m, tickToolWait()
 	case ctrlCExitArmExpiredMsg:
 		if m.exitConfirmDeadline != msg.expected || m.exitConfirmDeadline.IsZero() {
@@ -339,10 +331,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if len(m.toolWaitQueue) > 0 {
 			m.toolWaitStartedAt = time.Now()
-			m.statusLine = m.toolQueueStatusLine()
 		} else {
 			m.toolWaitStartedAt = time.Time{}
-			m.statusLine = ""
 		}
 		if !msg.isError {
 			switch msg.name {
@@ -421,7 +411,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinnerActive = false
 		m.agentState = AgentStateError
 		m.lastAgentError = msg.err.Error()
-		m.statusLine = ""
 		m.clearThinkingLine()
 		m.turnHadWorkspaceWrite = false
 		m.toolRunLineIdx = nil

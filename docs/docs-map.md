@@ -13,9 +13,9 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | Area | Status |
 |------|--------|
 | Entry point | [`cmd/goclaw`](../goclaw/cmd/goclaw/main.go) → [`internal/cli`](../goclaw/internal/cli/root.go) (Cobra) → [`internal/app`](../goclaw/internal/app/run.go). **UI:** Bubble Tea TUI on TTY by default — flags and env in [`usage.md`](./goclaw/usage.md). Slash commands: [`internal/slashcmd`](../goclaw/internal/slashcmd/slash.go). |
-| Packages | `internal/llm`, `orchestrator`, `session`, `tools`, `permissions`, `config`, `hooks`, `agents`, `memory`, `planfile`, `todos`, `mcp`, `ide`, `telegram` (optional Bot API bridge), `plugin`, `skills`, `swarm`, `ui/chat` (BubbleTea TUI) |
+| Packages | `internal/llm`, `orchestrator`, `session`, `tools`, `permissions`, `config`, `hooks`, `agents`, `memory`, `planfile`, `todos`, `mcp`, `ide`, `telegram` (optional Bot API bridge), `plugin`, `skills`, `ui/chat` (BubbleTea TUI) |
 | Tools | Ten built-ins: `read_file`, `glob`, `grep`, `bash`, `write_file`, `edit_file`, `patch`, `web_fetch`, `web_search`, `todo_write`; optional `script` when `allow_script`; coordinator-only `spawn_agent`, `stop_task`; MCP tools as `mcp__<id>__<name>` |
-| Plan workflow | Workspace `.goclaw/plan.md` ([`internal/planfile`](../goclaw/internal/planfile/planfile.go)); `/plan run` (save + execute) or `/apply-plan` switches to **`general-purpose`** for **one** execution turn (or **`coordinator`** with `--hub` / `plan_apply_use_coordinator`). Default **session** profile is **`coordinator`** ([`config.Default()`](../goclaw/internal/config/config.go)) |
+| Plan workflow | Workspace `.goclaw/plan.md` ([`internal/planfile`](../goclaw/internal/planfile/planfile.go)); `/plan run` (save + execute) or `/apply-plan` switches to **`general-purpose`** for **one** execution turn (or **`coordinator`** with `--hub` / `plan_apply_use_coordinator`). Default **session** profile is **`general-purpose`** ([`config.Default()`](../goclaw/internal/config/config.go)) |
 | Memory | `~/.goclaw/memory/` + `MEMORY.md` index; REPL `/memory list|add|delete`; opt-in auto-capture after `write_file`/`edit_file` (`memory_auto_extract`) |
 | Compaction | Token-estimate heuristic (char/4), 0.85 threshold, 24-turn tail preserved; optional **`compaction_model`** + **`llm_compaction`** for LLM summaries ([`internal/orchestrator/compaction.go`](../goclaw/internal/orchestrator/compaction.go)) |
 | Hooks | Same five events; Go `hooks.Registry`, **`external_hooks`** (subprocess stdin JSON or HTTP POST in settings), and project **`.goclaw/hooks.json`** when `trusted_workspace` is true ([`internal/hooks`](../goclaw/internal/hooks)) |
@@ -23,7 +23,7 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | IDE | **Partial** — lockfile MCP + best-effort POST to `GOCLAW_IDE_NOTIFY_URL` (localhost-only); extension contract §7 [ide-bridge.md](./reference/ide-bridge.md) |
 | Retries | `internal/llm/retry.go` — 10 attempts, 500 ms→5 min exp backoff, 429/503/504 (D22) |
 | Profiles | 8 built-in in `internal/agents/profile.go` (includes `coordinator`, `code-review`) |
-| V3 slice (partial vs full product docs) | Local plugins ([`internal/plugin`](../goclaw/internal/plugin)), SKILL.md runtime ([`internal/skills`](../goclaw/internal/skills)), swarm disk hub ([`internal/swarm`](../goclaw/internal/swarm)); **not** MCP OAuth/WS, remote marketplace, or full IDE UI |
+| V3 slice (partial vs full product docs) | Local plugins ([`internal/plugin`](../goclaw/internal/plugin)), SKILL.md runtime ([`internal/skills`](../goclaw/internal/skills)); **not** MCP OAuth/WS, remote marketplace, full IDE UI, or a shipped Team/Swarm implementation in this checkout |
 
 ---
 
@@ -55,7 +55,7 @@ Single entry point for humans and AI agents: which file covers which topic, who 
 | [`docs/goclaw/roadmap.md`](./goclaw/roadmap.md) | Product checklist, CI notes | Maintainer | Shipped |
 | [`docs/goclaw/security.md`](./goclaw/security.md) | Security notes (sync to onboarding embed) | Contributor | Shipped |
 | [`docs/goclaw/coordinator.md`](./goclaw/coordinator.md) | D16 coordinator, `WorkerNotification` wire format | Contributor | Shipped |
-| [`docs/goclaw/swarm.md`](./goclaw/swarm.md) | Disk mailbox hub vs coordinator | Contributor | Shipped |
+| [`docs/goclaw/swarm.md`](./goclaw/swarm.md) | Reference notes: swarm-style peer topology vs coordinator | Contributor | Reference only |
 | [`docs/goclaw/mcp-remote.md`](./goclaw/mcp-remote.md) | MCP bearer file, threats, future OAuth/WS | Contributor | Shipped + notes |
 | [`docs/goclaw/ollama-stack.md`](./goclaw/ollama-stack.md) | Local Ollama stack, `compaction_model`, templates | End-user | Shipped |
 | [`docs/goclaw/model-routing.md`](./goclaw/model-routing.md) | `task_models`, routers | End-user | Shipped |

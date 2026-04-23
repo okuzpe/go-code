@@ -6,7 +6,7 @@ Depth linked to [CLAUDE.md](../../goclaw/CLAUDE.md) (D16 coordinator). Conceptua
 
 **Key message:** the analyzed product has **two distinct multi-agent systems**, not one system with two names. Conflating them in your own design produces incoherent permissions (e.g. a "coordinator" that can still `Write`).
 
-**goclaw (shipped):** multi-agent delegation is the **hub-and-spoke coordinator** — `--profile coordinator`, tools **`spawn_agent`** and **`stop_task`**, worker profiles by name (built-in or custom). It does **not** expose the reference product’s **Agent** tool or `team_name` peer mesh. See [`docs/goclaw/coordinator.md`](../goclaw/coordinator.md) and D16 in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md). For disk mailboxes vs workers, see [`docs/goclaw/swarm.md`](../goclaw/swarm.md).
+**goclaw (shipped):** multi-agent delegation is the **hub-and-spoke coordinator** — `--profile coordinator`, tools **`spawn_agent`** and **`stop_task`**, worker profiles by name (built-in or custom). It does **not** expose the reference product’s **Agent** tool or `team_name` peer mesh. See [`docs/goclaw/coordinator.md`](../goclaw/coordinator.md) and D16 in [`goclaw/CLAUDE.md`](../../goclaw/CLAUDE.md). [`docs/goclaw/swarm.md`](../goclaw/swarm.md) is reference-only in this checkout.
 
 ---
 
@@ -153,7 +153,7 @@ Injected into the peer's context as XML, e.g. `<teammate-message teammate_id="..
 | Role tool profile | [agent-profiles.md](./agent-profiles.md): **Coordinator** = explicit allowlist; **Worker** = General-Purpose or specialized |
 | Isolated workers | Child process **or** goroutine + `session` fork per `agent_id`; **never** share the coordinator's message slice |
 | SendMessage / TaskStop | `internal/tools` + `orchestrator` routing to registry of live workers |
-| Team/Swarm mailboxes | `internal/swarm` or `internal/team`: `Mailbox interface { Push, Poll }` with **dir+lock** implementation first; optional Redis/DB later |
+| Team/Swarm mailboxes | Future/reference mapping only: `internal/swarm` or `internal/team`: `Mailbox interface { Push, Poll }` with **dir+lock** implementation first; optional Redis/DB later |
 | tmux/iTerm2 | **No parity** with the reference product's tmux/iTerm; on Windows prioritize **headless** + logs |
 | 1 s polling | `time.Ticker` or events with `fsnotify` where it makes sense |
 
@@ -169,7 +169,7 @@ Injected into the peer's context as XML, e.g. `<teammate-message teammate_id="..
 | Coordinator introduced | Allowlist + isolated workers (no required tmux) |
 | Team/Swarm | Peer mailboxes, shared tasks, optional UI |
 
-**goclaw today:** **D16 hub-and-spoke** (`spawn_agent` / `stop_task`, `coordinator` profile) is **implemented** — see [coordinator.md](../goclaw/coordinator.md). **Team/Swarm** peer-style remains **reference design**; the disk hub [`internal/swarm`](../../goclaw/internal/swarm) is experimental and separate from the coordinator.
+**goclaw today:** **D16 hub-and-spoke** (`spawn_agent` / `stop_task`, `coordinator` profile) is **implemented** — see [coordinator.md](../goclaw/coordinator.md). **Team/Swarm** peer-style remains **reference design** in this checkout; there is no shipped `internal/swarm` package here.
 
 ---
 

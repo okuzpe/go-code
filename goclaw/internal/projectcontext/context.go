@@ -20,9 +20,9 @@ import (
 // Build reads key project files from workdir and returns a compact summary for injection
 // into the system prompt. When includeProjectConventions is false, CLAUDE.md and standing
 // orders are omitted (explore/plan sessions and workers).
-// Returns "" when nothing useful is found, except thin mode may return a one-line hint
-// when the workspace has no manifest or README so explore/plan never fall back to full
-// convention text.
+// Returns an empty string when nothing useful is found. In thin mode,
+// returns a single line hint if the workspace lacks a manifest or README,
+// preventing exploration or planning sessions from defaulting to complete convention text.
 func Build(workdir string, cfg config.Config, includeProjectConventions bool) string {
 	var parts []string
 

@@ -342,7 +342,7 @@ func profileHintLines(p agents.Profile) []string {
 	}
 	if p.AllowsSpawnAgentDelegation() {
 		out = append(out,
-			"  Hub-style profile: delegate coding with spawn_agent (e.g. profile general-purpose or stack-coder).",
+			"  Hub-style profile: delegate coding with spawn_agent (e.g. profile coordinator or a custom hub profile).",
 			"  Put file paths and acceptance criteria in the task field — workers do not see this chat.",
 			"  For direct edits in this same session: /profile general-purpose — or set \"agent_profile\": \"general-purpose\" in .goclaw/settings.json",
 		)

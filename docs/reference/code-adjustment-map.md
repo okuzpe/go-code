@@ -53,7 +53,6 @@ flowchart LR
     COORD[internal/coordinator]
     PLUGIN[internal/plugin]
     SKILLS[internal/skills]
-    SWARM[internal/swarm]
   end
   CMD --> CLI --> APP
   APP --> ORCH
@@ -231,11 +230,11 @@ flowchart LR
 
 ---
 
-### 16. Swarm, plugins, skills
+### 16. Plugins, skills, and swarm references
 
 | Primary doc | Secondary | Code |
 |-------------|-----------|------|
-| `CLAUDE.md` + [`docs-map.md`](../docs-map.md) (coverage column) | [`swarm.md`](../goclaw/swarm.md), [`plugins.md`](./plugins.md), [`skills.md`](./skills.md) | `internal/swarm`, `internal/plugin`, `internal/skills` |
+| `CLAUDE.md` + [`docs-map.md`](../docs-map.md) (coverage column) | [`swarm.md`](../goclaw/swarm.md), [`plugins.md`](./plugins.md), [`skills.md`](./skills.md) | `internal/plugin`, `internal/skills` (`swarm.md` is reference-only in this checkout) |
 
 **Adjustment:** If shipped behavior changes, update the **Coverage** column for those rows in [`docs-map.md`](../docs-map.md).
 

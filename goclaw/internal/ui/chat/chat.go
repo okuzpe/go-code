@@ -28,10 +28,9 @@ type Model struct {
 	width  int
 	height int
 
-	lines      []string
-	lineMeta   []lineMeta // parallel to lines; used to reflow width-sensitive rows on resize
-	streaming  bool
-	statusLine string
+	lines     []string
+	lineMeta  []lineMeta // parallel to lines; used to reflow width-sensitive rows on resize
+	streaming bool
 	// footerHint is a one-line reminder under the session footer (e.g. after /plan save); cleared on next send.
 	footerHint string
 	// idleTranscriptHint reminds how to scroll long replies (PgUp, Alt+arrows, optional wheel); cleared on next send.

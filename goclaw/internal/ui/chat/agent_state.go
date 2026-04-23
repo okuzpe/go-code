@@ -93,9 +93,8 @@ func RenderAgentStatus(th *Theme, state AgentState, spinnerView string,
 		if iterPart != "" {
 			iterLabel = " " + th.FooterDim.Render("["+iterPart+"]")
 		}
-		stateTag := th.FooterDim.Render("thinking")
 		label := th.StatusBarLabel.Render(labelPart) + th.FooterDim.Render(elapsed)
-		return spinnerView + iterLabel + " " + stateTag + "  " + label
+		return spinnerView + iterLabel + " " + label
 
 	case AgentStateExecuting:
 		tool := strings.TrimSpace(toolLabel)

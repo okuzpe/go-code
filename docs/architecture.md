@@ -54,8 +54,8 @@ flowchart TB
     IP["internal/inputprefix — @-mentions, paste analysis"]
   end
 
-  subgraph aux["Auxiliary / not on main chat path"]
-    SW["internal/swarm — disk mailboxes (see docs/goclaw/swarm.md)"]
+  subgraph aux["Auxiliary / reference docs"]
+    SW["docs/goclaw/swarm.md — reference-only peer-topology notes"]
   end
 
   CMD --> CLI --> APP
@@ -96,11 +96,8 @@ flowchart TD
   ONB --> PCR
   PCR --> JSON{automationUsesJSON?}
   JSON -->|yes| JOUT[RunChatJSONOutput — one stdin line, JSON out]
-  JSON -->|no| TUI{useTUI?}
-  TUI -->|yes| FS[fullscreen.RunFullscreenChat — TUI]
-  TUI -->|no| REPL[runReadlineREPL]
+  JSON -->|no| FS[FullscreenChat.RunFullscreenChat — TUI]
   FS --> SAVE[Store.Save session]
-  REPL --> SAVE
 ```
 
 - **Onboarding** runs once when appropriate (TTY, non-mock, fresh config); see `internal/app/onboarding.go`.
@@ -197,9 +194,9 @@ flowchart TB
 ```
 
 - **`stop_task`** uses the worker **task id** to cancel a long-running worker (`coordinator.NewStopTask()`).
-- **Readline** can show a **focused worker** in the prompt via `coordinator.FocusRouter` (`repl_prompt`).
+- The fullscreen TUI can route input to an interactive worker via `coordinator.FocusRouter` (`/focus`, `/detach`, footer hint).
 
-**Swarm** (`internal/swarm`) is a **separate** minimal disk “mailbox” hub for multi-agent experiments; it is **not** the same code path as `spawn_agent`. See **[goclaw/swarm.md](./goclaw/swarm.md)**.
+**Swarm** is **not implemented in this checkout** as a Go package. The doc **[goclaw/swarm.md](./goclaw/swarm.md)** is kept as reference-only design context so it is not confused with shipped `spawn_agent` coordinator work.
 
 ---
 

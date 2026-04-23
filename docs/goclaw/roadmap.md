@@ -11,7 +11,7 @@ Each tier must be stable before starting the next.
 
 **Where this file lives:** Product checklist **[roadmap.md](roadmap.md)** under **`docs/goclaw/`**. Project entry: **[`README.md`](../../goclaw/README.md)**; master index: **[`docs-map.md`](../docs-map.md)**. It does not duplicate **`docs/reference/`** specs.
 
-**Shipped scope:** **Tiers 0–8** are the **functional checklist for the current CLI** — every item is `[x]` **implemented** in this repo. Anything **not** shipped is either listed explicitly under **[Future transport and scale](#future-transport-and-scale)** or **[Future — UI localization](#future--ui-localization)** (unchecked), or described as **Partial** in [`docs-map.md`](../docs-map.md) (full IDE MCP parity, MCP OAuth/WebSocket, remote plugin marketplace, Team/Swarm peer topology as distinct from shipped hub `coordinator`).
+**Shipped scope:** **Tiers 0–8** are the **functional checklist for the current CLI**. Items marked `[x]` are implemented in this repo; reference-only topics remain explicitly called out as such. Anything **not** shipped is either listed under **[Future transport and scale](#future-transport-and-scale)** or **[Future — UI localization](#future--ui-localization)** (unchecked), or described as **Partial** in [`docs-map.md`](../docs-map.md) (full IDE MCP parity, MCP OAuth/WebSocket, remote plugin marketplace, Team/Swarm peer topology as distinct from shipped hub `coordinator`).
 
 ---
 
@@ -258,15 +258,15 @@ These themes are **not** required for the checklist above; pick one when priorit
 
 ---
 
-## Tier 8 — Plugins, skills, swarm, and MCP/IDE extras (shipped)
+## Tier 8 — Plugins, skills, and MCP/IDE extras (shipped)
 
-Implemented slice: local plugins, runtime skills, disk swarm hub, MCP bearer file, IDE lockfile path — **without** full enterprise parity (no MCP OAuth/WebSocket in this tier).
+Implemented slice: local plugins, runtime skills, MCP bearer file, IDE lockfile path — **without** full enterprise parity (no MCP OAuth/WebSocket in this tier). Swarm remains reference-only documentation in this checkout.
 
 - [x] **MCP remote token file** — `mcp_servers[].bearer_token_file` merged into HTTP `Authorization` when headers omit it ([`internal/app/chat_wiring.go`](../../goclaw/internal/app/chat_wiring.go)); notes in [`mcp-remote.md`](./mcp-remote.md)
 - [x] **Local plugins** — [`internal/plugin`](../../goclaw/internal/plugin): `goclaw-plugin.json`, `plugin_dirs` / `plugin_allow` / `plugin_deny` in settings, `--plugin-dir` flag
 - [x] **Memory auto-capture (opt-in)** — `memory_auto_extract` → short project line after successful `write_file` / `edit_file` ([`internal/memory/autocapture.go`](../../goclaw/internal/memory/autocapture.go))
 - [x] **Runtime skills** — [`internal/skills`](../../goclaw/internal/skills) + orchestrator `WithSkillsSnippet` (`.goclaw/skills`, `.claude/skills`, user mirrors)
-- [x] **Swarm disk hub** — [`internal/swarm`](../../goclaw/internal/swarm) + [`swarm.md`](./swarm.md) (vs coordinator)
+- [x] **Swarm documentation note** — [`swarm.md`](./swarm.md) kept as reference context vs coordinator; no shipped `internal/swarm` package in this checkout
 - [x] **IDE extension contract** — [ide-bridge.md](../reference/ide-bridge.md) §7
 - [x] **Docs sync** — [`CLAUDE.md`](../../goclaw/CLAUDE.md), [`docs-map.md`](../docs-map.md), this tier
 

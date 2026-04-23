@@ -134,7 +134,7 @@ func resolveSessionForResume(store *session.Store, raw string) (*session.Session
 		return nil, fmt.Errorf("no saved session matches %q (use /sessions for ids)", raw)
 	}
 	if len(matches) > 1 {
-		return nil, fmt.Errorf("ambiguous session prefix %q â€” use full id from /sessions", raw)
+		return nil, fmt.Errorf("ambiguous session prefix %q - use full id from /sessions", raw)
 	}
 	return store.Load(matches[0])
 }

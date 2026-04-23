@@ -166,7 +166,7 @@ func newChatCmd(runChat RunChatFunc) *cobra.Command {
 		Use:   "chat",
 		Short: "Start interactive chat (fullscreen Bubble Tea TUI on a TTY)",
 		Long: `Opens the coding-agent chat: streaming assistant, tool loop, slash commands, and session persistence.
-Default agent profile is coordinator (hub); use spawn_agent in-session or switch profile with /profile.
+Default agent profile is general-purpose (direct tools in-session). Use /profile coordinator for hub mode with spawn_agent workers.
 
 On an interactive terminal the UI is fullscreen Bubble Tea (Bubbles textarea + transcript). GOCLAW_USE_TUI=0 on a TTY is unsupported — use a real terminal or --output-format json for pipes.
 Use --mock to stream a canned reply without calling the model (UI / wiring check).

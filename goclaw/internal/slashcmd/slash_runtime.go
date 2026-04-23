@@ -34,7 +34,7 @@ func handleSlashModel(env SlashEnv, orch *orchestrator.Orchestrator, fields []st
 
 func handleSlashTools(env SlashEnv, fields []string) (handled bool, out string, quit bool, modelSubmit string, err error) {
 	if env.ToolLog == nil {
-		return true, "(tool history not available in this mode â€” use Ctrl+T in the TUI)", false, "", nil
+		return true, "(tool history not available in this mode - use Ctrl+T in the TUI)", false, "", nil
 	}
 	n := 0
 	if len(fields) >= 2 {

@@ -109,7 +109,7 @@ See the `audit` skill for the full checklist.
 | Layer | What goclaw does |
 |-------|------------------|
 | **Hub-and-spoke coordinator** | Implemented: default `agent_profile` is **`general-purpose`** (direct tools in the main session). Use **`coordinator`** for hub mode (`spawn_agent`, `stop_task`, `todo_write` on the parent — `/profile` or settings). Workers use `general-purpose`, `explore`, `plan`, `verification`, or `code-review` (and custom worker profiles from the merged map) with isolated `session.Session`. Optional `spawn_agent` **`interactive: true`** plus REPL **`/focus`** / **`/detach`**. Worker runs stream to the parent UI via [`ContextWithStreamSink`](internal/orchestrator/sink_context.go). If multiple tools are auto-approved in one message, **`spawn_agent` is not parallelized** with other tools ([`internal/toolpolicy`](internal/toolpolicy/toolpolicy.go)) to avoid duplicate workers and GPU contention. End-user notes: [usage.md — Agent profiles](../docs/goclaw/usage.md) (`timeout_sec`, coordinator vs `general-purpose`). Code: [`internal/coordinator`](internal/coordinator/), wiring in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go). Design notes: [`coordinator.md`](../docs/goclaw/coordinator.md), product comparison [`coordinator-mode.md`](../docs/reference/coordinator-mode.md). |
-| **Team/Swarm (peer agents)** | **Minimal disk hub** — [`internal/swarm`](internal/swarm/): mailboxes under a user-chosen directory (tests + future tools). Not the same as `spawn_agent`; see [`swarm.md`](../docs/goclaw/swarm.md). |
+| **Team/Swarm (peer agents)** | Reference-only in this checkout. There is no shipped `internal/swarm` package here; treat [`swarm.md`](../docs/goclaw/swarm.md) as design context, not active CLI behavior. |
 | **External orchestration** | Optional: wrap `goclaw` with your own scheduler/event bus (analogous in spirit to claw-code + clawhip + Discord). Not a goclaw dependency. |
 
 **Deferred until there is a concrete consumer:** structured worker lifecycle events (for external routers) and OAuth / `login` flows for third-party LLM APIs. Neither is required for the Ollama-first workflow; add them when an integration needs a stable event schema or token storage.
@@ -188,7 +188,6 @@ goclaw/
 │   │   ├── config.go            ← Config{…}, Default()
 │   │   └── loader.go            ← Load: user/project settings.json + settings.local.json merge
 │   ├── coordinator/             ← D16 hub-and-spoke coordinator: `spawn_agent` tool + `WorkerNotification`
-│   ├── swarm/                   ← V3+ disk mailboxes (peer messaging), separate from coordinator
 │   ├── plugin/                  ← V3 local plugins: `goclaw-plugin.json`, optional hooks file, allow/deny
 │   ├── skills/                  ← V3 SKILL.md discovery for system prompt injection
 │   ├── hooks/                   ← Registry + external command/HTTP + LoadHooksFile
@@ -201,7 +200,7 @@ goclaw/
 └── testutil/mockopenai/         ← HTTP mock for OpenAI-style /v1/chat/completions SSE (tests without API tokens)
 ```
 
-**Topic docs (monorepo):** [`docs/goclaw/`](../docs/goclaw/) — coordinator wire format, MCP remote notes, swarm, QA checklists (listed in [README.md](README.md)).
+**Topic docs (monorepo):** [`docs/goclaw/`](../docs/goclaw/) — coordinator wire format, MCP remote notes, QA checklists, and reference-only swarm notes (listed in [README.md](README.md)).
 
 **Rule**: each package has exactly one responsibility. Do not merge packages.
 
@@ -485,7 +484,7 @@ var _ llm.Client = (*OllamaClient)(nil)
 | D12: Dedicated tools | Prefer `read_file`/`glob`/`grep` over bash equivalents. Bash = last resort. |
 | D13: Memory | Filesystem at `~/.goclaw/memory/`. 4 types: user/feedback/project/reference. Opt-in **auto-capture** (`memory_auto_extract: true`): after successful `write_file` / `edit_file` / `patch`, one-line project entry (path only), capped per session — [`internal/memory/autocapture.go`](internal/memory/autocapture.go). Opt-in **silent-turn LLM extract** (`memory_llm_silent_extract: true`): after a user turn with **no** tool calls, a background model pass may append one structured entry — [`internal/memory/extractor.go`](internal/memory/extractor.go). Custom agents may set frontmatter **`memory: user|project|local`** for an isolated store — [`internal/memory/agentmem.go`](internal/memory/agentmem.go), wired in [`internal/app/chat_wiring.go`](internal/app/chat_wiring.go) and [`internal/coordinator/spawn_agent.go`](internal/coordinator/spawn_agent.go). |
 | D15: Compaction | Threshold as configurable fraction (default 0.85). Session size uses a **heuristic token estimate** (chars÷N by provider) against `model_context_tokens` / provider defaults. |
-| D16: Multi-agent | **Done** — `internal/coordinator`: `spawn_agent` and `stop_task` tools, `Coordinator` profile (allowlist: spawn_agent, stop_task, todo_write), isolated worker sessions via `session.New()`, `WorkerNotification` JSON result, nesting prevention. **Swarm** (separate): `internal/swarm` disk hub — [`swarm.md`](../docs/goclaw/swarm.md). |
+| D16: Multi-agent | **Done** — `internal/coordinator`: `spawn_agent` and `stop_task` tools, `Coordinator` profile (allowlist: spawn_agent, stop_task, todo_write), isolated worker sessions via `session.New()`, `WorkerNotification` JSON result, nesting prevention. **Team/Swarm** remains reference-only documentation in this checkout — [`swarm.md`](../docs/goclaw/swarm.md). |
 | D17: YOLO Classifier | **Implemented** in `internal/permissions/risk.go` — rule-based risk scorer (0–100); `yolo_threshold: -1` default (off); auto-approves reads at threshold 0. |
 | D18: Hooks | PreToolUse can block. PostToolUse is best-effort (non-fatal). |
 | D19: Custom agents | **Implemented** — Markdown + YAML frontmatter in `~/.goclaw/agents/*.md` and `.goclaw/agents/*.md`; fields: `name`, `model`, `tool_allowlist`, `read_only`, `system_prompt`; body appended to system prompt; hot-reload on `/profile`; project overrides user overrides built-in. See [`internal/agents/profile.go`](internal/agents/profile.go). |
@@ -551,7 +550,7 @@ No TTY required — use before a release or when CI cannot drive the full REPL:
 [DONE] write_file + edit_file: workspace-scoped atomic writes, str_replace edit, ReadOnly profile stripping
 [DONE] MCP + hooks slice: MCP stdio client + multi-server config, MCP tools on Registry, external hooks + workspace trust, IDE localhost notifier (`GOCLAW_IDE_NOTIFY_URL`)
 [DONE] v2: YOLO Classifier (`internal/permissions/risk.go`), multi-agent coordinator (`internal/coordinator`), custom agents (`internal/agents/profile.go`), parallel tool execution, LLM-driven compaction, script tool
-[DONE] v3 slice: local plugins (`internal/plugin`), SKILL.md prompt injection (`internal/skills`), MCP `bearer_token_file`, opt-in memory auto-capture, minimal swarm hub (`internal/swarm`), IDE extension contract §7 in [ide-bridge.md](../docs/reference/ide-bridge.md). **Still open:** MCP OAuth/WS, remote plugin marketplace, full editor MCP UX.
+[DONE] v3 slice: local plugins (`internal/plugin`), SKILL.md prompt injection (`internal/skills`), MCP `bearer_token_file`, opt-in memory auto-capture, IDE extension contract §7 in [ide-bridge.md](../docs/reference/ide-bridge.md). **Reference-only:** swarm notes in [swarm.md](../docs/goclaw/swarm.md). **Still open:** MCP OAuth/WS, remote plugin marketplace, full editor MCP UX.
 ```
 
 ### Completed polish items:

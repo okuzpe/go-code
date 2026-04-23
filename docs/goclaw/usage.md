@@ -26,7 +26,7 @@ Try: a simple repo question, a tool (e.g. web search), and `/doctor` or `goclaw 
 
 ### Advanced / optional
 
-Not required for a first session on one machine: [telegram-bridge.md](./telegram-bridge.md) (Bot API bridge), [swarm.md](./swarm.md) (disk mailboxes), [model-routing.md](./model-routing.md) (`task_models` per-turn routing), local [plugins.md](../reference/plugins.md) and [skills.md](../reference/skills.md) (SKILL.md snippets in the system prompt).
+Not required for a first session on one machine: [telegram-bridge.md](./telegram-bridge.md) (Bot API bridge), [model-routing.md](./model-routing.md) (`task_models` per-turn routing), local [plugins.md](../reference/plugins.md) and [skills.md](../reference/skills.md) (SKILL.md snippets in the system prompt). [swarm.md](./swarm.md) remains reference-only in this checkout.
 
 ### Large repo analysis and refactors
 
@@ -111,7 +111,7 @@ The fullscreen TUI keeps **normal terminal mouse behaviour** by default (wheel s
 
 **Idle footer detail** (message count, token estimate, profile, etc.) uses **`tui_footer_density`** in settings or **`GOCLAW_TUI_FOOTER_DENSITY`**: **`minimal`** (short line; adds token/compact hints only when the context window is nearly full), **`standard`** (default — message count, token estimate, compaction %, profile name), **`debug`** (legacy dense line including `ro:` / `hub:` / tool counts and task-role tags). Omit the key to keep **`standard`**.
 
-**Profile rail + keyboard cycle** in the fullscreen TUI: **`tui_profile_cycle`** in settings is an ordered list of agent profile names (built-in + custom `*.md`). **Ctrl+Shift+←** and **Ctrl+Shift+→** move to the previous/next name in that list (skipped names are not in the cycle). A **single-line rail** above the transcript shows a lane glyph, **‹profile›** (or `<profile>` in ASCII icon mode), an optional short hint (e.g. `hub`), a dotted trace, and a muted **shift+ctrl** chord — all one row so the layout does not break. If **`tui_profile_cycle`** is omitted, the default order is **coordinator → plan → general-purpose → explore** (each entry is still skipped when that profile does not exist).
+**Profile rail + keyboard cycle** in the fullscreen TUI: **`tui_profile_cycle`** in settings is an ordered list of agent profile names (built-in + custom `*.md`). **Ctrl+Shift+←** and **Ctrl+Shift+→** move to the previous/next name in that list (skipped names are not in the cycle). A **single-line rail** above the transcript shows a lane glyph, **‹profile›** (or `<profile>` in ASCII icon mode), an optional short hint (e.g. `hub`), a dotted trace, and a muted **shift+ctrl** chord — all one row so the layout does not break. If **`tui_profile_cycle`** is omitted, the default order is **general-purpose → plan → explore → coordinator** (each entry is still skipped when that profile does not exist).
 
 ```bash
 go run ./cmd/goclaw --list-sessions
@@ -187,7 +187,7 @@ To attach a **local editor MCP server** (HTTP on loopback) without hand-editing 
 
 ## Agent profiles
 
-**Default (no settings):** `coordinator` — hub mode on the main session (`spawn_agent`, `stop_task`, `todo_write` only on the parent). Use **`general-purpose`** or **`builder`** when you want direct read/write/bash tools in the main session without delegation (`/profile` or `agent_profile` in settings).
+**Default (no settings):** `general-purpose` — direct read/write/bash tools in the main session. Use **`coordinator`** when you want hub mode (`spawn_agent`, `stop_task`, `todo_write` only on the parent), or **`builder`** for shorter action-first direct coding (`/profile` or `agent_profile` in settings).
 
 Set with `--profile <name>`, `agent_profile` in settings, or **`GOCLAW_AGENT_PROFILE`** (applied after settings merge; `--profile` still wins).
 
@@ -321,7 +321,7 @@ Handled locally (not sent to the model). Run **`/help`** for the full list. Key 
 
 - **Hooks:** `PreToolUse`, `PostToolUse`, session start/end; Go API, `external_hooks` in settings, optional `.goclaw/hooks.json` when `trusted_workspace`. [hooks.md](../reference/hooks.md)
 - **MCP:** `mcp_servers` in settings; stdio and streamable HTTP; optional `bearer_token_file` on URL servers. [mcp.md](../reference/mcp.md), [mcp-remote.md](./mcp-remote.md)
-- **Plugins / skills / swarm:** [CLAUDE.md](../../goclaw/CLAUDE.md) D20 and “Skills (runtime)” row; [swarm.md](./swarm.md)
+- **Plugins / skills / swarm:** [CLAUDE.md](../../goclaw/CLAUDE.md) D20 and “Skills (runtime)” row; [swarm.md](./swarm.md) is reference-only here
 - **IDE:** `GOCLAW_IDE_NOTIFY_URL` — localhost POST after each tool (best-effort). [ide-bridge.md](../reference/ide-bridge.md)
 
 ## Development

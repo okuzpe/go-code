@@ -12,7 +12,6 @@ import (
 	"github.com/okuzpe/goclaw/internal/gitdiff"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/session"
-	"github.com/okuzpe/goclaw/internal/text"
 )
 
 func (m *Model) rebuildTranscriptForSession(s *session.Session) {
@@ -371,28 +370,6 @@ func isAssistantDimPlaceholderLine(plain, assistantPlainPrefix string) bool {
 		return true
 	}
 	return false
-}
-
-func (m *Model) toolQueueStatusLine() string {
-	if len(m.toolWaitQueue) == 0 {
-		return ""
-	}
-	job := m.toolWaitQueue[0]
-	base := orchestrator.ToolWorkingPhrase(job.name)
-	if cat := strings.TrimSpace(orchestrator.ToolPhaseHeadline(job.name)); cat != "" {
-		base = cat + " · " + base
-	}
-	if summary := strings.TrimSpace(job.summary); summary != "" {
-		summary = text.TruncateRunes(summary, toolQueueSummaryMaxRunes)
-		base = base + " · " + summary
-	}
-	if !m.toolWaitStartedAt.IsZero() {
-		secs := int(time.Since(m.toolWaitStartedAt).Seconds())
-		if secs >= 1 {
-			base = fmt.Sprintf("%s (%ds)", base, secs)
-		}
-	}
-	return base + "…"
 }
 
 // dequeueToolResult removes the matching in-flight tool (by toolUseID when set, else FIFO)

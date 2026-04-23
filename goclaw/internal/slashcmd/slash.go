@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/atotto/clipboard"
 	"github.com/okuzpe/goclaw/internal/agents"
@@ -192,43 +191,13 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 		return handleSlashModel(env, orch, fields, hintsOut)
 
 	case "tools":
-		if env.ToolLog == nil {
-			return true, "(tool history not available in this mode — use Ctrl+T in the TUI)", false, "", nil
-		}
-		n := 0
-		if len(fields) >= 2 {
-			_, _ = fmt.Sscan(fields[1], &n)
-		}
-		return true, env.ToolLog(n), false, "", nil
+		return handleSlashTools(env, fields)
 
 	case "quit", "exit":
 		return true, "bye", true, "", ErrReplQuit
 
 	case "sessions":
-		if err := requireSessionStore("sessions", store); err != nil {
-			return true, "", false, "", err
-		}
-		entries, err := store.ListSessionEntries()
-		if err != nil {
-			return true, "", false, "", err
-		}
-		if len(entries) == 0 {
-			return true, "(no saved sessions on disk)", false, "", nil
-		}
-		setTUIDocOverlay(hintsOut, "Sessions")
-		var b strings.Builder
-		b.WriteString("## Saved sessions\n\n")
-		for _, e := range entries {
-			age := formatSessionModAge(e.ModTime)
-			b.WriteString("- `")
-			b.WriteString(e.ID)
-			b.WriteString("` — ")
-			b.WriteString(age)
-			b.WriteString(" — (")
-			b.WriteString(e.ModTime.UTC().Format(time.RFC3339))
-			b.WriteString(")\n")
-		}
-		return true, strings.TrimSpace(b.String()), false, "", nil
+		return handleSlashSessions(store, hintsOut)
 
 	case "clear":
 		if env.FullscreenTUI {
@@ -244,71 +213,16 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 		return true, "(screen clear skipped — stdout is not a terminal)", false, "", nil
 
 	case "resume":
-		if err := requireSessionStore("resume", store); err != nil {
-			return true, "", false, "", err
-		}
-		if err := requireRunningAgent("resume", orch); err != nil {
-			return true, "", false, "", err
-		}
-		if sess == nil {
-			return true, "", false, "", fmt.Errorf("/resume: session pointer missing")
-		}
-		if len(fields) < 2 {
-			return true, "", false, "", slashNextStepError(`usage: /resume <session_id_or_prefix>
-use /sessions to list saved ids; current session is auto-saved before switching`, "run /sessions, then /resume <id>")
-		}
-		arg := strings.TrimSpace(strings.Join(fields[1:], " "))
-		if *sess != nil {
-			if err := store.Save(*sess); err != nil {
-				return true, "", false, "", fmt.Errorf("/resume: save current session: %w", err)
-			}
-		}
-		loaded, rerr := resolveSessionForResume(store, arg)
-		if rerr != nil {
-			return true, "", false, "", fmt.Errorf("/resume: %w", rerr)
-		}
-		if loaded == nil {
-			return true, "", false, "", fmt.Errorf("/resume: session not found for %q", arg)
-		}
-		*sess = loaded
-		orch.ReplaceSession(loaded)
-		setReloadTranscript(hintsOut, loaded)
-		return true, fmt.Sprintf("resumed session %s (%d messages).", loaded.ID, loaded.Len()), false, "", nil
+		return handleSlashResume(orch, sess, store, fields, hintsOut)
 
 	case "new":
-		if err := requireRunningAgent("new", orch); err != nil {
-			return true, "", false, "", err
-		}
-		if sess == nil {
-			return true, "", false, "", fmt.Errorf("/new: session pointer missing")
-		}
-		if store != nil && *sess != nil {
-			if err := store.Save(*sess); err != nil {
-				return true, "", false, "", fmt.Errorf("save current session before /new: %w (fix disk or permissions; session not reset)", err)
-			}
-		}
-		next := session.New()
-		*sess = next
-		orch.ReplaceSession(next)
-		return true, fmt.Sprintf("new empty session (previous transcript saved if a store is configured).\nnew session id: %s", next.ID), false, "", nil
+		return handleSlashNew(orch, sess, store)
 
 	case "save":
-		if err := requireSessionStore("save", store); err != nil {
-			return true, "", false, "", err
-		}
-		if err := requireActiveSession("save", sess); err != nil {
-			return true, "", false, "", err
-		}
-		if err := store.Save(*sess); err != nil {
-			return true, "", false, "", fmt.Errorf("save session: %w", err)
-		}
-		return true, fmt.Sprintf("(session saved: %s, %d messages)", (*sess).ID, (*sess).Len()), false, "", nil
+		return handleSlashSave(sess, store)
 
 	case "session":
-		if sess == nil || *sess == nil {
-			return true, "(no session)", false, "", nil
-		}
-		return true, fmt.Sprintf("session id: %s\nmessages: %d", (*sess).ID, (*sess).Len()), false, "", nil
+		return handleSlashSession(sess)
 
 	case "theme":
 		return handleSlashTheme(env, fields)
