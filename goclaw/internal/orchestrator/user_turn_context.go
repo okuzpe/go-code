@@ -29,6 +29,7 @@ type userTurnState struct {
 	verifyPending   bool
 	verifySatisfied bool
 	verifyNudges    int
+	changedPaths    map[string]bool
 
 	// revealedToolNames tracks hidden tools (e.g. MCP) revealed via tool_search during this turn.
 	// Revealed tools are included in effectiveToolSpecs for subsequent LLM iterations.

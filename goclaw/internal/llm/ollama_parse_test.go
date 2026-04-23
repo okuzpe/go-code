@@ -102,3 +102,31 @@ func TestOllamaWireToolMessageJSONUsesToolNameField(t *testing.T) {
 		t.Fatalf("expected tool_name in JSON: %s", s)
 	}
 }
+
+func TestTryTranscriptToolUse(t *testing.T) {
+	specs := []ToolSpec{{Name: "read_file"}}
+	body := `[assistant tool_use read_file]
+{"path":"README.md"}`
+	tu, ok := tryTranscriptToolUse(body, specs)
+	if !ok {
+		t.Fatal("expected transcript tool_use to be recovered")
+	}
+	if tu.Name != "read_file" || tu.Input != `{"path":"README.md"}` {
+		t.Fatalf("unexpected tool use: %+v", tu)
+	}
+}
+
+func TestTryLineDelimitedToolUse(t *testing.T) {
+	specs := []ToolSpec{{Name: "read_file"}}
+	body := "```text\nread_file\nREADME.md\n```"
+	tu, ok := tryLineDelimitedToolUse(body, specs)
+	if !ok {
+		t.Fatal("expected line-delimited tool_use to be recovered")
+	}
+	if tu.Name != "read_file" {
+		t.Fatalf("name: %q", tu.Name)
+	}
+	if tu.Input != `{"path":"README.md"}` {
+		t.Fatalf("input: %q", tu.Input)
+	}
+}

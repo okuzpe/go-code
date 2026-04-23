@@ -202,6 +202,12 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	if hint := taskExplorationHint(taskRole); hint != "" {
 		sys = sys + hint
 	}
+	if hint := o.hiddenMCPToolsPromptHint(specs); hint != "" {
+		sys = sys + hint
+	}
+	if block := verifyChangedPathsBlock(o.ut, o.workdir); block != "" {
+		sys = sys + block
+	}
 
 	// When input translation is active (normalize_input_language), the session already holds the
 	// English translation so detecting the language from session text would produce "en" and instruct
@@ -278,6 +284,41 @@ func stripMCPNames(specs []tools.ToolSpec) []tools.ToolSpec {
 		}
 	}
 	return out
+}
+
+func (o *Orchestrator) hiddenMCPToolsPromptHint(specs []tools.ToolSpec) string {
+	if o == nil || o.tools == nil || o.profile.ReadOnly {
+		return ""
+	}
+	if !toolSpecNamesContain(specs, "tool_search") {
+		return ""
+	}
+	hiddenCount := 0
+	for _, s := range o.tools.AllSpecs() {
+		if !strings.HasPrefix(s.Name, "mcp__") || !o.tools.IsHidden(s.Name) {
+			continue
+		}
+		if toolSpecNamesContain(specs, s.Name) {
+			continue
+		}
+		hiddenCount++
+	}
+	if hiddenCount == 0 {
+		return ""
+	}
+	return fmt.Sprintf(
+		"\n\n## Hidden MCP tools\n%d MCP tools are available but hidden by default to save context. Use tool_search to discover the right MCP tool before calling it.",
+		hiddenCount,
+	)
+}
+
+func toolSpecNamesContain(specs []tools.ToolSpec, name string) bool {
+	for _, s := range specs {
+		if s.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // toolMatchesAllowlist supports exact names and trailing-wildcard prefixes (e.g. mcp__demo__*).

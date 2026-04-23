@@ -44,12 +44,26 @@ func maybeAppendNoWorkspaceWriteFooter(
 // Some models emit "TOOL CALL```" blocks even when there were no native tool calls in the stream.
 // We remove that trailing narrated section to keep transcript UX clean and avoid misleading output.
 func sanitizeNarratedToolCallText(response string) string {
-	marker := "TOOL CALL```"
-	index := strings.Index(response, marker)
-	if index < 0 {
-		return response
+	trimmed := strings.TrimSpace(response)
+	if trimmed == "" {
+		return ""
 	}
-	return strings.TrimSpace(response[:index])
+	lower := strings.ToLower(response)
+	cut := len(response)
+	for _, marker := range []string{
+		"tool call```",
+		"tool call:",
+		"[assistant tool_use ",
+		"<function_calls>",
+	} {
+		if idx := strings.Index(lower, marker); idx >= 0 && idx < cut {
+			cut = idx
+		}
+	}
+	if cut < len(response) {
+		return strings.TrimSpace(response[:cut])
+	}
+	return strings.TrimSpace(response)
 }
 
 func recordWorkspaceWriteFromResults(workspaceWriteOK *bool, results []llm.ToolResultRecord) {

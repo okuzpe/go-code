@@ -35,6 +35,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	o.ut = &userTurnState{
 		turnToolCache:     make(map[string]string),
 		revealedToolNames: make(map[string]bool),
+		changedPaths:      make(map[string]bool),
 		tuiInteractApply:  o.nextTUIInteractApply,
 		tuiInteractMode:   o.nextTUIInteractMode,
 	}
@@ -157,6 +158,21 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				slog.Debug("orchestrator: verify-after-write nudge")
 				continue
 			}
+			if reason, stalled := o.shouldFailActionStalled(
+				response,
+				intentMessage,
+				toolCalls,
+				hadToolRound,
+				workspaceWriteOK,
+				actionNudges,
+				repairEscalations,
+			); stalled {
+				metrics.toolCalls = toolCalls
+				metrics.status = "action_stalled"
+				o.emitTurnEndSummary(ctx, "action_stalled", metrics, toolCalls, workspaceWriteOK, hadToolRound, actionNudges, repairEscalations, editFileNotFoundNudges, reflectionFired)
+				o.logTurnMetrics(metrics)
+				return "", newActionStalledError(reason, response)
+			}
 			plain := response
 			response = maybeAppendNoWorkspaceWriteFooter(o, response, intentMessage, hadToolRound, workspaceWriteOK)
 			if sink != nil && len(response) > len(plain) {
@@ -230,7 +246,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				}
 			}
 			recordWorkspaceWriteFromResults(&workspaceWriteOK, results)
-			verifyGateProcessToolResults(o.cfg, o.ut, results, intentMessage)
+			verifyGateProcessToolResults(o.cfg, o.ut, pendingTools, results, intentMessage)
 			appendJSONToolTrace(toolTrace, pendingTools, results)
 		} else {
 			for _, tu := range pendingTools {
@@ -257,7 +273,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				})
 			}
 			recordWorkspaceWriteFromResults(&workspaceWriteOK, results)
-			verifyGateProcessToolResults(o.cfg, o.ut, results, intentMessage)
+			verifyGateProcessToolResults(o.cfg, o.ut, pendingTools, results, intentMessage)
 			appendJSONToolTrace(toolTrace, pendingTools, results)
 		}
 		o.session.AddToolResults(results)

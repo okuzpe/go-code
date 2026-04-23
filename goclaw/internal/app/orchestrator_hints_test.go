@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/stretchr/testify/require"
 )
 
@@ -76,14 +78,20 @@ func TestOrchestratorFailureHints(t *testing.T) {
 			err:         errors.New("iteration limit (32) reached"),
 			wantContain: "/compact",
 		},
+		{
+			name:        "action stalled suggests stronger model or doctor",
+			model:       "m",
+			err:         orchestrator.ErrActionStalled,
+			wantContain: "failed to take real tool-driven action",
+		},
 	}
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			h := orchestratorFailureHints(tt.model, tt.err)
-			require.Len(t, h, 1)
-			require.Contains(t, h[0], tt.wantContain)
+			require.NotEmpty(t, h)
+			require.Contains(t, strings.Join(h, "\n"), tt.wantContain)
 		})
 	}
 }

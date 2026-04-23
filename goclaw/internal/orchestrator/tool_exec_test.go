@@ -68,3 +68,32 @@ func TestExecuteToolPreToolUseExternalHookExit1Blocks(t *testing.T) {
 	require.Contains(t, out.Content, "pre_tool_use hook")
 	require.Nil(t, out.Err)
 }
+
+func TestExecuteToolSearchRevealsHiddenMatches(t *testing.T) {
+	reg := tools.New()
+	reg.RegisterHidden(fakeTool{name: "mcp__demo__echo"})
+	toolSearch, err := tools.NewToolSearch(reg)
+	require.NoError(t, err)
+	reg.Register(toolSearch)
+
+	pol := permissions.NewPolicy()
+	pol.Set("tool_search", permissions.ModeAllow)
+
+	o := New(
+		config.Default(),
+		nil,
+		session.New(),
+		reg,
+		pol,
+		hooks.New(),
+		agents.GeneralPurpose,
+	)
+	o.ut = &userTurnState{
+		revealedToolNames: make(map[string]bool),
+	}
+
+	out := o.executeTool(context.Background(), &llm.ToolUse{Name: "tool_search", Input: `{"query":"demo echo","kind":"mcp"}`}, nil)
+	require.False(t, out.IsError)
+	require.Nil(t, out.Err)
+	require.True(t, o.ut.revealedToolNames["mcp__demo__echo"], "tool_search should reveal hidden MCP matches")
+}

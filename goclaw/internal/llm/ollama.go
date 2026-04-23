@@ -292,6 +292,7 @@ var toolCallDirectiveRE = regexp.MustCompile(`(?i)^\s*tool call:\s*(\S+)\s*(.*)$
 // toolCallHeaderRE matches a bare "TOOL CALL" line with no tool name (with or without trailing colon).
 // Used for the multiline format where the tool invocation follows on the next non-empty line.
 var toolCallHeaderRE = regexp.MustCompile(`(?i)^\s*tool\s+call:?\s*$`)
+var assistantToolUseHeaderRE = regexp.MustCompile(`(?im)^\s*\[assistant tool_use ([a-z][a-z0-9_-]*)\]\s*$`)
 
 // proseToolLineRE matches "tool_name [optional args]" — a snake_case identifier followed by anything.
 var proseToolLineRE = regexp.MustCompile(`^([a-z][a-z0-9_]*)\s*(.*)$`)
@@ -455,6 +456,84 @@ func tryProseToolDirective(full string, specs []ToolSpec) (prose string, tu Tool
 	return "", ToolUse{}, false
 }
 
+func tryTranscriptToolUse(full string, specs []ToolSpec) (ToolUse, bool) {
+	full = strings.TrimSpace(full)
+	if full == "" || len(specs) == 0 {
+		return ToolUse{}, false
+	}
+	match := assistantToolUseHeaderRE.FindStringSubmatchIndex(full)
+	if len(match) != 4 {
+		return ToolUse{}, false
+	}
+	toolName := strings.TrimSpace(full[match[2]:match[3]])
+	byLower := allowedToolNamesLower(specs)
+	resolved, ok := resolveProseToolName(toolName, byLower)
+	if !ok {
+		return ToolUse{}, false
+	}
+	tail := strings.TrimSpace(full[match[1]:])
+	tail = stripCodeFences(tail)
+	if strings.HasPrefix(tail, "{") {
+		var raw json.RawMessage
+		if json.Unmarshal([]byte(tail), &raw) == nil {
+			return ToolUse{ID: "ollama-transcript-0", Name: resolved, Input: tail}, true
+		}
+	}
+	if input, ok := buildInputForProseTool(resolved, firstNonEmptyLine(tail)); ok {
+		return ToolUse{ID: "ollama-transcript-0", Name: resolved, Input: input}, true
+	}
+	return ToolUse{}, false
+}
+
+func tryLineDelimitedToolUse(full string, specs []ToolSpec) (ToolUse, bool) {
+	full = stripCodeFences(strings.TrimSpace(full))
+	if full == "" || len(specs) == 0 {
+		return ToolUse{}, false
+	}
+	lines := nonEmptyTrimmedLines(full)
+	if len(lines) < 2 {
+		return ToolUse{}, false
+	}
+	byLower := allowedToolNamesLower(specs)
+	resolved, ok := resolveProseToolName(lines[0], byLower)
+	if !ok {
+		return ToolUse{}, false
+	}
+	rest := strings.TrimSpace(strings.Join(lines[1:], "\n"))
+	if strings.HasPrefix(rest, "{") {
+		var raw json.RawMessage
+		if json.Unmarshal([]byte(rest), &raw) == nil {
+			return ToolUse{ID: "ollama-transcript-1", Name: resolved, Input: rest}, true
+		}
+	}
+	if input, ok := buildInputForProseTool(resolved, lines[1]); ok {
+		return ToolUse{ID: "ollama-transcript-1", Name: resolved, Input: input}, true
+	}
+	return ToolUse{}, false
+}
+
+func firstNonEmptyLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
+func nonEmptyTrimmedLines(s string) []string {
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
 // ollamaAssistContentAllowsIncrementalStream is true when buffered assistant text still looks
 // like plain prose rather than a JSON tool blob we must classify only after the stream ends.
 func ollamaAssistContentAllowsIncrementalStream(buf string) bool {
@@ -515,6 +594,12 @@ func (c *OllamaClient) streamWithTools(scanner *bufio.Scanner, out chan<- Event,
 				fullContent := contentBuf.String()
 				// Try parsing content as a tool call (various formats).
 				if tu, ok := parseOllamaContentAsToolUse(fullContent, specs); ok {
+					out <- tu
+					emittedTool = true
+				} else if tu, ok := tryTranscriptToolUse(fullContent, specs); ok {
+					out <- tu
+					emittedTool = true
+				} else if tu, ok := tryLineDelimitedToolUse(fullContent, specs); ok {
 					out <- tu
 					emittedTool = true
 				} else if tu, _, ok := extractEmbeddedToolCall(fullContent, specs); ok {

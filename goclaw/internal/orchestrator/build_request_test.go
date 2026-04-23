@@ -8,6 +8,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/hooks"
+	"github.com/okuzpe/goclaw/internal/llm"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/todos"
@@ -51,7 +52,7 @@ func TestBuildRequestExploreProfileOmitsBash(t *testing.T) {
 func TestBuildRequestAllowlistWildcardMCP(t *testing.T) {
 	reg := tools.New()
 	reg.Register(fakeTool{name: "read_file"})
-	reg.Register(fakeTool{name: "mcp__demo__echo"})
+	reg.RegisterHidden(fakeTool{name: "mcp__demo__echo"})
 	o := &Orchestrator{
 		cfg:     config.Default(),
 		session: session.New(),
@@ -72,6 +73,49 @@ func TestBuildRequestAllowlistWildcardMCP(t *testing.T) {
 	}
 	if !saw {
 		t.Fatalf("tools: %#v", req.Tools)
+	}
+}
+
+func TestBuildRequestHintsAboutHiddenMCPTools(t *testing.T) {
+	reg := tools.New()
+	reg.Register(fakeTool{name: "read_file"})
+	reg.Register(fakeTool{name: "tool_search"})
+	reg.RegisterHidden(fakeTool{name: "mcp__demo__echo"})
+	o := &Orchestrator{
+		cfg:     config.Default(),
+		session: session.New(),
+		tools:   reg,
+		perms:   permissions.NewPolicy(),
+		hooks:   hooks.New(),
+		profile: agents.GeneralPurpose,
+	}
+	req := o.buildRequest()
+	if toolSpecNamesContain(convertLLMTools(req.Tools), "mcp__demo__echo") {
+		t.Fatalf("hidden MCP tool should not appear in default prompt: %#v", req.Tools)
+	}
+	if !strings.Contains(req.System, "Hidden MCP tools") {
+		t.Fatalf("expected hidden MCP hint in system prompt: %q", req.System)
+	}
+}
+
+func TestBuildRequestRevealedHiddenMCPToolAppearsNextIteration(t *testing.T) {
+	reg := tools.New()
+	reg.Register(fakeTool{name: "tool_search"})
+	reg.RegisterHidden(fakeTool{name: "mcp__demo__echo"})
+	o := &Orchestrator{
+		cfg:     config.Default(),
+		session: session.New(),
+		tools:   reg,
+		perms:   permissions.NewPolicy(),
+		hooks:   hooks.New(),
+		profile: agents.GeneralPurpose,
+		ut: &userTurnState{
+			revealedToolNames: map[string]bool{"mcp__demo__echo": true},
+		},
+	}
+	req := o.buildRequest()
+	if !toolSpecNamesContain(convertLLMTools(req.Tools), "mcp__demo__echo") {
+		t.Fatalf("revealed hidden MCP tool should appear in prompt: %#v", req.Tools)
 	}
 }
 
@@ -122,9 +166,37 @@ func TestBuildRequestInjectsSkillsBlock(t *testing.T) {
 	}
 }
 
+func TestBuildRequestInjectsVerifyChangedFilesBlock(t *testing.T) {
+	reg := tools.New()
+	reg.Register(fakeTool{name: "read_file"})
+	o := &Orchestrator{
+		cfg:     config.Default(),
+		session: session.New(),
+		tools:   reg,
+		perms:   permissions.NewPolicy(),
+		hooks:   hooks.New(),
+		profile: agents.GeneralPurpose,
+		workdir: "C:/repo",
+		ut: &userTurnState{
+			verifyPending: true,
+			changedPaths: map[string]bool{
+				"internal/a.go": true,
+				"README.md":     true,
+			},
+		},
+	}
+	req := o.buildRequest()
+	if !strings.Contains(req.System, "## Verify changed files") {
+		t.Fatalf("missing verify changed files header: %q", req.System)
+	}
+	if !strings.Contains(req.System, "internal/a.go") || !strings.Contains(req.System, "README.md") {
+		t.Fatalf("missing changed paths in system prompt: %q", req.System)
+	}
+}
+
 func TestBuildRequestReadOnlyStripsMCP(t *testing.T) {
 	reg := tools.New()
-	reg.Register(fakeTool{name: "mcp__srv__t"})
+	reg.RegisterHidden(fakeTool{name: "mcp__srv__t"})
 	reg.Register(fakeTool{name: "read_file"})
 	o := &Orchestrator{
 		cfg:     config.Default(),
@@ -140,4 +212,12 @@ func TestBuildRequestReadOnlyStripsMCP(t *testing.T) {
 			t.Fatalf("mcp tool leaked into read-only specs: %s", s.Name)
 		}
 	}
+}
+
+func convertLLMTools(specs []llm.ToolSpec) []tools.ToolSpec {
+	out := make([]tools.ToolSpec, 0, len(specs))
+	for _, s := range specs {
+		out = append(out, tools.ToolSpec{Name: s.Name, Description: s.Description, InputSchema: s.InputSchema})
+	}
+	return out
 }

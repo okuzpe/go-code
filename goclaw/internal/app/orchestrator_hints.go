@@ -1,8 +1,11 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/okuzpe/goclaw/internal/orchestrator"
 )
 
 // AugmentOrchestratorErr appends user-facing recovery hints when the wrapped error is recognized.
@@ -50,11 +53,22 @@ func orchestratorFailureHints(model string, err error) []string {
 	if strings.Contains(low, "tool call limit") {
 		out = append(out, "hint: too many tool calls in one turn — ask for one step at a time or simplify the task.")
 	}
+	if errorsIsActionStalled(err) {
+		out = append(out,
+			"hint: the model failed to take real tool-driven action for a coding request.",
+			"hint: try a stronger coding model, narrow the request, or check /doctor for tool-calling degradation.",
+		)
+	}
 	if strings.Contains(low, "no approver configured") || strings.Contains(low, "requires user approval") {
 		out = append(out, "hint: this mode needs interactive tool approval — use the fullscreen TUI on a real terminal (not a pipe-only workflow).")
 	}
 
 	return dedupeHintLines(out)
+}
+
+func errorsIsActionStalled(err error) bool {
+	return err != nil && (errors.Is(err, orchestrator.ErrActionStalled) ||
+		strings.Contains(strings.ToLower(err.Error()), strings.ToLower(orchestrator.ErrActionStalled.Error())))
 }
 
 func dedupeHintLines(in []string) []string {
