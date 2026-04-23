@@ -72,6 +72,9 @@ type Theme struct {
 
 	ErrorStyle    lipgloss.Style
 	Separator     lipgloss.Style
+	ShellChrome   lipgloss.Style
+	HeaderBrand   lipgloss.Style
+	HeaderMeta    lipgloss.Style
 	ToolSpinner   lipgloss.Style
 	ToolResultOk  lipgloss.Style
 	ToolResultErr lipgloss.Style
@@ -85,6 +88,8 @@ type Theme struct {
 	// Status bar between viewport and input area.
 	StatusBar      lipgloss.Style
 	StatusBarLabel lipgloss.Style
+	OverlayTitle   lipgloss.Style
+	OverlayHint    lipgloss.Style
 
 	// FooterWorkspaceChip styles the workspace basename in the idle footer (text only, no chip background).
 	FooterWorkspaceChip lipgloss.Style
@@ -195,7 +200,6 @@ func (t *Theme) SeparatorLine(width int) string {
 		st = t.Icons
 	}
 	rule := t.Separator.Render(strings.Repeat(st.ToolCardH(), ruleW))
-	// Left-pad with two spaces to indent slightly from the gutter.
 	return "  " + rule
 }
 
@@ -224,7 +228,7 @@ func (t *Theme) RenderToolCard(toolLabel, summary, outcome string, isError bool,
 	} else {
 		icon = t.ToolResultOk.Render(st.ToolOK())
 	}
-	footer := t.ToolCardBorder.Render(st.ToolCardBottomLeft()) + " " + icon
+	footer := t.ToolCardBorder.Render(st.ToolCardBottomLeft()) + t.ToolCardBorder.Render(strings.Repeat(st.ToolCardH(), max(2, min(8, cardW/6)))) + " " + icon
 
 	var b strings.Builder
 	b.WriteString("  ")
@@ -266,7 +270,7 @@ func (t *Theme) RenderThinkingRow(_ string, _ int, _ int) string {
 // Format: "» toolLabel: summary (Ns)"
 // Used for the transcript row while a tool is executing and for progress updates.
 func (t *Theme) RenderToolRunning(toolLabel, summary string, elapsedSec int, _ int) string {
-	callGlyph := t.Tool.Render("»")
+	callGlyph := t.ShellChrome.Render("»")
 	name := t.Tool.Render(toolLabel)
 	sum := strings.TrimSpace(summary)
 	if elapsedSec >= 2 {
@@ -291,7 +295,7 @@ func (t *Theme) RenderToolRunning(toolLabel, summary string, elapsedSec int, _ i
 // The first result line is always visible; truncated output appends a dim "[+]" marker.
 // Error results use "!" instead of "<" and are rendered in the error color.
 func (t *Theme) RenderToolPair(toolLabel, summary, content string, isError bool, width int) string {
-	callGlyph := t.Tool.Render("»")
+	callGlyph := t.ShellChrome.Render("»")
 	name := t.Tool.Render(toolLabel)
 	callLine := "  " + callGlyph + " " + name
 	if sum := strings.TrimSpace(summary); sum != "" {

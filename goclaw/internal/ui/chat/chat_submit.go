@@ -40,8 +40,12 @@ func (m *Model) runDispatchAfterUserEcho(txt string) tea.Cmd {
 		m.openThemePicker()
 		return nil
 	}
-	if bareAgentsSlashInput(txt) && m.slashHandle != nil {
+	if (bareAgentsSlashInput(txt) || bareProfileSlashInput(txt)) && m.slashHandle != nil {
 		m.openAgentPicker()
+		return nil
+	}
+	if bareToolsSlashInput(txt) && len(m.toolLog) > 0 {
+		m.openToolLog()
 		return nil
 	}
 	if m.slashHandle != nil {

@@ -80,8 +80,8 @@ func (o *Orchestrator) shouldFailActionStalled(
 	if toolCalls == 0 {
 		return "no native tool calls were made after recovery", true
 	}
-	if hadToolRound && !workspaceWriteOK {
-		return "no workspace edits were made after recovery", true
+	if hadToolRound && !workspaceWriteOK && responseAppearsComplete(response) {
+		return "response sounded complete even though no workspace edits were made", true
 	}
 	return "", false
 }
@@ -97,6 +97,8 @@ func nonActionCompletionReason(response string) (string, bool) {
 		return "fake tool narration without native tool calls", true
 	case containsToolAccessMetaReply(trimmed):
 		return "meta reply claiming tool access is unavailable", true
+	case containsFutureActionNarration(trimmed):
+		return "future-tense narration about next steps instead of taking action now", true
 	default:
 		return "", false
 	}
@@ -150,6 +152,34 @@ func containsToolAccessMetaReply(response string) bool {
 		"as an ai language model, i don't have access",
 		"as an ai language model, i dont have access",
 		"please provide more details on what specific changes are required",
+	}
+	for _, phrase := range phrases {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsFutureActionNarration(response string) bool {
+	lower := strings.ToLower(strings.Join(strings.Fields(response), " "))
+	phrases := []string{
+		"i will continue reading",
+		"i'll continue reading",
+		"i will keep reading",
+		"i'll keep reading",
+		"i will read more files",
+		"i'll read more files",
+		"i need to read additional files",
+		"i need to read more files",
+		"continuare leyendo",
+		"continuaré leyendo",
+		"seguiré leyendo",
+		"voy a seguir leyendo",
+		"voy a leer más archivos",
+		"necesito leer más archivos",
+		"continuare revisando",
+		"continuaré revisando",
 	}
 	for _, phrase := range phrases {
 		if strings.Contains(lower, phrase) {

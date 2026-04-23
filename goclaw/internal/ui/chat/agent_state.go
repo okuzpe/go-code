@@ -93,14 +93,14 @@ func RenderAgentStatus(th *Theme, state AgentState, spinnerView string,
 		if iterPart != "" {
 			iterLabel = " " + th.FooterDim.Render("["+iterPart+"]")
 		}
-		stateTag := th.FooterDim.Render("THINKING")
-		label := th.StatusBarLabel.Render(labelPart) + th.FooterDim.Render(elapsed+"…")
+		stateTag := th.FooterDim.Render("thinking")
+		label := th.StatusBarLabel.Render(labelPart) + th.FooterDim.Render(elapsed)
 		return spinnerView + iterLabel + " " + stateTag + "  " + label
 
 	case AgentStateExecuting:
 		tool := strings.TrimSpace(toolLabel)
 		glyph := th.Tool.Render("⚙")
-		stateTag := th.FooterDim.Render("EXECUTING")
+		stateTag := th.FooterDim.Render("running")
 		line := spinnerView + " " + stateTag + "  " + glyph
 		if tool != "" {
 			line += " " + th.Tool.Render(tool)
@@ -114,16 +114,16 @@ func RenderAgentStatus(th *Theme, state AgentState, spinnerView string,
 		return line
 
 	case AgentStateWriting:
-		stateTag := th.FooterDim.Render("WRITING")
-		hint := "outputting"
+		stateTag := th.FooterDim.Render("writing")
+		hint := "streaming"
 		if streamBytes > 0 {
 			hint = humanBytes(streamBytes)
 		}
-		return spinnerView + " " + stateTag + "  " + th.StatusBarLabel.Render(hint) + th.FooterDim.Render("…")
+		return spinnerView + " " + stateTag + "  " + th.StatusBarLabel.Render(hint)
 
 	case AgentStateDone:
 		ok := th.ToolResultOk.Render("✓")
-		return ok + "  " + th.FooterDim.Render("Done")
+		return ok + "  " + th.FooterDim.Render("done")
 
 	case AgentStateError:
 		errGlyph := th.ToolResultErr.Render("✖")

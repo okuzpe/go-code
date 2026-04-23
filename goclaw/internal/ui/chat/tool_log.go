@@ -9,6 +9,14 @@ import (
 	"github.com/okuzpe/goclaw/internal/text"
 )
 
+func bareToolsSlashInput(raw string) bool {
+	fields := strings.Fields(strings.TrimSpace(raw))
+	if len(fields) != 1 {
+		return false
+	}
+	return strings.EqualFold(strings.TrimPrefix(fields[0], "/"), "tools")
+}
+
 const (
 	toolLogContentCap      = 64 * 1024 // 64 KB display cap for detail view (UTF-8–safe prefix)
 	toolLogSummaryMaxRunes = 60
@@ -76,14 +84,14 @@ func (m *Model) refreshToolLogOverlay() {
 		if entry.isError {
 			icon = th.Icons.ToolErr()
 		}
-		b.WriteString(th.ModalTitle.Render(fmt.Sprintf("[%s] %s", icon, orchestrator.ToolFinishedPhrase(entry.name))))
+		b.WriteString(th.OverlayTitle.Render(fmt.Sprintf("[%s] %s", icon, orchestrator.ToolFinishedPhrase(entry.name))))
 		b.WriteString("\n")
 		if entry.summary != "" {
-			b.WriteString(th.FooterDim.Render("Input: " + entry.summary))
+			b.WriteString(th.OverlayHint.Render("Input: " + entry.summary))
 			b.WriteString("\n")
 		}
 		if entry.elapsed > 0 {
-			b.WriteString(th.FooterDim.Render(fmt.Sprintf("Elapsed: %.2fs  Size: %s", entry.elapsed.Seconds(), formatBytes(len(entry.content)))))
+			b.WriteString(th.OverlayHint.Render(fmt.Sprintf("Elapsed: %.2fs  Size: %s", entry.elapsed.Seconds(), formatBytes(len(entry.content)))))
 		}
 		b.WriteString("\n\n")
 		content := entry.content
@@ -94,10 +102,10 @@ func (m *Model) refreshToolLogOverlay() {
 		b.WriteString(th.ModalBody.Render(content))
 		if truncated {
 			b.WriteString("\n")
-			b.WriteString(th.FooterDim.Render("… output truncated (>64 KB)"))
+			b.WriteString(th.OverlayHint.Render("… output truncated (>64 KB)"))
 		}
 		b.WriteString("\n\n")
-		b.WriteString(th.FooterDim.Render("Esc back to list · Ctrl+C quit"))
+		b.WriteString(th.OverlayHint.Render("Esc back to list · Ctrl+C quit"))
 		m.toolLogText = b.String()
 		return
 	}
@@ -105,7 +113,7 @@ func (m *Model) refreshToolLogOverlay() {
 	// List view.
 	var b strings.Builder
 	total := len(m.toolLog)
-	b.WriteString(th.ModalTitle.Render(fmt.Sprintf("Tool history (%d steps)", total)))
+	b.WriteString(th.OverlayTitle.Render(fmt.Sprintf("Tool History (%d steps)", total)))
 	b.WriteString("\n\n")
 	for i, entry := range m.toolLog {
 		icon := th.Icons.ToolOK()
@@ -113,33 +121,36 @@ func (m *Model) refreshToolLogOverlay() {
 			icon = th.Icons.ToolErr()
 		}
 		label := orchestrator.ToolFinishedPhrase(entry.name)
-		detail := ""
+		meta := ""
+		if entry.elapsed > 0 {
+			meta = fmt.Sprintf("%.1fs · %s", entry.elapsed.Seconds(), formatBytes(len(entry.content)))
+		} else {
+			meta = formatBytes(len(entry.content))
+		}
+		head := fmt.Sprintf("[%s] %s", icon, label)
+		if i == m.toolLogCursor {
+			b.WriteString(th.ShellChrome.Render("› ") + th.SlashPickerName.Render(head))
+		} else {
+			b.WriteString(th.ModalBody.Render("  " + head))
+		}
+		b.WriteString(" ")
+		b.WriteString(th.OverlayHint.Render(meta))
+		b.WriteString("\n")
 		if entry.summary != "" {
-			sum := text.TruncateRunes(entry.summary, toolLogSummaryMaxRunes)
-			detail = "  " + sum
+			b.WriteString(th.OverlayHint.Render("    in  " + text.TruncateRunes(entry.summary, toolLogSummaryMaxRunes)))
+			b.WriteString("\n")
 		}
 		if entry.outcome != "" {
-			out := text.TruncateRunes(entry.outcome, toolLogSummaryMaxRunes)
-			if detail != "" {
-				detail += th.FooterDim.Render(" · ") + th.FooterDim.Render(out)
-			} else {
-				detail = "  " + th.FooterDim.Render(out)
-			}
+			b.WriteString(th.OverlayHint.Render("    out " + text.TruncateRunes(entry.outcome, toolLogSummaryMaxRunes)))
+			b.WriteString("\n")
 		}
-		elapsed := ""
-		if entry.elapsed > 0 {
-			elapsed = fmt.Sprintf("  (%.1fs, %s)", entry.elapsed.Seconds(), formatBytes(len(entry.content)))
+		if i < total-1 {
+			b.WriteString(th.Separator.Render("    " + strings.Repeat("─", 24)))
+			b.WriteString("\n")
 		}
-		line := fmt.Sprintf("[%s] %s%s%s", icon, label, detail, elapsed)
-		if i == m.toolLogCursor {
-			b.WriteString(th.SlashPickerName.Render("▸ " + line))
-		} else {
-			b.WriteString(th.ModalBody.Render("  " + line))
-		}
-		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(th.FooterDim.Render("↑↓ move · Enter view output · Esc/Ctrl+T close · Ctrl+C quit"))
+	b.WriteString(th.OverlayHint.Render("↑↓ move · Enter view output · Esc/Ctrl+T close · Ctrl+C quit"))
 	m.toolLogText = b.String()
 }
 

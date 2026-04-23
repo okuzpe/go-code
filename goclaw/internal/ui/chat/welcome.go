@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/okuzpe/goclaw/internal/text"
 )
 
 // WelcomeOptions configures the optional startup panel (Phase 2 parity with Claude Code home).
@@ -73,56 +72,38 @@ func welcomeOSUser() string {
 	return ""
 }
 
-// welcomeBrandGlyphLines returns a compact terminal panda for the hero column (centered by callers).
-// Face is full-block art only: █ plus spaces (eyes and bridge are negative space).
-func welcomeBrandGlyphLines() []string {
-	return []string{
-		"     ██     ██     ",
-		"    ███████████    ",
-		"   ███   █   ███   ",
-		"    ███████████    ",
-		"     █████████     ",
-		"    ██     ██      ",
+func welcomeSectionLines(label string, lines []string, width int, labelStyle, bodyStyle lipgloss.Style) []string {
+	if len(lines) == 0 {
+		return nil
 	}
+	out := []string{lipgloss.NewStyle().Width(width).Render(labelStyle.Render(label))}
+	for _, ln := range lines {
+		out = append(out, lipgloss.NewStyle().Width(width).Render(bodyStyle.Render(ln)))
+	}
+	return out
 }
 
-// welcomeBrandRibbon is a single-row wordmark with soft rules under the mascot.
-func welcomeBrandRibbon(th *Theme, columnWidth int) string {
-	if columnWidth < 10 {
-		return ""
+func welcomePrimarySummary(opt WelcomeOptions, version string) string {
+	summary := "goclaw v" + version
+	if sub := strings.TrimSpace(opt.Subtitle); sub != "" {
+		summary += " · " + sub
 	}
-	dim := th.Dim
-	accent := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
-	inner := dim.Render("╌╌") + " " + accent.Render("goclaw") + " " + dim.Render("╌╌")
-	return lipgloss.PlaceHorizontal(columnWidth, lipgloss.Center, inner, lipgloss.WithWhitespaceChars(" "))
+	return summary
 }
 
 func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWidth int) []string {
 	border := th.WelcomeFrame
 	titleAccent := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
-	welcomeHi := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
 	dim := th.Dim
-	// Section labels use the same accent family as slash pickers (calmer than tool warning color).
-	section := th.SlashPickerName
+	section := th.OverlayTitle
 
 	inner := termWidth - 2
 	if inner < 1 {
 		inner = 1
 	}
 	mid := border.Render(th.Icons.ToolCardV())
-	// Wider hero column, tips column wide enough for wrapped sentences (min 28 when room allows).
-	rightW := 28
-	if inner < 50 {
-		rightW = 22
-	}
-	if rightW > inner/3 {
-		rightW = inner / 3
-	}
+	rightW := inner / 2
 	leftW := inner - 1 - rightW
-	if leftW < 24 {
-		leftW = 24
-		rightW = inner - 1 - leftW
-	}
 
 	wd := strings.TrimSpace(opt.Workdir)
 	if wd != "" {
@@ -137,33 +118,25 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	}
 
 	var leftLines []string
-	leftLines = append(leftLines, "")
 	if u := welcomeOSUser(); u != "" {
-		leftLines = append(leftLines, centerInLeft(welcomeHi.Render("Welcome back, "+u)))
+		leftLines = append(leftLines, centerInLeft(titleAccent.Render("Welcome back, "+u)))
 	} else {
-		leftLines = append(leftLines, centerInLeft(welcomeHi.Render("Welcome to goclaw")))
+		leftLines = append(leftLines, centerInLeft(titleAccent.Render("Welcome to goclaw")))
 	}
 	leftLines = append(leftLines, "")
-	for _, ln := range welcomeBrandGlyphLines() {
-		leftLines = append(leftLines, centerInLeft(dim.Render(strings.TrimSpace(ln))))
-	}
-	leftLines = append(leftLines, "")
-	if ribbon := welcomeBrandRibbon(th, leftW); ribbon != "" {
-		leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(ribbon))
-	}
-	leftLines = append(leftLines, "")
-	if sub := strings.TrimSpace(opt.Subtitle); sub != "" {
-		for _, ln := range wrapSubtitle(sub, leftW-2) {
-			leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(dim.Render(ln)))
-		}
+	for _, ln := range wrapSubtitle(welcomePrimarySummary(opt, version), leftW-2) {
+		leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(dim.Render(ln)))
 	}
 	if wd != "" {
+		leftLines = append(leftLines, "")
+		leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(section.Render("Workspace")))
 		for _, ln := range wrapWorkdir(wd, leftW-2) {
 			leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(dim.Render(ln)))
 		}
 	}
 	if home {
-		for _, ln := range wrapPlainWords("Note: started in your home directory. cd into a project for a focused workspace.", leftW-2) {
+		leftLines = append(leftLines, "")
+		for _, ln := range wrapPlainWords("Started in your home directory. cd into a project for tighter context.", leftW-2) {
 			leftLines = append(leftLines, lipgloss.NewStyle().Width(leftW).Align(lipgloss.Center).Render(dim.Render(ln)))
 		}
 	}
@@ -174,41 +147,29 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 		}
 	}
 
+	quickStart := wrapPlainWords("/help — commands. Ctrl+P — profile. Ctrl+T — tool history. / opens actions.", rightW-1)
+	workflows := wrapPlainWords("Chat naturally, use @ for files, ! for shell, and /profile plan when you want planning first.", rightW-1)
 	var rightLines []string
+	rightLines = append(rightLines, welcomeSectionLines("Quick Start", quickStart, rightW, section, dim)...)
 	rightLines = append(rightLines, "")
-	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(section.Render("Tips")))
-	for _, ln := range wrapPlainWords("/help — commands. Ctrl+P — profiles. Ctrl+T — tool history.", rightW-1) {
-		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
-	}
-	for _, ln := range wrapPlainWords("One message = one turn; say continue if it stopped after reads only.", rightW-1) {
-		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
-	}
-	rightLines = append(rightLines, "")
-	rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(section.Render("Flows")))
-	for _, ln := range wrapPlainWords("Plan: /profile plan, then /plan run when you are ready to implement.", rightW-1) {
-		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
-	}
-	for _, ln := range wrapPlainWords("Hub: /profile coordinator — /workers and /focus for delegates.", rightW-1) {
-		rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
-	}
+	rightLines = append(rightLines, welcomeSectionLines("Workflows", workflows, rightW, section, dim)...)
 	if opt.FileWriteToolsHidden {
 		rightLines = append(rightLines, "")
 		if opt.HubDelegatesCoding {
-			for _, ln := range wrapPlainWords("This profile hides write_file from the model — delegate coding with spawn_agent (e.g. profile general-purpose or stack-coder), or /profile general-purpose for direct edits.", rightW-1) {
+			for _, ln := range wrapPlainWords("This profile is read-only for workspace edits — delegate coding with spawn_agent or switch to /profile general-purpose.", rightW-1) {
 				rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 			}
 		} else {
-			for _, ln := range wrapPlainWords("Read-only profile: use /profile general-purpose to edit files in this session.", rightW-1) {
+			for _, ln := range wrapPlainWords("Read-only profile — switch to /profile general-purpose to edit files here.", rightW-1) {
 				rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 			}
 		}
 	} else if opt.WriteApprovalRequired {
 		rightLines = append(rightLines, "")
-		for _, ln := range wrapPlainWords("Write tools available · each call needs approval (y/n/Enter) — or /allow-writes to skip prompts this session.", rightW-1) {
+		for _, ln := range wrapPlainWords("Write tools are available — approve each call, or use /allow-writes for this session.", rightW-1) {
 			rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 		}
 	}
-	rightLines = append(rightLines, "")
 
 	n := len(leftLines)
 	if len(rightLines) > n {
@@ -230,7 +191,7 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 		rows = append(rows, fullRow)
 	}
 
-	titlePlain := "goclaw v" + version
+	titlePlain := " goclaw "
 	topPrefix := th.Icons.WelcomeTopPrefix()
 	h := th.Icons.ToolCardH()
 	dashAfterTitle := termWidth - lipgloss.Width(topPrefix) - lipgloss.Width(titlePlain) - 2
@@ -248,7 +209,7 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termWidth int, contentMax int) []string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(th.Assistant.GetForeground())
 	dim := th.Dim
-	accent := th.SlashPickerName
+	accent := th.OverlayTitle
 
 	var body strings.Builder
 	writeJoined := func(lines []string, render func(...string) string) {
@@ -262,23 +223,22 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 	if u := welcomeOSUser(); u != "" {
 		writeJoined(wrapPlainWords("Welcome back, "+u, contentMax), titleStyle.Render)
 		body.WriteString("\n")
-		writeJoined(wrapPlainWords("goclaw v"+version, contentMax), dim.Render)
+		writeJoined(wrapPlainWords(welcomePrimarySummary(opt, version), contentMax), dim.Render)
 	} else {
-		writeJoined(wrapPlainWords("goclaw v"+version, contentMax), titleStyle.Render)
-	}
-	if sub := strings.TrimSpace(opt.Subtitle); sub != "" {
+		writeJoined(wrapPlainWords("Welcome to goclaw", contentMax), titleStyle.Render)
 		body.WriteString("\n")
-		for _, ln := range wrapSubtitle(sub, contentMax) {
-			body.WriteString(dim.Render(ln))
-		}
+		writeJoined(wrapPlainWords(welcomePrimarySummary(opt, version), contentMax), dim.Render)
 	}
 	if wd := strings.TrimSpace(opt.Workdir); wd != "" {
 		if abs, err := filepath.Abs(wd); err == nil {
 			wd = abs
 		}
 		body.WriteString("\n")
+		body.WriteString(accent.Render("Workspace"))
+		body.WriteString("\n")
 		for _, ln := range wrapWorkdir(wd, contentMax) {
 			body.WriteString(dim.Render(ln))
+			body.WriteString("\n")
 		}
 		if workspaceLooksLikeUserHome(wd) {
 			body.WriteString("\n")
@@ -286,32 +246,35 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 		}
 	}
 	body.WriteString("\n\n")
-	body.WriteString(accent.Render("Tips"))
+	body.WriteString(accent.Render("Quick Start"))
 	body.WriteString("\n")
-	for _, ln := range wrapPlainWords("/help · Ctrl+P (profiles) · Ctrl+T (tool history) · one message = one turn; continue if it stopped early.", contentMax) {
+	for _, ln := range wrapPlainWords("/help · Ctrl+P profile · Ctrl+T tool history · / shows actions.", contentMax) {
 		body.WriteString(dim.Render(ln))
 		body.WriteString("\n")
 	}
-	for _, ln := range wrapPlainWords("Plan: /profile plan → /plan run. Hub: /profile coordinator → /workers, /focus.", contentMax) {
+	body.WriteString("\n")
+	body.WriteString(accent.Render("Workflows"))
+	body.WriteString("\n")
+	for _, ln := range wrapPlainWords("Chat naturally, use @ for files, ! for shell, and /profile plan when you want planning first.", contentMax) {
 		body.WriteString(dim.Render(ln))
 		body.WriteString("\n")
 	}
 	if opt.FileWriteToolsHidden {
 		body.WriteString("\n")
 		if opt.HubDelegatesCoding {
-			for _, ln := range wrapPlainWords("This profile hides write tools — spawn_agent for coding, or /profile general-purpose for direct edits.", contentMax) {
+			for _, ln := range wrapPlainWords("This profile is read-only for workspace edits — spawn_agent for coding, or /profile general-purpose for direct edits.", contentMax) {
 				body.WriteString(dim.Render(ln))
 				body.WriteString("\n")
 			}
 		} else {
-			for _, ln := range wrapPlainWords("Read-only profile — /profile general-purpose for direct file edits.", contentMax) {
+			for _, ln := range wrapPlainWords("Read-only profile — switch to /profile general-purpose for file edits.", contentMax) {
 				body.WriteString(dim.Render(ln))
 				body.WriteString("\n")
 			}
 		}
 	} else if opt.WriteApprovalRequired {
 		body.WriteString("\n")
-		for _, ln := range wrapPlainWords("Write tools available · each call needs approval (y/n/Enter) — or /allow-writes to skip prompts this session.", contentMax) {
+		for _, ln := range wrapPlainWords("Write tools are available — approve each call, or use /allow-writes for this session.", contentMax) {
 			body.WriteString(dim.Render(ln))
 			body.WriteString("\n")
 		}
@@ -324,33 +287,7 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 		}
 	}
 
-	// Mascot glyphs are fixed-width art (~21 cells). Skip them when the body is too narrow or
-	// PlaceHorizontal would not constrain wide runes, so framed lines stay within the terminal.
-	if contentMax >= 20 {
-		body.WriteString("\n")
-		for _, ln := range welcomeBrandGlyphLines() {
-			plain := strings.TrimSpace(ln)
-			if lipgloss.Width(plain) > contentMax {
-				plain = text.TruncateRunesHard(plain, contentMax)
-			}
-			centered := lipgloss.PlaceHorizontal(contentMax, lipgloss.Center, plain, lipgloss.WithWhitespaceChars(" "))
-			body.WriteString(dim.Render(centered))
-			body.WriteString("\n")
-		}
-	}
-
-	ribbonWidth := contentMax + 4
-	if termWidth > 0 && termWidth-4 < ribbonWidth {
-		ribbonWidth = termWidth - 4
-		if ribbonWidth < 12 {
-			ribbonWidth = 12
-		}
-	}
-	ribbon := welcomeBrandRibbon(th, ribbonWidth)
 	trimmed := strings.TrimSpace(body.String())
-	if ribbon != "" {
-		trimmed = trimmed + "\n" + ribbon
-	}
 
 	frameStyle := th.WelcomeFrame.Copy().
 		Border(lipgloss.RoundedBorder(), true, true, true, true).

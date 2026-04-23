@@ -10,6 +10,15 @@ import (
 	"github.com/okuzpe/goclaw/internal/session"
 )
 
+// LocalPrefixToolResult captures a local ! / @ / & tool execution handled before the model runs.
+type LocalPrefixToolResult struct {
+	ToolName      string
+	ToolInputJSON string
+	Content       string
+	Reply         string
+	IsError       bool
+}
+
 // FormatPrefixToolReply formats local prefix tool output for session history and display.
 func FormatPrefixToolReply(toolName, content string, isError bool) string {
 	content = strings.TrimRight(content, "\n")
@@ -29,23 +38,29 @@ func RunLocalPrefixToolIfAny(
 	sess *session.Session,
 	userText string,
 	sink orchestrator.StreamSink,
-	workdir string,
-) (handled bool, err error) {
+) (*LocalPrefixToolResult, bool, error) {
 	if mock {
-		return false, nil
+		return nil, false, nil
 	}
 	analysis, err := inputprefix.Analyze(userText)
 	if err != nil {
-		return true, err
+		return nil, true, err
 	}
 	if analysis.Kind != inputprefix.KindLocalTool {
-		return false, nil
+		return nil, false, nil
 	}
 	content, isError, runErr := orch.RunToolInvocation(ctx, analysis.ToolName, analysis.ToolInputJSON, sink)
 	if runErr != nil {
-		return true, runErr
+		return nil, true, runErr
 	}
 	body := FormatPrefixToolReply(analysis.ToolName, content, isError)
+	result := &LocalPrefixToolResult{
+		ToolName:      analysis.ToolName,
+		ToolInputJSON: analysis.ToolInputJSON,
+		Content:       content,
+		Reply:         body,
+		IsError:       isError,
+	}
 	if sess != nil {
 		sess.Add("user", analysis.UserLine)
 		sess.AddAssistant(body, nil)
@@ -56,5 +71,5 @@ func RunLocalPrefixToolIfAny(
 		}
 		sink.OnDone(body)
 	}
-	return true, nil
+	return result, true, nil
 }

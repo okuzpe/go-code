@@ -3,7 +3,7 @@ package chat
 // English footer copy for transcript scrolling. A future UI locale catalog would replace this
 // (see docs/goclaw/i18n.md — static TUI strings stay English until then).
 
-const transcriptScrollNavCore = "Transcript: Ctrl+B browse · PgUp/PgDn · Alt+arrows"
+const transcriptScrollNavCore = "Transcript: PgUp/PgDn · Alt+arrows · Ctrl+B browse"
 
 func transcriptWheelSuffix(tuiMouseScroll bool) string {
 	if tuiMouseScroll {
@@ -25,7 +25,7 @@ func streamBusyTranscriptScrollFooterLine(tuiMouseScroll, emptyCompose, termNarr
 		if termNarrow {
 			return "Transcript: ↑↓ j/k · PgUp · Alt+arrows · Ctrl+B" + w
 		}
-		return "Transcript: empty compose — ↑↓ j/k · Ctrl+B browse · PgUp/PgDn · Alt+arrows" + w
+		return "Transcript: empty compose — ↑↓ j/k · PgUp/PgDn · Alt+arrows · Ctrl+B browse" + w
 	}
 	if termNarrow {
 		return "Transcript: PgUp · Alt+arrows · Ctrl+B" + w
@@ -35,5 +35,5 @@ func streamBusyTranscriptScrollFooterLine(tuiMouseScroll, emptyCompose, termNarr
 
 // transcriptBrowseFooterLine is the dim footer while Ctrl+B transcript browse mode is active.
 func transcriptBrowseFooterLine(tuiMouseScroll bool) string {
-	return "Browse: ↑↓ j/k PgUp · [ ] tool · e expand · Ctrl+B editor · Esc back" + transcriptWheelSuffix(tuiMouseScroll)
+	return "Browse: ↑↓ j/k PgUp · [ ] tool · e expand · Ctrl+B return · Esc back" + transcriptWheelSuffix(tuiMouseScroll)
 }

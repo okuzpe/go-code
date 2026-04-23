@@ -69,7 +69,7 @@ func (m *Model) refreshFooterStatsCache() {
 	line := strings.TrimSpace(m.footerStats())
 	if line != "" {
 		mode := config.NormalizeTUIInteractMode(m.interactMode)
-		line = line + " · ui:" + mode
+		line = line + " · mode:" + mode
 	}
 	m.footerStatsLine = line
 }
@@ -117,10 +117,11 @@ func (m *Model) syncInputPlaceholder() {
 	m.input.Placeholder = placeholderForWidth(m.width)
 }
 
-// headerView renders a compact one-line cyberpunk banner when a model label is set.
-// Returns "" when no label is configured so callers that omit it see no change.
+// headerView renders a single compact context bar for the current session.
 func (m *Model) headerView() string {
-	if strings.TrimSpace(m.modelLabel) == "" {
+	profile := strings.TrimSpace(m.activeAgentProfile)
+	model := strings.TrimSpace(m.modelLabel)
+	if profile == "" && model == "" {
 		return ""
 	}
 	th := m.theme
@@ -132,36 +133,93 @@ func (m *Model) headerView() string {
 		w = defaultTerminalWidthFallback
 	}
 
-	// Left title segment.
-	const appName = " GOCLAW "
-	titlePart := th.StatusBarLabel.Render(appName)
-	modelPart := th.FooterDim.Render(" " + m.modelLabel + " ")
+	const brandText = "GOCLAW"
+	partsPlain := []string{brandText}
+	partsRendered := []string{th.HeaderBrand.Render(brandText)}
 
-	// Build a neon rule that fills the remaining width.
-	// Layout: ╔═ GOCLAW ══ model ═════...═╗
-	const rune_H = "═"
-	const rune_TL = "╔"
-	const rune_TR = "╗"
-
-	uiW := lipgloss.Width
-	// Fixed parts: 2 edges + 2 gaps ("═" before title and after model) + title + model
-	fixed := uiW(rune_TL) + uiW(rune_H) + uiW(titlePart) + uiW(rune_H+rune_H) + uiW(modelPart) + uiW(rune_H) + uiW(rune_TR)
-	fill := w - fixed
-	if fill < 0 {
-		fill = 0
+	if profile != "" {
+		partsPlain = append(partsPlain, profile)
+		partsRendered = append(partsRendered, th.SlashPickerName.Render(profile))
+	}
+	if model != "" {
+		used := lipgloss.Width(strings.Join(partsPlain, " · "))
+		remain := w - used - lipgloss.Width(" · ")
+		if remain > 12 {
+			model = text.TruncateRunes(model, remain)
+			partsPlain = append(partsPlain, model)
+			partsRendered = append(partsRendered, th.HeaderMeta.Render(model))
+		}
 	}
 
-	border := th.ModalTitle.Render
-	dim := th.FooterDim.Render
+	row := strings.Join(partsRendered, " "+th.ShellChrome.Render("·")+" ")
+	if lipgloss.Width(strings.Join(partsPlain, " · ")) >= w {
+		return row
+	}
+	return row
+}
 
-	header := border(rune_TL) +
-		dim(rune_H) +
-		titlePart +
-		dim(rune_H+rune_H) +
-		modelPart +
-		dim(strings.Repeat(rune_H, fill)) +
-		border(rune_TR)
-	return header
+func (m *Model) overlayFooterLine(line string) string {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	if m.width > 4 {
+		return th.OverlayHint.Width(m.width).Render(line)
+	}
+	return th.OverlayHint.Render(line)
+}
+
+func (m *Model) footerContextLine(fw int) string {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	active := strings.TrimSpace(m.footerPrimaryStatus())
+	stats := strings.TrimSpace(m.footerStatsLine)
+	if active != "" {
+		if stats != "" && fw > 24 {
+			plainW := lipgloss.Width(stripANSI(active + " " + stats))
+			if plainW <= fw {
+				return active + " " + th.OverlayHint.Render("· " + stats)
+			}
+		}
+		return active
+	}
+	if fh := strings.TrimSpace(m.footerHint); fh != "" {
+		return fh
+	}
+	if guide := strings.TrimSpace(m.footerTranscriptGuideLine(fw)); guide != "" {
+		return guide
+	}
+	if m.transcriptBrowse {
+		return transcriptBrowseFooterLine(m.tuiMouseScroll)
+	}
+	if m.focusLine != nil {
+		if fh := strings.TrimSpace(m.focusLine()); fh != "" {
+			return fh
+		}
+	}
+	if stats != "" {
+		return stats
+	}
+	return "/ commands · @ files · Ctrl+P profile · Ctrl+T tools"
+}
+
+func (m *Model) renderDocOverlay() string {
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	var b strings.Builder
+	title := strings.TrimSpace(m.docOverlayTitle)
+	if title != "" {
+		b.WriteString(th.OverlayTitle.Render(title))
+		b.WriteString("\n\n")
+	}
+	if src := strings.TrimSpace(m.docOverlaySourceMD); src != "" {
+		b.WriteString(th.RenderMarkdown(src, m.width, 0))
+	}
+	return b.String()
 }
 
 // footerPrimaryStatus delegates entirely to the centralized RenderAgentStatus().
@@ -267,19 +325,7 @@ func (m *Model) applySlashHints(hints slashcmd.UIHints) {
 
 // profileModeBarView returns the single-line profile rail between the transcript and footer (see agent_deck_rail.go).
 func (m *Model) profileModeBarView() string {
-	if m.cycleAgentProfileFn == nil {
-		return ""
-	}
-	if m.toolLogOpen || m.docOverlayOpen || m.themePickOpen || m.agentPickOpen {
-		return ""
-	}
-	if m.width <= 0 {
-		return ""
-	}
-	if strings.TrimSpace(m.activeAgentProfile) == "" {
-		return ""
-	}
-	return m.agentDeckRailView()
+	return ""
 }
 
 func (m *Model) layout() {
@@ -304,14 +350,7 @@ func (m *Model) layout() {
 		return
 	}
 	if m.docOverlayOpen {
-		th := m.theme
-		if th == nil {
-			th = DefaultTheme()
-		}
-		rendered := ""
-		if strings.TrimSpace(m.docOverlaySourceMD) != "" {
-			rendered = th.RenderMarkdown(m.docOverlaySourceMD, m.width, 0)
-		}
+		rendered := m.renderDocOverlay()
 		m.viewport.SetContent(rendered)
 		m.lastTranscript = rendered
 		return
@@ -390,105 +429,35 @@ func (m *Model) footerView() string {
 		} else {
 			line = "↑↓ move · Enter view · Esc close · Ctrl+C quit"
 		}
-		if m.width > 4 {
-			return th.FooterDim.Width(m.width).Render(line)
-		}
-		return th.FooterDim.Render(line)
+		return m.overlayFooterLine(line)
 	}
 	if m.docOverlayOpen {
-		line := "Esc · Ctrl+C quit"
-		if m.width > 4 {
-			return th.FooterDim.Width(m.width).Render(line)
-		}
-		return th.FooterDim.Render(line)
+		return m.overlayFooterLine("Esc · Ctrl+C quit")
 	}
 	if m.themePickOpen {
-		line := "↑↓ · Enter apply · Esc cancel · Ctrl+C quit"
-		if m.width > 4 {
-			return th.FooterDim.Width(m.width).Render(line)
-		}
-		return th.FooterDim.Render(line)
+		return m.overlayFooterLine("↑↓ · Enter apply · Esc cancel · Ctrl+C quit")
 	}
 	if m.agentPickOpen {
-		line := "↑↓ · Enter apply · Esc cancel · Ctrl+C quit"
-		if m.width > 4 {
-			return th.FooterDim.Width(m.width).Render(line)
-		}
-		return th.FooterDim.Render(line)
+		return m.overlayFooterLine("↑↓ · Enter apply · Esc cancel · Ctrl+C quit")
 	}
 
 	fw := m.width
-	primary := strings.TrimSpace(m.footerPrimaryStatus())
-	stats := strings.TrimSpace(m.footerStatsLine)
-
 	var b strings.Builder
 
 	// Horizontal rule separating transcript from footer chrome.
 	if fw > 0 {
-		ruler := th.FooterDim.Width(fw).Render(strings.Repeat("─", fw))
+		ruler := th.Separator.Render(strings.Repeat("─", fw))
 		b.WriteString(ruler)
 		b.WriteString("\n")
 	}
 
-	// Status row: spinner/thinking indicator with accent label, right-aligned stats.
-	// Shown only while active so idle UI does not grow an extra blank line.
-	if primary != "" {
-		var statusRow string
-		if stats != "" && fw > 40 {
-			// Right-align stats next to the primary status when there is room.
-			statW := lipgloss.Width(stats)
-			primW := lipgloss.Width(primary)
-			gap := fw - primW - statW
-			if gap < 2 {
-				gap = 2
-			}
-			statusRow = primary + strings.Repeat(" ", gap) + th.FooterDim.Render(stats)
-		} else {
-			statusRow = primary
-		}
+	if line := m.footerContextLine(fw); line != "" {
 		if fw > 4 {
-			b.WriteString(th.FooterDim.Width(fw).Render(statusRow))
+			b.WriteString(th.OverlayHint.Width(fw).Render(line))
 		} else {
-			b.WriteString(th.FooterDim.Render(statusRow))
+			b.WriteString(th.OverlayHint.Render(line))
 		}
 		b.WriteString("\n")
-	}
-
-	if fh := strings.TrimSpace(m.footerHint); fh != "" {
-		if fw > 4 {
-			b.WriteString(th.FooterDim.Width(fw).Render(fh))
-		} else {
-			b.WriteString(th.FooterDim.Render(fh))
-		}
-		b.WriteString("\n")
-	}
-	if guide := m.footerTranscriptGuideLine(fw); guide != "" {
-		if fw > 4 {
-			b.WriteString(th.FooterDim.Width(fw).Render(guide))
-		} else {
-			b.WriteString(th.FooterDim.Render(guide))
-		}
-		b.WriteString("\n")
-	}
-	if m.transcriptBrowse {
-		line := transcriptBrowseFooterLine(m.tuiMouseScroll)
-		if fw > 4 {
-			b.WriteString(th.FooterDim.Width(fw).Render(line))
-		} else {
-			b.WriteString(th.FooterDim.Render(line))
-		}
-		b.WriteString("\n")
-	}
-
-	if m.focusLine != nil {
-		if fh := strings.TrimSpace(m.focusLine()); fh != "" {
-			if fw > 4 {
-				b.WriteString(th.FooterDim.Width(fw).Render(fh))
-			} else {
-				b.WriteString(th.FooterDim.Render(fh))
-			}
-			b.WriteString("\n")
-		}
 	}
 
 	if strip := m.prefixSuggestStripView(); strip != "" {
@@ -539,6 +508,30 @@ func (m *Model) prefixSuggestStripView() string {
 	return m.bangAmpHintStripView()
 }
 
+func (m *Model) compactHelperStrip(head string, rows []string) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	th := m.theme
+	if th == nil {
+		th = DefaultTheme()
+	}
+	fw := m.width
+	if fw <= 0 {
+		fw = defaultTerminalWidthFallback
+	}
+	maxW := fw - 4
+	if maxW < 24 {
+		maxW = fw
+	}
+	line := head
+	if len(rows) > 0 {
+		line += " · " + strings.Join(rows, "  ·  ")
+	}
+	line = text.TruncateRunes(line, maxW)
+	return th.OverlayHint.Render(line)
+}
+
 // atSuggestStripView lists workspace paths matching the @token at the current cursor position.
 // Works regardless of where in the input the @ appears.
 func (m *Model) atSuggestStripView() string {
@@ -567,59 +560,23 @@ func (m *Model) atSuggestStripView() string {
 		m.atSuggestLastOut = ""
 		return ""
 	}
-	th := m.theme
-	if th == nil {
-		th = DefaultTheme()
-	}
-	ruleW := m.width
-	const maxPickRule = 52
-	if ruleW > maxPickRule {
-		ruleW = maxPickRule
-	}
-	maxW := m.width - 4
-	if maxW < 40 {
-		maxW = m.width
-	}
-	if maxW < 24 {
-		maxW = 72
-	}
 	more := 0
 	if len(sugs) > maxSlashSuggestRows {
 		more = len(sugs) - maxSlashSuggestRows
 		sugs = sugs[:maxSlashSuggestRows]
 	}
-	var b strings.Builder
-	b.WriteString(th.SeparatorLine(ruleW))
-	b.WriteString("\n")
-	b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("@ paths · max %d · Tab completes · workspace", maxSlashSuggestRows)))
+	rows := make([]string, 0, len(sugs)+1)
 	for _, s := range sugs {
 		name := "@" + s.RelPath
 		if s.IsDir {
 			name += "/"
 		}
-		displayName := text.AtRefDisplayLabel(name)
-		snippet := "dir"
-		if !s.IsDir {
-			snippet = "file"
-		}
-		nameW := lipgloss.Width(th.SlashPickerName.Render(displayName))
-		budget := maxW - nameW - 2
-		if budget < 8 {
-			budget = 8
-		}
-		snippet = text.TruncateRunes(snippet, budget)
-		line := lipgloss.JoinHorizontal(lipgloss.Top, th.SlashPickerName.Render(displayName), th.SlashPickerDesc.Render("  "+snippet))
-		if lipgloss.Width(line) > maxW {
-			line = th.SlashPickerName.Render(displayName)
-		}
-		b.WriteString("\n")
-		b.WriteString(line)
+		rows = append(rows, text.AtRefDisplayLabel(name))
 	}
 	if more > 0 {
-		b.WriteString("\n")
-		b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("… +%d more — keep typing", more)))
+		rows = append(rows, fmt.Sprintf("+%d more", more))
 	}
-	out := b.String()
+	out := m.compactHelperStrip("Paths · Tab completes", rows)
 	m.atSuggestLastWalk = now
 	m.atSuggestLastOut = out
 	return out
@@ -647,59 +604,27 @@ func (m *Model) slashSuggestStripView() string {
 	var head string
 	if m.slashContextFn != nil {
 		sugs = slashcmd.SlashInlineSuggestions(m.ctx, m.slashContextFn(), cur, col)
-		head = fmt.Sprintf("/ args · max %d · Tab · type to narrow", maxSlashSuggestRows)
+		head = "Command args"
 	} else {
 		sugs = slashcmd.TUISlashSuggestions(cur)
-		head = fmt.Sprintf("/ commands · max %d shown · Tab · type to narrow", maxSlashSuggestRows)
+		head = "Commands"
 	}
 	if len(sugs) == 0 {
 		return ""
-	}
-	th := m.theme
-	if th == nil {
-		th = DefaultTheme()
-	}
-	ruleW := m.width
-	const maxPickRule = 52
-	if ruleW > maxPickRule {
-		ruleW = maxPickRule
-	}
-	maxW := m.width - 4
-	if maxW < 40 {
-		maxW = m.width
-	}
-	if maxW < 24 {
-		maxW = 72
 	}
 	more := 0
 	if len(sugs) > maxSlashSuggestRows {
 		more = len(sugs) - maxSlashSuggestRows
 		sugs = sugs[:maxSlashSuggestRows]
 	}
-	var b strings.Builder
-	b.WriteString(th.SeparatorLine(ruleW))
-	b.WriteString("\n")
-	b.WriteString(th.SlashPickerDesc.Render(head))
+	rows := make([]string, 0, len(sugs)+1)
 	for _, s := range sugs {
-		displayName := slashSuggestDisplayName(s.Name)
-		nameW := lipgloss.Width(th.SlashPickerName.Render(displayName))
-		budget := maxW - nameW - 2
-		if budget < 8 {
-			budget = 8
-		}
-		snippet := text.TruncateRunes(s.Summary, budget)
-		line := lipgloss.JoinHorizontal(lipgloss.Top, th.SlashPickerName.Render(displayName), th.SlashPickerDesc.Render("  "+snippet))
-		if lipgloss.Width(line) > maxW {
-			line = th.SlashPickerName.Render(displayName)
-		}
-		b.WriteString("\n")
-		b.WriteString(line)
+		rows = append(rows, slashSuggestDisplayName(s.Name))
 	}
 	if more > 0 {
-		b.WriteString("\n")
-		b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("… +%d more — keep typing", more)))
+		rows = append(rows, fmt.Sprintf("+%d more", more))
 	}
-	return b.String()
+	return m.compactHelperStrip(head, rows)
 }
 
 // bangAmpHintStripView shows one-line hints for ! and & prefix modes.
@@ -708,27 +633,11 @@ func (m *Model) bangAmpHintStripView() string {
 	if strings.Contains(raw, "\n") || raw == "" {
 		return ""
 	}
-	th := m.theme
-	if th == nil {
-		th = DefaultTheme()
-	}
-	ruleW := m.width
-	const maxPickRule = 52
-	if ruleW > maxPickRule {
-		ruleW = maxPickRule
-	}
-	var b strings.Builder
 	switch {
 	case raw == "!":
-		b.WriteString(th.SeparatorLine(ruleW))
-		b.WriteString("\n")
-		b.WriteString(th.SlashPickerDesc.Render("! — bash tool (allowlisted) · type command · Enter runs · @ shows path picks"))
-		return b.String()
+		return m.compactHelperStrip("Shell", []string{"type command", "Enter runs", "@ inserts paths"})
 	case raw == "&":
-		b.WriteString(th.SeparatorLine(ruleW))
-		b.WriteString("\n")
-		b.WriteString(th.SlashPickerDesc.Render("& — spawn_agent (general-purpose) · one line · coordinator profile"))
-		return b.String()
+		return m.compactHelperStrip("Spawn", []string{"one-line task", "general-purpose worker", "best from coordinator"})
 	default:
 		return ""
 	}
@@ -767,60 +676,20 @@ func (m *Model) messageQueueStripView() string {
 	if th == nil {
 		th = DefaultTheme()
 	}
-	ruleW := m.width
-	const maxPickRule = 52
-	if ruleW > maxPickRule {
-		ruleW = maxPickRule
-	}
-	fw := m.width
-	if fw <= 0 {
-		fw = defaultTerminalWidthFallback
-	}
-	maxW := fw - 4
-	if maxW < 16 {
-		maxW = fw
-	}
-
-	var b strings.Builder
-	b.WriteString(th.SeparatorLine(ruleW))
-	b.WriteString("\n")
 	msgWord := "messages"
 	if n == 1 {
 		msgWord = "message"
 	}
-	b.WriteString(th.SlashPickerDesc.Render(fmt.Sprintf("Queued · %d %s · sent in order when idle", n, msgWord)))
-	b.WriteString("\n")
-
-	show := n
-	extra := 0
-	if show > maxMessageQueueStripLines {
-		extra = show - maxMessageQueueStripLines
-		show = maxMessageQueueStripLines
+	preview := queuePreviewOneLine(m.messageQueue[0])
+	maxW := m.width - 28
+	if maxW < 16 {
+		maxW = 16
 	}
-	for i := 0; i < show; i++ {
-		preview := queuePreviewOneLine(m.messageQueue[i])
-		num := fmt.Sprintf("%d.", i+1)
-		budget := maxW - utf8.RuneCountInString(num) - 1
-		if budget < 8 {
-			budget = 8
-		}
-		line := num + " " + text.TruncateRunes(preview, budget)
-		if fw > 4 {
-			b.WriteString(th.FooterDim.Width(fw).Render(line))
-		} else {
-			b.WriteString(th.FooterDim.Render(line))
-		}
-		b.WriteString("\n")
+	parts := []string{fmt.Sprintf("%d %s", n, msgWord), text.TruncateRunes(preview, maxW)}
+	if n > 1 {
+		parts = append(parts, fmt.Sprintf("+%d more", n-1))
 	}
-	if extra > 0 {
-		more := fmt.Sprintf("… and %d more", extra)
-		if fw > 4 {
-			b.WriteString(th.FooterDim.Width(fw).Render(more))
-		} else {
-			b.WriteString(th.FooterDim.Render(more))
-		}
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return m.compactHelperStrip("Queued", parts)
 }
 
 // approvalStripView renders the tool approval request above the input with a card-style border.
@@ -840,9 +709,9 @@ func (m *Model) approvalStripView() string {
 	previewPlain := m.pending.Preview
 
 	st := th.Icons
-	title := th.ModalTitle.Render(st.ApprovalPromptGlyph() + " Allow")
-	sep := th.ToolCardBorder.Render(" │ ")
-	hint := th.Dim.Render("  y/n/esc")
+	title := th.OverlayTitle.Render(st.ApprovalPromptGlyph() + " Allow")
+	sep := th.ShellChrome.Render(" │ ")
+	hint := th.OverlayHint.Render("  y/n/esc")
 
 	try := func(toolShow, prevShow string) (string, bool) {
 		toolSt := th.Tool.Render(toolShow)

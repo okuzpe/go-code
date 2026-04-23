@@ -13,8 +13,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/okuzpe/goclaw/internal/config"
-	"github.com/okuzpe/goclaw/internal/hooks"
-	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/telegram"
 	"github.com/spf13/cobra"
 )
@@ -107,17 +105,7 @@ func telegramRunBridgeLoop(cmd *cobra.Command, token string) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		for _, s := range rt.McpSessions {
-			_ = s.Close()
-		}
-	}()
-	defer func() {
-		cleanupSessionScratch(rt.ScratchDir)
-	}()
-	defer func() {
-		_ = rt.HookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionEnd})
-	}()
+	defer rt.Close()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
@@ -193,39 +181,25 @@ func telegramRunBridgeLoop(cmd *cobra.Command, token string) error {
 }
 
 func runTelegramTurn(ctx context.Context, rt *ChatRuntime, tg *telegram.Client, chatID int64, line string) error {
-	if rt.Mock {
-		reply, err := StreamMockAssistant(ctx, line, NopStreamSink{}, rt.Sess)
-		if err != nil {
-			return err
-		}
-		if err := tg.SendMessageText(ctx, chatID, reply); err != nil {
-			return err
-		}
-		slog.Info("telegram bridge: reply sent", "chat_id", chatID, "reply_runes", utf8.RuneCountInString(reply))
-		if err := rt.Store.Save(rt.Sess); err != nil {
-			slog.Warn("telegram bridge: save session failed", "err", err)
-		}
-		return nil
-	}
-
-	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, withAutomationOutputToolApprover(rt.OrchOpts)...)
-	_ = MaybeCoordinatorToDirectProfile(rt, orch, line, false)
+	orch := newAutomationOrchestrator(rt)
 	stopTyping := startTelegramTypingLoop(ctx, tg, chatID)
 	defer stopTyping()
 	t0 := time.Now()
-	slog.Info("telegram bridge: model turn started", "provider", rt.Cfg.Provider, "model", rt.Cfg.Model())
-	reply, err := orch.RunStreaming(ctx, line, NopStreamSink{})
+	slog.Info("telegram bridge: turn started", "provider", rt.Cfg.Provider, "model", rt.Cfg.Model())
+	reply, err := runSessionTurn(ctx, rt, orch, line, NopStreamSink{}, sessionTurnOptions{
+		ApplyAutoProfile: true,
+	})
 	elapsed := time.Since(t0)
 	if err != nil {
-		slog.Warn("telegram bridge: model turn failed", "err", err, "elapsed", elapsed)
+		slog.Warn("telegram bridge: turn failed", "err", err, "elapsed", elapsed)
 		return err
 	}
-	slog.Info("telegram bridge: model turn completed", "elapsed", elapsed, "reply_runes", utf8.RuneCountInString(reply))
+	slog.Info("telegram bridge: turn completed", "elapsed", elapsed, "reply_runes", utf8.RuneCountInString(reply))
 	if err := tg.SendMessageText(ctx, chatID, reply); err != nil {
 		return fmt.Errorf("send telegram reply: %w", err)
 	}
 	slog.Info("telegram bridge: reply sent", "chat_id", chatID, "reply_runes", utf8.RuneCountInString(reply))
-	if err := rt.Store.Save(rt.Sess); err != nil {
+	if err := rt.SaveSession(); err != nil {
 		slog.Warn("telegram bridge: save session failed", "err", err)
 	}
 	return nil

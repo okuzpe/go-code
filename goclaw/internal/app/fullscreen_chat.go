@@ -263,15 +263,7 @@ func fullscreenNewChatSubmitter(rt *ChatRuntime, orch *orchestrator.Orchestrator
 				return "", augment(err)
 			}
 		}
-		if rt.Mock {
-			reply, err := StreamMockAssistant(ctx, userText, sink, rt.Sess)
-			return reply, augment(err)
-		}
-		if handled, err := RunLocalPrefixToolIfAny(ctx, rt.Mock, orch, rt.Sess, userText, sink, rt.Workdir); handled {
-			return "", err
-		}
-		userText = ExpandInlineAtRefs(ctx, orch, userText)
-		reply, err := orch.RunStreaming(ctx, userText, sink)
+		reply, err := runSessionTurn(ctx, rt, orch, userText, sink, sessionTurnOptions{})
 		return reply, augment(err)
 	}
 }

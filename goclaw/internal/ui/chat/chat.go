@@ -302,8 +302,8 @@ const maxSlashSuggestRows = 5
 const atSuggestWalkMinInterval = 180 * time.Millisecond
 
 func placeholderForWidth(termWidth int) string {
-	const full = "Message…  @ paths · /commands · Tab completes · Ctrl+B transcript · Ctrl+M ui mode · Shift+Enter newline · /help for more"
-	const narrow = "Message…  /help · Ctrl+B scroll"
+	const full = "Ask, edit, or plan…  @ files · /commands · Shift+Enter newline · /help"
+	const narrow = "Ask…  /help"
 	if termWidth > 0 && termWidth < composePlaceholderNarrowMaxW {
 		return narrow
 	}
@@ -327,7 +327,7 @@ func New(ctx context.Context, opts Options) Model {
 	in := textarea.New()
 	in.Placeholder = placeholderForWidth(0)
 	in.Prompt = th.InputPrompt
-	in.ShowLineNumbers = true
+	in.ShowLineNumbers = false
 	in.SetHeight(1) // start compact, grows dynamically
 	in.SetWidth(0)
 	in.CharLimit = 0 // no char limit
@@ -335,10 +335,6 @@ func New(ctx context.Context, opts Options) Model {
 	styles := in.Styles()
 	styles.Focused.Prompt = styles.Focused.Prompt.Foreground(th.UserTag.GetForeground())
 	styles.Blurred.Prompt = styles.Blurred.Prompt.Foreground(th.Dim.GetForeground())
-	styles.Focused.LineNumber = styles.Focused.LineNumber.Foreground(th.FooterDim.GetForeground())
-	styles.Focused.CursorLineNumber = styles.Focused.CursorLineNumber.Foreground(th.UserTag.GetForeground())
-	styles.Blurred.LineNumber = styles.Blurred.LineNumber.Foreground(th.Dim.GetForeground())
-	styles.Blurred.CursorLineNumber = styles.Blurred.CursorLineNumber.Foreground(th.Dim.GetForeground())
 	in.SetStyles(styles)
 
 	// Enter is handled in handleKeyString (submit). Newline: Shift+Enter / Alt+Enter.
@@ -396,7 +392,7 @@ func New(ctx context.Context, opts Options) Model {
 	}
 	if m.welcomeBlockEnd == 0 {
 		if strings.TrimSpace(opts.Title) != "" {
-			m.lines = append(m.lines, th.ModalTitle.Render(opts.Title))
+			m.lines = append(m.lines, th.OverlayTitle.Render(opts.Title))
 			m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindPlain})
 			m.lines = append(m.lines, th.SeparatorLine(0))
 			m.lineMeta = append(m.lineMeta, lineMeta{kind: lineKindSeparator})

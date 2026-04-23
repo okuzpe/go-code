@@ -58,7 +58,7 @@ func traceDots(th *Theme, width int) string {
 	if width < 1 {
 		return ""
 	}
-	return th.AgentDeckTrace.Render(strings.Repeat("·", width))
+	return th.AgentDeckTrace.Render(strings.Repeat(th.Icons.ToolCardH(), width))
 }
 
 func buildAgentDeckCluster(th *Theme, st icons.Set, name, hint string, maxW int) string {
@@ -123,6 +123,10 @@ func (m *Model) agentDeckRailView() string {
 		traceW = 0
 	}
 
-	row := rail + " " + cluster + traceDots(th, traceW) + chord
+	row := rail + " " + cluster
+	if traceW > 0 {
+		row += traceDots(th, traceW)
+	}
+	row += chord
 	return lipgloss.NewStyle().Width(w).MaxWidth(w).Render(row)
 }

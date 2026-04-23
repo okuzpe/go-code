@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/okuzpe/goclaw/internal/cli"
+	"github.com/okuzpe/goclaw/internal/hooks"
+	"github.com/okuzpe/goclaw/internal/mcp"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
@@ -112,4 +115,34 @@ func TestPrepareChatRuntime_ProjectHooksOnlyWhenTrusted(t *testing.T) {
 	require.NoError(t, err)
 	_, err = os.Stat(marker)
 	require.NoError(t, err, "trusted workspace should run project session_start hook")
+}
+
+func TestChatRuntimeCloseIsIdempotent(t *testing.T) {
+	tmp := t.TempDir()
+	scratch := filepath.Join(tmp, "scratch")
+	require.NoError(t, os.MkdirAll(scratch, 0o700))
+
+	var sessionEndN int
+	hookReg := hooks.New()
+	hookReg.On(hooks.SessionEnd, func(_ context.Context, _ hooks.Event) error {
+		sessionEndN++
+		return nil
+	})
+
+	rt := &ChatRuntime{
+		HookReg:    hookReg,
+		ScratchDir: scratch,
+		McpSessions: []mcp.Conn{
+			stubMCPConn{},
+		},
+	}
+
+	rt.Close()
+	rt.Close()
+
+	require.Equal(t, 1, sessionEndN, "session_end should only fire once")
+	_, err := os.Stat(scratch)
+	require.Error(t, err, "scratch dir should be removed on first close")
+	require.Empty(t, rt.ScratchDir)
+	require.Nil(t, rt.McpSessions)
 }

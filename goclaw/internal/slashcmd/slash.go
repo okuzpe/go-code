@@ -189,27 +189,7 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 		return true, doc, false, "", nil
 
 	case "model":
-		if env.SetSessionModel == nil || env.SessionModel == nil {
-			return true, "", false, "", slashNextStepError("/model is not available in this mode", "use /doctor to inspect provider mode")
-		}
-		if len(fields) < 2 {
-			return true, fmt.Sprintf("current model: %s\nusage: /model <id>", env.SessionModel()), false, "", nil
-		}
-		id := strings.TrimSpace(strings.Join(fields[1:], " "))
-		if id == "" {
-			return true, "", false, "", fmt.Errorf("usage: /model <id>")
-		}
-		if err := env.SetSessionModel(id); err != nil {
-			return true, "", false, "", err
-		}
-		sub := ""
-		if env.ChatSubtitle != nil {
-			sub = env.ChatSubtitle()
-		}
-		if orch != nil {
-			setWelcomeHints(hintsOut, orch, sub)
-		}
-		return true, fmt.Sprintf("model set to %q (this session)", id), false, "", nil
+		return handleSlashModel(env, orch, fields, hintsOut)
 
 	case "tools":
 		if env.ToolLog == nil {
@@ -532,59 +512,13 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 		}
 
 	case "profile":
-		if err := requireRunningAgent("profile", orch); err != nil {
-			return true, "", false, "", err
-		}
-		if len(fields) < 2 {
-			profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
-			return true, "", false, "", fmt.Errorf("usage: /profile <name>\nnames: %s", agents.JoinSortedProfileKeys(profs))
-		}
-		msg, err := switchOrchestratorProfile(orch, env, fields[1])
-		if err != nil {
-			return true, "", false, "", err
-		}
-		sub := ""
-		if env.ChatSubtitle != nil {
-			sub = env.ChatSubtitle()
-		}
-		setWelcomeHints(hintsOut, orch, sub)
-		return true, msg, false, "", nil
+		return handleSlashProfile(env, orch, fields, hintsOut)
 
 	case "agents":
-		if err := requireRunningAgent("agents", orch); err != nil {
-			return true, "", false, "", err
-		}
-		profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
-		if len(fields) < 2 {
-			if out, used, ierr := tryInteractiveAgentsPick(env, orch, hintsOut); ierr != nil {
-				return true, "", false, "", ierr
-			} else if used {
-				return true, out, false, "", nil
-			}
-			setTUIDocOverlay(hintsOut, "Agents")
-			return true, formatAgentsList(profs, orch.ProfileName(), env), false, "", nil
-		}
-		msg, err := switchOrchestratorProfile(orch, env, fields[1])
-		if err != nil {
-			return true, "", false, "", err
-		}
-		sub := ""
-		if env.ChatSubtitle != nil {
-			sub = env.ChatSubtitle()
-		}
-		setWelcomeHints(hintsOut, orch, sub)
-		return true, msg, false, "", nil
+		return handleSlashAgents(env, orch, fields, hintsOut)
 
 	case "allow-writes":
-		if err := requireRunningAgent("allow-writes", orch); err != nil {
-			return true, "", false, "", err
-		}
-		for _, toolName := range []string{"write_file", "edit_file", "patch"} {
-			orch.SetToolPermission(toolName, permissions.ModeAllow)
-		}
-		hint := "workspace write tools auto-approved for this session (write_file, edit_file, patch)"
-		setFooterHint(hintsOut, hint)
-		return true, hint, false, "", nil
+		return handleSlashAllowWrites(orch, hintsOut)
 
 	case "plan":
 		wd := strings.TrimSpace(env.Workdir)

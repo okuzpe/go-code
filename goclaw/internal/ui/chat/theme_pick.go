@@ -33,26 +33,22 @@ func (m *Model) refreshThemePickOverlay() {
 	if m.themePickCursor >= len(items) {
 		m.themePickCursor = len(items) - 1
 	}
-	var b strings.Builder
-	b.Grow(len(items)*48 + 384)
-	b.WriteString(th.ModalTitle.Render("TUI appearance (ui_appearance)"))
-	b.WriteString("\n\n")
+	rows := make([]listPickerItem, 0, len(items))
 	for i, name := range items {
+		label := name
 		if i == m.themePickCursor {
-			b.WriteString(th.SlashPickerName.Render("▸ " + name))
-		} else {
-			b.WriteString(th.ModalBody.Render("  " + name))
+			label += "  selected"
 		}
-		b.WriteString("\n")
+		rows = append(rows, listPickerItem{label: label, selected: i == m.themePickCursor})
 	}
-	b.WriteString("\n")
-	b.WriteString(th.FooterDim.Render("↑↓ move · Enter apply · Esc cancel"))
 	userPath := filepath.Join(strings.TrimSpace(m.userConfigDir), "settings.json")
-	b.WriteString("\n")
-	b.WriteString(th.FooterDim.Render(fmt.Sprintf("Merges ui_appearance into %s", userPath)))
-	b.WriteString("\n")
-	b.WriteString(th.FooterDim.Render("Restart the fullscreen TUI to apply colors fully."))
-	m.themePickFullText = b.String()
+	m.themePickFullText = renderListPicker(
+		th,
+		"Appearance",
+		rows,
+		"↑↓ move · Enter apply · Esc cancel",
+		fmt.Sprintf("Applies now and saves ui_appearance to %s", userPath),
+	)
 }
 
 func (m *Model) openThemePicker() {
@@ -126,5 +122,5 @@ func (m *Model) applyThemePick() string {
 	m.rebuildWelcomeForWidth()
 	m.reflowTitleSeparator()
 	m.closeThemePicker()
-	return fmt.Sprintf("ui_appearance set to %q (merged into %s).\nRestart the TUI to apply the theme fully.", preset, userPath)
+	return fmt.Sprintf("appearance set to %q and saved to %s", preset, userPath)
 }

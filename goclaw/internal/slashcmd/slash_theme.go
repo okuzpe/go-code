@@ -34,7 +34,7 @@ func handleSlashTheme(env SlashEnv, fields []string) (handled bool, out string, 
 		}
 		b.WriteString("\n\nUsage: /theme <preset>  — merges into ")
 		b.WriteString(filepath.Join(dir, "settings.json"))
-		b.WriteString("\nRestart the fullscreen TUI to apply colors fully.")
+		b.WriteString("\nIn the fullscreen TUI, /theme with no args opens the interactive picker and applies immediately.")
 		return true, b.String(), false, "", nil
 	}
 
@@ -46,7 +46,7 @@ func handleSlashTheme(env SlashEnv, fields []string) (handled bool, out string, 
 	if err := config.MergeWriteSettings(userPath, map[string]any{"ui_appearance": preset}); err != nil {
 		return true, "", false, "", fmt.Errorf("/theme: write settings: %w", err)
 	}
-	msg := fmt.Sprintf("ui_appearance set to %q (merged into %s).\nRestart the TUI to apply the theme fully.", preset, userPath)
+	msg := fmt.Sprintf("ui_appearance set to %q (saved to %s). If you are in the fullscreen TUI, use bare /theme for the interactive picker.", preset, userPath)
 	return true, msg, false, "", nil
 }
 

@@ -16,6 +16,14 @@ func bareAgentsSlashInput(raw string) bool {
 	return strings.EqualFold(strings.TrimPrefix(fields[0], "/"), "agents")
 }
 
+func bareProfileSlashInput(raw string) bool {
+	fields := strings.Fields(strings.TrimSpace(raw))
+	if len(fields) != 1 {
+		return false
+	}
+	return strings.EqualFold(strings.TrimPrefix(fields[0], "/"), "profile")
+}
+
 func (m *Model) agentPickNames() []string {
 	profs, err := agents.AllWithCustom(m.userAgentsDir, m.projectAgentsDir)
 	if err != nil || len(profs) == 0 {
@@ -55,33 +63,27 @@ func (m *Model) refreshAgentPickOverlay() {
 		m.agentPickCursor = 0
 	}
 	if len(items) == 0 {
-		m.agentPickFullText = th.ModalTitle.Render("No agents available")
+		m.agentPickFullText = th.OverlayTitle.Render("No Agents Available")
 		return
 	}
 	if m.agentPickCursor >= len(items) {
 		m.agentPickCursor = len(items) - 1
 	}
-	var b strings.Builder
-	b.Grow(len(items)*96 + 384)
-	b.WriteString(th.ModalTitle.Render("Agent profile"))
-	b.WriteString("\n\n")
+	rows := make([]listPickerItem, 0, len(items))
 	for i, name := range items {
 		line := name
 		if p, ok := agentProfileByName(m, name); ok {
 			line = name + " — " + p.Summary()
 		}
-		if i == m.agentPickCursor {
-			b.WriteString(th.SlashPickerName.Render("▸ " + line))
-		} else {
-			b.WriteString(th.ModalBody.Render("  " + line))
-		}
-		b.WriteString("\n")
+		rows = append(rows, listPickerItem{label: line, selected: i == m.agentPickCursor})
 	}
-	b.WriteString("\n")
-	b.WriteString(th.FooterDim.Render("↑↓ move · Enter apply · Esc cancel"))
-	b.WriteString("\n")
-	b.WriteString(th.FooterDim.Render("Same as /profile <name> · custom agents from ~/.goclaw/agents and project .goclaw/agents"))
-	m.agentPickFullText = b.String()
+	m.agentPickFullText = renderListPicker(
+		th,
+		"Profile",
+		rows,
+		"↑↓ move · Enter apply · Esc cancel",
+		"Primary flow: /profile or Ctrl+P · custom profiles from ~/.goclaw/agents and project .goclaw/agents",
+	)
 }
 
 func agentProfileByName(m *Model, name string) (agents.Profile, bool) {
@@ -155,7 +157,7 @@ func (m *Model) applyAgentPick() {
 		m.appendError("slash handler not configured")
 		return
 	}
-	handled, out, quit, modelSubmit, hints, err := m.slashHandle("/agents " + name)
+	handled, out, quit, modelSubmit, hints, err := m.slashHandle("/profile " + name)
 	if err != nil {
 		m.appendError(fmt.Sprintf("%v", err))
 		return

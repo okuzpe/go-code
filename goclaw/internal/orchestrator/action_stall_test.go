@@ -82,10 +82,10 @@ func TestOrchestratorActionStalledAfterRepeatedReadOnlyRounds(t *testing.T) {
 		{Match: "improve the repo", Tool: &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"a.txt"}`}},
 		{Match: "one", Tool: &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"b.txt"}`}},
 		{Match: "two", Tool: &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"c.txt"}`}},
-		{Match: "three", Response: "I need more context before editing."},
-		{Match: "[goclaw] Reflection checkpoint:", Response: "I need more context before editing."},
-		{Match: "[goclaw] The user asked for concrete code improvements", Response: "I need more context before editing."},
-		{Match: "[goclaw] Action nudges were exhausted without native tool calls.", Response: "I need more context before editing."},
+		{Match: "three", Response: "I will continue reading key files before editing."},
+		{Match: "[goclaw] Reflection checkpoint:", Response: "I will continue reading key files before editing."},
+		{Match: "[goclaw] The user asked for concrete code improvements", Response: "I will continue reading key files before editing."},
+		{Match: "[goclaw] Action nudges were exhausted without native tool calls.", Response: "I will continue reading key files before editing."},
 	})
 	defer srv.Close()
 
@@ -97,6 +97,7 @@ func TestOrchestratorActionStalledAfterRepeatedReadOnlyRounds(t *testing.T) {
 	_, err := orch.Run(context.Background(), "improve the repo")
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrActionStalled)
+	require.Contains(t, err.Error(), "future-tense narration")
 
 	var sawReflection bool
 	for _, msg := range orch.session.Messages {
@@ -160,6 +161,7 @@ func TestNonActionCompletionReason(t *testing.T) {
 		{name: "fence only", response: "```json\n```", want: "fence-only"},
 		{name: "fake tool", response: "[assistant tool_use read_file]\n{\"path\":\"README.md\"}", want: "fake tool narration"},
 		{name: "meta", response: "As an AI language model, I don't have access to your terminal.", want: "tool access"},
+		{name: "future narration", response: "Continuaré leyendo archivos clave para obtener más contexto antes de editar.", want: "future-tense narration"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

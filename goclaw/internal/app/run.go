@@ -12,7 +12,6 @@ import (
 	"syscall"
 
 	"github.com/okuzpe/goclaw/internal/config"
-	"github.com/okuzpe/goclaw/internal/hooks"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/tuilog"
 	"github.com/spf13/cobra"
@@ -129,18 +128,8 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 	if err != nil {
 		return err
 	}
+	defer rt.Close()
 	maybeWarnOllamaUnreachable(rt)
-	defer func() {
-		for _, s := range rt.McpSessions {
-			_ = s.Close()
-		}
-	}()
-	defer func() {
-		cleanupSessionScratch(rt.ScratchDir)
-	}()
-	defer func() {
-		_ = rt.HookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionEnd})
-	}()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
@@ -160,7 +149,7 @@ func RunChat(cmd *cobra.Command, version string, _ []string, fullscreen Fullscre
 		runErr = fullscreen.RunFullscreenChat(ctx, rt)
 	}
 	slog.Info("saving session", "id", rt.Sess.ID, "messages", rt.Sess.Len())
-	if saveErr := rt.Store.Save(rt.Sess); saveErr != nil {
+	if saveErr := rt.SaveSession(); saveErr != nil {
 		slog.Error("failed to save session", "err", saveErr)
 	}
 	return runErr
@@ -216,18 +205,8 @@ func RunPrompt(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer rt.Close()
 	maybeWarnOllamaUnreachable(rt)
-	defer func() {
-		for _, s := range rt.McpSessions {
-			_ = s.Close()
-		}
-	}()
-	defer func() {
-		cleanupSessionScratch(rt.ScratchDir)
-	}()
-	defer func() {
-		_ = rt.HookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionEnd})
-	}()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()

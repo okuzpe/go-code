@@ -12,7 +12,7 @@ import (
 func TestAbbreviatePathForTranscript_shortUnchanged(t *testing.T) {
 	t.Parallel()
 	short := "/tmp/a"
-	require.Equal(t, short, abbreviatePathForTranscript(short))
+	require.Equal(t, filepath.Clean(short), abbreviatePathForTranscript(short))
 }
 
 func TestAbbreviatePathForTranscript_longTail(t *testing.T) {

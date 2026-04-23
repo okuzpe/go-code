@@ -70,6 +70,34 @@ type ChatRuntime struct {
 	ScratchDir string
 	// OllamaProbe is set when provider is ollama: result of GET /api/tags at PrepareChatRuntime (reachability + model in library).
 	OllamaProbe OllamaStartupProbe
+
+	closed bool
+}
+
+// Close releases runtime-owned resources in the same order as the chat/prompt entrypoints:
+// session_end hook while the scratch dir still exists, then scratch cleanup, then MCP shutdown.
+func (rt *ChatRuntime) Close() {
+	if rt == nil || rt.closed {
+		return
+	}
+	rt.closed = true
+	if rt.HookReg != nil {
+		_ = rt.HookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionEnd})
+	}
+	cleanupSessionScratch(rt.ScratchDir)
+	rt.ScratchDir = ""
+	for _, s := range rt.McpSessions {
+		_ = s.Close()
+	}
+	rt.McpSessions = nil
+}
+
+// SaveSession persists the in-memory transcript when a session store is attached.
+func (rt *ChatRuntime) SaveSession() error {
+	if rt == nil || rt.Store == nil || rt.Sess == nil {
+		return nil
+	}
+	return rt.Store.Save(rt.Sess)
 }
 
 // OllamaFunctionToolsDropped reports whether the Ollama HTTP client fell back to text-only

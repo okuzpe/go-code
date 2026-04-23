@@ -34,10 +34,17 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 		Tool:      lipgloss.NewStyle().Foreground(p.ToolFG).Bold(true),
 		ToolTag:   lipgloss.NewStyle().Foreground(p.ToolFG),
 		FooterDim: lipgloss.NewStyle().Foreground(p.Muted),
+		ShellChrome: lipgloss.NewStyle().
+			Foreground(p.ModalBorder),
+		HeaderBrand: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(p.AccentUser),
+		HeaderMeta: lipgloss.NewStyle().
+			Foreground(p.Muted),
 		ModalBorder: lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder(), true, true, true, true).
 			BorderForeground(p.ModalBorder),
-		ModalTitle: lipgloss.NewStyle().Bold(true).Foreground(p.ModalBorder),
+		ModalTitle: lipgloss.NewStyle().Bold(true).Foreground(p.AccentUser),
 		ModalBody:  lipgloss.NewStyle().Foreground(p.ModalBody),
 
 		ErrorStyle:    lipgloss.NewStyle().Foreground(p.ErrorFG).Bold(true),
@@ -56,10 +63,15 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 
 		ToolCardBorder: lipgloss.NewStyle().Foreground(p.SepFG),
 		ToolCardHead:   lipgloss.NewStyle().Bold(true).Foreground(p.ToolFG),
-		ToolCardBody:   lipgloss.NewStyle().Foreground(p.DimFG),
+		ToolCardBody:   lipgloss.NewStyle().Foreground(p.ModalBody),
 
-		StatusBar:      lipgloss.NewStyle().Foreground(p.Muted),
+		StatusBar:      lipgloss.NewStyle().Foreground(p.ModalBody),
 		StatusBarLabel: lipgloss.NewStyle().Foreground(p.AccentAI).Bold(true),
+		OverlayTitle: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(p.AccentUser),
+		OverlayHint: lipgloss.NewStyle().
+			Foreground(p.Muted),
 
 		FooterWorkspaceChip: footerWorkspaceChipStyle(p),
 
@@ -72,9 +84,9 @@ func newThemeFromPalette(p terminalstyle.Palette) *Theme {
 
 		AgentDeckMicro: lipgloss.NewStyle().Foreground(p.Muted).Faint(true),
 		AgentDeckRail: lipgloss.NewStyle().
-			Foreground(p.AccentUser),
+			Foreground(p.ModalBorder),
 		AgentDeckBracket: lipgloss.NewStyle().Foreground(p.Muted),
-		AgentDeckTrace:   lipgloss.NewStyle().Foreground(p.SepFG).Faint(true),
-		AgentDeckChord:   lipgloss.NewStyle().Foreground(p.Muted),
+		AgentDeckTrace:   lipgloss.NewStyle().Foreground(p.SepFG),
+		AgentDeckChord:   lipgloss.NewStyle().Foreground(p.SlashPickDesc),
 	}
 }

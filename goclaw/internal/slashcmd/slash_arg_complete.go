@@ -187,18 +187,7 @@ func slashArgSuggestionsParsed(sc SlashContext, parsed ParsedSlashLine, line str
 	case "memory":
 		switch parsed.FieldIndex {
 		case 1:
-			var out []SlashCommandSuggest
-			for _, pair := range []struct{ name, sum string }{
-				{"list", "list memory entries"},
-				{"add", "add memory entry"},
-				{"delete", "delete by filename"},
-			} {
-				if lowPartial != "" && !strings.HasPrefix(strings.ToLower(pair.name), lowPartial) {
-					continue
-				}
-				out = append(out, SlashCommandSuggest{Name: pair.name, Summary: pair.sum})
-			}
-			return out
+			return suggestSubcommands(memorySubcommandSpecs, lowPartial)
 		case 2:
 			fields := strings.Fields(line)
 			if len(fields) < 2 || !strings.EqualFold(strings.TrimPrefix(fields[0], "/"), "memory") {
@@ -245,26 +234,7 @@ func slashArgSuggestionsParsed(sc SlashContext, parsed ParsedSlashLine, line str
 		if parsed.FieldIndex != 1 || strings.TrimSpace(sc.Workdir) == "" {
 			return nil
 		}
-		var out []SlashCommandSuggest
-		for _, pair := range []struct{ name, sum string }{
-			{"path", "print default plan file path"},
-			{"init", "create plan file from template"},
-			{"new", "create .goclaw/plans/<name>.md mini template"},
-			{"save", "save last assistant to plan (optional path)"},
-			{"run", "save then execute plan (one model turn)"},
-			{"apply", "same as run"},
-			{"template", "print plan template"},
-			{"review", "preview plan + approval + parsed steps"},
-			{"approve", "record plan approval for gate"},
-			{"revoke", "clear plan approval"},
-			{"steps", "list parsed ## Steps lines"},
-		} {
-			if lowPartial != "" && !strings.HasPrefix(strings.ToLower(pair.name), lowPartial) {
-				continue
-			}
-			out = append(out, SlashCommandSuggest{Name: pair.name, Summary: pair.sum})
-		}
-		return out
+		return suggestSubcommands(planSubcommandSpecs, lowPartial)
 
 	case "focus", "in":
 		if parsed.FieldIndex != 1 || sc.Focus == nil {

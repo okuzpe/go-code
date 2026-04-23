@@ -142,8 +142,9 @@ func formatAgentsList(profs map[string]agents.Profile, active string, env SlashE
 		b.WriteString(p.Summary())
 		b.WriteByte('\n')
 	}
-	b.WriteString("\nUsage: `/agents <name>` (same as `/profile <name>`).\n")
-	b.WriteString("In the fullscreen TUI, use **Ctrl+P** to pick a profile, or pass a name: `/agents <name>`.\n")
+	b.WriteString("\nPrimary flow: `/profile <name>`.\n")
+	b.WriteString("Compatibility alias: `/agents <name>`.\n")
+	b.WriteString("In the fullscreen TUI, use **Ctrl+P** or bare `/profile` to open the picker.\n")
 	if pg := planGateFrom(env); len(pg.AgentPickerHide) > 0 {
 		b.WriteString("\nSome profiles are hidden from the picker (`agent_picker_hidden_profiles`); `/profile <name>` still works.\n")
 	}
@@ -157,4 +158,50 @@ func tryInteractiveAgentsPick(env SlashEnv, orch *orchestrator.Orchestrator, hin
 	_ = hintsOut
 	// Profile picking is handled in the fullscreen TUI (Ctrl+P overlay); bare /agents lists names.
 	return "", false, nil
+}
+
+func handleSlashProfile(env SlashEnv, orch *orchestrator.Orchestrator, fields []string, hintsOut *UIHints) (handled bool, out string, quit bool, modelSubmit string, err error) {
+	if err := requireRunningAgent("profile", orch); err != nil {
+		return true, "", false, "", err
+	}
+	if len(fields) < 2 {
+		profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
+		return true, "", false, "", fmt.Errorf("usage: /profile <name>\nnames: %s", agents.JoinSortedProfileKeys(profs))
+	}
+	msg, err := switchOrchestratorProfile(orch, env, fields[1])
+	if err != nil {
+		return true, "", false, "", err
+	}
+	sub := ""
+	if env.ChatSubtitle != nil {
+		sub = env.ChatSubtitle()
+	}
+	setWelcomeHints(hintsOut, orch, sub)
+	return true, msg, false, "", nil
+}
+
+func handleSlashAgents(env SlashEnv, orch *orchestrator.Orchestrator, fields []string, hintsOut *UIHints) (handled bool, out string, quit bool, modelSubmit string, err error) {
+	if err := requireRunningAgent("agents", orch); err != nil {
+		return true, "", false, "", err
+	}
+	profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
+	if len(fields) < 2 {
+		if out, used, ierr := tryInteractiveAgentsPick(env, orch, hintsOut); ierr != nil {
+			return true, "", false, "", ierr
+		} else if used {
+			return true, out, false, "", nil
+		}
+		setTUIDocOverlay(hintsOut, "Agents")
+		return true, formatAgentsList(profs, orch.ProfileName(), env), false, "", nil
+	}
+	msg, err := switchOrchestratorProfile(orch, env, fields[1])
+	if err != nil {
+		return true, "", false, "", err
+	}
+	sub := ""
+	if env.ChatSubtitle != nil {
+		sub = env.ChatSubtitle()
+	}
+	setWelcomeHints(hintsOut, orch, sub)
+	return true, msg, false, "", nil
 }

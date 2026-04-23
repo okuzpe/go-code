@@ -11,7 +11,7 @@ type SlashCommandSuggest struct {
 
 // slashCommandTable is the canonical list of root REPL / commands. Keep sorted by Name.
 var slashCommandTable = []SlashCommandSuggest{
-	{"/agents", "List or switch agent profile (built-in + custom *.md)", "workers"},
+	{"/agents", "Compatibility alias for /profile (built-in + custom *.md)", "workers"},
 	{"/apply-plan", "Execute saved plan (see --preview); optional path; switches to general-purpose", "build"},
 	{"/audit", "Scan project for gaps and auto-fix them (review-and-fix workflow). Optional: /audit <path>", "build"},
 	{"/back", "Return to coordinator session (same as /detach)", "workers"},
@@ -31,12 +31,12 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/hub", "Return to coordinator (alias of /detach)", "workers"},
 	{"/in", "Focus a worker by task id prefix (same as /focus)", "workers"},
 	{"/init", "Create .goclaw/settings.json with coding defaults if missing", "build"},
-	{"/memory", "list | add | delete durable memory entries", "session"},
+	{"/memory", usageList(memorySubcommandSpecs) + " durable memory entries", "session"},
 	{"/model", "Show or set default Ollama model tag for this session", "session"},
 	{"/new", "Start a new session (saves current)", "session"},
 	{"/parent", "Return to coordinator (same as /detach)", "workers"},
-	{"/plan", "path | init | new | save | run | review | approve | revoke | steps | template (plan.md + .goclaw/plans/)", "build"},
-	{"/profile", "Switch agent profile (hot-reloads custom agents)", "workers"},
+	{"/plan", usageList(planSubcommandSpecs) + " (plan.md + .goclaw/plans/)", "build"},
+	{"/profile", "Switch agent profile (primary flow; hot-reloads custom agents)", "workers"},
 	{"/quit", "Save session and quit", "session"},
 	{"/research", "Web research + plan: /research <query> — searches the web and builds a step-by-step plan saved to .goclaw/plans/", "build"},
 	{"/resume", "Load a saved session from disk (auto-saves current session first)", "session"},
@@ -44,8 +44,8 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/save", "Persist session without exiting", "session"},
 	{"/session", "Show current session id and message count", "session"},
 	{"/sessions", "List saved session ids on disk", "session"},
-	{"/theme", "Set TUI appearance preset in settings", "session"},
-	{"/tools", "Show tool call history (plain text when wired); TUI: prefer Ctrl+T; /tools N shows full output of step N", "session"},
+	{"/theme", "Set TUI appearance preset; bare /theme opens the live picker in fullscreen TUI", "session"},
+	{"/tools", "Show tool call history; bare /tools opens the TUI log, /tools N shows full output of step N", "session"},
 	{"/undo", "Revert the last successful write_file, edit_file, or patch in this session", "build"},
 	{"/workers", "List coordinator workers and task ids", "workers"},
 }

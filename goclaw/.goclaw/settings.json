@@ -1,20 +1,25 @@
 {
   "trusted_workspace": true,
-  "ollama_model": "qwen2.5-coder:7b",
+  "ollama_model": "qwen2.5-coder:14b",
+  "compaction_model": "qwen2.5-coder:3b",
   "task_model_router": "rules",
   "task_models": {
-    "default": "qwen2.5-coder:7b",
-    "code": "qwen2.5-coder:7b",
-    "reasoning": "qwen3:8b",
-    "explore": "qwen3:4b",
-    "fast": "qwen2.5-coder:3b",
+    "default": "qwen2.5-coder:14b",
+    "code": "qwen2.5-coder:14b",
+    "fix": "qwen2.5-coder:14b",
+    "reasoning": "qwen2.5-coder:14b",
+    "explore": "qwen2.5-coder:7b",
+    "fast": "qwen2.5-coder:7b",
     "creative": "qwen3:8b"
   },
-  "ollama_num_ctx": 16384,
-  "model_context_tokens": 16384,
+  "ollama_num_ctx": 32768,
+  "model_context_tokens": 32768,
+  "ollama_http_timeout_sec": 3600,
   "preferred_response_language": "es",
   "auto_profile_intent": "rules",
   "auto_direct_coding_profile": "general-purpose",
   "action_repair_escalation": true,
-  "auto_continue_action_requests": true
+  "auto_continue_action_requests": true,
+  "agent_verify_after_write": true,
+  "parallel_tool_batch_max": 2
 }

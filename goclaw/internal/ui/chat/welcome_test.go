@@ -74,9 +74,10 @@ func TestWelcomeDashboardLines_wideTwoColumn(t *testing.T) {
 	lines := WelcomeDashboardLines(th, opt, 100)
 	require.NotEmpty(t, lines)
 	joined := strings.Join(lines, "\n")
-	require.Contains(t, joined, "Tips")
-	require.Contains(t, joined, "Flows")
+	require.Contains(t, joined, "Quick Start")
+	require.Contains(t, joined, "Workflows")
 	require.Contains(t, joined, "/help")
+	require.NotContains(t, joined, "/agents")
 }
 
 func TestWrapSubtitle_prefersBulletBreaks(t *testing.T) {

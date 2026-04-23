@@ -19,7 +19,6 @@ func (m *Model) exitTranscriptBrowse() {
 	}
 	m.transcriptBrowse = false
 	m.browseToolCardLine = -1
-	m.input.Focus()
 	m.syncViewportKeyMapForCompose()
 }
 
@@ -34,7 +33,6 @@ func (m *Model) enterTranscriptBrowse() {
 	} else {
 		m.browseToolCardLine = -1
 	}
-	m.input.Blur()
 	m.syncViewportKeyMapForCompose()
 }
 

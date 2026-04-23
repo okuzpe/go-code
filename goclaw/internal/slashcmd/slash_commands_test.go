@@ -7,6 +7,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func commandSummaryByName(name string) string {
+	for _, entry := range slashCommandTable {
+		if entry.Name == name {
+			return entry.Summary
+		}
+	}
+	return ""
+}
+
 func TestSlashCommandTable_sortedByName(t *testing.T) {
 	names := make([]string, len(slashCommandTable))
 	for i, e := range slashCommandTable {
@@ -39,6 +48,25 @@ func TestTUISlashSuggestions_filtersByPrefix(t *testing.T) {
 	exact := TUISlashSuggestions("/sessions")
 	require.Len(t, exact, 1)
 	require.Equal(t, "/sessions", exact[0].Name)
+}
+
+func TestSlashCommandTable_UsesSharedSubcommandCatalogs(t *testing.T) {
+	require.Contains(t, commandSummaryByName("/memory"), usageList(memorySubcommandSpecs))
+	require.Contains(t, commandSummaryByName("/plan"), usageList(planSubcommandSpecs))
+}
+
+func TestSuggestSubcommands_UsesCatalogOrder(t *testing.T) {
+	got := suggestSubcommands(memorySubcommandSpecs, "")
+	require.Len(t, got, len(memorySubcommandSpecs))
+	for i, spec := range memorySubcommandSpecs {
+		require.Equal(t, spec.Name, got[i].Name)
+		require.Equal(t, spec.Summary, got[i].Summary)
+	}
+
+	got = suggestSubcommands(planSubcommandSpecs, "re")
+	require.Len(t, got, 2)
+	require.Equal(t, "review", got[0].Name)
+	require.Equal(t, "revoke", got[1].Name)
 }
 
 func TestSlashTabExpand_longestCommonPrefix(t *testing.T) {

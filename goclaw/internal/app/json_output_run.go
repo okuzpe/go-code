@@ -52,28 +52,12 @@ func RunChatJSONOutputFromLine(ctx context.Context, rt *ChatRuntime, line string
 		return errors.New("automation output: empty user message")
 	}
 
-	if rt.Mock {
-		reply, err := StreamMockAssistant(ctx, line, NopStreamSink{}, rt.Sess)
-		if err != nil {
-			return err
-		}
-		out := orchestrator.JSONTurnResult{Response: reply, ToolCalls: nil}
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetEscapeHTML(false)
-		if err := enc.Encode(out); err != nil {
-			return err
-		}
-		if err := rt.Store.Save(rt.Sess); err != nil {
-			slog.Warn("failed to save session", "err", err)
-		}
-		return nil
-	}
-
-	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, withAutomationOutputToolApprover(rt.OrchOpts)...)
-	_ = MaybeCoordinatorToDirectProfile(rt, orch, line, false)
-
+	orch := newAutomationOrchestrator(rt)
 	var trace []orchestrator.JSONToolCall
-	resp, err := orch.RunStreamingToolTrace(ctx, line, nil, &trace)
+	resp, err := runSessionTurn(ctx, rt, orch, line, NopStreamSink{}, sessionTurnOptions{
+		ApplyAutoProfile: true,
+		ToolTrace:        &trace,
+	})
 	if err != nil {
 		return err
 	}
@@ -84,7 +68,7 @@ func RunChatJSONOutputFromLine(ctx context.Context, rt *ChatRuntime, line string
 	if err := enc.Encode(out); err != nil {
 		return err
 	}
-	if err := rt.Store.Save(rt.Sess); err != nil {
+	if err := rt.SaveSession(); err != nil {
 		slog.Warn("failed to save session", "err", err)
 	}
 	return nil
@@ -96,25 +80,10 @@ func RunChatTextOutputFromLine(ctx context.Context, rt *ChatRuntime, line string
 		return errors.New("automation output: empty user message")
 	}
 
-	if rt.Mock {
-		reply, err := StreamMockAssistant(ctx, line, NopStreamSink{}, rt.Sess)
-		if err != nil {
-			return err
-		}
-		fmt.Print(reply)
-		if !strings.HasSuffix(reply, "\n") {
-			fmt.Println()
-		}
-		if err := rt.Store.Save(rt.Sess); err != nil {
-			slog.Warn("failed to save session", "err", err)
-		}
-		return nil
-	}
-
-	orch := orchestrator.New(rt.Cfg, rt.Client, rt.Sess, rt.Reg, rt.Policy, rt.HookReg, rt.Profile, withAutomationOutputToolApprover(rt.OrchOpts)...)
-	_ = MaybeCoordinatorToDirectProfile(rt, orch, line, false)
-
-	resp, err := orch.RunStreaming(ctx, line, NopStreamSink{})
+	orch := newAutomationOrchestrator(rt)
+	resp, err := runSessionTurn(ctx, rt, orch, line, NopStreamSink{}, sessionTurnOptions{
+		ApplyAutoProfile: true,
+	})
 	if err != nil {
 		return err
 	}
@@ -122,7 +91,7 @@ func RunChatTextOutputFromLine(ctx context.Context, rt *ChatRuntime, line string
 	if !strings.HasSuffix(resp, "\n") {
 		fmt.Println()
 	}
-	if err := rt.Store.Save(rt.Sess); err != nil {
+	if err := rt.SaveSession(); err != nil {
 		slog.Warn("failed to save session", "err", err)
 	}
 	return nil

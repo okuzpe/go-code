@@ -187,32 +187,20 @@ func paletteANSI(app, glam string,
 // paletteCyberpunk returns a dark neon palette — cyan user accent, purple AI accent.
 // On-screen: near-black background with glowing cyan/purple text and tool labels in amber-gold.
 func paletteCyberpunk() Palette {
-	// Neon cyan — user prompt, done states, borders
-	accentUser := lipgloss.Color("#00F5FF")
-	// Electric purple — AI/assistant, spinner
-	accentAI := lipgloss.Color("#BD00FF")
-	// Slate-grey muted text
-	muted := lipgloss.Color("#7B8FA1")
-	// Dimmer version for secondary text
-	dimFG := lipgloss.Color("#4A5568")
-	// Amber-gold for tool labels (warm contrast against the cold cyan/purple)
-	toolFG := lipgloss.Color("#F6C90E")
-	// Bright foreground for card body text
-	modalBody := lipgloss.Color("#D0E8FF")
-	// Hot pink/red for errors
-	errorFG := lipgloss.Color("#FF2D6B")
-	// Very dark separator (barely-visible rule)
-	sepFG := lipgloss.Color("#1E2D3D")
-	// Cyan border for modals — ties back to user accent
-	modalBorder := lipgloss.Color("#00C8D7")
-	// Dark teal for the input box border
-	inputBorder := lipgloss.Color("#1C3A4A")
-	// Brighter cyan for slash-picker names
-	slashPickName := lipgloss.Color("#00F5FF")
-	// Dim purple for slash-picker descriptions
-	slashPickDesc := lipgloss.Color("#7B5EA7")
-	// Neon teal for welcome frame
-	welcomeBorder := lipgloss.Color("#0D2F3F")
+	// Legible-neon preset: cooler shell chrome, clear transcript contrast, restrained purple.
+	accentUser := lipgloss.Color("#67F7FF")
+	accentAI := lipgloss.Color("#C3A2FF")
+	muted := lipgloss.Color("#93A8BF")
+	dimFG := lipgloss.Color("#627389")
+	toolFG := lipgloss.Color("#FFD166")
+	modalBody := lipgloss.Color("#E6F1FF")
+	errorFG := lipgloss.Color("#FF5C8A")
+	sepFG := lipgloss.Color("#24384D")
+	modalBorder := lipgloss.Color("#46D6E6")
+	inputBorder := lipgloss.Color("#35627A")
+	slashPickName := lipgloss.Color("#8AF2FF")
+	slashPickDesc := lipgloss.Color("#97A5D4")
+	welcomeBorder := lipgloss.Color("#1B4056")
 
 	return Palette{
 		Appearance:    config.UIAppearanceCyberpunk,
@@ -232,10 +220,10 @@ func paletteCyberpunk() Palette {
 		WelcomeBorder: welcomeBorder,
 		BannerLogo:    accentAI,
 		BannerKey:     muted,
-		BannerValue:   lipgloss.Color("#D0E8FF"),
-		BannerWarning: lipgloss.Color("#F6C90E"),
+		BannerValue:   lipgloss.Color("#DDEBFF"),
+		BannerWarning: lipgloss.Color("#FFC857"),
 		TrustAccent:   accentAI,
-		TrustAccent2:  lipgloss.Color("#00C8D7"),
-		PathEmphasis:  lipgloss.Color("#E2F5FF"),
+		TrustAccent2:  lipgloss.Color("#39C7D8"),
+		PathEmphasis:  lipgloss.Color("#EEF7FF"),
 	}
 }
