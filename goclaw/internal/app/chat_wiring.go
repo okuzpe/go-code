@@ -219,6 +219,9 @@ func prepareChatRuntime(cmd *cobra.Command, allocateScratch bool) (*ChatRuntime,
 		if p, err := cmd.Flags().GetString("profile"); err == nil && strings.TrimSpace(p) != "" {
 			explicitAgentProfileFromCLI = true
 		}
+		if m, err := cmd.Flags().GetString("mode"); err == nil && strings.TrimSpace(m) != "" {
+			explicitAgentProfileFromCLI = true
+		}
 		if v, err := cmd.Flags().GetString("task-model-router"); err == nil && strings.TrimSpace(v) != "" {
 			cfg.TaskModelRouter = config.NormalizeTaskModelRouter(v)
 		}
@@ -245,13 +248,13 @@ func prepareChatRuntime(cmd *cobra.Command, allocateScratch bool) (*ChatRuntime,
 		slog.Warn("custom agent load error", "err", err)
 		profs = agents.All()
 	}
-	profileKey := strings.TrimSpace(cfg.AgentProfile)
+	profileKey := agents.CanonicalProfileName(cfg.AgentProfile)
 	profile, ok := profs[profileKey]
 	if !ok {
-		profile, ok = profs[strings.ToLower(profileKey)]
+		profile, ok = profs[agents.CanonicalProfileName(profileKey)]
 	}
 	if !ok {
-		return nil, fmt.Errorf("unknown agent profile %q; valid profiles: %s (use --profile or \"agent_profile\" in settings.json)",
+		return nil, fmt.Errorf("unknown agent profile %q; valid profiles: %s (use --mode build|plan, --profile, or \"agent_profile\" in settings.json)",
 			cfg.AgentProfile, agents.JoinSortedProfileKeys(profs))
 	}
 

@@ -34,7 +34,7 @@ const qwenSystemSuffix = "\n\n[MODEL NOTE: Follow explicit numbered steps. " +
 	"For multi-step tasks: (1) state what you will do, " +
 	"(2) group tool calls logically, " +
 	"(3) confirm result before the next step. " +
-	"Use <thinking>...</thinking> only for complex trade-off reasoning, not for simple lookups.]"
+	"When the task involves files, code, repo, plans, or shell: do not emit <thinking> blocks or any text before the first native tool call.]"
 
 // planProfileWorkflowOverride is appended last in buildRequest so it wins over the generic
 // tool-first and Review-and-Fix instructions in the embedded base prompt when the active profile is plan.
@@ -42,11 +42,13 @@ var planProfileWorkflowOverride = "\n\n## " + planProfileModeMarker + " (overrid
 	"You are in the **plan** agent profile for this session.\n\n" +
 	"- **Primary deliverable:** user-facing analysis and a structured markdown plan " +
 	"(context, constraints, acceptance criteria, options or tradeoffs when helpful, ordered steps, risks, suggested verification).\n" +
+	"- **Clarify only when blocked:** if a useful plan is impossible without one missing detail, ask one focused question. Otherwise continue with explicit assumptions.\n" +
 	"- **Tools are optional grounding:** read_file, glob, grep, and web_search (when allowlisted) support claims about this repository or external facts. They do not replace the written plan.\n" +
 	"- **Opening text allowed:** a brief framing paragraph before any tool call is permitted when it improves clarity. " +
 	"Do not treat the global \"first output must be a tool call\" rule as mandatory when it conflicts with a readable plan.\n" +
 	"- **Not implementation execution mode:** do not follow the Review-and-Fix execution loop " +
 	"(no mandatory batching of implementation work via todo_write). Omit execution-style todo_write unless the user explicitly wants a visible checklist in session memory.\n" +
+	"- **Review gate:** stop after delivering the plan. Treat implementation as a separate phase that starts only after the user approves the plan or explicitly runs `/apply-plan` or `/plan run`. Prefer the review-first path.\n" +
 	"- **Honesty:** never claim files were written or commands ran unless a tool actually ran and succeeded.\n" +
 	"- **Critical files (repo-grounded plans only):** when the plan depends on this repository's layout or code, include a subsection **Critical files (3–5)** listing three to five repository-relative paths " +
 	"that an implementer must touch or read first; each line must be a path you have seen via read_file, glob, or grep — never invent paths.\n\n" +

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/text"
 	"golang.org/x/term"
 )
@@ -66,5 +67,5 @@ func truncate(s string, max int) string {
 // FormatChatWindowTitle keeps the TUI header on one line for typical terminal widths.
 func FormatChatWindowTitle(provider, model, profile string) string {
 	model = truncate(model, chatTitleModelMaxRunes)
-	return fmt.Sprintf("goclaw  %s/%s  %s", provider, model, profile)
+	return fmt.Sprintf("goclaw  %s/%s  %s", provider, model, agents.DisplayProfileName(profile))
 }

@@ -17,7 +17,7 @@ type RunDoctorFunc func(cmd *cobra.Command, args []string) error
 // RunPromptFunc runs one agent turn from argv text (`goclaw prompt ...`).
 type RunPromptFunc func(cmd *cobra.Command, args []string) error
 
-// TelegramSubcommandFunc runs one `goclaw telegram …` handler (injected from cmd/goclaw to avoid an app↔cli import cycle in tests).
+// TelegramSubcommandFunc runs one `goclaw telegram ...` handler (injected from cmd/goclaw to avoid an app<->cli import cycle in tests).
 type TelegramSubcommandFunc func(cmd *cobra.Command, args []string) error
 
 // TelegramCommands wires optional telegram subcommands. Nil receiver or all nil fields omits the `telegram` command group.
@@ -37,8 +37,8 @@ func telegramWired(tg *TelegramCommands) bool {
 func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, listSessions RunListSessionsFunc, runDoctor RunDoctorFunc, tg *TelegramCommands) *cobra.Command {
 	root := &cobra.Command{
 		Use:     "goclaw",
-		Short:   "Local Ollama coding agent — tools, verification, and multi-turn execution in the terminal",
-		Long:    "Turn intent into repository changes using native tools (read, edit, shell, tests) against local Ollama. Default agent profile is general-purpose (direct tools in-session). Use --profile coordinator for hub mode with spawn_agent workers. Fullscreen TUI on TTY, REPL slash commands, persisted sessions. Override profile with --profile or agent_profile in settings.",
+		Short:   "Local Ollama coding agent - tools, verification, and multi-turn execution in the terminal",
+		Long:    "Turn intent into repository changes using native tools (read, edit, shell, tests) against local Ollama. Default mode is build (direct tools in-session; implemented by the internal general-purpose profile). Use --mode plan for read-only planning first, or --profile coordinator for advanced hub mode with spawn_agent workers. Fullscreen TUI on TTY, REPL slash commands, persisted sessions. Override mode with --mode or agent_profile in settings; --profile remains the advanced escape hatch.",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			listSessionsFlag, err := cmd.Flags().GetBool("list-sessions")
@@ -54,7 +54,8 @@ func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, li
 		SilenceErrors: true,
 	}
 
-	root.PersistentFlags().String("profile", "", "agent profile ("+agents.ProfileListHint()+")")
+	root.PersistentFlags().String("mode", "", "primary mode (build or plan)")
+	root.PersistentFlags().String("profile", "", "advanced agent profile / compatibility override ("+agents.ProfileListHint()+"; build aliases to general-purpose)")
 	root.PersistentFlags().String("session", "", "resume an existing session id (JSONL in ~/.goclaw/sessions)")
 	root.PersistentFlags().Bool("list-sessions", false, "list saved session ids and exit")
 	root.PersistentFlags().Bool("no-tools", false, "run without registering tools (chat-only; also GOCLAW_DISABLE_TOOLS=1)")
@@ -120,7 +121,7 @@ For scripts or CI, use telegram bridge with env vars or a pre-filled settings.lo
 			Use:   "bridge",
 			Short: "Long-poll Telegram and run one agent turn per allowlisted text message",
 			Long: `Runs until interrupted. Requires telegram_bot_token (or telegram_bot_token_file / GOCLAW_TELEGRAM_BOT_TOKEN)
-and a non-empty telegram_allowed_user_ids list (or GOCLAW_TELEGRAM_ALLOWED_USER_IDS) in settings — prefer ~/.goclaw/settings.local.json.
+and a non-empty telegram_allowed_user_ids list (or GOCLAW_TELEGRAM_ALLOWED_USER_IDS) in settings - prefer ~/.goclaw/settings.local.json.
 
 Tool runs that would prompt in Ask mode fail in this path; set tool_permissions to "allow" for tools you need, use a read-only profile, or --no-tools.`,
 			RunE: tg.Bridge,
@@ -166,9 +167,9 @@ func newChatCmd(runChat RunChatFunc) *cobra.Command {
 		Use:   "chat",
 		Short: "Start interactive chat (fullscreen Bubble Tea TUI on a TTY)",
 		Long: `Opens the coding-agent chat: streaming assistant, tool loop, slash commands, and session persistence.
-Default agent profile is general-purpose (direct tools in-session). Use /profile coordinator for hub mode with spawn_agent workers.
+Default mode is build (direct tools in-session). Use /mode plan for read-only planning first, or /profile coordinator for advanced hub mode with spawn_agent workers.
 
-On an interactive terminal the UI is fullscreen Bubble Tea (Bubbles textarea + transcript). GOCLAW_USE_TUI=0 on a TTY is unsupported — use a real terminal or --output-format json for pipes.
+On an interactive terminal the UI is fullscreen Bubble Tea (Bubbles textarea + transcript). GOCLAW_USE_TUI=0 on a TTY is unsupported - use a real terminal or --output-format json for pipes.
 Use --mock to stream a canned reply without calling the model (UI / wiring check).
 Use --output-format json or --json-output to read one stdin line and print JSON (automation; incompatible with explicit --tui).
 Use goclaw prompt "message" for a one-shot turn without piping stdin.`,

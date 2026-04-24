@@ -47,8 +47,8 @@ func PopularSlashHint(workdir string) string {
 // PreChatHelpSummary is a short pre-chat pointer; /help (ReplHelpMarkdown) is the full reference.
 func PreChatHelpSummary(workdir string) string {
 	var b strings.Builder
-	b.WriteString("Slash commands are not sent to the model. /help — full list (session, profile, TUI keys); /capabilities — what the agent can do.\n")
-	b.WriteString("Common: /plan /apply-plan /review /workers /memory /profile /theme /compact /quit — line prefixes ! @ & — docs/goclaw/prefix-input-modes.md\n")
+	b.WriteString("Slash commands are not sent to the model. /help — full list (session, mode/profile, TUI keys); /capabilities — what the agent can do.\n")
+	b.WriteString("Common: /mode /plan /apply-plan /review /workers /memory /profile /theme /compact /quit — line prefixes ! @ & — docs/goclaw/prefix-input-modes.md\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan file: ")
 		b.WriteString(planfile.Path(workdir))
@@ -85,7 +85,8 @@ func ReplHelpMarkdown(env SlashEnv, sess **session.Session, orch *orchestrator.O
 	b.WriteString("- `/memory list` — list memory files under `~/.goclaw/memory/`\n")
 	b.WriteString("- `/memory add <type> <name> <text...>` — types: `user` | `feedback` | `project` | `reference`\n")
 	b.WriteString("- `/memory delete <file.md>` — remove one file (see list for basename)\n")
-	b.WriteString("- `/profile <name>` — switch profile (primary flow; TUI: **Ctrl+P** or bare `/profile`)\n")
+	b.WriteString("- `/mode <build|plan>` — switch primary mode\n")
+	b.WriteString("- `/profile <name>` — switch advanced profile / compatibility alias (TUI: **Ctrl+P** or bare `/profile`)\n")
 	b.WriteString("- `/agents [name]` — compatibility alias for profile listing/switching\n")
 	b.WriteString("- `/allow-writes` — auto-approve `write_file`, `edit_file`, `patch` for this session\n")
 	if env.SetSessionModel != nil && env.SessionModel != nil {
@@ -95,7 +96,7 @@ func ReplHelpMarkdown(env SlashEnv, sess **session.Session, orch *orchestrator.O
 	b.WriteString("- `/workers` — list workers; `/focus` or `/in <prefix>` — jump into worker; `/back` or `/detach` — return to coordinator\n")
 	b.WriteString("- `/plan path|init|new|save|run|review|approve|revoke|steps|template` — plan workflow + mini plans under `.goclaw/plans/`\n")
 	b.WriteString("- `/apply-plan [--preview] [--hub] [--steps] [path]` — preview or execute; `--steps` runs one turn per `## Steps` line when present\n")
-	b.WriteString("- `/audit [path]` — switch to general-purpose; audit-and-fix on path (default: workspace)\n")
+	b.WriteString("- `/audit [path]` — switch to build; audit-and-fix on path (default: workspace)\n")
 	b.WriteString("- `/review [args]` — inject git diff; code-review profile (`docs/goclaw/code-review-workflow.md`)\n")
 	b.WriteString("- `/btw <text>` — side question (sent to the model)\n")
 	b.WriteString("- `/continue` — follow-up on your last user request (sent to the model)\n")
@@ -106,7 +107,7 @@ func ReplHelpMarkdown(env SlashEnv, sess **session.Session, orch *orchestrator.O
 	b.WriteString("- `@<path>` — read_file in the workspace\n")
 	b.WriteString("- `&<task>` — spawn_agent (requires `spawn_agent` on the active profile)\n")
 	b.WriteString("\n## CLI and environment\n\n")
-	b.WriteString("- Restart flags: `--session <id>` `--list-sessions` `--no-tools` `--profile <name>`\n")
+	b.WriteString("- Restart flags: `--session <id>` `--list-sessions` `--no-tools` `--mode <build|plan>` `--profile <name>`\n")
 	b.WriteString("- Interactive chat needs a TTY; `GOCLAW_USE_TUI=0` on a TTY is unsupported — use `--output-format json` for pipes.\n")
 	b.WriteString("- `GOCLAW_TUI_MOUSE_SCROLL=1` — mouse wheel on transcript (see `tui_mouse_scroll` in settings).\n")
 	b.WriteString("- `GOCLAW_TUI_ICONS` / `tui_icons` — footer glyphs: emoji, unicode, ascii, nerd.\n")
@@ -115,7 +116,7 @@ func ReplHelpMarkdown(env SlashEnv, sess **session.Session, orch *orchestrator.O
 	b.WriteString("\n## Session\n\n")
 	b.WriteString("- **Current session id:** `" + id + "`\n")
 	if orch != nil {
-		b.WriteString("- **Active profile:** `" + orch.ProfileName() + "`\n")
+		b.WriteString("- **Active mode/profile:** `" + agents.DisplayProfileName(orch.ProfileName()) + "`\n")
 	}
 	if strings.TrimSpace(env.Workdir) != "" {
 		b.WriteString("- **Workspace plan file:** `" + planfile.Path(env.Workdir) + "`\n")
@@ -173,5 +174,10 @@ func sortedProfileNames(profs map[string]agents.Profile) string {
 	if len(profs) == 0 {
 		return ""
 	}
-	return strings.Join(agents.SortedKeys(profs), ", ")
+	keys := agents.UserFacingSortedKeys(profs)
+	names := make([]string, 0, len(keys))
+	for _, k := range keys {
+		names = append(names, agents.DisplayProfileName(k))
+	}
+	return strings.Join(names, ", ")
 }

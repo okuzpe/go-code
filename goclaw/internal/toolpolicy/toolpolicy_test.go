@@ -7,8 +7,14 @@ func TestPendingToolsBlockParallel(t *testing.T) {
 	if PendingToolsBlockParallel([]string{"grep", "glob"}) {
 		t.Fatal("expected false")
 	}
-	if PendingToolsBlockParallel([]string{"read_file", "bash"}) {
-		t.Fatal("expected false")
+	if !PendingToolsBlockParallel([]string{"read_file", "bash"}) {
+		t.Fatal("expected true when verify tool present")
+	}
+	if !PendingToolsBlockParallel([]string{"read_file", "edit_file"}) {
+		t.Fatal("expected true when write tool present")
+	}
+	if !PendingToolsBlockParallel([]string{"run_tests"}) {
+		t.Fatal("expected true for run_tests alone")
 	}
 	if !PendingToolsBlockParallel([]string{"spawn_agent", "read_file"}) {
 		t.Fatal("expected true when spawn_agent present")

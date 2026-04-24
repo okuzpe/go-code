@@ -12,6 +12,7 @@ import (
 	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/hooks"
+	"github.com/okuzpe/goclaw/internal/llm"
 	"github.com/okuzpe/goclaw/internal/memory"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/permissions"
@@ -113,12 +114,13 @@ func TestHandleSlashInit(t *testing.T) {
 	require.Contains(t, out, "created")
 	require.Contains(t, out, "/profile coordinator")
 	require.Contains(t, out, "CLAUDE.md")
+	require.Contains(t, out, "build")
 	settingsPath := filepath.Join(env.Workdir, ".goclaw", "settings.json")
 	require.FileExists(t, settingsPath)
 	require.FileExists(t, filepath.Join(env.Workdir, "CLAUDE.md"))
 	raw, err := os.ReadFile(settingsPath)
 	require.NoError(t, err)
-	require.Contains(t, string(raw), `"agent_profile": "general-purpose"`)
+	require.Contains(t, string(raw), `"agent_profile": "build"`)
 
 	handled, out, quit, ms, err = handleSlashTest(context.Background(), ctx, "/init")
 	require.NoError(t, err)
@@ -272,6 +274,33 @@ func TestHandleSlashCompactRequiresOrchestrator(t *testing.T) {
 	}
 }
 
+func TestHandleSlashContinueCarriesPendingRuntimeState(t *testing.T) {
+	s := session.New()
+	s.Add("user", "fix the build")
+	s.AddAssistant("", []llm.ToolCallRecord{
+		{ID: "w1", Name: "write_file", Input: `{"path":"internal/a.go","content":"package a"}`},
+	})
+	s.AddToolResults([]llm.ToolResultRecord{
+		{ToolUseID: "w1", ToolName: "write_file", Content: "ok"},
+	})
+	s.AddAssistant("", []llm.ToolCallRecord{
+		{ID: "v1", Name: "bash", Input: `{"command":"go build ./..."}`},
+	})
+	s.AddToolResults([]llm.ToolResultRecord{
+		{ToolUseID: "v1", ToolName: "bash", Content: "# broken", IsError: true},
+	})
+	sp := &s
+	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), agents.GeneralPurpose)
+
+	handled, out, quit, ms, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), orch, sp, nil), "/continue")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.False(t, quit)
+	require.Contains(t, out, "fix the build")
+	require.Contains(t, ms, "go build ./...")
+	require.Contains(t, ms, "internal/a.go")
+}
+
 func TestHandleSlashEditRequiresOrchestrator(t *testing.T) {
 	var sp *session.Session
 	_, _, _, _, err := handleSlashTest(context.Background(), testSlashCtx(t, memory.New(t.TempDir()), nil, &sp, nil), "/edit")
@@ -363,7 +392,7 @@ func TestHandleSlashApplyPlanModelSubmit(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, handled)
 	require.False(t, quit)
-	require.Contains(t, out, "general-purpose")
+	require.Contains(t, out, "build")
 	require.Contains(t, out, "plan.md")
 	require.Contains(t, modelSubmit, "Execute it step by step")
 	require.Contains(t, modelSubmit, planContent)
@@ -429,6 +458,7 @@ func TestHandleSlashAgents(t *testing.T) {
 	require.True(t, handled)
 	require.Contains(t, out, "coordinator")
 	require.Contains(t, out, "explore")
+	require.Contains(t, out, "build")
 
 	handled, out, _, _, err = handleSlashTest(context.Background(), ctx, "/agents explore")
 	require.NoError(t, err)
@@ -449,6 +479,25 @@ func TestHandleSlashProfile(t *testing.T) {
 	if orch.ProfileName() != "explore" {
 		t.Fatalf("orchestrator profile: %q", orch.ProfileName())
 	}
+}
+
+func TestHandleSlashMode(t *testing.T) {
+	s := session.New()
+	sp := &s
+	orch := orchestrator.New(config.Default(), nil, s, tools.New(), permissions.NewPolicy(), hooks.New(), agents.All()["plan"])
+	env := SlashEnv{Workdir: t.TempDir(), Profs: agents.All()}
+
+	handled, out, _, _, err := handleSlashTest(context.Background(), SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}, "/mode build")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Contains(t, out, "build")
+	require.Equal(t, "general-purpose", orch.ProfileName())
+
+	handled, out, _, _, err = handleSlashTest(context.Background(), SlashContext{SlashEnv: env, Mem: memory.New(t.TempDir()), Orch: orch, Sess: sp, Store: nil}, "/mode plan")
+	require.NoError(t, err)
+	require.True(t, handled)
+	require.Contains(t, out, "plan")
+	require.Equal(t, "plan", orch.ProfileName())
 }
 
 func TestHandleSlashNewAndSave(t *testing.T) {

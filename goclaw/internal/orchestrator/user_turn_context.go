@@ -30,6 +30,13 @@ type userTurnState struct {
 	verifySatisfied bool
 	verifyNudges    int
 	changedPaths    map[string]bool
+	requiredVerifyKind  string
+	requiredVerifySig   string
+	requiredVerifyLabel string
+
+	// editFileRecoveryPending is set after an edit_file "old_string not found" error.
+	// It remains true until the turn completes a successful workspace write.
+	editFileRecoveryPending bool
 
 	// revealedToolNames tracks hidden tools (e.g. MCP) revealed via tool_search during this turn.
 	// Revealed tools are included in effectiveToolSpecs for subsequent LLM iterations.

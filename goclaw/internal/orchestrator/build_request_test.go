@@ -166,6 +166,26 @@ func TestBuildRequestInjectsSkillsBlock(t *testing.T) {
 	}
 }
 
+func TestBuildRequestDoesNotEncourageThinkingBlocks(t *testing.T) {
+	reg := tools.New()
+	reg.Register(fakeTool{name: "read_file"})
+	o := &Orchestrator{
+		cfg:     config.Default(),
+		session: session.New(),
+		tools:   reg,
+		perms:   permissions.NewPolicy(),
+		hooks:   hooks.New(),
+		profile: agents.GeneralPurpose,
+	}
+	req := o.buildRequest()
+	if strings.Contains(req.System, "Use <thinking>...</thinking>") {
+		t.Fatalf("system prompt should not encourage thinking blocks: %q", req.System)
+	}
+	if !strings.Contains(req.System, "do not emit <thinking> blocks") {
+		t.Fatalf("system prompt should explicitly ban thinking blocks before first tool call: %q", req.System)
+	}
+}
+
 func TestBuildRequestInjectsVerifyChangedFilesBlock(t *testing.T) {
 	reg := tools.New()
 	reg.Register(fakeTool{name: "read_file"})

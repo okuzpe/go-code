@@ -99,7 +99,7 @@ func (f FullscreenChat) RunFullscreenChat(ctx context.Context, rt *ChatRuntime) 
 		UserAgentsDir:             rt.UserAgentsDir,
 		ProjectAgentsDir:          rt.ProjectAgentsDir,
 		AgentPickerHiddenProfiles: slices.Clone(rt.Cfg.AgentPickerHiddenProfiles),
-		ActiveAgentProfile:        orch.ProfileName(),
+		ActiveAgentProfile:        agents.CanonicalProfileName(orch.ProfileName()),
 		Theme:                     chat.NewThemeForAppearance(rt.Cfg.UIAppearance),
 		Welcome:                   fullscreenWelcomeOptions(f.Version, rt, orch),
 		FocusLine:                 focus.Hint,
@@ -131,7 +131,7 @@ func fullscreenWelcomeOptions(uiVersion string, rt *ChatRuntime, orch *orchestra
 		Version:               uiVersion,
 		Subtitle:              sub,
 		Workdir:               rt.Workdir,
-		Profile:               orch.ProfileName(),
+		Profile:               agents.DisplayProfileName(orch.ProfileName()),
 		FileWriteToolsHidden:  !p.AllowsWorkspaceFileWrites(),
 		HubDelegatesCoding:    p.AllowsSpawnAgentDelegation(),
 		WriteApprovalRequired: writeApprovalRequired,
@@ -144,7 +144,7 @@ func coordinatorShortcutSubtitleHint(profileName string) string {
 	case "coordinator", "plan", "":
 		return ""
 	default:
-		return " · hub: /profile coordinator"
+		return " · advanced: /profile coordinator"
 	}
 }
 
@@ -175,7 +175,7 @@ func fullscreenTuiFooterStatsMsgLine(n int) string {
 }
 
 func fullscreenTuiFooterStatsMinimal(rt *ChatRuntime, orch *orchestrator.Orchestrator, n int, live int) string {
-	base := fmt.Sprintf("%s · %s", fullscreenTuiFooterStatsMsgLine(n), orch.ProfileName())
+	base := fmt.Sprintf("%s · %s", fullscreenTuiFooterStatsMsgLine(n), agents.DisplayProfileName(orch.ProfileName()))
 	if OllamaFunctionToolsDropped(rt) {
 		base += " · Ollama text-only (no tool wire · /doctor)"
 	}
@@ -201,7 +201,7 @@ func fullscreenTuiFooterStatsStandard(rt *ChatRuntime, orch *orchestrator.Orches
 	if OllamaFunctionToolsDropped(rt) {
 		base += " · Ollama text-only (no tool wire · /doctor)"
 	}
-	return fmt.Sprintf("%s · %s", base, orch.ProfileName())
+	return fmt.Sprintf("%s · %s", base, agents.DisplayProfileName(orch.ProfileName()))
 }
 
 func fullscreenTuiFooterStatsDebug(rt *ChatRuntime, orch *orchestrator.Orchestrator, n int, live int) string {
@@ -228,7 +228,7 @@ func fullscreenTuiFooterStatsDebug(rt *ChatRuntime, orch *orchestrator.Orchestra
 	if p.ReadOnly {
 		ro = "ro:y"
 	}
-	base = fmt.Sprintf("%s · %s · %s · %s · tools:%s", base, orch.ProfileName(), ro, hub, toolsSummary)
+	base = fmt.Sprintf("%s · %s · %s · %s · tools:%s", base, agents.DisplayProfileName(orch.ProfileName()), ro, hub, toolsSummary)
 	if role := orch.TaskRole(); role != "" && role != "default" {
 		model := orch.TurnModel()
 		if model == "" {

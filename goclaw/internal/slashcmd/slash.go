@@ -306,7 +306,7 @@ func HandleSlash(ctx context.Context, sc SlashContext, input string, hintsOut *U
 		if len(r) > 48 {
 			snippet = string(r[:48]) + "…"
 		}
-		const continueSubmit = `Continue working on the prior request: use tools to complete pending edits (write_file, edit_file, patch) or bash/script to verify, or state clearly what blocks you.`
+		continueSubmit := orchestrator.ContinueFollowUpPrompt((*sess).Messages)
 		return true, fmt.Sprintf("(follow-up for: %s)\n", snippet), false, continueSubmit, nil
 
 	case "undo":
@@ -427,6 +427,9 @@ use /memory list to see basenames (e.g. mynote_a1b2c3d4.md)`)
 
 	case "profile":
 		return handleSlashProfile(env, orch, fields, hintsOut)
+
+	case "mode":
+		return handleSlashMode(env, orch, fields, hintsOut)
 
 	case "agents":
 		return handleSlashAgents(env, orch, fields, hintsOut)
@@ -649,7 +652,7 @@ use /workers to list interactive worker ids`)
 		}
 		gp, ok := env.Profs["general-purpose"]
 		if !ok {
-			return true, "", false, "", fmt.Errorf("/audit: general-purpose profile missing")
+			return true, "", false, "", fmt.Errorf("/audit: build profile missing (internal general-purpose not loaded)")
 		}
 		target := strings.TrimSpace(strings.Join(fields[1:], " "))
 		if target == "" {
@@ -669,7 +672,7 @@ use /workers to list interactive worker ids`)
 				"Step 6: report one short paragraph summarizing what was found and what was changed.",
 			target,
 		)
-		notice := fmt.Sprintf("switched to profile general-purpose; starting project audit: %s", target)
+		notice := fmt.Sprintf("switched to mode build; starting project audit: %s", target)
 		sub := ""
 		if env.ChatSubtitle != nil {
 			sub = env.ChatSubtitle()

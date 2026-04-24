@@ -3,7 +3,6 @@ package slashcmd
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -119,6 +118,10 @@ func argAppendSpace(cmd string, field int, picked string) bool {
 		if field == 1 {
 			return true
 		}
+	case "mode":
+		if field == 1 && (picked == "build" || picked == "plan") {
+			return true
+		}
 	case "profile", "agents", "resume", "model", "theme", "focus", "in", "export":
 		if field == 1 {
 			return true
@@ -143,27 +146,43 @@ func slashArgSuggestionsParsed(sc SlashContext, parsed ParsedSlashLine, line str
 	lowPartial := strings.ToLower(partial)
 
 	switch parsed.Cmd {
+	case "mode":
+		if parsed.FieldIndex != 1 {
+			return nil
+		}
+		var out []SlashCommandSuggest
+		for _, mode := range agents.PublicModeNames() {
+			if lowPartial != "" && !strings.HasPrefix(strings.ToLower(mode), lowPartial) {
+				continue
+			}
+			summary := "primary mode"
+			if mode == "plan" {
+				summary = "read-only planning mode"
+			} else {
+				summary = "direct coding mode"
+			}
+			out = append(out, SlashCommandSuggest{Name: mode, Summary: summary})
+		}
+		return out
+
 	case "profile", "agents":
 		if parsed.FieldIndex != 1 || sc.Orch == nil {
 			return nil
 		}
 		profs, _ := agents.AllWithCustom(sc.UserAgentsDir, sc.ProjectAgentsDir)
-		var keys []string
-		for k := range profs {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
+		keys := agents.UserFacingSortedKeys(profs)
 		var out []SlashCommandSuggest
 		for _, k := range keys {
 			if lowPartial != "" && !strings.HasPrefix(strings.ToLower(k), lowPartial) {
 				continue
 			}
 			pr := profs[k]
-			sum := pr.Name + " profile"
+			name := agents.DisplayProfileName(k)
+			sum := name + " profile"
 			if strings.TrimSpace(pr.Description) != "" {
 				sum = pr.Description
 			}
-			out = append(out, SlashCommandSuggest{Name: k, Summary: sum})
+			out = append(out, SlashCommandSuggest{Name: name, Summary: sum})
 		}
 		return out
 

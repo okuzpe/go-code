@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/ui/icons"
 )
 
@@ -206,7 +207,7 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 		cfg.PreferredResponseLanguage = strings.TrimSpace(*sf.PreferredResponseLanguage)
 	}
 	if sf.AgentProfile != nil && *sf.AgentProfile != "" {
-		cfg.AgentProfile = *sf.AgentProfile
+		cfg.AgentProfile = agents.CanonicalProfileName(*sf.AgentProfile)
 	}
 	if sf.AutoProfileIntent != nil && strings.TrimSpace(*sf.AutoProfileIntent) != "" {
 		cfg.AutoProfileIntent = NormalizeAutoProfileIntent(*sf.AutoProfileIntent)
@@ -347,7 +348,7 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	if len(sf.TUIProfileCycle) > 0 {
 		cfg.TUIProfileCycle = nil
 		for _, s := range sf.TUIProfileCycle {
-			s = strings.TrimSpace(s)
+			s = agents.CanonicalProfileName(s)
 			if s != "" {
 				cfg.TUIProfileCycle = append(cfg.TUIProfileCycle, s)
 			}
@@ -376,7 +377,7 @@ func mergeFile(path string, cfg *Config, perms map[string]string) error {
 	}
 	if len(sf.AgentPickerHiddenProfiles) > 0 {
 		for _, s := range sf.AgentPickerHiddenProfiles {
-			s = strings.ToLower(strings.TrimSpace(s))
+			s = agents.CanonicalProfileName(s)
 			if s != "" {
 				cfg.AgentPickerHiddenProfiles = append(cfg.AgentPickerHiddenProfiles, s)
 			}

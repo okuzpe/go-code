@@ -46,7 +46,7 @@ func formatPlanPreviewOutput(planPath, body string) string {
 	b.WriteString(display)
 	b.WriteString(fmt.Sprintf("`\n- **Size:** %d bytes\n\n", len(body)))
 	b.WriteString(MarkdownFencedPlain(excerpt))
-	b.WriteString("\n\nRun `/apply-plan` or `/plan run` to execute (general-purpose or coordinator with `--hub` / `plan_apply_use_coordinator`; one model turn by default; add `--steps` when the plan has a `## Steps` section for one turn per step; `/plan run` saves the latest assistant message first).\n")
+	b.WriteString("\n\nRun `/apply-plan` or `/plan run` to execute (build or coordinator with `--hub` / `plan_apply_use_coordinator`; one model turn by default; add `--steps` when the plan has a `## Steps` section for one turn per step; `/plan run` saves the latest assistant message first).\n")
 	b.WriteString("\nOptional: `/plan review`, `/plan approve` (when `plan_require_apply_approval` is true), `/plan steps`.")
 	return b.String()
 }

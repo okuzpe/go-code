@@ -40,10 +40,12 @@ func securityDocURL() string {
 
 // onboardingCompletionProfileHint is shown after successful first-run setup.
 func onboardingCompletionProfileHint(agentProfile string) string {
-	switch agentProfile {
-	case "general-purpose":
-		return "Tip: you picked direct coding (general-purpose). Use /profile coordinator for hub delegation with spawn_agent, or /profile builder for shorter action-first replies when coding solo."
+	switch strings.ToLower(strings.TrimSpace(agentProfile)) {
+	case "build", "general-purpose":
+		return "Tip: you picked build mode for direct coding. Use /mode plan when you want review first, or /profile coordinator for advanced hub delegation with spawn_agent."
+	case "plan":
+		return "Tip: you picked plan mode for read-only analysis first. When the plan looks right, use /mode build to implement it in this session."
 	default:
-		return "Tip: you picked hub mode (coordinator). Delegate with spawn_agent or the & prefix. Use /profile general-purpose or /profile builder for direct tools on the main session."
+		return "Tip: you picked an advanced profile. Use /mode build for direct coding, /mode plan for planning, or /profile coordinator for hub delegation."
 	}
 }

@@ -1,7 +1,6 @@
 package agents
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,9 +21,32 @@ func TestSortedProfileNames_coversAll(t *testing.T) {
 
 func TestProfileListHint(t *testing.T) {
 	h := ProfileListHint()
+	require.Contains(t, h, "build")
 	require.Contains(t, h, "coordinator")
 	require.Contains(t, h, ", ")
-	require.Equal(t, strings.Join(SortedProfileNames(), ", "), h)
+	require.NotContains(t, h, "general-purpose")
+}
+
+func TestCanonicalAndDisplayProfileNames(t *testing.T) {
+	require.Equal(t, "general-purpose", CanonicalProfileName("build"))
+	require.Equal(t, "general-purpose", CanonicalProfileName("general"))
+	require.Equal(t, "build", DisplayProfileName("general-purpose"))
+	require.Equal(t, "build", DisplayProfileName("build"))
+	require.Equal(t, "plan", DisplayProfileName("plan"))
+}
+
+func TestUserFacingSortedKeys(t *testing.T) {
+	keys := UserFacingSortedKeys(All())
+	require.GreaterOrEqual(t, len(keys), 2)
+	require.Equal(t, "general-purpose", keys[0])
+	require.Equal(t, "plan", keys[1])
+}
+
+func TestJoinSortedProfileKeys_UsesUserFacingNames(t *testing.T) {
+	hint := JoinSortedProfileKeys(All())
+	require.Contains(t, hint, "build")
+	require.Contains(t, hint, "plan")
+	require.NotContains(t, hint, "general-purpose")
 }
 
 func TestProfile_AllowsWorkspaceFileWrites(t *testing.T) {

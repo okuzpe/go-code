@@ -148,7 +148,7 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	}
 
 	quickStart := wrapPlainWords("/help — commands. Ctrl+P — profile. Ctrl+T — tool history. / opens actions.", rightW-1)
-	workflows := wrapPlainWords("Chat naturally, use @ for files, ! for shell, and /profile plan when you want planning first.", rightW-1)
+	workflows := wrapPlainWords("Chat naturally, use @ for files, ! for shell, and /mode plan when you want planning first.", rightW-1)
 	var rightLines []string
 	rightLines = append(rightLines, welcomeSectionLines("Quick Start", quickStart, rightW, section, dim)...)
 	rightLines = append(rightLines, "")
@@ -156,11 +156,11 @@ func welcomeDashboardWide(th *Theme, opt WelcomeOptions, version string, termWid
 	if opt.FileWriteToolsHidden {
 		rightLines = append(rightLines, "")
 		if opt.HubDelegatesCoding {
-			for _, ln := range wrapPlainWords("This profile is read-only for workspace edits — delegate coding with spawn_agent or switch to /profile general-purpose.", rightW-1) {
+			for _, ln := range wrapPlainWords("This mode/profile is read-only for workspace edits — delegate coding with spawn_agent or switch to /mode build.", rightW-1) {
 				rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 			}
 		} else {
-			for _, ln := range wrapPlainWords("Read-only profile — switch to /profile general-purpose to edit files here.", rightW-1) {
+			for _, ln := range wrapPlainWords("Read-only mode/profile — switch to /mode build to edit files here.", rightW-1) {
 				rightLines = append(rightLines, lipgloss.NewStyle().Width(rightW).Align(lipgloss.Left).Render(dim.Render(ln)))
 			}
 		}
@@ -255,19 +255,19 @@ func welcomeDashboardNarrow(th *Theme, opt WelcomeOptions, version string, termW
 	body.WriteString("\n")
 	body.WriteString(accent.Render("Workflows"))
 	body.WriteString("\n")
-	for _, ln := range wrapPlainWords("Chat naturally, use @ for files, ! for shell, and /profile plan when you want planning first.", contentMax) {
+	for _, ln := range wrapPlainWords("Chat naturally, use @ for files, ! for shell, and /mode plan when you want planning first.", contentMax) {
 		body.WriteString(dim.Render(ln))
 		body.WriteString("\n")
 	}
 	if opt.FileWriteToolsHidden {
 		body.WriteString("\n")
 		if opt.HubDelegatesCoding {
-			for _, ln := range wrapPlainWords("This profile is read-only for workspace edits — spawn_agent for coding, or /profile general-purpose for direct edits.", contentMax) {
+			for _, ln := range wrapPlainWords("This mode/profile is read-only for workspace edits — spawn_agent for coding, or /mode build for direct edits.", contentMax) {
 				body.WriteString(dim.Render(ln))
 				body.WriteString("\n")
 			}
 		} else {
-			for _, ln := range wrapPlainWords("Read-only profile — switch to /profile general-purpose for file edits.", contentMax) {
+			for _, ln := range wrapPlainWords("Read-only mode/profile — switch to /mode build for file edits.", contentMax) {
 				body.WriteString(dim.Render(ln))
 				body.WriteString("\n")
 			}

@@ -30,6 +30,7 @@ func (m *Model) agentPickNames() []string {
 		profs = agents.All()
 	}
 	names := agents.SortedKeys(profs)
+	names = agents.UserFacingSortedKeys(profs)
 	if len(m.agentPickerHidden) == 0 {
 		return names
 	}
@@ -42,7 +43,7 @@ func (m *Model) agentPickNames() []string {
 	}
 	var out []string
 	for _, n := range names {
-		if _, skip := hide[strings.ToLower(n)]; skip {
+		if _, skip := hide[agents.CanonicalProfileName(n)]; skip {
 			continue
 		}
 		out = append(out, n)
@@ -71,9 +72,10 @@ func (m *Model) refreshAgentPickOverlay() {
 	}
 	rows := make([]listPickerItem, 0, len(items))
 	for i, name := range items {
-		line := name
+		displayName := agents.DisplayProfileName(name)
+		line := displayName
 		if p, ok := agentProfileByName(m, name); ok {
-			line = name + " — " + p.Summary()
+			line = displayName + " — " + p.Summary()
 		}
 		rows = append(rows, listPickerItem{label: line, selected: i == m.agentPickCursor})
 	}
@@ -82,7 +84,7 @@ func (m *Model) refreshAgentPickOverlay() {
 		"Profile",
 		rows,
 		"↑↓ move · Enter apply · Esc cancel",
-		"Primary flow: /profile or Ctrl+P · custom profiles from ~/.goclaw/agents and project .goclaw/agents",
+		"Primary flow: /mode build|plan or Ctrl+P · advanced profiles and custom agents still available here",
 	)
 }
 
@@ -107,7 +109,7 @@ func (m *Model) openAgentPicker() {
 	m.agentPickCursor = 0
 	cur := strings.TrimSpace(m.activeAgentProfile)
 	for i, name := range items {
-		if name == cur {
+		if agents.CanonicalProfileName(name) == agents.CanonicalProfileName(cur) {
 			m.agentPickCursor = i
 			break
 		}

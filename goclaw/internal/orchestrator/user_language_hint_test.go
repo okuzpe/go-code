@@ -27,9 +27,16 @@ func TestLastUserNaturalText(t *testing.T) {
 	}
 }
 
-func TestLastUserNaturalText_skipsAutoContinueNudge(t *testing.T) {
+func TestLastUserNaturalText_skipsSyntheticRuntimeNudges(t *testing.T) {
 	t.Parallel()
-	for _, nudge := range []string{actionContinueNudgeMessage, actionFirstTurnNoToolsNudgeMessage} {
+	for _, nudge := range []string{
+		actionContinueNudgeMessage,
+		actionFirstTurnNoToolsNudgeMessage,
+		actionRepairModelEscalationMessage,
+		verifyAfterWriteNudgeMessage,
+		editFileNotFoundNudgeMessage,
+		reflectionNudgeMessage,
+	} {
 		msgs := []llm.Message{
 			llm.PlainMessage("user", "fix the bug in foo"),
 			llm.PlainMessage("user", nudge),

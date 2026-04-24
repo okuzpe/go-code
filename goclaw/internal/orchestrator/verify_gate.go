@@ -29,31 +29,125 @@ func toolResultIsSuccessfulWorkspaceWrite(r llm.ToolResultRecord) bool {
 	}
 }
 
-// verifyGateProcessToolResults updates verify state from one tool batch (writes then verify tools).
+// verifyGateProcessToolResults updates verify state from one tool batch in execution order.
 func verifyGateProcessToolResults(cfg config.Config, ut *userTurnState, toolsUsed []llm.ToolUse, results []llm.ToolResultRecord, intent string) {
 	if ut == nil || !cfg.AgentVerifyAfterWrite || !userMessageWantsWorkspaceWrites(intent) {
 		return
 	}
 	for idx, r := range results {
+		var tu llm.ToolUse
+		if idx < len(toolsUsed) {
+			tu = toolsUsed[idx]
+		}
 		if toolResultIsSuccessfulWorkspaceWrite(r) {
 			ut.verifyPending = true
 			ut.verifySatisfied = false
-			if idx < len(toolsUsed) {
-				for _, path := range changedPathsFromToolUse(toolsUsed[idx]) {
-					if ut.changedPaths == nil {
-						ut.changedPaths = make(map[string]bool)
-					}
-					ut.changedPaths[path] = true
+			for _, path := range changedPathsFromToolUse(tu) {
+				if ut.changedPaths == nil {
+					ut.changedPaths = make(map[string]bool)
 				}
+				ut.changedPaths[path] = true
 			}
 		}
+		if !toolpolicy.IsVerifyTool(r.ToolName) {
+			continue
+		}
+		kind, sig, label, ok := verifyRequirementForToolUse(tu, r.ToolName)
+		if !ok {
+			continue
+		}
+		if r.IsError {
+			ut.requiredVerifyKind = kind
+			ut.requiredVerifySig = sig
+			ut.requiredVerifyLabel = label
+			continue
+		}
+		if ut.requiredVerifyKind != "" && !verifyRequirementSatisfied(ut, kind, sig) {
+			continue
+		}
+		if !ut.verifyPending {
+			continue
+		}
+		ut.verifySatisfied = true
+		ut.verifyPending = false
+		ut.requiredVerifyKind = ""
+		ut.requiredVerifySig = ""
+		ut.requiredVerifyLabel = ""
 	}
-	for _, r := range results {
-		if toolpolicy.IsVerifyTool(r.ToolName) && !r.IsError {
-			ut.verifySatisfied = true
-			ut.verifyPending = false
+}
+
+func verifyRequirementForToolUse(tu llm.ToolUse, toolName string) (kind, sig, label string, ok bool) {
+	switch strings.TrimSpace(toolName) {
+	case "run_tests":
+		return "run_tests", "run_tests", "run_tests", true
+	case "bash", "run_command":
+		var in struct {
+			Command string `json:"command"`
+		}
+		if err := tools.UnmarshalToolInputJSON(tu.Input, &in); err != nil {
+			return "", "", "", false
+		}
+		norm := normalizeVerifyCommand(in.Command)
+		if !commandLooksLikeVerification(norm) {
+			return "", "", "", false
+		}
+		return "command", norm, strings.TrimSpace(in.Command), true
+	case "script":
+		var in struct {
+			Script string `json:"script"`
+		}
+		if err := tools.UnmarshalToolInputJSON(tu.Input, &in); err != nil {
+			return "", "", "", false
+		}
+		norm := normalizeVerifyCommand(in.Script)
+		if !commandLooksLikeVerification(norm) {
+			return "", "", "", false
+		}
+		return "script", norm, strings.TrimSpace(in.Script), true
+	default:
+		return "", "", "", false
+	}
+}
+
+func verifyRequirementSatisfied(ut *userTurnState, kind, sig string) bool {
+	if ut == nil || ut.requiredVerifyKind == "" {
+		return true
+	}
+	return ut.requiredVerifyKind == kind && ut.requiredVerifySig == sig
+}
+
+func normalizeVerifyCommand(raw string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(raw)), " "))
+}
+
+func toolUseSatisfiesVerifyGate(tu llm.ToolUse, toolName string) bool {
+	_, _, _, ok := verifyRequirementForToolUse(tu, toolName)
+	return ok
+}
+
+func commandLooksLikeVerification(raw string) bool {
+	low := normalizeVerifyCommand(raw)
+	if low == "" {
+		return false
+	}
+	verifyMarkers := []string{
+		"go build", "go test", "go vet",
+		"cargo test", "cargo check", "cargo build",
+		"npm test", "npm run test", "npm run build", "npm run lint",
+		"pnpm test", "pnpm run test", "pnpm build", "pnpm lint",
+		"yarn test", "yarn build", "yarn lint",
+		"pytest", "tox", "ruff check", "mypy",
+		"make test", "make check", "make build", "make lint", "make verify",
+		"cmake --build", "ctest",
+		"gradle test", "gradlew test", "mvn test",
+		"lint", " build", " test", " verify", " check", " compile", " vet",
+	}
+	for _, marker := range verifyMarkers {
+		if strings.Contains(low, marker) {
+			return true
 		}
 	}
+	return false
 }
 
 // verifyGateShouldInjectNudge reports whether a synthetic user line should force another LLM iteration.
@@ -106,6 +200,11 @@ func verifyChangedPathsBlock(ut *userTurnState, workdir string) string {
 		b.WriteString("Before ending, prefer at least one git-aware check from the workspace, such as `git status --short` and `git diff -- <changed files>`, plus tests/build if relevant.")
 	} else {
 		b.WriteString("Before ending, prefer at least one git-aware check such as `git status --short` and `git diff -- <changed files>`, plus tests/build if relevant.")
+	}
+	if strings.TrimSpace(ut.requiredVerifyLabel) != "" {
+		b.WriteString("\nRe-run the last failed verification before ending: `")
+		b.WriteString(ut.requiredVerifyLabel)
+		b.WriteString("`.")
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

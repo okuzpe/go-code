@@ -42,6 +42,16 @@ func (m *Model) dispatchVerticalPickerKey(key string, h verticalPickerHandlers) 
 	}
 }
 
+func (m *Model) composeCanScrollInternally() bool {
+	if m.input.LineCount() > m.input.Height() {
+		return true
+	}
+	if vp := textareaReflectViewport(&m.input); vp != nil && vp.TotalLineCount() > vp.Height() {
+		return true
+	}
+	return false
+}
+
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case footerTickMsg:
@@ -474,8 +484,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd  tea.Cmd
 	)
 
-	// Mouse wheel: with cell mouse mode, scroll the widget under the cursor — compose
-	// (last rows) scrolls the textarea; transcript or footer chrome scrolls the transcript.
+	// Mouse wheel: with cell mouse mode, scroll the widget under the cursor. When the pointer is
+	// over the compose area, only give the wheel to the textarea if it can actually scroll; otherwise
+	// fall through to the transcript so the gesture is never lost on a short input box.
 	if mw, ok := msg.(tea.MouseWheelMsg); ok && m.tuiMouseScroll &&
 		!m.toolLogOpen && !m.docOverlayOpen && !m.themePickOpen && !m.agentPickOpen {
 		m.layout()
@@ -504,7 +515,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			composeLines = m.height
 		}
 		composeTopY := m.height - composeLines
-		if mw.Y >= composeTopY {
+		if mw.Y >= composeTopY && m.composeCanScrollInternally() {
 			m.input, cmd = m.input.Update(msg)
 			m.resizeInput()
 			return m, cmd

@@ -14,7 +14,7 @@ func switchOrchestratorProfile(orch *orchestrator.Orchestrator, env SlashEnv, ra
 		return "", fmt.Errorf("requires a running agent")
 	}
 	profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
-	key := strings.ToLower(strings.TrimSpace(rawName))
+	key := agents.CanonicalProfileName(rawName)
 	if key == "" {
 		return "", fmt.Errorf("empty agent name")
 	}
@@ -22,7 +22,7 @@ func switchOrchestratorProfile(orch *orchestrator.Orchestrator, env SlashEnv, ra
 	if !ok {
 		return "", fmt.Errorf("unknown agent %q; valid: %s", rawName, sortedProfileNames(profs))
 	}
-	prev := profs[strings.ToLower(orch.ProfileName())]
+	prev := profs[agents.CanonicalProfileName(orch.ProfileName())]
 	if prev.Name == "" {
 		prev = agents.Profile{Name: orch.ProfileName()}
 	}
@@ -42,30 +42,32 @@ func switchOrchestratorProfile(orch *orchestrator.Orchestrator, env SlashEnv, ra
 func profileSwitchFollowUp(p agents.Profile) string {
 	switch strings.ToLower(strings.TrimSpace(p.Name)) {
 	case "plan":
-		return "\nPlan profile cannot modify the workspace. After the plan in chat: /plan review, /plan approve if your settings require it, then /plan run or /plan save + /apply-plan (--preview, --hub). Execution is one model turn (general-purpose or coordinator)."
+		return "\nPlan mode cannot modify the workspace. After the plan in chat: /plan review, /plan approve if your settings require it, then /plan run or /plan save + /apply-plan (--preview, --hub). Execution is one model turn (build or coordinator)."
 	case "explore":
-		return "\nRead-only search profile — no write_file, edit_file, or patch. For direct edits: /profile general-purpose or /profile builder."
+		return "\nRead-only search profile - no write_file, edit_file, or patch. For direct edits: /mode build or /profile builder."
 	case "guide", "statusline":
-		return "\nThis profile has no file or shell tools — chat only. For repo edits: /profile general-purpose or /profile builder."
+		return "\nThis profile has no file or shell tools - chat only. For repo edits: /mode build or /profile builder."
 	case "coordinator":
-		return "\nCoordinator hub — the parent session has no direct read/write tools; delegate with spawn_agent or use /profile general-purpose for single-agent edits."
+		return "\nCoordinator hub - the parent session has no direct read/write tools; delegate with spawn_agent or use /mode build for single-agent edits."
 	case "code-review":
-		return "\ncode-review has no workspace write tools — output is review prose only. To implement fixes: /profile general-purpose or /profile builder."
+		return "\ncode-review has no workspace write tools - output is review prose only. To implement fixes: /mode build or /profile builder."
 	case "verification":
-		return "\nVerification profile runs checks (read_file, bash, script) — no workspace write tools. To apply code changes: /profile general-purpose or /profile builder."
+		return "\nVerification profile runs checks (read_file, bash, script) - no workspace write tools. To apply code changes: /mode build or /profile builder."
 	default:
 		if p.ReadOnly {
-			return "\nRead-only profile — use /profile general-purpose or /profile builder for file edits in this session."
+			return "\nRead-only profile - use /mode build or /profile builder for file edits in this session."
 		}
 		return ""
 	}
 }
 
 func formatProfileSwitchSummary(prev, next agents.Profile) string {
+	prevName := agents.DisplayProfileName(prev.Name)
+	nextName := agents.DisplayProfileName(next.Name)
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("active profile: %s (was %s)\n", next.Name, prev.Name))
-	b.WriteString(fmt.Sprintf("  read_only: %v → %v\n", prev.ReadOnly, next.ReadOnly))
-	b.WriteString(fmt.Sprintf("  tool_allowlist: %s → %s\n", toolAllowlistSummary(prev.ToolAllowlist), toolAllowlistSummary(next.ToolAllowlist)))
+	b.WriteString(fmt.Sprintf("active mode/profile: %s (was %s)\n", nextName, prevName))
+	b.WriteString(fmt.Sprintf("  read_only: %v -> %v\n", prev.ReadOnly, next.ReadOnly))
+	b.WriteString(fmt.Sprintf("  tool_allowlist: %s -> %s\n", toolAllowlistSummary(prev.ToolAllowlist), toolAllowlistSummary(next.ToolAllowlist)))
 	if strings.TrimSpace(next.Description) != "" {
 		if sp := strings.TrimSpace(firstLine(next.SystemPrompt)); sp != "" {
 			b.WriteString("  system_prompt (first line): ")
@@ -92,7 +94,7 @@ func firstLine(s string) string {
 		return strings.TrimSpace(s[:i])
 	}
 	if len(s) > 120 {
-		return s[:120] + "…"
+		return s[:120] + "..."
 	}
 	return s
 }
@@ -104,14 +106,14 @@ func visibleProfileMap(env SlashEnv, profs map[string]agents.Profile) map[string
 	}
 	hide := make(map[string]struct{}, len(pg.AgentPickerHide))
 	for _, h := range pg.AgentPickerHide {
-		h = strings.ToLower(strings.TrimSpace(h))
+		h = agents.CanonicalProfileName(h)
 		if h != "" {
 			hide[h] = struct{}{}
 		}
 	}
 	out := make(map[string]agents.Profile)
 	for k, v := range profs {
-		if _, skip := hide[strings.ToLower(k)]; skip {
+		if _, skip := hide[agents.CanonicalProfileName(k)]; skip {
 			continue
 		}
 		out[k] = v
@@ -124,25 +126,27 @@ func visibleProfileMap(env SlashEnv, profs map[string]agents.Profile) map[string
 
 func formatAgentsList(profs map[string]agents.Profile, active string, env SlashEnv) string {
 	profs = visibleProfileMap(env, profs)
-	active = strings.TrimSpace(active)
+	active = agents.CanonicalProfileName(active)
 	var b strings.Builder
 	b.WriteString("## Available agents\n\n")
 	b.WriteString("Built-in + custom `*.md` under agents dirs.\n\n")
-	for _, name := range agents.SortedKeys(profs) {
+	for _, name := range agents.UserFacingSortedKeys(profs) {
 		p := profs[name]
-		if name == active {
+		displayName := agents.DisplayProfileName(name)
+		if agents.CanonicalProfileName(name) == active {
 			b.WriteString("- **")
-			b.WriteString(name)
-			b.WriteString("** (active) — ")
+			b.WriteString(displayName)
+			b.WriteString("** (active) - ")
 		} else {
 			b.WriteString("- `")
-			b.WriteString(name)
-			b.WriteString("` — ")
+			b.WriteString(displayName)
+			b.WriteString("` - ")
 		}
 		b.WriteString(p.Summary())
 		b.WriteByte('\n')
 	}
-	b.WriteString("\nPrimary flow: `/profile <name>`.\n")
+	b.WriteString("\nPrimary flow: `/mode build|plan`.\n")
+	b.WriteString("Advanced flow: `/profile <name>`.\n")
 	b.WriteString("Compatibility alias: `/agents <name>`.\n")
 	b.WriteString("In the fullscreen TUI, use **Ctrl+P** or bare `/profile` to open the picker.\n")
 	if pg := planGateFrom(env); len(pg.AgentPickerHide) > 0 {
@@ -166,7 +170,7 @@ func handleSlashProfile(env SlashEnv, orch *orchestrator.Orchestrator, fields []
 	}
 	if len(fields) < 2 {
 		profs, _ := agents.AllWithCustom(env.UserAgentsDir, env.ProjectAgentsDir)
-		return true, "", false, "", fmt.Errorf("usage: /profile <name>\nnames: %s", agents.JoinSortedProfileKeys(profs))
+		return true, "", false, "", fmt.Errorf("usage: /profile <name>\nprimary modes: build, plan\nadvanced names: %s", agents.JoinSortedProfileKeys(profs))
 	}
 	msg, err := switchOrchestratorProfile(orch, env, fields[1])
 	if err != nil {
@@ -178,6 +182,23 @@ func handleSlashProfile(env SlashEnv, orch *orchestrator.Orchestrator, fields []
 	}
 	setWelcomeHints(hintsOut, orch, sub)
 	return true, msg, false, "", nil
+}
+
+func handleSlashMode(env SlashEnv, orch *orchestrator.Orchestrator, fields []string, hintsOut *UIHints) (handled bool, out string, quit bool, modelSubmit string, err error) {
+	if err := requireRunningAgent("mode", orch); err != nil {
+		return true, "", false, "", err
+	}
+	if len(fields) < 2 {
+		return true, "", false, "", fmt.Errorf("usage: /mode <build|plan>")
+	}
+	switch strings.ToLower(strings.TrimSpace(fields[1])) {
+	case agents.PublicBuildProfileName:
+		return handleSlashProfile(env, orch, []string{"/profile", "general-purpose"}, hintsOut)
+	case "plan":
+		return handleSlashProfile(env, orch, []string{"/profile", "plan"}, hintsOut)
+	default:
+		return true, "", false, "", fmt.Errorf("unknown mode %q (use build or plan)", fields[1])
+	}
 }
 
 func handleSlashAgents(env SlashEnv, orch *orchestrator.Orchestrator, fields []string, hintsOut *UIHints) (handled bool, out string, quit bool, modelSubmit string, err error) {

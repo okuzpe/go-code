@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/config"
 )
 
@@ -17,12 +18,12 @@ var onboardingProfileStepOptions = []struct {
 	label   string
 }{
 	{
-		profile: "general-purpose",
-		label:   "Direct coding (general-purpose) — full toolset in this session",
+		profile: "build",
+		label:   "Build — direct coding in this session",
 	},
 	{
-		profile: "coordinator",
-		label:   "Hub (coordinator) — delegate work with spawn_agent; parent session has no direct file/bash tools",
+		profile: "plan",
+		label:   "Plan — read-only planning before implementation",
 	},
 }
 
@@ -87,7 +88,7 @@ func runOnboardingTUI(version, workdir string, base config.Config) error {
 		ti:           ti,
 		secVP:        secVP,
 		appearance:   config.UIAppearanceAuto,
-		agentProfile: base.AgentProfile,
+		agentProfile: agents.DisplayProfileName(base.AgentProfile),
 		ollamaHost:   base.OllamaHost,
 		ollamaModel:  base.OllamaModel,
 	}
@@ -316,6 +317,7 @@ func (m *obModel) finish() tea.Cmd {
 }
 
 func onboardingProfileStepInitialCursor(agentProfile string) int {
+	agentProfile = agents.DisplayProfileName(agentProfile)
 	for i, o := range onboardingProfileStepOptions {
 		if o.profile == agentProfile {
 			return i
@@ -402,7 +404,7 @@ func (m *obModel) viewBody() string {
 		}
 		b.WriteString("\n ↑/↓ · Enter")
 	case obProfile:
-		b.WriteString("\n Agent profile (change later with /profile):\n\n")
+		b.WriteString("\n Primary mode (change later with /mode or /profile):\n\n")
 		for i, o := range onboardingProfileStepOptions {
 			prefix := "   "
 			if i == m.cursor {

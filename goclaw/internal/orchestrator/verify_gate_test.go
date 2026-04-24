@@ -39,6 +39,100 @@ func TestVerifyGateProcessToolResultsSatisfiedByVerifyTool(t *testing.T) {
 	}
 }
 
+func TestVerifyGateProcessToolResultsGitStatusDoesNotSatisfyVerify(t *testing.T) {
+	cfg := config.Default()
+	ut := &userTurnState{verifyPending: true, changedPaths: map[string]bool{"internal/a.go": true}}
+	verifyGateProcessToolResults(
+		cfg,
+		ut,
+		[]llm.ToolUse{{Name: "bash", Input: `{"command":"git status --short"}`}},
+		[]llm.ToolResultRecord{{ToolName: "bash", IsError: false}},
+		"please implement the fix",
+	)
+	if !ut.verifyPending || ut.verifySatisfied {
+		t.Fatalf("git status should not satisfy verify gate: %+v", ut)
+	}
+}
+
+func TestVerifyGateProcessToolResultsGoBuildSatisfiesVerify(t *testing.T) {
+	cfg := config.Default()
+	ut := &userTurnState{verifyPending: true, changedPaths: map[string]bool{"internal/a.go": true}}
+	verifyGateProcessToolResults(
+		cfg,
+		ut,
+		[]llm.ToolUse{{Name: "bash", Input: `{"command":"go build ./..."}`}},
+		[]llm.ToolResultRecord{{ToolName: "bash", IsError: false}},
+		"please implement the fix",
+	)
+	if ut.verifyPending || !ut.verifySatisfied {
+		t.Fatalf("go build should satisfy verify gate: %+v", ut)
+	}
+}
+
+func TestVerifyGateFailedBuildRequiresSameBuildToClear(t *testing.T) {
+	cfg := config.Default()
+	ut := &userTurnState{verifyPending: true, changedPaths: map[string]bool{"internal/a.go": true}}
+
+	verifyGateProcessToolResults(
+		cfg,
+		ut,
+		[]llm.ToolUse{{Name: "bash", Input: `{"command":"go build ./..."}`}},
+		[]llm.ToolResultRecord{{ToolName: "bash", IsError: true}},
+		"please implement the fix",
+	)
+	if got := ut.requiredVerifyLabel; got != "go build ./..." {
+		t.Fatalf("required verify label = %q, want go build ./...", got)
+	}
+
+	verifyGateProcessToolResults(
+		cfg,
+		ut,
+		[]llm.ToolUse{{Name: "bash", Input: `{"command":"go test ./..."}`}},
+		[]llm.ToolResultRecord{{ToolName: "bash", IsError: false}},
+		"please implement the fix",
+	)
+	if !ut.verifyPending || ut.verifySatisfied {
+		t.Fatalf("go test should not clear pending failed go build: %+v", ut)
+	}
+
+	verifyGateProcessToolResults(
+		cfg,
+		ut,
+		[]llm.ToolUse{{Name: "run_command", Input: `{"command":"go build ./..."}`}},
+		[]llm.ToolResultRecord{{ToolName: "run_command", IsError: false}},
+		"please implement the fix",
+	)
+	if ut.verifyPending || !ut.verifySatisfied {
+		t.Fatalf("matching go build rerun should clear gate: %+v", ut)
+	}
+}
+
+func TestVerifyGateDoesNotLetEarlierVerifyClearLaterWriteInSameBatch(t *testing.T) {
+	cfg := config.Default()
+	ut := &userTurnState{changedPaths: make(map[string]bool)}
+
+	verifyGateProcessToolResults(
+		cfg,
+		ut,
+		[]llm.ToolUse{
+			{Name: "bash", Input: `{"command":"go build ./..."}`},
+			{Name: "edit_file", Input: `{"path":"internal/a.go","old_string":"x","new_string":"y"}`},
+		},
+		[]llm.ToolResultRecord{
+			{ToolName: "bash", IsError: false},
+			{ToolName: "edit_file", IsError: false},
+		},
+		"please implement the fix",
+	)
+
+	if !ut.verifyPending || ut.verifySatisfied {
+		t.Fatalf("verify before a later write in the same batch must not clear the gate: %+v", ut)
+	}
+	if !ut.changedPaths["internal/a.go"] {
+		t.Fatalf("expected changed path to be tracked: %#v", ut.changedPaths)
+	}
+}
+
 func TestVerifyChangedPathsBlock(t *testing.T) {
 	ut := &userTurnState{
 		verifyPending: true,
@@ -56,6 +150,20 @@ func TestVerifyChangedPathsBlock(t *testing.T) {
 	}
 	if !strings.Contains(block, "git status --short") || !strings.Contains(block, "git diff -- <changed files>") {
 		t.Fatalf("expected git-aware verify guidance: %q", block)
+	}
+}
+
+func TestVerifyChangedPathsBlockIncludesRequiredVerifyRerun(t *testing.T) {
+	ut := &userTurnState{
+		verifyPending:        true,
+		changedPaths:         map[string]bool{"internal/a.go": true},
+		requiredVerifyLabel:  "go build ./...",
+		requiredVerifyKind:   "command",
+		requiredVerifySig:    "go build ./...",
+	}
+	block := verifyChangedPathsBlock(ut, "C:/repo")
+	if !strings.Contains(block, "Re-run the last failed verification before ending: `go build ./...`.") {
+		t.Fatalf("expected required verify rerun in block: %q", block)
 	}
 }
 

@@ -12,7 +12,7 @@ import (
 const runtimeUserLanguageHintHeader = "\n\n## Runtime user-language hint\n"
 
 // LastUserNaturalText returns the most recent user-authored plain text turn (not a tool-result
-// payload), walking backward from the end of the session. Synthetic auto-continue nudge lines
+// payload), walking backward from the end of the session. Synthetic runtime nudge lines
 // injected by the orchestrator are skipped so callers see the real user request.
 func LastUserNaturalText(msgs []llm.Message) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
@@ -26,7 +26,7 @@ func LastUserNaturalText(msgs []llm.Message) string {
 		if len(m.ToolResults) > 0 {
 			continue
 		}
-		if isAutoContinueNudgeContent(m.Content) {
+		if isSyntheticRuntimeNudgeContent(m.Content) {
 			continue
 		}
 		return m.Content
@@ -34,10 +34,14 @@ func LastUserNaturalText(msgs []llm.Message) string {
 	return ""
 }
 
-func isAutoContinueNudgeContent(s string) bool {
+func isSyntheticRuntimeNudgeContent(s string) bool {
 	t := strings.TrimSpace(s)
 	return strings.HasPrefix(t, "[goclaw] The user asked for concrete code improvements") ||
-		strings.HasPrefix(t, "[goclaw] The user asked for code or repository changes")
+		strings.HasPrefix(t, "[goclaw] The user asked for code or repository changes") ||
+		strings.HasPrefix(t, "[goclaw] Action nudges were exhausted without native tool calls") ||
+		strings.HasPrefix(t, "[goclaw] You made workspace changes.") ||
+		strings.HasPrefix(t, "[goclaw] edit_file failed: old_string not found.") ||
+		strings.HasPrefix(t, "[goclaw] Reflection checkpoint:")
 }
 
 func lastUserNaturalText(msgs []llm.Message) string {

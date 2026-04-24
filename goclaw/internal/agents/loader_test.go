@@ -144,6 +144,15 @@ func TestParseAgentFile_invalidName(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestParseAgentFile_rejectsReservedBuildAliasName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agent.md")
+	require.NoError(t, os.WriteFile(path, []byte("---\nname: build\n---\n"), 0o600))
+
+	_, ok := parseAgentFile(path)
+	require.False(t, ok)
+}
+
 func TestParseAgentFile_noFrontmatter(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "agent.md")

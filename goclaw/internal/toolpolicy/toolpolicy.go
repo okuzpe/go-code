@@ -6,10 +6,24 @@ import "strings"
 
 const spawnAgentToolName = "spawn_agent"
 
+// IsWorkspaceWriteTool reports whether the tool can modify files or repo state.
+func IsWorkspaceWriteTool(toolName string) bool {
+	switch strings.TrimSpace(toolName) {
+	case "write_file", "write_files", "edit_file", "patch", "create_project", "git_tool":
+		return true
+	default:
+		return false
+	}
+}
+
 // PreventsParallelBatch reports whether this tool must not share a parallel batch
-// with other tools (e.g. spawn_agent to avoid duplicate workers / GPU contention).
+// with other tools. Keep parallel batches read-only and stateless; writes, shell
+// verification, and agent spawning stay serialized to avoid order-dependent races.
 func PreventsParallelBatch(toolName string) bool {
-	return strings.TrimSpace(toolName) == spawnAgentToolName
+	toolName = strings.TrimSpace(toolName)
+	return toolName == spawnAgentToolName ||
+		IsWorkspaceWriteTool(toolName) ||
+		IsVerifyTool(toolName)
 }
 
 // PendingToolsBlockParallel reports whether any tool in the list blocks parallel execution.

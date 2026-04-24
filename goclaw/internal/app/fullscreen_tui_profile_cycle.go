@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
@@ -13,7 +12,7 @@ import (
 
 // defaultTUIProfileCycleOrder is used when settings do not set tui_profile_cycle (after filtering
 // to profiles that exist in built-in + custom agents).
-var defaultTUIProfileCycleOrder = []string{"general-purpose", "plan", "explore", "coordinator"}
+var defaultTUIProfileCycleOrder = []string{"general-purpose", "plan"}
 
 // tuiProfileCycleOrder returns distinct lower-case profile keys present in built-in+custom agents.
 func tuiProfileCycleOrder(rt *ChatRuntime) []string {
@@ -28,7 +27,7 @@ func tuiProfileCycleOrder(rt *ChatRuntime) []string {
 	var out []string
 	seen := make(map[string]struct{})
 	for _, raw := range order {
-		k := strings.ToLower(strings.TrimSpace(raw))
+		k := agents.CanonicalProfileName(raw)
 		if k == "" {
 			continue
 		}
@@ -56,10 +55,10 @@ func cycleTUIAgentProfile(ctx context.Context, rt *ChatRuntime, orch *orchestrat
 	if len(names) == 0 {
 		return slashcmd.UIHints{}, fmt.Errorf("no agent profiles available to cycle")
 	}
-	cur := strings.ToLower(strings.TrimSpace(orch.ProfileName()))
+	cur := agents.CanonicalProfileName(orch.ProfileName())
 	idx := 0
 	for i, n := range names {
-		if strings.ToLower(strings.TrimSpace(n)) == cur {
+		if agents.CanonicalProfileName(n) == cur {
 			idx = i
 			break
 		}

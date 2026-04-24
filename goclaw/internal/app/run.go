@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/session"
 	"github.com/okuzpe/goclaw/internal/tuilog"
@@ -230,15 +231,26 @@ func loadMergedConfigForRun(cmd *cobra.Command) (config.Config, string, error) {
 		return config.Config{}, "", fmt.Errorf("load config: %w", err)
 	}
 	if ep := strings.TrimSpace(os.Getenv("GOCLAW_AGENT_PROFILE")); ep != "" {
-		cfg.AgentProfile = ep
+		cfg.AgentProfile = agents.CanonicalProfileName(ep)
 	}
 	if cmd != nil {
+		if m, err := cmd.Flags().GetString("mode"); err == nil && strings.TrimSpace(m) != "" {
+			switch strings.ToLower(strings.TrimSpace(m)) {
+			case agents.PublicBuildProfileName:
+				cfg.AgentProfile = "general-purpose"
+			case "plan":
+				cfg.AgentProfile = "plan"
+			default:
+				return config.Config{}, "", fmt.Errorf("invalid --mode %q (use build or plan)", strings.TrimSpace(m))
+			}
+		}
 		if p, err := cmd.Flags().GetString("profile"); err == nil && strings.TrimSpace(p) != "" {
-			cfg.AgentProfile = strings.TrimSpace(p)
+			cfg.AgentProfile = agents.CanonicalProfileName(p)
 		}
 		if vals, err := cmd.Flags().GetStringSlice("plugin-dir"); err == nil && len(vals) > 0 {
 			cfg.PluginDirs = append(cfg.PluginDirs, vals...)
 		}
 	}
+	cfg.AgentProfile = agents.CanonicalProfileName(cfg.AgentProfile)
 	return cfg, workdir, nil
 }

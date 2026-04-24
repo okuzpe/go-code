@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/config"
 	"github.com/okuzpe/goclaw/internal/inputprefix"
 	"github.com/okuzpe/goclaw/internal/slashcmd"
@@ -120,6 +121,7 @@ func (m *Model) syncInputPlaceholder() {
 // headerView renders a single compact context bar for the current session.
 func (m *Model) headerView() string {
 	profile := strings.TrimSpace(m.activeAgentProfile)
+	profile = agents.DisplayProfileName(profile)
 	model := strings.TrimSpace(m.modelLabel)
 	if profile == "" && model == "" {
 		return ""
@@ -637,7 +639,7 @@ func (m *Model) bangAmpHintStripView() string {
 	case raw == "!":
 		return m.compactHelperStrip("Shell", []string{"type command", "Enter runs", "@ inserts paths"})
 	case raw == "&":
-		return m.compactHelperStrip("Spawn", []string{"one-line task", "general-purpose worker", "best from coordinator"})
+		return m.compactHelperStrip("Spawn", []string{"one-line task", "build worker", "best from coordinator"})
 	default:
 		return ""
 	}

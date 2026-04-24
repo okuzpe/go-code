@@ -81,11 +81,12 @@ For single-threaded work, use tools directly; do not delegate trivial one-shot t
 		ToolAllowlist: []string{"read_file", "glob", "grep", "web_search", "todo_write"},
 		ReadOnly:      true,
 		SystemPrompt: "You are a software architect. Follow this flow unless the user asks for something narrower:\n" +
-			"1) **Understand** — restate the goal, scope, and constraints in your own words.\n" +
-			"2) **Analyze** — what parts of this repository or problem domain matter; do not invent paths or symbols you have not seen.\n" +
-			"3) **Propose** — a recommended approach; when tradeoffs exist, name them briefly and pick a default with rationale.\n" +
-			"4) **Concretize** — ordered, verifiable steps and explicit acceptance criteria (what \"done\" means).\n" +
-			"5) **Close** — how to persist and execute: `/plan save`, `/plan review`, `/plan approve` when required, `/plan run` or `/apply-plan` (add `--hub` for coordinator execution); mention `/plan save` then `/apply-plan --preview` for a cautious path.\n\n" +
+			"1) **Understand** — restate the goal, scope, and constraints in your own words. If a missing detail blocks a useful plan, ask one focused question; otherwise continue with explicit assumptions.\n" +
+			"2) **Analyze** — inspect the relevant repository or problem context with read-only evidence; do not invent paths or symbols you have not seen.\n" +
+			"3) **Design** — propose a recommended approach; when tradeoffs exist, name them briefly and pick a default with rationale.\n" +
+			"4) **Plan** — give ordered, verifiable steps, acceptance criteria, risks, and suggested verification.\n" +
+			"5) **Review gate** — stop after the plan and invite the user to adjust or approve it. Treat implementation as a separate phase; do not assume execution just because the plan looks good.\n" +
+			"6) **Close** — explain how to persist and execute: prefer `/plan save` → `/plan review` → `/plan approve` when required → `/apply-plan --preview` → `/apply-plan`; mention `/plan run` only as the faster explicit execute path.\n\n" +
 			"If the task is self-contained or greenfield (e.g. build a small app from scratch), you may answer from general knowledge without web_search. " +
 			"If the request is purely conceptual and needs no repository evidence, answer without tools.\n" +
 			"Use read_file, glob, and grep when the plan must reflect this repository's layout or existing code. " +
@@ -93,8 +94,8 @@ For single-threaded work, use tools directly; do not delegate trivial one-shot t
 			"Keep the plan in chat until the user persists it — do not create plan markdown files on disk unless they use `/plan save`.\n\n" +
 			"This profile cannot edit the repo or run shell — there is no automatic handoff to builder. " +
 			"Use native tool calls from the API only for reads/search; never paste `{\"name\":...}` tool JSON as plain assistant text (it does not run). " +
-			"Always end with a short **Next steps (you run these)** block: `/plan save` (optional path) → `/apply-plan --preview` → `/apply-plan` to execute (that switches to general-purpose; add `--hub` if they use coordinator). " +
-			"If `plan_require_apply_approval` is enabled in their config, mention `/plan review` → `/plan approve` before apply. " +
+			"Always end with a short **Next steps (you run these)** block that defaults to the review-first path: `/plan save` (optional path) → `/plan review` → `/plan approve` when required → `/apply-plan --preview` → `/apply-plan`. " +
+			"Mention `/plan run` only as the faster explicit path when they already want to execute immediately. " +
 			"Close with **one explicit question** asking whether they want to save and preview-apply, or what to adjust first — do not assume they already ran slash commands.\n\n" +
 			"When the plan is grounded in this repository, include a **Critical files** subsection (see PLAN_PROFILE_MODE rules in the system prompt for the exact 3–5 file requirement).",
 	}
@@ -173,6 +174,97 @@ For single-threaded work, use tools directly; do not delegate trivial one-shot t
 	}
 )
 
+const PublicBuildProfileName = "build"
+
+// CanonicalProfileName resolves public aliases to the internal built-in profile key used at runtime.
+// Unknown names are normalized for map lookup only.
+func CanonicalProfileName(raw string) string {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return ""
+	}
+	switch strings.ToLower(name) {
+	case "build", "general-purpose", "general", "gp":
+		return "general-purpose"
+	default:
+		return strings.ToLower(name)
+	}
+}
+
+// DisplayProfileName returns the preferred user-facing name for a profile key.
+func DisplayProfileName(raw string) string {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return ""
+	}
+	if CanonicalProfileName(name) == "general-purpose" {
+		return PublicBuildProfileName
+	}
+	return name
+}
+
+// DisplayProfile returns a copy with the preferred user-facing Name.
+func DisplayProfile(p Profile) Profile {
+	q := p
+	q.Name = DisplayProfileName(p.Name)
+	return q
+}
+
+// PublicModeNames is the short primary-mode surface shown to most users.
+func PublicModeNames() []string {
+	return []string{PublicBuildProfileName, "plan"}
+}
+
+// UserFacingSortedKeys keeps build/plan first, then custom profiles, then advanced built-ins.
+func UserFacingSortedKeys(profs map[string]Profile) []string {
+	if len(profs) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(profs))
+	for k := range profs {
+		names = append(names, k)
+	}
+	sort.SliceStable(names, func(i, j int) bool {
+		ri := userFacingProfileRank(names[i])
+		rj := userFacingProfileRank(names[j])
+		if ri != rj {
+			return ri < rj
+		}
+		di := strings.ToLower(DisplayProfileName(names[i]))
+		dj := strings.ToLower(DisplayProfileName(names[j]))
+		if di != dj {
+			return di < dj
+		}
+		return strings.ToLower(names[i]) < strings.ToLower(names[j])
+	})
+	return names
+}
+
+func userFacingProfileRank(name string) int {
+	switch CanonicalProfileName(name) {
+	case "general-purpose":
+		return 0
+	case "plan":
+		return 1
+	case "builder":
+		return 20
+	case "coordinator":
+		return 30
+	case "explore":
+		return 31
+	case "verification":
+		return 32
+	case "code-review":
+		return 33
+	case "guide":
+		return 34
+	case "statusline":
+		return 35
+	default:
+		return 10
+	}
+}
+
 // All returns all built-in profiles indexed by name.
 func All() map[string]Profile {
 	profiles := []Profile{GeneralPurpose, Builder, Explore, Plan, Verification, CodeReview, Guide, StatusLine, Coordinator}
@@ -190,7 +282,11 @@ func SortedProfileNames() []string {
 
 // ProfileListHint is a comma-separated list of profile names for error messages.
 func ProfileListHint() string {
-	return strings.Join(SortedProfileNames(), ", ")
+	names := make([]string, 0, len(SortedProfileNames()))
+	for _, name := range SortedProfileNames() {
+		names = append(names, DisplayProfileName(name))
+	}
+	return strings.Join(names, ", ")
 }
 
 // SortedKeys returns profile map keys sorted lexically (built-in + custom merged maps).
@@ -211,7 +307,12 @@ func JoinSortedProfileKeys(profs map[string]Profile) string {
 	if len(profs) == 0 {
 		return ""
 	}
-	return strings.Join(SortedKeys(profs), ", ")
+	keys := UserFacingSortedKeys(profs)
+	names := make([]string, 0, len(keys))
+	for _, key := range keys {
+		names = append(names, DisplayProfileName(key))
+	}
+	return strings.Join(names, ", ")
 }
 
 // Summary is a single-line description for listings (/agents, docs).

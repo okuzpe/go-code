@@ -93,6 +93,10 @@ func parseAgentFile(path string) (Profile, bool) {
 		slog.Warn("custom agent: name must match [a-z0-9-]+", "path", path, "name", name)
 		return Profile{}, false
 	}
+	if CanonicalProfileName(name) != strings.ToLower(name) {
+		slog.Warn("custom agent: reserved profile alias name", "path", path, "name", name, "use", CanonicalProfileName(name))
+		return Profile{}, false
+	}
 
 	memRaw := strings.TrimSpace(fm.Memory)
 	memScope := normalizeMemoryScope(memRaw)

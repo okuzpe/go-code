@@ -5,6 +5,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/text"
 	"github.com/okuzpe/goclaw/internal/ui/icons"
 )
@@ -19,7 +20,7 @@ func agentLaneHint(profileName string) string {
 	case "explore":
 		return "read-only"
 	case "general-purpose":
-		return "full tools"
+		return "build"
 	case "builder":
 		return "forge"
 	case "code-review":
@@ -95,6 +96,7 @@ func (m *Model) agentDeckRailView() string {
 	if name == "" {
 		return ""
 	}
+	displayName := agents.DisplayProfileName(name)
 
 	st := th.Icons
 	rail := th.AgentDeckRail.Render(st.AgentDeckRailGlyph())
@@ -109,13 +111,13 @@ func (m *Model) agentDeckRailView() string {
 		maxCluster = 6
 	}
 
-	cluster := buildAgentDeckCluster(th, st, name, agentLaneHint(name), maxCluster)
+	cluster := buildAgentDeckCluster(th, st, displayName, agentLaneHint(name), maxCluster)
 	clusterW := lipgloss.Width(cluster)
 
 	traceW := w - railW - 1 - clusterW - chordW
 	for traceW < minTrace && maxCluster > 4 {
 		maxCluster--
-		cluster = buildAgentDeckCluster(th, st, name, agentLaneHint(name), maxCluster)
+		cluster = buildAgentDeckCluster(th, st, displayName, agentLaneHint(name), maxCluster)
 		clusterW = lipgloss.Width(cluster)
 		traceW = w - railW - 1 - clusterW - chordW
 	}

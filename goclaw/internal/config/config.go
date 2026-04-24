@@ -499,7 +499,7 @@ func NormalizeAutoProfileIntent(raw string) string {
 // NormalizeAutoDirectCodingProfile returns off, general-purpose, or builder. Unknown values become off.
 func NormalizeAutoDirectCodingProfile(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "general-purpose", "gp", "general":
+	case "build", "general-purpose", "gp", "general":
 		return "general-purpose"
 	case "builder", "b":
 		return "builder"

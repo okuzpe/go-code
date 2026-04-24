@@ -41,6 +41,13 @@ func newActionStalledError(reason, response string) error {
 	}
 }
 
+func shouldFailPendingEditRecovery(ut *userTurnState, workspaceWriteOK bool) (string, bool) {
+	if ut == nil || !ut.editFileRecoveryPending || workspaceWriteOK {
+		return "", false
+	}
+	return "edit_file recovery was pending after old_string not found, but the model stopped without rereading the file and retrying the edit", true
+}
+
 func actionStallExcerpt(response string) string {
 	response = strings.Join(strings.Fields(strings.TrimSpace(response)), " ")
 	if response == "" {

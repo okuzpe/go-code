@@ -31,6 +31,18 @@ func (s staticTool) Execute(context.Context, string) (tools.Result, error) {
 	return tools.Result{Content: s.content}, nil
 }
 
+type staticToolResult struct {
+	name   string
+	result tools.Result
+}
+
+func (s staticToolResult) Name() string        { return s.name }
+func (s staticToolResult) Description() string { return s.name }
+func (s staticToolResult) InputSchema() any    { return map[string]any{"type": "object"} }
+func (s staticToolResult) Execute(context.Context, string) (tools.Result, error) {
+	return s.result, nil
+}
+
 func newActionStallOrch(t *testing.T, client llm.Client, reg *tools.Registry, cfg config.Config) *Orchestrator {
 	t.Helper()
 	pol := permissions.NewPolicy()
@@ -176,4 +188,29 @@ func TestActionStalledErrorWrapsSentinel(t *testing.T) {
 	err := newActionStalledError("no native tool calls were made after recovery", "I don't have access to your terminal.")
 	require.True(t, errors.Is(err, ErrActionStalled))
 	require.Contains(t, err.Error(), "action stalled")
+}
+
+func TestOrchestratorActionStalledAfterEditFileNotFoundThenProseOnlyStop(t *testing.T) {
+	cfg := testOrchestratorConfig()
+
+	srv := mockopenai.New([]mockopenai.Scenario{
+		{Match: "please update the readme", Tool: &mockopenai.ToolReply{Name: "edit_file", Input: `{"path":"README.md","old_string":"wrong","new_string":"right"}`}},
+		{Match: "[goclaw] edit_file failed: old_string not found.", Response: "done"},
+	})
+	defer srv.Close()
+
+	reg := tools.New()
+	reg.Register(staticToolResult{
+		name: "edit_file",
+		result: tools.Result{
+			Content: "old_string not found in README.md (0 matches)\nHint: do not include read_file line-number prefixes.",
+			IsError: true,
+		},
+	})
+
+	orch := newActionStallOrch(t, testOpenAIClient(srv), reg, cfg)
+	_, err := orch.Run(context.Background(), "please update the readme")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrActionStalled)
+	require.Contains(t, err.Error(), "edit_file recovery was pending")
 }

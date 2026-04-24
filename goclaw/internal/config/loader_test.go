@@ -85,6 +85,23 @@ func TestLoadTUIProfileCycle(t *testing.T) {
 	require.Equal(t, []string{"plan", "coordinator"}, cfg.TUIProfileCycle)
 }
 
+func TestLoadBuildAliasNormalizesToGeneralPurpose(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	cwd := t.TempDir()
+	userDir := filepath.Join(home, ".goclaw")
+	require.NoError(t, os.MkdirAll(userDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(userDir, "settings.json"), []byte(`{"agent_profile":"build","tui_profile_cycle":["build","plan"],"agent_picker_hidden_profiles":["build","coordinator"]}`), 0o600))
+	base := Default()
+	base.UserConfigDir = userDir
+	base.ProjectConfigDir = ".goclaw"
+	cfg, err := Load(base, cwd)
+	require.NoError(t, err)
+	require.Equal(t, "general-purpose", cfg.AgentProfile)
+	require.Equal(t, []string{"general-purpose", "plan"}, cfg.TUIProfileCycle)
+	require.Equal(t, []string{"general-purpose", "coordinator"}, cfg.AgentPickerHiddenProfiles)
+}
+
 func TestLoadBashTimeoutSec(t *testing.T) {
 	home := t.TempDir()
 	cwd := t.TempDir()

@@ -28,8 +28,8 @@ func TestChatSubcommandResolved(t *testing.T) {
 	if cmd.Name() != "chat" {
 		t.Fatalf("expected chat subcommand, got %q", cmd.Name())
 	}
-	if got := cmd.Long; got == "" || !containsAll(got, "general-purpose", "/profile coordinator") {
-		t.Fatalf("chat long help should mention general-purpose default and coordinator hub mode, got: %q", got)
+	if got := cmd.Long; got == "" || !containsAll(got, "build", "/mode plan", "/profile coordinator") {
+		t.Fatalf("chat long help should mention build/plan surface and coordinator hub mode, got: %q", got)
 	}
 }
 

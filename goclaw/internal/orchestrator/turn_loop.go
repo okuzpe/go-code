@@ -158,6 +158,13 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				slog.Debug("orchestrator: verify-after-write nudge")
 				continue
 			}
+			if reason, stalled := shouldFailPendingEditRecovery(o.ut, workspaceWriteOK); stalled {
+				metrics.toolCalls = toolCalls
+				metrics.status = "action_stalled"
+				o.emitTurnEndSummary(ctx, "action_stalled", metrics, toolCalls, workspaceWriteOK, hadToolRound, actionNudges, repairEscalations, editFileNotFoundNudges, reflectionFired)
+				o.logTurnMetrics(metrics)
+				return "", newActionStalledError(reason, response)
+			}
 			if reason, stalled := o.shouldFailActionStalled(
 				response,
 				intentMessage,
@@ -277,8 +284,14 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			appendJSONToolTrace(toolTrace, pendingTools, results)
 		}
 		o.session.AddToolResults(results)
+		if workspaceWriteOK && o.ut != nil {
+			o.ut.editFileRecoveryPending = false
+		}
 
 		if toolResultsHaveEditNotFound(results) {
+			if o.ut != nil {
+				o.ut.editFileRecoveryPending = true
+			}
 			o.session.Add("user", editFileNotFoundNudgeMessage)
 			editFileNotFoundNudges++
 			slog.Debug("orchestrator: edit_file not-found recovery nudge injected")

@@ -27,6 +27,8 @@ func TestBuildRequestPlanProfileIncludesOverrideMarker(t *testing.T) {
 	req := o.buildRequest()
 	require.Contains(t, req.System, planProfileModeMarker)
 	require.Contains(t, req.System, "Critical files (3–5)")
+	require.Contains(t, req.System, "Clarify only when blocked")
+	require.Contains(t, req.System, "Review gate:")
 }
 
 func TestBuildRequestGeneralPurposeOmitsPlanOverrideMarker(t *testing.T) {

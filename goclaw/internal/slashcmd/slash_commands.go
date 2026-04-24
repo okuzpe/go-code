@@ -12,7 +12,7 @@ type SlashCommandSuggest struct {
 // slashCommandTable is the canonical list of root REPL / commands. Keep sorted by Name.
 var slashCommandTable = []SlashCommandSuggest{
 	{"/agents", "Compatibility alias for /profile (built-in + custom *.md)", "workers"},
-	{"/apply-plan", "Execute saved plan (see --preview); optional path; switches to general-purpose", "build"},
+	{"/apply-plan", "Execute saved plan (see --preview); optional path; switches to build", "build"},
 	{"/audit", "Scan project for gaps and auto-fix them (review-and-fix workflow). Optional: /audit <path>", "build"},
 	{"/back", "Return to coordinator session (same as /detach)", "workers"},
 	{"/btw", "Side question: rewrite and send one user message to the model", "build"},
@@ -32,6 +32,7 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/in", "Focus a worker by task id prefix (same as /focus)", "workers"},
 	{"/init", "Create .goclaw/settings.json with coding defaults if missing", "build"},
 	{"/memory", usageList(memorySubcommandSpecs) + " durable memory entries", "session"},
+	{"/mode", "Switch primary mode (build or plan)", "build"},
 	{"/model", "Show or set default Ollama model tag for this session", "session"},
 	{"/new", "Start a new session (saves current)", "session"},
 	{"/parent", "Return to coordinator (same as /detach)", "workers"},
