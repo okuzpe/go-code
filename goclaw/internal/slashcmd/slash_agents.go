@@ -44,18 +44,18 @@ func profileSwitchFollowUp(p agents.Profile) string {
 	case "plan":
 		return "\nPlan mode cannot modify the workspace. After the plan in chat: /plan review, /plan approve if your settings require it, then /plan run or /plan save + /apply-plan (--preview, --hub). Execution is one model turn (build or coordinator)."
 	case "explore":
-		return "\nRead-only search profile - no write_file, edit_file, or patch. For direct edits: /mode build or /profile builder."
+		return "\nRead-only search profile - no write_file, edit_file, or patch. For direct edits, switch back to /mode build."
 	case "guide", "statusline":
-		return "\nThis profile has no file or shell tools - chat only. For repo edits: /mode build or /profile builder."
+		return "\nThis profile has no file or shell tools - chat only. For repo edits, switch back to /mode build."
 	case "coordinator":
 		return "\nCoordinator hub - the parent session has no direct read/write tools; delegate with spawn_agent or use /mode build for single-agent edits."
 	case "code-review":
-		return "\ncode-review has no workspace write tools - output is review prose only. To implement fixes: /mode build or /profile builder."
+		return "\ncode-review has no workspace write tools - output is review prose only. To implement fixes, switch back to /mode build."
 	case "verification":
-		return "\nVerification profile runs checks (read_file, bash, script) - no workspace write tools. To apply code changes: /mode build or /profile builder."
+		return "\nVerification profile runs checks (read_file, bash, script) - no workspace write tools. To apply code changes, switch back to /mode build."
 	default:
 		if p.ReadOnly {
-			return "\nRead-only profile - use /mode build or /profile builder for file edits in this session."
+			return "\nRead-only profile - use /mode build for file edits in this session."
 		}
 		return ""
 	}

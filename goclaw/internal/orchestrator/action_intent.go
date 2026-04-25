@@ -10,6 +10,8 @@ import (
 const (
 	defaultActionNudgesPerUserTurn = 2
 	maxActionNudgesCap             = 5
+	malformedActionRecoveriesCap   = 1
+	maxPathRecoveriesPerTurn       = 2
 
 	// fakeToolsMarkdownBan ends synthetic nudges that demand real wire tool calls (shared wording).
 	fakeToolsMarkdownBan = " Do not simulate tools in markdown."
@@ -24,6 +26,11 @@ const (
 	// actionRepairModelEscalationMessage follows exhausted action-continue nudges when action_repair_escalation is on:
 	// the runtime switches to the configured coding-tier model for one more attempt.
 	actionRepairModelEscalationMessage = `[goclaw] Action nudges were exhausted without native tool calls. This turn now uses the configured coding model — reply with tool calls only: read_file/glob/grep as needed, then edit_file/write_file/patch, then bash, run_command, or script to verify.` + fakeToolsMarkdownBan
+
+	// malformedActionRecoveryNudgeMessage is injected after an invalid assistant completion such as an
+	// empty markdown fence or narrated fake tool JSON. These outputs do not advance the turn, so the
+	// runtime gives one explicit recovery attempt before treating the turn as stalled.
+	malformedActionRecoveryNudgeMessage = `[goclaw] Your last reply was invalid for this runtime (for example: empty markdown fence or fake tool JSON). Do not emit markdown fences, example tool payloads, or prose. Continue this same task with native tool calls only: inspect with read_file/glob/grep as needed, then edit with edit_file/write_file/patch, then verify with bash, run_command, or script.` + fakeToolsMarkdownBan
 
 	// editFileNotFoundNudgeMessage is injected when the most recent tool batch included
 	// an edit_file call that failed with "old_string not found", signalling the model
@@ -67,6 +74,36 @@ func buildLiteActionContinueNudgeMessage() string {
 
 func buildLiteActionFirstTurnNoToolsNudgeMessage() string {
 	return `[goclaw] The user asked for code or repository changes. Your last completion had no native tool calls. Reply with tool calls only on the next turn: inspect with read_file/glob/grep, then edit_file/write_file/patch, then verify with run_tests or run_command.` + fakeToolsMarkdownBan
+}
+
+func buildLiteMalformedActionRecoveryNudgeMessage() string {
+	return `[goclaw] Your last reply was invalid for this runtime (for example: empty markdown fence or fake tool JSON). Do not emit markdown fences, example tool payloads, or prose. Continue with native tool calls only: inspect with read_file/glob/grep as needed, then edit with edit_file/write_file/patch, then verify with run_tests or run_command.` + fakeToolsMarkdownBan
+}
+
+func pathRecoveryNudgeMessage(toolName, target string, buildLite bool) string {
+	target = strings.TrimSpace(target)
+	toolName = strings.TrimSpace(toolName)
+	var b strings.Builder
+	b.WriteString("[goclaw] Path recovery is pending")
+	if toolName != "" {
+		b.WriteString(" after `")
+		b.WriteString(toolName)
+		b.WriteString("`")
+	}
+	if target != "" {
+		b.WriteString(" on `")
+		b.WriteString(target)
+		b.WriteString("`")
+	}
+	b.WriteString(". Do not guess another path. Rediscover the real target with glob or grep")
+	if !buildLite {
+		b.WriteString(", then confirm it with read_file")
+	}
+	b.WriteString(", then retry the original tool against the validated path.")
+	if buildLite {
+		b.WriteString(" Complete the inspect -> edit -> verify flow before ending.")
+	}
+	return b.String()
 }
 
 // workspaceWriteIntentKeywords are lowercase substrings: if any appears in the user
@@ -228,6 +265,82 @@ func toolResultsHaveEditNotFound(results []llm.ToolResultRecord) bool {
 	return false
 }
 
+func toolResultsHavePathRecoveryFailure(uses []llm.ToolUse, results []llm.ToolResultRecord) (toolName, target string, ok bool) {
+	for idx, result := range results {
+		if !result.IsError {
+			continue
+		}
+		var toolUse llm.ToolUse
+		if idx < len(uses) {
+			toolUse = uses[idx]
+		}
+		if toolName, target, ok := pathRecoveryFailureDetails(toolUse, result); ok {
+			return toolName, target, true
+		}
+	}
+	return "", "", false
+}
+
+func toolBatchClearsPathRecovery(results []llm.ToolResultRecord) bool {
+	for _, result := range results {
+		if toolResultClearsPathRecovery(result) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathRecoveryFailureDetails(toolUse llm.ToolUse, result llm.ToolResultRecord) (toolName, target string, ok bool) {
+	name := strings.TrimSpace(result.ToolName)
+	if name == "" {
+		name = strings.TrimSpace(toolUse.Name)
+	}
+	switch name {
+	case "read_file", "edit_file", "write_file", "patch", "write_files":
+	default:
+		return "", "", false
+	}
+	if !resultLooksLikePathResolutionFailure(result.Content) {
+		return "", "", false
+	}
+	return name, primaryTargetPathForToolUse(toolUse), true
+}
+
+func resultLooksLikePathResolutionFailure(content string) bool {
+	lower := strings.ToLower(content)
+	return strings.Contains(lower, "path does not exist") ||
+		strings.Contains(lower, "no such file") ||
+		strings.Contains(lower, "cannot find the path") ||
+		strings.Contains(lower, "cannot find path") ||
+		strings.Contains(lower, "file not found")
+}
+
+func primaryTargetPathForToolUse(tu llm.ToolUse) string {
+	switch tu.Name {
+	case "read_file", "write_file", "edit_file", "patch":
+		var in struct {
+			Path string `json:"path"`
+		}
+		if err := tools.UnmarshalToolInputJSON(tu.Input, &in); err == nil {
+			return strings.TrimSpace(in.Path)
+		}
+	case "write_files":
+		var in struct {
+			Files []struct {
+				Path string `json:"path"`
+			} `json:"files"`
+		}
+		if err := tools.UnmarshalToolInputJSON(tu.Input, &in); err == nil {
+			for _, f := range in.Files {
+				if p := strings.TrimSpace(f.Path); p != "" {
+					return p
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // responseAppearsComplete reports whether the assistant's response text looks like a finished
 // answer rather than an incomplete stub. Used to avoid spurious action-continue nudges after
 // genuinely complete replies (e.g. "no changes needed", "done.").
@@ -296,4 +409,43 @@ func (o *Orchestrator) pickActionContinueNudge(
 		return actionFirstTurnNoToolsNudgeMessage, true
 	}
 	return "", false
+}
+
+func (o *Orchestrator) pickMalformedActionRecoveryNudge(
+	userMessage string,
+	response string,
+	toolCalls int,
+	lastBatchReadOnly bool,
+	hadToolRound bool,
+	malformedRecoveries int,
+) (message string, ok bool) {
+	if o == nil || !o.cfg.AutoContinueActionRequests {
+		return "", false
+	}
+	if malformedRecoveries >= malformedActionRecoveriesCap {
+		return "", false
+	}
+	if o.profile.ReadOnly {
+		return "", false
+	}
+	if !toolSpecsAllowWorkspaceWrite(o.effectiveToolSpecs()) {
+		return "", false
+	}
+	if !userMessageWantsWorkspaceWrites(userMessage) {
+		return "", false
+	}
+	reason, bad := nonActionCompletionReason(response)
+	if !bad {
+		return "", false
+	}
+	if !strings.Contains(reason, "fence-only") && !strings.Contains(reason, "fake tool narration") {
+		return "", false
+	}
+	if hadToolRound && !lastBatchReadOnly && toolCalls > 0 {
+		return "", false
+	}
+	if o.usesBuildLiteRuntime() {
+		return buildLiteMalformedActionRecoveryNudgeMessage(), true
+	}
+	return malformedActionRecoveryNudgeMessage, true
 }

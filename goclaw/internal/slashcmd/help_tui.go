@@ -63,7 +63,7 @@ func TUIHelpShortcutsMarkdown(st icons.Set) string {
 	b.WriteString("Single line; same permissions as tools — see docs/goclaw/prefix-input-modes.md.\n\n")
 	b.WriteString("- **!cmd** — run bash tool (allowlisted shell)\n")
 	b.WriteString("- **@path** — read_file in the workspace (path list + Tab)\n")
-	b.WriteString("- **&task** — spawn_agent (advanced flow; worker profile build or builder; parent must allow spawn_agent)\n")
+	b.WriteString("- **&task** — spawn_agent (advanced flow; build worker by default; parent must allow spawn_agent)\n")
 	b.WriteString("- **/btw text** — side question — one wrapped message to the model\n")
 	b.WriteString("- **/continue** — follow-up — keep working on your last user request (sent to the model)\n\n")
 	b.WriteString("For Esc vs streaming vs exit, follow the footer hint line under the input.\n\n")
@@ -73,10 +73,9 @@ func TUIHelpShortcutsMarkdown(st icons.Set) string {
 	b.WriteString("## Modes\n\n")
 	b.WriteString("- **Build** — Primary direct-coding mode in this session: inspect -> edit -> verify.\n")
 	b.WriteString("- **Plan** — Primary read-only planning mode: analyze first, then apply with `/plan run` or `/apply-plan`.\n")
-	b.WriteString("- **Builder** — Advanced direct-coding profile: richer context, broader tools, more autonomy. Use `/profile builder` when build is too constrained.\n")
+	b.WriteString("- **Builder** — Advanced direct-coding profile available through `/profile builder` when you explicitly want a broader tool surface.\n")
 	b.WriteString("- **Coordinator** — Advanced hub profile (`--profile coordinator`). spawn_agent delegates to workers; the parent session has no direct read/write/shell tools.\n\n")
 	b.WriteString("## Architecture note\n\n")
 	b.WriteString("- **Orchestrator** — The agent loop runtime - drives one agent turn (LLM + tools + repeat). Every profile runs inside an orchestrator. Not user-visible; it is the engine.\n")
 	return strings.TrimSpace(b.String())
 }
-

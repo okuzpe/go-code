@@ -132,6 +132,7 @@ func TestOrchestratorActionStalledFenceOnlyResponse(t *testing.T) {
 
 	srv := mockopenai.New([]mockopenai.Scenario{
 		{Match: "please refactor this", Response: "```json\n```"},
+		{Match: "[goclaw] Your last reply was invalid for this runtime", Response: "```json\n```"},
 		{Match: "[goclaw] The user asked for code or repository changes.", Response: "```json\n```"},
 		{Match: "[goclaw] Action nudges were exhausted without native tool calls.", Response: "```json\n```"},
 	})
@@ -145,6 +146,35 @@ func TestOrchestratorActionStalledFenceOnlyResponse(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrActionStalled)
 	require.Contains(t, err.Error(), "fence-only")
+
+	var sawMalformedRecovery bool
+	for _, msg := range orch.session.Messages {
+		if msg.Role == "user" && strings.Contains(msg.Content, "[goclaw] Your last reply was invalid for this runtime") {
+			sawMalformedRecovery = true
+			break
+		}
+	}
+	require.True(t, sawMalformedRecovery, "expected malformed-response recovery nudge before hard fail")
+}
+
+func TestOrchestratorFenceOnlyRecoveryCanResumeWithToolCall(t *testing.T) {
+	cfg := testOrchestratorConfig()
+	cfg.ActionRepairEscalation = true
+
+	srv := mockopenai.New([]mockopenai.Scenario{
+		{Match: "please refactor this", Response: "```json\n```"},
+		{Match: "[goclaw] Your last reply was invalid for this runtime", Tool: &mockopenai.ToolReply{Name: "write_file", Input: `{}`}},
+		{Match: "", Response: "done"},
+	})
+	defer srv.Close()
+
+	reg := tools.New()
+	reg.Register(staticTool{name: "write_file", content: "wrote"})
+
+	orch := newActionStallOrch(t, testOpenAIClient(srv), reg, cfg)
+	out, err := orch.Run(context.Background(), "please refactor this")
+	require.NoError(t, err)
+	require.Equal(t, "done", out)
 }
 
 func TestOrchestratorWriteThenVerifyStillSucceeds(t *testing.T) {
@@ -218,4 +248,64 @@ func TestOrchestratorActionStalledAfterEditFileNotFoundThenProseOnlyStop(t *test
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrActionStalled)
 	require.Contains(t, err.Error(), "edit_file recovery was pending")
+}
+
+func TestOrchestratorPathRecoveryRetriesThenFailsLoudly(t *testing.T) {
+	cfg := testOrchestratorConfig()
+
+	srv := mockopenai.New([]mockopenai.Scenario{
+		{Match: "please update the docs", Tool: &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"cmd/goclaw/docs/README.md"}`}},
+		{Match: "[goclaw] Path recovery is pending", Tool: &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"cmd/goclaw/more/README.md"}`}},
+		{Match: "[goclaw] Path recovery is pending", Tool: &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"cmd/goclaw/even-more/README.md"}`}},
+	})
+	defer srv.Close()
+
+	reg := tools.New()
+	reg.Register(staticToolResult{
+		name: "read_file",
+		result: tools.Result{
+			Content: "path does not exist",
+			IsError: true,
+		},
+	})
+
+	orch := newActionStallOrch(t, testOpenAIClient(srv), reg, cfg)
+	_, err := orch.Run(context.Background(), "please update the docs")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrActionStalled)
+	require.Contains(t, err.Error(), "path recovery exhausted")
+}
+
+func TestOrchestratorPathRecoveryDoesNotClearAfterEmptyGlob(t *testing.T) {
+	cfg := testOrchestratorConfig()
+
+	srv := mockopenai.New([]mockopenai.Scenario{
+		{Match: "please update the docs", Tool: &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"cmd/goclaw/docs/README.md"}`}},
+		{Match: "[goclaw] Path recovery is pending", Tool: &mockopenai.ToolReply{Name: "glob", Input: `{"pattern":"README.md"}`}},
+		{Match: "(no matches)", Tool: &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"cmd/goclaw/more/README.md"}`}},
+		{Match: "[goclaw] Path recovery is pending", Tool: &mockopenai.ToolReply{Name: "read_file", Input: `{"path":"cmd/goclaw/even-more/README.md"}`}},
+	})
+	defer srv.Close()
+
+	reg := tools.New()
+	reg.Register(staticToolResult{
+		name: "read_file",
+		result: tools.Result{
+			Content: "path does not exist",
+			IsError: true,
+		},
+	})
+	reg.Register(staticToolResult{
+		name: "glob",
+		result: tools.Result{
+			Content: "(no matches)",
+			IsError: false,
+		},
+	})
+
+	orch := newActionStallOrch(t, testOpenAIClient(srv), reg, cfg)
+	_, err := orch.Run(context.Background(), "please update the docs")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrActionStalled)
+	require.Contains(t, err.Error(), "path recovery exhausted")
 }

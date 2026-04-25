@@ -41,6 +41,7 @@ func isSyntheticRuntimeNudgeContent(s string) bool {
 		strings.HasPrefix(t, "[goclaw] Action nudges were exhausted without native tool calls") ||
 		strings.HasPrefix(t, "[goclaw] You made workspace changes.") ||
 		strings.HasPrefix(t, "[goclaw] edit_file failed: old_string not found.") ||
+		strings.HasPrefix(t, "[goclaw] Path recovery is pending") ||
 		strings.HasPrefix(t, "[goclaw] Reflection checkpoint:")
 }
 

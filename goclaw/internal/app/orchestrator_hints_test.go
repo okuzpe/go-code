@@ -84,6 +84,18 @@ func TestOrchestratorFailureHints(t *testing.T) {
 			err:         orchestrator.ErrActionStalled,
 			wantContain: "failed to take real tool-driven action",
 		},
+		{
+			name:        "fence-only action stalled suggests build or builder retry",
+			model:       "m",
+			err:         errors.New("orchestrator: action stalled: fence-only or placeholder response (last response: \"```\")"),
+			wantContain: "/mode build",
+		},
+		{
+			name:        "path recovery exhaustion suggests rediscovery",
+			model:       "m",
+			err:         errors.New("orchestrator: action stalled: path recovery exhausted after 2 recovery attempts"),
+			wantContain: "glob/read_file",
+		},
 	}
 	for _, tt := range tests {
 		tt := tt

@@ -11,6 +11,7 @@ import (
 
 	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/hooks"
+	"github.com/okuzpe/goclaw/internal/llm"
 	"github.com/okuzpe/goclaw/internal/memory"
 	"github.com/okuzpe/goclaw/internal/permissions"
 	"github.com/okuzpe/goclaw/internal/session"
@@ -72,6 +73,29 @@ func (c *captureSink) OnDone(finalText string) {
 }
 
 func (c *captureSink) OnCompact(int) {}
+
+type scriptedClient struct {
+	turns [][]llm.Event
+	idx   int
+}
+
+func (c *scriptedClient) Stream(context.Context, llm.Request) (<-chan llm.Event, <-chan error) {
+	events := make(chan llm.Event, 16)
+	errc := make(chan error, 1)
+	var seq []llm.Event
+	if c.idx < len(c.turns) {
+		seq = c.turns[c.idx]
+	}
+	c.idx++
+	go func() {
+		defer close(events)
+		defer close(errc)
+		for _, ev := range seq {
+			events <- ev
+		}
+	}()
+	return events, errc
+}
 
 func TestOrchestratorRunStreamingEventOrder(t *testing.T) {
 	dir := t.TempDir()
@@ -135,6 +159,35 @@ func TestOrchestratorRunStreamingTextDeltas(t *testing.T) {
 	combined := strings.Join(sink.deltas, "")
 	require.Equal(t, "hello world", combined)
 	require.Equal(t, "hello world", sink.doneMsg)
+}
+
+func TestOrchestratorToolRoundSanitizesNarratedToolJSON(t *testing.T) {
+	reg := tools.New()
+	reg.Register(staticTool{name: "read_file", content: "file body"})
+
+	client := &scriptedClient{turns: [][]llm.Event{
+		{
+			llm.TextDelta{Text: "{\n  \"name\": \"read_file\",\n  \"arguments\": {\n    \"path\": \"README.md\"\n  }\n}"},
+			llm.ToolUse{ID: "tool-1", Name: "read_file", Input: `{"path":"README.md"}`},
+			llm.Usage{},
+			llm.Done{},
+		},
+		{
+			llm.TextDelta{Text: "done"},
+			llm.Usage{},
+			llm.Done{},
+		},
+	}}
+
+	orch := newActionStallOrch(t, client, reg, testOrchestratorConfig())
+	out, err := orch.Run(context.Background(), "improve the repo")
+	require.NoError(t, err)
+	require.Equal(t, "done", out)
+	require.Len(t, orch.session.Messages, 4)
+	require.Equal(t, "assistant", orch.session.Messages[1].Role)
+	require.Empty(t, strings.TrimSpace(orch.session.Messages[1].Content), "fake tool JSON should not be persisted in assistant transcript text")
+	require.Len(t, orch.session.Messages[1].ToolCalls, 1)
+	require.Equal(t, "read_file", orch.session.Messages[1].ToolCalls[0].Name)
 }
 
 // --- Test 2: PreToolUse hook blocks tool execution ---

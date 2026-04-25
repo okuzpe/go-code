@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/okuzpe/goclaw/internal/llm"
@@ -48,6 +49,9 @@ func sanitizeNarratedToolCallText(response string) string {
 	if trimmed == "" {
 		return ""
 	}
+	if looksLikeStandaloneToolJSON(trimmed) {
+		return ""
+	}
 	lower := strings.ToLower(response)
 	cut := len(response)
 	for _, marker := range []string{
@@ -64,6 +68,20 @@ func sanitizeNarratedToolCallText(response string) string {
 		return strings.TrimSpace(response[:cut])
 	}
 	return strings.TrimSpace(response)
+}
+
+func looksLikeStandaloneToolJSON(response string) bool {
+	if !strings.HasPrefix(response, "{") {
+		return false
+	}
+	var payload struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	}
+	if err := json.Unmarshal([]byte(response), &payload); err != nil {
+		return false
+	}
+	return strings.TrimSpace(payload.Name) != "" && len(payload.Arguments) > 0
 }
 
 func recordWorkspaceWriteFromResults(workspaceWriteOK *bool, results []llm.ToolResultRecord) {

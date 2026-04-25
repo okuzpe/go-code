@@ -42,8 +42,8 @@ Details (modes, sessions, JSON output, troubleshooting): **[usage.md](../docs/go
 
 ## Advanced
 
-- **Profiles** beyond the primary flow stay available through `--profile` or `/profile` (`builder`, `coordinator`, `verification`, `code-review`, and custom agents).
-- **Coordinator mode** is available with `--profile coordinator` when you explicitly want hub-and-worker delegation via `spawn_agent`.
+- **Advanced profiles** stay available through `--profile` or `/profile` when you explicitly need them (`builder`, `coordinator`, `verification`, `code-review`, and custom agents).
+- **Coordinator mode** is optional hub-and-worker delegation via `spawn_agent`; keep the normal local loop on `build` unless you specifically want delegation.
 - **Optional integrations** such as Telegram, plugins, skills, and MCP remote stay supported, but live outside the default day-to-day path.
 
 ## Documentation

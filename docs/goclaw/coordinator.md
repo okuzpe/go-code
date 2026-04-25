@@ -1,6 +1,6 @@
 # Coordinator mode (D16) — implementation reference
 
-**Product note:** Fresh installs default to **`general-purpose`** (direct tools in the main session; see `config.Default()` in goclaw). Use **`/profile coordinator`** for hub-and-spoke delegation (`spawn_agent`), or set **`agent_profile`** / **`GOCLAW_AGENT_PROFILE`** accordingly. **`make run-hub`** in this repo also selects coordinator for convenience.
+**Advanced product note:** The normal local-first path is **`build`** for direct coding and **`plan`** for read-only planning first. **`coordinator`** is an advanced hub-and-spoke profile for explicit delegation via `spawn_agent`. Internally, `build` still resolves to `general-purpose` for compatibility. **`make run-hub`** in this repo selects coordinator for convenience.
 
 This document ties [coordinator-mode.md](../reference/coordinator-mode.md) (design reference) to the **implemented** hub-and-spoke coordinator in goclaw. It complements the plan → execute workflow ([`internal/planfile`](../internal/planfile/), `/apply-plan`) and stays separate from future **Team/Swarm** designs.
 
@@ -60,7 +60,7 @@ Each worker orchestrator receives the same **workspace root**, **project context
 |-------|--------|--------|
 | Research | Workers (parallel) | Multiple `spawn_agent` calls / parallel tool execution where the model issues parallel tool calls |
 | Synthesis | Coordinator | REPL thread; often `plan` profile + `.goclaw/plan.md` |
-| Implementation | Workers | `/apply-plan` handoff to `general-purpose` or worker profiles |
+| Implementation | Workers | `/apply-plan` handoff to `build` (internal alias: `general-purpose`) or other worker profiles |
 | Verification | Workers | `verification` profile in separate worker runs |
 
 ## Tests and harness

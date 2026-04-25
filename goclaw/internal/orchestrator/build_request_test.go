@@ -297,6 +297,30 @@ func TestBuildRequestBuildLitePhaseAllowlist(t *testing.T) {
 	}
 }
 
+func TestBuildRequestBuildLitePathRecoveryPrompt(t *testing.T) {
+	reg := tools.New()
+	reg.Register(fakeTool{name: "read_file"})
+	o := &Orchestrator{
+		cfg:     config.Default(),
+		session: session.New(),
+		tools:   reg,
+		perms:   permissions.NewPolicy(),
+		hooks:   hooks.New(),
+		profile: agents.GeneralPurpose,
+		ut: &userTurnState{
+			pathRecoveryPending: true,
+			pathRecoveryTarget:  "cmd/goclaw/docs/README.md",
+		},
+	}
+	req := o.buildRequest()
+	if !strings.Contains(req.System, "path-recovery mode") {
+		t.Fatalf("missing path recovery block: %q", req.System)
+	}
+	if !strings.Contains(req.System, "cmd/goclaw/docs/README.md") {
+		t.Fatalf("missing invalid target in path recovery block: %q", req.System)
+	}
+}
+
 func TestBuildRequestInjectsVerifyChangedFilesBlock(t *testing.T) {
 	reg := tools.New()
 	reg.Register(fakeTool{name: "read_file"})

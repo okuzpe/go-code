@@ -29,29 +29,48 @@ func (m *Model) agentPickNames() []string {
 	if err != nil || len(profs) == 0 {
 		profs = agents.All()
 	}
-	names := agents.SortedKeys(profs)
-	names = agents.UserFacingSortedKeys(profs)
+	names := agents.UserFacingSortedKeys(profs)
+	base := primaryAgentPickerNames(names)
+	if len(base) == 0 {
+		base = names
+	}
 	if len(m.agentPickerHidden) == 0 {
-		return names
+		return base
 	}
 	hide := make(map[string]struct{}, len(m.agentPickerHidden))
 	for _, h := range m.agentPickerHidden {
-		h = strings.ToLower(strings.TrimSpace(h))
+		h = agents.CanonicalProfileName(h)
 		if h != "" {
 			hide[h] = struct{}{}
 		}
 	}
 	var out []string
-	for _, n := range names {
+	for _, n := range base {
 		if _, skip := hide[agents.CanonicalProfileName(n)]; skip {
 			continue
 		}
 		out = append(out, n)
 	}
-	if len(out) == 0 {
-		return names
+	return out
+}
+
+func primaryAgentPickerNames(names []string) []string {
+	var out []string
+	for _, n := range names {
+		if isPrimaryAgentPickerName(n) {
+			out = append(out, n)
+		}
 	}
 	return out
+}
+
+func isPrimaryAgentPickerName(name string) bool {
+	switch agents.DisplayProfileName(name) {
+	case agents.PublicBuildProfileName, "plan":
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *Model) refreshAgentPickOverlay() {
@@ -84,7 +103,7 @@ func (m *Model) refreshAgentPickOverlay() {
 		"Profile",
 		rows,
 		"↑↓ move · Enter apply · Esc cancel",
-		"Primary flow: /mode build|plan or Ctrl+P · advanced profiles and custom agents still available here",
+		"Primary flow: /mode build|plan or Ctrl+P · use /profile <name> for advanced profiles and custom agents",
 	)
 }
 

@@ -58,6 +58,12 @@ func orchestratorFailureHints(model string, err error) []string {
 			"hint: the model failed to take real tool-driven action for a coding request.",
 			"hint: try a stronger coding model, narrow the request, or check /doctor for tool-calling degradation.",
 		)
+		if strings.Contains(low, "fence-only") || strings.Contains(low, "placeholder response") {
+			out = append(out, "hint: the model emitted placeholder markdown instead of usable tool calls; retry in /mode build, or switch to a stronger tools-capable local model.")
+		}
+		if strings.Contains(low, "path recovery exhausted") || strings.Contains(low, "path recovery was still pending") {
+			out = append(out, "hint: the model kept guessing repo paths; retry with a narrower request or rediscover the target first with glob/read_file in /mode build.")
+		}
 	}
 	if strings.Contains(low, "no approver configured") || strings.Contains(low, "requires user approval") {
 		out = append(out, "hint: this mode needs interactive tool approval — use the fullscreen TUI on a real terminal (not a pipe-only workflow).")

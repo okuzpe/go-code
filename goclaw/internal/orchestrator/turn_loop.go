@@ -74,6 +74,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 
 	actionNudges := 0
 	repairEscalations := 0
+	malformedRecoveries := 0
 	editFileNotFoundNudges := 0
 	hadToolRound := false
 	lastBatchReadOnly := false
@@ -138,6 +139,13 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 
 		if len(pendingTools) == 0 {
 			response = sanitizeNarratedToolCallText(response)
+			if nudgeMsg, ok := o.pickMalformedActionRecoveryNudge(intentMessage, response, toolCalls, lastBatchReadOnly, hadToolRound, malformedRecoveries); ok {
+				o.session.AddAssistant(response, nil)
+				malformedRecoveries++
+				o.session.Add("user", nudgeMsg)
+				slog.Debug("orchestrator: malformed-action recovery nudge", "recovery", malformedRecoveries)
+				continue
+			}
 			if nudgeMsg, ok := o.pickActionContinueNudge(intentMessage, toolCalls, lastBatchReadOnly, hadToolRound, actionNudges, response); ok {
 				o.session.AddAssistant(response, nil)
 				actionNudges++
@@ -157,6 +165,13 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 				o.session.Add("user", verifyAfterWriteNudge(o.usesBuildLiteRuntime()))
 				slog.Debug("orchestrator: verify-after-write nudge")
 				continue
+			}
+			if reason, stalled := shouldFailPendingPathRecovery(o.ut, workspaceWriteOK); stalled {
+				metrics.toolCalls = toolCalls
+				metrics.status = "action_stalled"
+				o.emitTurnEndSummary(ctx, "action_stalled", metrics, toolCalls, workspaceWriteOK, hadToolRound, actionNudges, repairEscalations, editFileNotFoundNudges, reflectionFired)
+				o.logTurnMetrics(metrics)
+				return "", newActionStalledError(reason, response)
 			}
 			if reason, stalled := shouldFailPendingEditRecovery(o.ut, workspaceWriteOK); stalled {
 				metrics.toolCalls = toolCalls
@@ -211,6 +226,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		for i, tu := range pendingTools {
 			records[i] = llm.ToolCallRecord(tu)
 		}
+		response = sanitizeNarratedToolCallText(response)
 		o.session.AddAssistant(response, records)
 
 		toolCap := o.effectiveMaxToolCalls()
@@ -286,6 +302,14 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		o.session.AddToolResults(results)
 		if workspaceWriteOK && o.ut != nil {
 			o.ut.editFileRecoveryPending = false
+			o.ut.pathRecoveryPending = false
+			o.ut.pathRecoveryTool = ""
+			o.ut.pathRecoveryTarget = ""
+		}
+		if o.ut != nil && toolBatchClearsPathRecovery(results) {
+			o.ut.pathRecoveryPending = false
+			o.ut.pathRecoveryTool = ""
+			o.ut.pathRecoveryTarget = ""
 		}
 
 		if toolResultsHaveEditNotFound(results) {
@@ -295,6 +319,21 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			o.session.Add("user", editFileNotFoundNudgeMessage)
 			editFileNotFoundNudges++
 			slog.Debug("orchestrator: edit_file not-found recovery nudge injected")
+		}
+		if toolName, target, ok := toolResultsHavePathRecoveryFailure(pendingTools, results); ok && o.ut != nil {
+			o.ut.pathRecoveryPending = true
+			o.ut.pathRecoveryTool = toolName
+			o.ut.pathRecoveryTarget = target
+			if o.ut.pathRecoveryAttempts >= maxPathRecoveriesPerTurn {
+				metrics.toolCalls = toolCalls
+				metrics.status = "action_stalled"
+				o.emitTurnEndSummary(ctx, "action_stalled", metrics, toolCalls, workspaceWriteOK, hadToolRound, actionNudges, repairEscalations, editFileNotFoundNudges, reflectionFired)
+				o.logTurnMetrics(metrics)
+				return "", newActionStalledError(fmt.Sprintf("path recovery exhausted after %d recovery attempts; use glob/grep to discover the real target before retrying %s", o.ut.pathRecoveryAttempts, toolNameOrFallback(toolName)), target)
+			}
+			o.ut.pathRecoveryAttempts++
+			o.session.Add("user", pathRecoveryNudgeMessage(toolName, target, o.usesBuildLiteRuntime()))
+			slog.Debug("orchestrator: path recovery nudge injected", "tool", toolName, "target", target, "attempt", o.ut.pathRecoveryAttempts)
 		}
 
 		// Track consecutive read-only rounds for the reflection nudge.

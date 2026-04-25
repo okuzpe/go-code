@@ -10,3 +10,11 @@ func TestSanitizeNarratedToolCallTextAssistantTranscript(t *testing.T) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
+
+func TestSanitizeNarratedToolCallTextStandaloneToolJSON(t *testing.T) {
+	input := "{\n  \"name\": \"read_file\",\n  \"arguments\": {\n    \"path\": \"README.md\"\n  }\n}"
+	got := sanitizeNarratedToolCallText(input)
+	if got != "" {
+		t.Fatalf("expected empty sanitized text, got %q", got)
+	}
+}

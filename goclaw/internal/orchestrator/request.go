@@ -82,6 +82,17 @@ func buildLitePhaseAllowlist(ut *userTurnState) map[string]struct{} {
 }
 
 func buildLitePhasePromptBlock(ut *userTurnState) string {
+	if ut != nil && ut.pathRecoveryPending {
+		var b strings.Builder
+		b.WriteString("\n\n## Build-lite phase\nYou are in path-recovery mode. Do not guess paths.")
+		if strings.TrimSpace(ut.pathRecoveryTarget) != "" {
+			b.WriteString(" The last invalid target was `")
+			b.WriteString(strings.TrimSpace(ut.pathRecoveryTarget))
+			b.WriteString("`.")
+		}
+		b.WriteString(" Rediscover the real path with glob or grep, confirm it with read_file when needed, then retry the original tool against the validated path.")
+		return b.String()
+	}
 	if ut != nil && ut.verifyPending {
 		return "\n\n## Build-lite phase\nYou are in verify/repair mode. Use run_tests or run_command to verify. If verification fails, inspect with read_file, repair with edit_file/write_file/patch, then rerun the same verification."
 	}

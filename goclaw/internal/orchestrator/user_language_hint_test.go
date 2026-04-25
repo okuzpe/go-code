@@ -35,6 +35,7 @@ func TestLastUserNaturalText_skipsSyntheticRuntimeNudges(t *testing.T) {
 		actionRepairModelEscalationMessage,
 		verifyAfterWriteNudgeMessage,
 		editFileNotFoundNudgeMessage,
+		pathRecoveryNudgeMessage("read_file", "cmd/goclaw/docs/README.md", true),
 		reflectionNudgeMessage,
 	} {
 		msgs := []llm.Message{

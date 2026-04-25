@@ -83,6 +83,105 @@ func TestContinueFollowUpPromptCarriesEditRecoveryState(t *testing.T) {
 	}
 }
 
+func TestContinueFollowUpPromptCarriesPathRecoveryState(t *testing.T) {
+	t.Parallel()
+	msgs := []llm.Message{
+		llm.PlainMessage("user", "fix the docs path"),
+		{
+			Role: "assistant",
+			ToolCalls: []llm.ToolCallRecord{
+				{ID: "r1", Name: "read_file", Input: `{"path":"cmd/goclaw/docs/README.md"}`},
+			},
+		},
+		{
+			Role: "user",
+			ToolResults: []llm.ToolResultRecord{
+				{ToolUseID: "r1", ToolName: "read_file", Content: "path does not exist", IsError: true},
+			},
+		},
+	}
+	got := ContinueFollowUpPrompt(msgs)
+	if !strings.Contains(got, "path recovery is still pending") {
+		t.Fatalf("expected path recovery instruction in prompt: %q", got)
+	}
+	if !strings.Contains(got, "cmd/goclaw/docs/README.md") {
+		t.Fatalf("expected invalid path in prompt: %q", got)
+	}
+	if !strings.Contains(got, "glob or grep") {
+		t.Fatalf("expected discovery guidance in prompt: %q", got)
+	}
+}
+
+func TestContinueFollowUpPromptKeepsPathRecoveryAfterEmptyGlob(t *testing.T) {
+	t.Parallel()
+	msgs := []llm.Message{
+		llm.PlainMessage("user", "fix the docs path"),
+		{
+			Role: "assistant",
+			ToolCalls: []llm.ToolCallRecord{
+				{ID: "r1", Name: "read_file", Input: `{"path":"cmd/goclaw/docs/README.md"}`},
+			},
+		},
+		{
+			Role: "user",
+			ToolResults: []llm.ToolResultRecord{
+				{ToolUseID: "r1", ToolName: "read_file", Content: "path does not exist", IsError: true},
+			},
+		},
+		{
+			Role: "assistant",
+			ToolCalls: []llm.ToolCallRecord{
+				{ID: "g1", Name: "glob", Input: `{"pattern":"README.md"}`},
+			},
+		},
+		{
+			Role: "user",
+			ToolResults: []llm.ToolResultRecord{
+				{ToolUseID: "g1", ToolName: "glob", Content: "(no matches)", IsError: false},
+			},
+		},
+	}
+	got := ContinueFollowUpPrompt(msgs)
+	if !strings.Contains(got, "path recovery is still pending") {
+		t.Fatalf("expected path recovery to remain pending after empty glob: %q", got)
+	}
+}
+
+func TestContinueFollowUpPromptClearsPathRecoveryAfterUsefulGlob(t *testing.T) {
+	t.Parallel()
+	msgs := []llm.Message{
+		llm.PlainMessage("user", "fix the docs path"),
+		{
+			Role: "assistant",
+			ToolCalls: []llm.ToolCallRecord{
+				{ID: "r1", Name: "read_file", Input: `{"path":"cmd/goclaw/docs/README.md"}`},
+			},
+		},
+		{
+			Role: "user",
+			ToolResults: []llm.ToolResultRecord{
+				{ToolUseID: "r1", ToolName: "read_file", Content: "path does not exist", IsError: true},
+			},
+		},
+		{
+			Role: "assistant",
+			ToolCalls: []llm.ToolCallRecord{
+				{ID: "g1", Name: "glob", Input: `{"pattern":"README.md"}`},
+			},
+		},
+		{
+			Role: "user",
+			ToolResults: []llm.ToolResultRecord{
+				{ToolUseID: "g1", ToolName: "glob", Content: "docs/README.md", IsError: false},
+			},
+		},
+	}
+	got := ContinueFollowUpPrompt(msgs)
+	if strings.Contains(got, "path recovery is still pending") {
+		t.Fatalf("expected useful glob to clear path recovery: %q", got)
+	}
+}
+
 func TestContinueFollowUpPromptUsesLatestRealUserRequestWindow(t *testing.T) {
 	t.Parallel()
 	msgs := []llm.Message{

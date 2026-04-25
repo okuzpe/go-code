@@ -38,7 +38,7 @@ func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, li
 	root := &cobra.Command{
 		Use:     "goclaw",
 		Short:   "Local Ollama coding agent - tools, verification, and multi-turn execution in the terminal",
-		Long:    "Turn intent into repository changes using native tools (read, edit, shell, tests) against local Ollama. The primary surface is --mode build for direct coding and --mode plan for read-only planning first. Fullscreen TUI on TTY, REPL slash commands, persisted sessions. Advanced profiles such as builder or coordinator stay available through --profile as an escape hatch.",
+		Long:    "Turn intent into repository changes using native tools (read, edit, shell, tests) against local Ollama. The primary surface is --mode build for direct coding and --mode plan for read-only planning first. Fullscreen TUI on TTY, REPL slash commands, persisted sessions. Advanced profiles stay available through --profile as an escape hatch.",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			listSessionsFlag, err := cmd.Flags().GetBool("list-sessions")
@@ -167,7 +167,7 @@ func newChatCmd(runChat RunChatFunc) *cobra.Command {
 		Use:   "chat",
 		Short: "Start interactive chat (fullscreen Bubble Tea TUI on a TTY)",
 		Long: `Opens the coding-agent chat: streaming assistant, tool loop, slash commands, and session persistence.
-Primary flow: /mode build for direct coding, /mode plan for read-only planning first. Advanced direct-coding and hub profiles remain available through /profile builder and /profile coordinator.
+Primary flow: /mode build for direct coding, /mode plan for read-only planning first. Advanced profiles remain available through /profile <name>.
 
 On an interactive terminal the UI is fullscreen Bubble Tea (Bubbles textarea + transcript). GOCLAW_USE_TUI=0 on a TTY is unsupported - use a real terminal or --output-format json for pipes.
 Use --mock to stream a canned reply without calling the model (UI / wiring check).

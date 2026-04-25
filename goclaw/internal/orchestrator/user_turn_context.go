@@ -26,10 +26,10 @@ type userTurnState struct {
 	tuiInteractMode  string
 
 	// Post-write verify gate (opt-in via config): after workspace writes, require a verify tool.
-	verifyPending   bool
-	verifySatisfied bool
-	verifyNudges    int
-	changedPaths    map[string]bool
+	verifyPending       bool
+	verifySatisfied     bool
+	verifyNudges        int
+	changedPaths        map[string]bool
 	requiredVerifyKind  string
 	requiredVerifySig   string
 	requiredVerifyLabel string
@@ -37,6 +37,14 @@ type userTurnState struct {
 	// editFileRecoveryPending is set after an edit_file "old_string not found" error.
 	// It remains true until the turn completes a successful workspace write.
 	editFileRecoveryPending bool
+
+	// pathRecoveryPending is set after a file tool fails because the path could not be resolved.
+	// It remains true until the turn rediscovers the target with read_file/glob/grep or completes
+	// a successful workspace write.
+	pathRecoveryPending  bool
+	pathRecoveryTool     string
+	pathRecoveryTarget   string
+	pathRecoveryAttempts int
 
 	// revealedToolNames tracks hidden tools (e.g. MCP) revealed via tool_search during this turn.
 	// Revealed tools are included in effectiveToolSpecs for subsequent LLM iterations.

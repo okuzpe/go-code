@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+> Public naming note: current product-facing docs and UI use **`build`** for the direct-coding path and **`plan`** for read-only planning. Historical references to **`general-purpose`** below are compatibility/internal naming unless explicitly stated otherwise.
+
 ### Removed
 
 - **Line-at-a-time REPL (readline):** removed **`--readline`**, **`GOCLAW_USE_READLINE`**, and the **`github.com/chzyer/readline`** stack (`repl_readline`, raw TTY pickers, stderr tool recap). **`GOCLAW_USE_TUI=0` on a real TTY** is unsupported — use **`--output-format json`**, **`--json-output`**, or **`goclaw prompt`** for pipes and CI. Interactive chat is **fullscreen Bubble Tea only**; prior user lines persist under **`~/.goclaw/history`** with **↑/↓** recall in the compose box (`internal/replhistory`, `internal/ui/chat`).

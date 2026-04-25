@@ -48,6 +48,31 @@ func shouldFailPendingEditRecovery(ut *userTurnState, workspaceWriteOK bool) (st
 	return "edit_file recovery was pending after old_string not found, but the model stopped without rereading the file and retrying the edit", true
 }
 
+func shouldFailPendingPathRecovery(ut *userTurnState, workspaceWriteOK bool) (string, bool) {
+	if ut == nil || !ut.pathRecoveryPending || workspaceWriteOK {
+		return "", false
+	}
+	target := strings.TrimSpace(ut.pathRecoveryTarget)
+	toolName := strings.TrimSpace(ut.pathRecoveryTool)
+	if ut.pathRecoveryAttempts >= maxPathRecoveriesPerTurn {
+		if target != "" {
+			return fmt.Sprintf("path recovery exhausted after %d recovery attempts for %s; use glob/grep to discover the real path before retrying %s", ut.pathRecoveryAttempts, target, toolNameOrFallback(toolName)), true
+		}
+		return fmt.Sprintf("path recovery exhausted after %d recovery attempts; use glob/grep to discover the real path before retrying %s", ut.pathRecoveryAttempts, toolNameOrFallback(toolName)), true
+	}
+	if target != "" {
+		return fmt.Sprintf("path recovery was still pending for %s; rediscover the path with glob/grep before retrying %s", target, toolNameOrFallback(toolName)), true
+	}
+	return fmt.Sprintf("path recovery was still pending; rediscover the path with glob/grep before retrying %s", toolNameOrFallback(toolName)), true
+}
+
+func toolNameOrFallback(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return "the file tool"
+	}
+	return name
+}
+
 func actionStallExcerpt(response string) string {
 	response = strings.Join(strings.Fields(strings.TrimSpace(response)), " ")
 	if response == "" {
