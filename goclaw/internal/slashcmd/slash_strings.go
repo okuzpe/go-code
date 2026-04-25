@@ -47,8 +47,9 @@ func PopularSlashHint(workdir string) string {
 // PreChatHelpSummary is a short pre-chat pointer; /help (ReplHelpMarkdown) is the full reference.
 func PreChatHelpSummary(workdir string) string {
 	var b strings.Builder
-	b.WriteString("Slash commands are not sent to the model. /help — full list (session, mode/profile, TUI keys); /capabilities — what the agent can do.\n")
-	b.WriteString("Common: /mode /plan /apply-plan /review /workers /memory /profile /theme /compact /quit — line prefixes ! @ & — docs/goclaw/prefix-input-modes.md\n")
+	b.WriteString("Slash commands are not sent to the model. /help - full list (session, mode/profile, TUI keys); /capabilities - what the agent can do.\n")
+	b.WriteString("Primary flow: /mode /plan /apply-plan /continue /memory /theme /quit\n")
+	b.WriteString("Advanced: /profile /review /audit /workers - line prefixes ! @ & - docs/goclaw/prefix-input-modes.md\n")
 	if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Plan file: ")
 		b.WriteString(planfile.Path(workdir))
@@ -66,6 +67,7 @@ func ReplHelpMarkdown(env SlashEnv, sess **session.Session, orch *orchestrator.O
 	var b strings.Builder
 	b.WriteString("## Slash commands\n\n")
 	b.WriteString("Not sent to the model.\n\n")
+	b.WriteString("### Primary flow\n\n")
 	b.WriteString("- `/help`, `help`, `?` — this text\n")
 	b.WriteString("- **TUI transcript** — PgUp/PgDn · Alt+arrows · mouse wheel opt-in (`tui_mouse_scroll` or `GOCLAW_TUI_MOUSE_SCROLL=1`); Ctrl+B enters focused browse mode\n")
 	b.WriteString("- `/capabilities` — overview of what the agent can do\n")
@@ -86,20 +88,21 @@ func ReplHelpMarkdown(env SlashEnv, sess **session.Session, orch *orchestrator.O
 	b.WriteString("- `/memory add <type> <name> <text...>` — types: `user` | `feedback` | `project` | `reference`\n")
 	b.WriteString("- `/memory delete <file.md>` — remove one file (see list for basename)\n")
 	b.WriteString("- `/mode <build|plan>` — switch primary mode\n")
-	b.WriteString("- `/profile <name>` — switch advanced profile / compatibility alias (TUI: **Ctrl+P** or bare `/profile`)\n")
-	b.WriteString("- `/agents [name]` — compatibility alias for profile listing/switching\n")
 	b.WriteString("- `/allow-writes` — auto-approve `write_file`, `edit_file`, `patch` for this session\n")
 	if env.SetSessionModel != nil && env.SessionModel != nil {
 		b.WriteString("- `/model [id]` — show or set the Ollama model tag for this session\n")
 	}
 	b.WriteString("- `/theme [preset]` — show or set TUI `ui_appearance` (bare `/theme` opens the live picker in the fullscreen TUI)\n")
-	b.WriteString("- `/workers` — list workers; `/focus` or `/in <prefix>` — jump into worker; `/back` or `/detach` — return to coordinator\n")
 	b.WriteString("- `/plan path|init|new|save|run|review|approve|revoke|steps|template` — plan workflow + mini plans under `.goclaw/plans/`\n")
 	b.WriteString("- `/apply-plan [--preview] [--hub] [--steps] [path]` — preview or execute; `--steps` runs one turn per `## Steps` line when present\n")
-	b.WriteString("- `/audit [path]` — switch to build; audit-and-fix on path (default: workspace)\n")
-	b.WriteString("- `/review [args]` — inject git diff; code-review profile (`docs/goclaw/code-review-workflow.md`)\n")
 	b.WriteString("- `/btw <text>` — side question (sent to the model)\n")
 	b.WriteString("- `/continue` — follow-up on your last user request (sent to the model)\n")
+	b.WriteString("\n### Advanced\n\n")
+	b.WriteString("- `/profile <name>` — switch advanced profile / compatibility alias (TUI: **Ctrl+P** or bare `/profile`)\n")
+	b.WriteString("- `/agents [name]` — compatibility alias for profile listing/switching\n")
+	b.WriteString("- `/workers` — list workers; `/focus` or `/in <prefix>` — jump into worker; `/back` or `/detach` — return to coordinator\n")
+	b.WriteString("- `/audit [path]` — switch to build; audit-and-fix on path (default: workspace)\n")
+	b.WriteString("- `/review [args]` — inject git diff; code-review profile (`docs/goclaw/code-review-workflow.md`)\n")
 	b.WriteString("- **Ctrl+C** — exit (session saves on shutdown)\n")
 	b.WriteString("\n## Prefix input\n\n")
 	b.WriteString("Before model; same tools and permissions; single line each — `docs/goclaw/prefix-input-modes.md`.\n\n")
@@ -107,7 +110,7 @@ func ReplHelpMarkdown(env SlashEnv, sess **session.Session, orch *orchestrator.O
 	b.WriteString("- `@<path>` — read_file in the workspace\n")
 	b.WriteString("- `&<task>` — spawn_agent (requires `spawn_agent` on the active profile)\n")
 	b.WriteString("\n## CLI and environment\n\n")
-	b.WriteString("- Restart flags: `--session <id>` `--list-sessions` `--no-tools` `--mode <build|plan>` `--profile <name>`\n")
+	b.WriteString("- Restart flags: `--session <id>` `--list-sessions` `--no-tools` `--mode <build|plan>` `--profile <name>` (`--profile` is the advanced override)\n")
 	b.WriteString("- Interactive chat needs a TTY; `GOCLAW_USE_TUI=0` on a TTY is unsupported — use `--output-format json` for pipes.\n")
 	b.WriteString("- `GOCLAW_TUI_MOUSE_SCROLL=1` — mouse wheel on transcript (see `tui_mouse_scroll` in settings).\n")
 	b.WriteString("- `GOCLAW_TUI_ICONS` / `tui_icons` — footer glyphs: emoji, unicode, ascii, nerd.\n")

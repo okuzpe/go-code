@@ -28,8 +28,18 @@ func TestChatSubcommandResolved(t *testing.T) {
 	if cmd.Name() != "chat" {
 		t.Fatalf("expected chat subcommand, got %q", cmd.Name())
 	}
-	if got := cmd.Long; got == "" || !containsAll(got, "build", "/mode plan", "/profile coordinator") {
-		t.Fatalf("chat long help should mention build/plan surface and coordinator hub mode, got: %q", got)
+	if got := cmd.Long; got == "" || !containsAll(got, "/mode build", "/mode plan", "Advanced") {
+		t.Fatalf("chat long help should prioritize build/plan and label advanced profiles, got: %q", got)
+	}
+}
+
+func TestRootHelpPrioritizesPrimaryModes(t *testing.T) {
+	root := testRoot(t)
+	if got := root.Long; got == "" || !containsAll(got, "--mode build", "--mode plan", "--profile") {
+		t.Fatalf("root long help should prioritize build/plan and keep profile as advanced override, got: %q", got)
+	}
+	if strings.Contains(root.Flag("profile").Usage, "general-purpose") {
+		t.Fatalf("profile flag help should not expose internal runtime names, got: %q", root.Flag("profile").Usage)
 	}
 }
 

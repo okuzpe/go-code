@@ -11,11 +11,19 @@ import (
 )
 
 const (
-	verifyAfterWriteNudgeMessage = `[goclaw] You made workspace changes. Before finishing with prose only, run verification using native tool calls: bash, run_command, script, or run_tests. Prefer a quick git-aware check too (for example: git status --short and git diff -- <changed files>) so you confirm the actual edited files match your intent. Paste command output in the tool result. If verification is impossible, state one sentence why, then stop.`
+	verifyAfterWriteNudgeMessage          = `[goclaw] You made workspace changes. Before finishing with prose only, run verification using native tool calls: bash, run_command, script, or run_tests. Prefer a quick git-aware check too (for example: git status --short and git diff -- <changed files>) so you confirm the actual edited files match your intent. Paste command output in the tool result. If verification is impossible, state one sentence why, then stop.`
+	verifyAfterWriteNudgeMessageBuildLite = `[goclaw] You made workspace changes. Before finishing with prose only, run verification using run_tests or run_command. If verification fails, inspect with read_file, repair with edit_file/write_file/patch, then rerun the same verification. If verification is impossible, state one sentence why, then stop.`
 
 	maxVerifyAfterWriteNudges = 4
 	maxVerifyChangedPaths     = 8
 )
+
+func verifyAfterWriteNudge(buildLite bool) string {
+	if buildLite {
+		return verifyAfterWriteNudgeMessageBuildLite
+	}
+	return verifyAfterWriteNudgeMessage
+}
 
 func toolResultIsSuccessfulWorkspaceWrite(r llm.ToolResultRecord) bool {
 	if r.IsError {
@@ -171,7 +179,7 @@ func verifyGateApplyNudge(ut *userTurnState) {
 	ut.verifyNudges++
 }
 
-func verifyChangedPathsBlock(ut *userTurnState, workdir string) string {
+func verifyChangedPathsBlock(ut *userTurnState, workdir string, buildLite bool) string {
 	if ut == nil || !ut.verifyPending || len(ut.changedPaths) == 0 {
 		return ""
 	}
@@ -196,7 +204,9 @@ func verifyChangedPathsBlock(ut *userTurnState, workdir string) string {
 		b.WriteString(path)
 		b.WriteString("\n")
 	}
-	if strings.TrimSpace(workdir) != "" {
+	if buildLite {
+		b.WriteString("Before ending, run verification with `run_tests` or `run_command`. If a verification command already failed this turn, repair the files and rerun that same verification before finishing.")
+	} else if strings.TrimSpace(workdir) != "" {
 		b.WriteString("Before ending, prefer at least one git-aware check from the workspace, such as `git status --short` and `git diff -- <changed files>`, plus tests/build if relevant.")
 	} else {
 		b.WriteString("Before ending, prefer at least one git-aware check such as `git status --short` and `git diff -- <changed files>`, plus tests/build if relevant.")

@@ -103,6 +103,33 @@ func Build(workdir string, cfg config.Config, includeProjectConventions bool) st
 	return out
 }
 
+// BuildLite returns the smallest useful project summary for build-lite turns.
+// It intentionally omits README, docs, repo maps, git state, and project conventions.
+func BuildLite(workdir string) string {
+	var parts []string
+	if pt := detectProjectType(workdir); pt != "" {
+		parts = append(parts, "project_type: "+pt)
+	}
+	type candidate struct {
+		file    string
+		maxLine int
+		label   string
+	}
+	for _, c := range []candidate{
+		{"go.mod", 8, "go.mod"},
+		{"package.json", 8, "package.json"},
+		{"Cargo.toml", 8, "Cargo.toml"},
+		{"pyproject.toml", 8, "pyproject.toml"},
+		{"requirements.txt", 8, "requirements.txt"},
+	} {
+		if lines, ok := readProjectFileLines(workdir, c.file, c.maxLine); ok {
+			parts = append(parts, c.label+":\n  "+strings.Join(lines, "\n  "))
+			break
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
 func projectDocsCandidates() []struct {
 	file    string
 	maxLine int

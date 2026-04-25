@@ -69,6 +69,9 @@ func (o *Orchestrator) tryActionRepairEscalation(
 	if o == nil || repairEscalations == nil || *repairEscalations > 0 {
 		return false
 	}
+	if o.usesBuildLiteRuntime() {
+		return false
+	}
 	if !o.cfg.ActionRepairEscalation || !o.cfg.AutoContinueActionRequests {
 		return false
 	}

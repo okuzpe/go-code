@@ -12,18 +12,13 @@ import (
 
 	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/config"
-	"github.com/okuzpe/goclaw/internal/coordinator"
 	"github.com/okuzpe/goclaw/internal/hooks"
-	"github.com/okuzpe/goclaw/internal/ide"
 	"github.com/okuzpe/goclaw/internal/llm"
 	"github.com/okuzpe/goclaw/internal/mcp"
 	"github.com/okuzpe/goclaw/internal/memory"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 	"github.com/okuzpe/goclaw/internal/permissions"
-	"github.com/okuzpe/goclaw/internal/plugin"
-	"github.com/okuzpe/goclaw/internal/projectcontext"
 	"github.com/okuzpe/goclaw/internal/session"
-	"github.com/okuzpe/goclaw/internal/skills"
 	"github.com/okuzpe/goclaw/internal/todos"
 	"github.com/okuzpe/goclaw/internal/tools"
 	"github.com/spf13/cobra"
@@ -214,14 +209,8 @@ func prepareChatRuntime(cmd *cobra.Command, allocateScratch bool) (*ChatRuntime,
 	if err != nil {
 		return nil, err
 	}
-	explicitAgentProfileFromCLI := strings.TrimSpace(os.Getenv("GOCLAW_AGENT_PROFILE")) != ""
+	explicitAgentProfileFromCLI := runtimeExplicitAgentProfileFromCLI(cmd)
 	if cmd != nil {
-		if p, err := cmd.Flags().GetString("profile"); err == nil && strings.TrimSpace(p) != "" {
-			explicitAgentProfileFromCLI = true
-		}
-		if m, err := cmd.Flags().GetString("mode"); err == nil && strings.TrimSpace(m) != "" {
-			explicitAgentProfileFromCLI = true
-		}
 		if v, err := cmd.Flags().GetString("task-model-router"); err == nil && strings.TrimSpace(v) != "" {
 			cfg.TaskModelRouter = config.NormalizeTaskModelRouter(v)
 		}
@@ -241,94 +230,23 @@ func prepareChatRuntime(cmd *cobra.Command, allocateScratch bool) (*ChatRuntime,
 		return nil, fmt.Errorf("session store: %w", err)
 	}
 
-	userAgentsDir := filepath.Join(cfg.UserConfigDir, "agents")
-	projectAgentsDir := filepath.Join(launchDir, cfg.ProjectConfigDir, "agents")
-	profs, err := agents.AllWithCustom(userAgentsDir, projectAgentsDir)
+	userAgentsDir, projectAgentsDir, profs, profile, err := loadRuntimeProfiles(cfg, launchDir)
 	if err != nil {
-		slog.Warn("custom agent load error", "err", err)
-		profs = agents.All()
+		return nil, err
 	}
-	profileKey := agents.CanonicalProfileName(cfg.AgentProfile)
-	profile, ok := profs[profileKey]
-	if !ok {
-		profile, ok = profs[agents.CanonicalProfileName(profileKey)]
+	client, err := newRuntimeClient(&cfg)
+	if err != nil {
+		return nil, err
 	}
-	if !ok {
-		return nil, fmt.Errorf("unknown agent profile %q; valid profiles: %s (use --mode build|plan, --profile, or \"agent_profile\" in settings.json)",
-			cfg.AgentProfile, agents.JoinSortedProfileKeys(profs))
-	}
-
-	// Autonomous mode: when stdout is not a TTY (piped, --json-output, CI), append a conservative
-	// behaviour note to the profile's system prompt so the model avoids interactive assumptions.
-	if !isTTY(os.Stdout) {
-		profile.SystemPrompt += "\n\n═══ AUTONOMOUS MODE ═══\n" +
-			"Running without an interactive terminal. Be more conservative:\n" +
-			"- Prefer read operations over writes when the intent is ambiguous\n" +
-			"- Skip optional cleanup or cosmetic tasks unless explicitly requested\n" +
-			"- After completing the task, report what was done; do not prompt for next steps\n" +
-			"- If a required confirmation cannot be given, skip the risky action and explain why"
-	}
-
 	slog.Info("starting goclaw", "provider", cfg.Provider, "model", cfg.Model(), "profile", profile.Name)
 
-	var client llm.Client
-	p := strings.ToLower(strings.TrimSpace(cfg.Provider))
-	switch p {
-	case "", "ollama":
-		cfg.Provider = "ollama"
-		oc := llm.NewOllamaWithHTTPTimeout(cfg.OllamaHost, cfg.OllamaHTTPClientTimeout())
-		oc.RequireWireTools = cfg.OllamaRequireWireTools
-		client = oc
-	case "anthropic":
-		return nil, fmt.Errorf("provider \"anthropic\" is no longer supported; set \"provider\" to \"ollama\" (default) and use a local model via ollama_model / OLLAMA_MODEL")
-	case "openai_compatible":
-		return nil, fmt.Errorf("provider \"openai_compatible\" is not supported; goclaw uses local Ollama only — set \"provider\" to \"ollama\", remove openai_* settings, and configure ollama_model / OLLAMA_MODEL")
-	default:
-		return nil, fmt.Errorf("unknown provider %q: only \"ollama\" is supported", cfg.Provider)
+	sess, err := loadRuntimeSession(store, sessDir, sessionFlag)
+	if err != nil {
+		return nil, err
 	}
-
-	var sess *session.Session
-	switch id := strings.TrimSpace(sessionFlag); id {
-	case "":
-		sess = session.New()
-		slog.Debug("new session", "id", sess.ID)
-	default:
-		loaded, err := store.Load(id)
-		if err != nil {
-			return nil, fmt.Errorf("load session %q: %w", id, err)
-		}
-		if loaded == nil {
-			return nil, fmt.Errorf("session %q not found under %s", id, sessDir)
-		}
-		sess = loaded
-		slog.Debug("resumed session", "id", sess.ID, "messages", sess.Len())
-	}
-
-	memDir := filepath.Join(cfg.UserConfigDir, "memory")
-	if err := os.MkdirAll(memDir, privateDirPerm); err != nil {
-		return nil, fmt.Errorf("memory dir: %w", err)
-	}
-	memStore := memory.New(memDir)
-
-	// Per-agent memory: if the active profile declares a MemoryScope, replace the global
-	// user store with a scoped store so tool auto-capture and prompt injection stay isolated.
-	if profile.MemoryScope != "" {
-		agentMemDir := memory.PerAgentMemoryDir(profile.MemoryScope, profile.Name, cfg.UserConfigDir, launchDir, cfg.ProjectConfigDir)
-		if err := os.MkdirAll(agentMemDir, privateDirPerm); err != nil {
-			slog.Warn("per-agent memory dir create failed; using global store", "dir", agentMemDir, "err", err)
-		} else {
-			memStore = memory.New(agentMemDir)
-			slog.Debug("per-agent memory store attached", "profile", profile.Name, "scope", profile.MemoryScope, "dir", agentMemDir)
-		}
-	}
-
-	// Per-project memory (D14): .goclaw/memory/ — only attached when the directory already
-	// exists so we don't create it on every run. Users opt in by creating the directory.
-	var projectMemStore *memory.Store
-	projectMemDir := filepath.Join(launchDir, cfg.ProjectConfigDir, "memory")
-	if info, err := os.Stat(projectMemDir); err == nil && info.IsDir() {
-		projectMemStore = memory.New(projectMemDir)
-		slog.Debug("project memory store attached", "dir", projectMemDir)
+	memStore, projectMemStore, err := createRuntimeMemoryStores(cfg, launchDir, profile)
+	if err != nil {
+		return nil, err
 	}
 
 	policy := permissions.NewPolicy()
@@ -336,163 +254,18 @@ func prepareChatRuntime(cmd *cobra.Command, allocateScratch bool) (*ChatRuntime,
 		return nil, err
 	}
 
-	hookReg := hooks.New()
-	for _, h := range cfg.ExternalHooks {
-		et, err := hooks.ParseEventType(h.Event)
-		if err != nil {
-			slog.Warn("skip external hook", "event", h.Event, "err", err)
-			continue
-		}
-		if strings.TrimSpace(h.URL) != "" {
-			hookReg.OnHTTP(et, strings.TrimSpace(h.URL), hookHTTPTimeout)
-		} else if strings.TrimSpace(h.Command) != "" {
-			hookReg.OnCommand(et, h.Command, h.Args...)
-		}
-	}
-	for _, name := range plugin.RegisterHooksFromDirs(hookReg, cfg.PluginDirs, launchDir, cfg.PluginAllow, cfg.PluginDeny) {
-		slog.Info("plugin hooks registered", "name", name)
-	}
-	if cfg.TrustedWorkspace {
-		hookPath := filepath.Join(launchDir, ".goclaw", "hooks.json")
-		if err := hooks.LoadHooksFile(hookReg, hookPath); err != nil {
-			slog.Warn("load project hooks", "path", hookPath, "err", err)
-		}
-	}
-	_ = hookReg.Fire(context.Background(), hooks.Event{Type: hooks.SessionStart})
-
-	// Build project context and skills early so they can be shared with workers.
-	// Full context includes CLAUDE.md and standing orders; thin omits them for explore/plan
-	// (Claude Code–style agent context; see agents profile docs).
-	projectCtxFull := projectcontext.Build(toolRoot, cfg, true)
-	projectCtxThin := projectcontext.Build(toolRoot, cfg, false)
-	skillRoots := []string{
-		filepath.Join(launchDir, cfg.ProjectConfigDir, "skills"),
-		filepath.Join(launchDir, ".claude", "skills"),
-		filepath.Join(cfg.UserConfigDir, "skills"),
-		filepath.Join(cfg.UserConfigDir, ".claude", "skills"),
-	}
-	if toolRoot != launchDir {
-		skillRoots = append([]string{
-			filepath.Join(toolRoot, cfg.ProjectConfigDir, "skills"),
-			filepath.Join(toolRoot, ".claude", "skills"),
-		}, skillRoots...)
-	}
-	skillRoots = appendMonorepoClaudeSkillRoot(launchDir, skillRoots)
-	skillSnippet, _ := skills.Collect(skillRoots, cfg.EffectiveSkillsMaxRunes())
-
-	reg := tools.New()
+	hookReg := newRuntimeHookRegistry(cfg, launchDir)
+	projectInputs := buildRuntimeProjectInputs(toolRoot, launchDir, cfg)
 	disableTools := noToolsFlag || strings.TrimSpace(os.Getenv("GOCLAW_DISABLE_TOOLS")) == "1"
-	if cfg.IDEBridgeMCP && !disableTools {
-		ideDir := filepath.Join(cfg.UserConfigDir, "ide")
-		if u, hdrs, err := ide.DiscoverMCPEndpoint(ideDir); err == nil {
-			appendIDEBridgeMCPServerIfMissing(&cfg, u, hdrs)
-		} else {
-			slog.Warn("ide bridge mcp: no MCP endpoint from lockfiles", "dir", ideDir, "err", err)
-		}
+	reg, mcpSessions, mcpConnectedIDs, todoStore, err := registerRuntimeToolsAndMCP(&cfg, toolRoot, launchDir, client, profs, policy, hookReg, memStore, projectInputs, disableTools)
+	if err != nil {
+		return nil, err
 	}
-	var mcpSessions []mcp.Conn
-	var mcpConnectedIDs []string
-	var todoStore *todos.Store
-	if !disableTools {
-		todoStore = todos.NewStore()
-		if err := registerBuiltInTools(reg, toolRoot, launchDir, cfg, todoStore); err != nil {
-			return nil, fmt.Errorf("register built-in tools: %w", err)
-		}
-
-		// spawn_agent: worker registry excludes spawn_agent itself to prevent infinite nesting.
-		workerReg := tools.New()
-		if err := registerBuiltInTools(workerReg, toolRoot, launchDir, cfg, todos.NewStore()); err != nil {
-			return nil, fmt.Errorf("register worker tools: %w", err)
-		}
-		reg.Register(coordinator.New(cfg, client, workerReg, policy, hookReg).
-			WithProfiles(profs).
-			WithWorkdir(toolRoot).
-			WithLaunchDir(launchDir).
-			WithProjectContext(projectCtxFull).
-			WithProjectContextThin(projectCtxThin).
-			WithMemoryStore(memStore).
-			WithSkillsSnippet(skillSnippet))
-		reg.Register(coordinator.NewStopTask())
-
-		for _, srv := range cfg.MCPServers {
-			if srv.Disabled || srv.ID == "" {
-				continue
-			}
-			hasURL := strings.TrimSpace(srv.URL) != ""
-			hasCmd := strings.TrimSpace(srv.Command) != ""
-			if !hasURL && !hasCmd {
-				continue
-			}
-			dial, prepErr := buildMCPServerDial(srv, launchDir, cfg.MCPServersAllowRemote)
-			if prepErr != nil {
-				slog.Warn("mcp dial setup failed", "id", srv.ID, "err", prepErr)
-				continue
-			}
-			sctx, cancel := context.WithTimeout(context.Background(), mcpDialTimeout)
-			mcpSess, startErr := mcp.NewResilientConn(sctx, dial)
-			if startErr != nil {
-				slog.Warn("mcp connect failed", "id", srv.ID, "err", startErr)
-				cancel()
-				continue
-			}
-			if err := mcp.RegisterSessionTools(sctx, reg, mcpSess, srv.ID); err != nil {
-				slog.Warn("mcp register tools failed", "id", srv.ID, "err", err)
-				_ = mcpSess.Close()
-				cancel()
-				continue
-			}
-			cancel()
-			mcpSessions = append(mcpSessions, mcpSess)
-			mcpConnectedIDs = append(mcpConnectedIDs, srv.ID)
-			slog.Info("mcp server connected", "id", srv.ID)
-		}
+	scratchDir, err := allocateRuntimeScratchDir(cfg, sess.ID, allocateScratch)
+	if err != nil {
+		return nil, err
 	}
-
-	var scratchDir string
-	if allocateScratch {
-		scratchDir = filepath.Join(cfg.UserConfigDir, "scratch", sess.ID)
-		if err := os.MkdirAll(scratchDir, privateDirPerm); err != nil {
-			return nil, fmt.Errorf("session scratch dir: %w", err)
-		}
-		absScratch, errAbs := filepath.Abs(scratchDir)
-		if errAbs != nil {
-			return nil, fmt.Errorf("session scratch dir abs: %w", errAbs)
-		}
-		scratchDir = absScratch
-	}
-
-	ideNotifier := ide.FromEnv()
-	orchOpts := []orchestrator.Option{orchestrator.WithMemoryStore(memStore)}
-	if projectMemStore != nil {
-		orchOpts = append(orchOpts, orchestrator.WithProjectMemoryStore(projectMemStore))
-	}
-	if toolRoot != "" {
-		orchOpts = append(orchOpts, orchestrator.WithWorkdir(toolRoot))
-		if strings.TrimSpace(launchDir) != "" {
-			orchOpts = append(orchOpts, orchestrator.WithLaunchDir(launchDir))
-		}
-		projectCtxForSession := projectCtxFull
-		if profile.Name == "explore" || profile.Name == "plan" {
-			projectCtxForSession = projectCtxThin
-		}
-		if projectCtxForSession != "" {
-			orchOpts = append(orchOpts, orchestrator.WithProjectContext(projectCtxForSession))
-		}
-	}
-	if skillSnippet != "" {
-		orchOpts = append(orchOpts, orchestrator.WithSkillsSnippet(skillSnippet))
-	}
-	if scratchDir != "" {
-		orchOpts = append(orchOpts, orchestrator.WithScratchDir(scratchDir))
-	}
-	if !disableTools {
-		orchOpts = append(orchOpts, orchestrator.WithTodoStore(todoStore))
-		sid := sess.ID
-		orchOpts = append(orchOpts, orchestrator.WithAfterTool(func(toolName string, toolInput string, resultBytes int, isError bool) {
-			ideNotifier.AfterTool(toolName, resultBytes, isError)
-			memory.MaybeAutoCaptureFromTool(cfg, memStore, sid, toolName, toolInput, isError)
-		}))
-	}
+	orchOpts := buildRuntimeOrchestratorOptions(cfg, toolRoot, launchDir, scratchDir, disableTools, sess.ID, memStore, projectMemStore, todoStore, projectInputs)
 
 	ollamaProbe := ProbeOllamaStartup(cfg)
 	return &ChatRuntime{
@@ -531,7 +304,7 @@ func cleanupSessionScratch(dir string) {
 }
 
 // registerBuiltInTools registers the core built-in tools into r (plus optional script when allow_script is true).
-// It does NOT register spawn_agent — callers that need it do so separately.
+// It does NOT register spawn_agent - callers that need it do so separately.
 // This is the single source of truth for built-in tool registration.
 func registerBuiltInTools(r *tools.Registry, toolRoot string, launchDir string, cfg config.Config, todoStore *todos.Store) error {
 	pathScope := tools.PathScope{

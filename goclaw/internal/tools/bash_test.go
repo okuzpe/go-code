@@ -12,6 +12,16 @@ import (
 	"time"
 )
 
+func currentTestShellSpec() shellSpec {
+	return activeShellSpec()
+}
+
+func requireWindowsFallbackShellError(t *testing.T, res Result) {
+	t.Helper()
+	require.True(t, res.IsError, "expected reduced-shell error, got success: %q", res.Content)
+	require.Contains(t, res.Content, "requires a working POSIX shell on Windows")
+}
+
 func TestBashAllowEcho(t *testing.T) {
 	ctx := context.Background()
 	tool := NewBash()
@@ -62,6 +72,10 @@ func TestBashAllowRm(t *testing.T) {
 	// (not actually running rm / on any real path)
 	res, err := tool.Execute(ctx, `{"command":"rm --help"}`)
 	require.NoError(t, err)
+	if runtime.GOOS == "windows" && currentTestShellSpec().Kind == shellKindCMD {
+		requireWindowsFallbackShellError(t, res)
+		return
+	}
 	if res.IsError && res.Content == "command not on allowlist: rm" {
 		require.Failf(t, "rm should be on the allowlist", "%s", res.Content)
 	}
@@ -136,6 +150,11 @@ func TestBashAllowSingleQuotedAndAnd(t *testing.T) {
 	// && inside single quotes is literal text, not a command separator.
 	res, err := tool.Execute(ctx, `{"command":"echo 'a&&b'"}`)
 	require.NoError(t, err)
+	if runtime.GOOS == "windows" && currentTestShellSpec().Kind == shellKindCMD {
+		require.True(t, res.IsError, "expected cmd.exe fallback to reject single-quoted &&")
+		require.Contains(t, res.Content, "&&")
+		return
+	}
 	if res.IsError && strings.Contains(res.Content, "&&") {
 		require.Failf(t, "single-quoted && should be allowed", "%s", res.Content)
 	}
@@ -191,6 +210,10 @@ func TestBashRejectFindExec(t *testing.T) {
 	tool := NewBash()
 	res, err := tool.Execute(ctx, `{"command":"find /tmp -exec ncat -l 4444 {} +"}`)
 	require.NoError(t, err)
+	if runtime.GOOS == "windows" && currentTestShellSpec().Kind == shellKindCMD {
+		requireWindowsFallbackShellError(t, res)
+		return
+	}
 	require.True(t, res.IsError, "expected error for find -exec")
 	require.Contains(t, res.Content, "-exec", "want -exec mention, got %q", res.Content)
 }
@@ -208,6 +231,10 @@ func TestBashAllowFindWithoutExec(t *testing.T) {
 	tool := NewBash()
 	res, err := tool.Execute(ctx, `{"command":"find /tmp -name \"*.go\" -type f"}`)
 	require.NoError(t, err)
+	if runtime.GOOS == "windows" && currentTestShellSpec().Kind == shellKindCMD {
+		requireWindowsFallbackShellError(t, res)
+		return
+	}
 	// Should not be rejected by arg-injection check (may fail for other reasons like path not existing)
 	if res.IsError && strings.Contains(res.Content, "-exec") {
 		require.Failf(t, "plain find should not be rejected for -exec", "%s", res.Content)
@@ -219,6 +246,10 @@ func TestBashRejectXargsUnallowedCommand(t *testing.T) {
 	tool := NewBash()
 	res, err := tool.Execute(ctx, `{"command":"xargs ncat -l 4444"}`)
 	require.NoError(t, err)
+	if runtime.GOOS == "windows" && currentTestShellSpec().Kind == shellKindCMD {
+		requireWindowsFallbackShellError(t, res)
+		return
+	}
 	require.True(t, res.IsError, "expected error for xargs with non-allowlisted command")
 	require.Contains(t, res.Content, "allowlist", "want allowlist mention, got %q", res.Content)
 }
@@ -246,6 +277,10 @@ func TestBashAllowXargsWithAllowlistedCommand(t *testing.T) {
 	}
 	res, err := tool.Execute(ctx, string(raw))
 	require.NoError(t, err)
+	if runtime.GOOS == "windows" && currentTestShellSpec().Kind == shellKindCMD {
+		requireWindowsFallbackShellError(t, res)
+		return
+	}
 	// May fail for other reasons (no stdin), but must not be rejected by arg-injection check
 	if res.IsError && strings.Contains(res.Content, "allowlist") {
 		require.Failf(t, "xargs go should not be rejected", "%s", res.Content)
@@ -314,4 +349,48 @@ func TestBashTimesOutLongRunningCommand(t *testing.T) {
 	if elapsed > 10*time.Second {
 		t.Errorf("command should stop near the 2s cap, took %v", elapsed)
 	}
+}
+
+func TestShellSpecForPlatformUsesVerifiedPOSIXShellOnWindows(t *testing.T) {
+	resetBashShellResolverForTests()
+	defer resetBashShellResolverForTests()
+
+	bashLookPath = func(file string) (string, error) {
+		if file == "bash" {
+			return `C:\Git\bin\bash.exe`, nil
+		}
+		return "", os.ErrNotExist
+	}
+	bashProbeShell = func(path string) bool {
+		return path == `C:\Git\bin\bash.exe`
+	}
+
+	spec := shellSpecForPlatform("windows")
+	require.Equal(t, shellKindPOSIX, spec.Kind)
+	require.Equal(t, `C:\Git\bin\bash.exe`, spec.Exec)
+	require.Equal(t, []string{"-c"}, spec.Prefix)
+}
+
+func TestShellSpecForPlatformFallsBackToCmdWhenProbeFails(t *testing.T) {
+	resetBashShellResolverForTests()
+	defer resetBashShellResolverForTests()
+
+	bashLookPath = func(file string) (string, error) {
+		if file == "bash" {
+			return `C:\Windows\System32\bash.exe`, nil
+		}
+		return "", os.ErrNotExist
+	}
+	bashProbeShell = func(string) bool { return false }
+
+	spec := shellSpecForPlatform("windows")
+	require.Equal(t, shellKindCMD, spec.Kind)
+	require.Equal(t, "cmd.exe", spec.Exec)
+	require.Equal(t, []string{"/C"}, spec.Prefix)
+}
+
+func TestRejectShellMetacharactersCmdTreatsSingleQuotesAsLiteral(t *testing.T) {
+	err := rejectShellMetacharacters(`echo 'a&&b'`, shellKindCMD)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "&&")
 }

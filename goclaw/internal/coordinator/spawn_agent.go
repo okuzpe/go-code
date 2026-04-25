@@ -68,6 +68,7 @@ type SpawnAgentTool struct {
 	launchDir      string // process cwd; prompt + PerAgentMemoryDir project root
 	projectCtx     string // full project summary (manifest, README, CLAUDE.md, standing orders)
 	projectCtxThin string // same without CLAUDE.md / standing orders (explore/plan workers)
+	projectCtxLite string // minimal manifest-only summary for build-lite workers
 	mem            *memory.Store
 	skillsSnippet  string
 }
@@ -128,6 +129,12 @@ func (t *SpawnAgentTool) WithProjectContext(ctx string) *SpawnAgentTool {
 // explore and plan workers use this so convention files are not injected into read-only agents.
 func (t *SpawnAgentTool) WithProjectContextThin(ctx string) *SpawnAgentTool {
 	t.projectCtxThin = strings.TrimSpace(ctx)
+	return t
+}
+
+// WithProjectContextLite passes the minimal build-lite project summary to spawned workers.
+func (t *SpawnAgentTool) WithProjectContextLite(ctx string) *SpawnAgentTool {
+	t.projectCtxLite = strings.TrimSpace(ctx)
 	return t
 }
 
@@ -267,12 +274,21 @@ func (t *SpawnAgentTool) Execute(ctx context.Context, input string) (tools.Resul
 		workerOpts = append(workerOpts, orchestrator.WithLaunchDir(t.workerLaunchDir()))
 	}
 	workerProjectCtx := strings.TrimSpace(t.projectCtx)
+	if agents.IsBuildLiteProfile(profile) {
+		workerProjectCtx = strings.TrimSpace(t.projectCtxLite)
+	}
 	if profile.Name == "explore" || profile.Name == "plan" {
 		// Never inject full context (with CLAUDE.md / standing orders) for these profiles.
 		workerProjectCtx = strings.TrimSpace(t.projectCtxThin)
 	}
 	if workerProjectCtx != "" {
 		workerOpts = append(workerOpts, orchestrator.WithProjectContext(workerProjectCtx))
+	}
+	if strings.TrimSpace(t.projectCtxThin) != "" {
+		workerOpts = append(workerOpts, orchestrator.WithProjectContextThin(t.projectCtxThin))
+	}
+	if strings.TrimSpace(t.projectCtxLite) != "" {
+		workerOpts = append(workerOpts, orchestrator.WithProjectContextLite(t.projectCtxLite))
 	}
 	// Per-agent memory: if the worker profile declares a MemoryScope, give it an isolated store
 	// instead of the parent (coordinator) store so each agent's memory stays scoped.

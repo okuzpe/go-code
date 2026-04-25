@@ -24,7 +24,7 @@ Defined in [`goclaw/internal/agents/profile.go`](../../goclaw/internal/agents/pr
 - **Shell:** `bash` remains available for **non-destructive** checks (e.g. `git log`, `go vet` on one package), subject to the normal bash allowlist and permission modes.  
 - **Reads:** `read_file`, `glob`, `grep`, `web_fetch`, `web_search`, `todo_write`.
 
-Use **`/profile general-purpose`** (or `/audit`) when the user wants edits, not only comments.
+Use **`/mode build`** (or `/audit`) when the user wants edits, not only comments.
 
 ## Skill template
 

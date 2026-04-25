@@ -1,0 +1,50 @@
+{
+  "_version": 1,
+  "debugLogging": false,
+  "debugChunkLogging": false,
+  "useNativeFetch": false,
+  "providers": [
+    {
+      "id": "id-1777058714102",
+      "name": "Ollama",
+      "apiKey": "",
+      "url": "http://localhost:11434",
+      "type": "ollama",
+      "model": "qwen3.5:9b",
+      "availableModels": [
+        "qwen3.5:9b",
+        "qwen3:8b",
+        "qwen2.5-coder:3b",
+        "qwen3.5:4b",
+        "gemma4:latest",
+        "glm4:latest",
+        "qwen2.5-coder:14b",
+        "qwen2.5-coder:7b",
+        "qwen2.5-coder:1.5b-base",
+        "mistral:latest",
+        "llama3:latest",
+        "deepseek-coder:latest"
+      ],
+      "modelCapabilities": {
+        "qwen": {
+          "embedding": false,
+          "text": true,
+          "tools": true,
+          "vision": true
+        },
+        "qwen2.5-coder:7b": {
+          "embedding": true,
+          "text": true,
+          "tools": false,
+          "vision": true
+        },
+        "qwen3.5:9b": {
+          "embedding": true,
+          "text": true,
+          "tools": true,
+          "vision": true
+        }
+      }
+    }
+  ]
+}

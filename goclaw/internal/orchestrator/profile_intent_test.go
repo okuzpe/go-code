@@ -40,6 +40,13 @@ func TestClassifyProfileIntentRules_stay(t *testing.T) {
 	}
 }
 
+func TestClassifyProfileIntentRules_repoWideAuditToPlan(t *testing.T) {
+	got := ClassifyProfileIntentRules("Find all gaps in the whole repo and align docs with code.")
+	if got.Intent != ProfileIntentPlanOnly {
+		t.Fatalf("intent = %q, want plan_only", got.Intent)
+	}
+}
+
 func TestFusedDirectCodeIntent(t *testing.T) {
 	if !FusedDirectCodeIntent("Please refactor the error handling in chat_wiring.go") {
 		t.Fatal("expected true")

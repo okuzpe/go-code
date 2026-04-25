@@ -60,7 +60,7 @@ func TestPrepareTurnModel_UsesTaskMap(t *testing.T) {
 		tools:   tools.New(),
 		perms:   permissions.NewPolicy(),
 		hooks:   hooks.New(),
-		profile: agents.GeneralPurpose,
+		profile: agents.Builder,
 		ut:      &userTurnState{},
 	}
 
@@ -95,7 +95,7 @@ func TestPrepareTurnModel_AmbiguousDefaultUsesCodeModelWhenMapped(t *testing.T) 
 		tools:   tools.New(),
 		perms:   permissions.NewPolicy(),
 		hooks:   hooks.New(),
-		profile: agents.GeneralPurpose,
+		profile: agents.Builder,
 		ut:      &userTurnState{},
 	}
 
@@ -128,4 +128,30 @@ func TestBuildRequestTurnModelOverridesGlobal(t *testing.T) {
 	}
 	req := o.buildRequest()
 	require.Equal(t, "worker:tag", req.Model)
+}
+
+func TestPrepareTurnModel_BuildLiteKeepsSingleModel(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Provider = "ollama"
+	cfg.OllamaModel = "global:latest"
+	cfg.TaskModelRouter = "rules"
+	cfg.TaskModels = map[string]string{
+		"code":    "coder:14b",
+		"default": "fallback:7b",
+	}
+
+	o := &Orchestrator{
+		cfg:     cfg,
+		session: session.New(),
+		tools:   tools.New(),
+		perms:   permissions.NewPolicy(),
+		hooks:   hooks.New(),
+		profile: agents.GeneralPurpose,
+		ut:      &userTurnState{},
+	}
+
+	o.prepareTurnModel(context.Background(), "implement a function to parse JSON")
+	require.Equal(t, "code", o.ut.taskRole)
+	require.Equal(t, "", o.ut.turnModel)
 }

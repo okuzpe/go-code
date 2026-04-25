@@ -38,7 +38,7 @@ func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, li
 	root := &cobra.Command{
 		Use:     "goclaw",
 		Short:   "Local Ollama coding agent - tools, verification, and multi-turn execution in the terminal",
-		Long:    "Turn intent into repository changes using native tools (read, edit, shell, tests) against local Ollama. Default mode is build (direct tools in-session; implemented by the internal general-purpose profile). Use --mode plan for read-only planning first, or --profile coordinator for advanced hub mode with spawn_agent workers. Fullscreen TUI on TTY, REPL slash commands, persisted sessions. Override mode with --mode or agent_profile in settings; --profile remains the advanced escape hatch.",
+		Long:    "Turn intent into repository changes using native tools (read, edit, shell, tests) against local Ollama. The primary surface is --mode build for direct coding and --mode plan for read-only planning first. Fullscreen TUI on TTY, REPL slash commands, persisted sessions. Advanced profiles such as builder or coordinator stay available through --profile as an escape hatch.",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			listSessionsFlag, err := cmd.Flags().GetBool("list-sessions")
@@ -55,7 +55,7 @@ func NewRootCmd(version string, runChat RunChatFunc, runPrompt RunPromptFunc, li
 	}
 
 	root.PersistentFlags().String("mode", "", "primary mode (build or plan)")
-	root.PersistentFlags().String("profile", "", "advanced agent profile / compatibility override ("+agents.ProfileListHint()+"; build aliases to general-purpose)")
+	root.PersistentFlags().String("profile", "", "advanced agent profile / compatibility override ("+agents.ProfileListHint()+"; primary flow stays on --mode build or --mode plan)")
 	root.PersistentFlags().String("session", "", "resume an existing session id (JSONL in ~/.goclaw/sessions)")
 	root.PersistentFlags().Bool("list-sessions", false, "list saved session ids and exit")
 	root.PersistentFlags().Bool("no-tools", false, "run without registering tools (chat-only; also GOCLAW_DISABLE_TOOLS=1)")
@@ -167,7 +167,7 @@ func newChatCmd(runChat RunChatFunc) *cobra.Command {
 		Use:   "chat",
 		Short: "Start interactive chat (fullscreen Bubble Tea TUI on a TTY)",
 		Long: `Opens the coding-agent chat: streaming assistant, tool loop, slash commands, and session persistence.
-Default mode is build (direct tools in-session). Use /mode plan for read-only planning first, or /profile coordinator for advanced hub mode with spawn_agent workers.
+Primary flow: /mode build for direct coding, /mode plan for read-only planning first. Advanced direct-coding and hub profiles remain available through /profile builder and /profile coordinator.
 
 On an interactive terminal the UI is fullscreen Bubble Tea (Bubbles textarea + transcript). GOCLAW_USE_TUI=0 on a TTY is unsupported - use a real terminal or --output-format json for pipes.
 Use --mock to stream a canned reply without calling the model (UI / wiring check).

@@ -1,24 +1,29 @@
 # goclaw
 
-This repository’s **only active project** is **goclaw** (this Go module). Other trees at the repo root (for example `claw-code/`) are **reference only** — not part of `go.mod`, not covered by goclaw issues or roadmap.
+This repository's **only active project** is **goclaw** (this Go module). Other trees at the repo root are reference-only and not part of `go.mod`.
 
-Go CLI coding agent — **local-first** with Ollama (`qwen2.5-coder:7b` by default via `config.DefaultOllamaModel`; override with `ollama_model` / `OLLAMA_MODEL`). The CLI talks only to your Ollama daemon; no bundled cloud LLM providers.
+Go CLI coding agent, **local-first** with Ollama (`qwen2.5-coder:7b` by default via `config.DefaultOllamaModel`; override with `ollama_model` / `OLLAMA_MODEL`). The shipped CLI talks to your Ollama daemon only; no bundled cloud LLM providers.
 
 ## Requirements
 
 - **Go** `1.26+` (see `go.mod`)
-- **Default stack:** [Ollama](https://ollama.com/) on `http://localhost:11434` with a model pulled (default model name in settings)
+- **Default stack:** [Ollama](https://ollama.com/) on `http://localhost:11434` with a model pulled
 
-## Quick start
+## Golden Path
 
 ```bash
 cd goclaw
 go run ./cmd/goclaw doctor    # health check
-go run ./cmd/goclaw           # fullscreen TUI on a TTY (default)
-printf 'ping\n' | go run ./cmd/goclaw --mock --no-tools --output-format json  # pipe / CI
+go run ./cmd/goclaw           # fullscreen TUI on a TTY
+printf 'ping\n' | go run ./cmd/goclaw --mock --no-tools --output-format json
 ```
 
-On a TTY, the first interactive launch runs first-time setup until `~/.goclaw/settings.json` exists (see [usage.md — First-run setup](../docs/goclaw/usage.md#first-run-setup-onboarding)).
+Inside the TUI, the primary flow is:
+
+- **`build`** for direct coding
+- **`plan`** for read-only planning first
+
+On a TTY, the first interactive launch runs first-time setup until `~/.goclaw/settings.json` exists (see [usage.md - First-run setup](../docs/goclaw/usage.md#first-run-setup-onboarding)).
 
 Install a binary from this checkout:
 
@@ -26,27 +31,25 @@ Install a binary from this checkout:
 go build -o goclaw ./cmd/goclaw
 ```
 
-Details (modes, sessions, JSON output, troubleshooting): **[usage.md](../docs/goclaw/usage.md)**. If the assistant **explains but never edits files**: **[usage.md — troubleshooting](../docs/goclaw/usage.md#assistant-explains-plans-but-does-not-modify-files)**. Whole-repo audits: **[Large repo analysis and refactors](../docs/goclaw/usage.md#large-repo-analysis-and-refactors)**.
+Details (modes, sessions, JSON output, troubleshooting): **[usage.md](../docs/goclaw/usage.md)**. If the assistant explains but never edits files: **[usage.md - troubleshooting](../docs/goclaw/usage.md#assistant-explains-plans-but-does-not-modify-files)**.
+
+## Why goclaw
+
+- Runs **fully local** with Ollama - no API key required for the default provider.
+- Keeps the primary workflow simple: **`build`** and **`plan`**.
+- Supports persisted **sessions** (JSONL) and **memory** (Markdown under `~/.goclaw/memory/`).
+- Enforces **permissions** per tool (`ask` / `allow` / `deny`) with optional hooks.
+
+## Advanced
+
+- **Profiles** beyond the primary flow stay available through `--profile` or `/profile` (`builder`, `coordinator`, `verification`, `code-review`, and custom agents).
+- **Coordinator mode** is available with `--profile coordinator` when you explicitly want hub-and-worker delegation via `spawn_agent`.
+- **Optional integrations** such as Telegram, plugins, skills, and MCP remote stay supported, but live outside the default day-to-day path.
 
 ## Documentation
 
 **Master index** (every path, audience, reading order, `docs/reference/` contracts): **[docs-map.md](../docs/docs-map.md)**.
 
-**Core links:** [CLAUDE.md](CLAUDE.md) (implementation) · [usage.md](../docs/goclaw/usage.md) (operators) · [ide-editor-setup.md](../docs/goclaw/ide-editor-setup.md) (editor MCP lockfile golden path) · [documentation.md](../docs/goclaw/documentation.md) (where to add docs) · [code-adjustment-map.md](../docs/reference/code-adjustment-map.md) (docs ↔ `internal/*`). **Mock LLM harness:** [scripts/MOCK_PARITY_HARNESS.md](scripts/MOCK_PARITY_HARNESS.md) (`make parity`).
-
-Everything else (roadmap, changelog, architecture hub, tool/MCP/hooks reference): use the tables in **docs-map.md** — from this directory, topic files live under `../docs/goclaw/<name>.md` or `../docs/reference/<name>.md`.
-
-## Why goclaw
-
-- Runs **fully local** with Ollama — no API key required for the default provider.
-- **Profiles** with tool allowlists (`explore`, `plan`, `coordinator`, …) via `--profile` or `settings.json`.
-- **Sessions** (JSONL) and **memory** (Markdown under `~/.goclaw/memory/`).
-- **Permissions** per tool (`ask` / `allow` / `deny`) and optional hooks.
+**Core links:** [CLAUDE.md](CLAUDE.md) · [usage.md](../docs/goclaw/usage.md) · [documentation.md](../docs/goclaw/documentation.md) · [code-adjustment-map.md](../docs/reference/code-adjustment-map.md).
 
 **Development:** `go test ./...`, `go vet ./...`, `make parity`. CI: [`.github/workflows/goclaw-ci.yml`](../.github/workflows/goclaw-ci.yml).
-
-## Multi-agent (brief)
-
-- **Default session:** `general-purpose` (direct file/bash tools on the main agent). Use **`--profile coordinator`** for hub mode (`spawn_agent` / `stop_task` / `todo_write` on the parent). **`make run-hub`** also selects coordinator in this repo. See [coordinator.md](../docs/goclaw/coordinator.md) and [coordinator-mode.md](../docs/reference/coordinator-mode.md).
-- **Not in scope:** Team/Swarm (tmux-style peer agents). The `swarm.md` doc is reference-only in this checkout.
-- **External stacks** (Discord, clawhip, etc.) are optional wrappers around the CLI — not bundled here.

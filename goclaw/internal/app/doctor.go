@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -21,139 +20,13 @@ import (
 
 const doctorMCPDisplayMaxRunes = 72
 
-func DoctorReportFromRuntime(_ context.Context, rt *ChatRuntime) string {
-	if rt == nil {
-		return "doctor: no runtime"
-	}
-	cfg := rt.Cfg
-	taskModelsLine := "task_models: (none)"
-	if n := len(cfg.TaskModels); n > 0 {
-		taskModelsLine = fmt.Sprintf("task_models: %d role(s) mapped", n)
-	}
-	lines := []string{
-		"goclaw doctor",
-		"",
-		fmt.Sprintf("tool path root (default project): %s", rt.Workdir),
-	}
-	if ld := strings.TrimSpace(rt.LaunchDir); ld != "" {
-		if wd := strings.TrimSpace(rt.Workdir); filepath.Clean(ld) != filepath.Clean(wd) {
-			lines = append(lines, fmt.Sprintf("launch cwd: %s (project .goclaw loads from here)", ld))
-		}
-	}
-	lines = append(lines,
-		fmt.Sprintf("session:   %s", rt.Sess.ID),
-		fmt.Sprintf("provider:  %s", cfg.Provider),
-	)
-	lines = append(lines,
-		fmt.Sprintf("model:     %s", cfg.Model()),
-		fmt.Sprintf("ollama_require_wire_tools: %v", cfg.OllamaRequireWireTools),
-		fmt.Sprintf("tui_chat_max_iterations (effective): %d", cfg.EffectiveTUIChatMaxIterations()),
-		fmt.Sprintf("task_model_router: %s", config.NormalizeTaskModelRouter(cfg.TaskModelRouter)),
-		taskModelsLine,
-		fmt.Sprintf("auto_profile_intent: %s", config.NormalizeAutoProfileIntent(cfg.AutoProfileIntent)),
-		fmt.Sprintf("auto_direct_coding_profile: %s", config.NormalizeAutoDirectCodingProfile(cfg.AutoDirectCodingProfile)),
-		fmt.Sprintf("action_repair_escalation: %v", cfg.ActionRepairEscalation),
-		fmt.Sprintf("profile:   %s", agents.DisplayProfileName(rt.Profile.Name)),
-		fmt.Sprintf("file tools: %s", doctorFileToolsLine(rt.Profile)),
-		fmt.Sprintf("tools:     %s", enabledDisabled(!rt.DisableTools)),
-	)
-
-	lines = append(lines, "")
-	webBackend, webBackendOK := config.NormalizeWebSearchBackend(cfg.WebSearchBackend)
-	if !webBackendOK && strings.TrimSpace(cfg.WebSearchBackend) != "" {
-		lines = append(lines, fmt.Sprintf("web_search: unknown backend %q (using ddg)", strings.TrimSpace(cfg.WebSearchBackend)))
-	} else {
-		lines = append(lines, fmt.Sprintf("web_search backend: %s", webBackend))
-	}
-	if webBackend == "brave" {
-		lines = append(lines, checkLine("brave search api key configured", strings.TrimSpace(cfg.BraveSearchAPIKey) != ""))
-	}
-	if webBackend == "serpapi" {
-		lines = append(lines, checkLine("serpapi key configured", strings.TrimSpace(cfg.SerpAPIKey) != ""))
-	}
-	if webBackend != "ddg" {
-		lines = append(lines, fmt.Sprintf("  - fallback to duckduckgo: %v", cfg.WebSearchFallbackDDG))
-	}
-
-	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("user config dir: %s", cfg.UserConfigDir))
-	lines = append(lines, fmt.Sprintf("sessions dir:    %s", filepath.Join(cfg.UserConfigDir, "sessions")))
-	lines = append(lines, fmt.Sprintf("memory dir:      %s", filepath.Join(cfg.UserConfigDir, "memory")))
-
-	lines = append(lines, "")
-	lines = append(lines, ideBridgeDoctorLines(rt)...)
-
-	lines = append(lines, "")
-	lines = append(lines, telegramDoctorLines(rt)...)
-
-	lines = append(lines, "")
-	lines = append(lines, "checks:")
-	var ollamaOK bool
-	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
-	case "anthropic":
-		lines = append(lines, "  ✗ provider \"anthropic\" is no longer supported — set \"provider\" to \"ollama\"")
-	case "openai_compatible":
-		lines = append(lines, "  ✗ provider \"openai_compatible\" is not supported — goclaw uses local Ollama only; set \"provider\" to \"ollama\" and use ollama_model")
-	default:
-		ollamaHost := effectiveOllamaHost(cfg.OllamaHost)
-		probe := rt.OllamaProbe
-		ollamaOK = probe.Reachable
-		lines = append(lines, checkLine("ollama host reachable", ollamaOK))
-		lines = append(lines, fmt.Sprintf("  - ollama host: %s", ollamaHost))
-		lines = append(lines, fmt.Sprintf("  - ollama_num_ctx: %d", cfg.OllamaNumCtx))
-		if !rt.DisableTools && cfg.OllamaNumCtx > 0 && cfg.OllamaNumCtx < 8192 {
-			lines = append(lines, "  ! ollama_num_ctx below 8192 may be tight for tool schemas — raise toward 16384+ if the model rejects tools or truncates system context")
-		}
-		if ollamaOK {
-			modelName := strings.TrimSpace(cfg.Model())
-			if modelName != "" {
-				lines = append(lines, checkLine("configured model in local ollama library", probe.ModelInLibrary))
-				if !probe.ModelInLibrary {
-					lines = append(lines, "    fix: ollama pull "+modelName)
-				}
-			}
-			lines = append(lines, ollamaExtraModelCheckLines(cfg, probe.ModelNames)...)
-		}
-		if OllamaFunctionToolsDropped(rt) {
-			lines = append(lines, "  ✗ ollama rejected tool calling — running text-only this session")
-		} else {
-			lines = append(lines, "  ✓ ollama tool calling active")
-		}
-	}
-
-	lines = append(lines, checkLine("session store initialized", rt.Store != nil))
-
-	lines = append(lines, mcpSummaryLines(rt)...)
-
-	hintLines := hintLines(cfg, ollamaOK, rt.OllamaProbe.ModelInLibrary, rt.DisableTools, OllamaFunctionToolsDropped(rt))
-	hintLines = append(hintLines, profileHintLines(rt.Profile)...)
-	hintLines = append(hintLines, writeToolApprovalHintLines(rt)...)
-	hintLines = append(hintLines, mcpConnectionHintLines(cfg, rt)...)
-	if len(hintLines) > 0 {
-		lines = append(lines, "")
-		lines = append(lines, "hints:")
-		lines = append(lines, hintLines...)
-	}
-
-	lines = append(lines, "")
-	lines = append(lines, mcpServerSection(rt)...)
-
-	lines = append(lines, "")
-	lines = append(lines, toolPermissionSection(rt)...)
-
-	lines = append(lines, "")
-	lines = append(lines, pluginSkillMemorySection(rt)...)
-
-	return strings.Join(lines, "\n")
-}
-
 func pluginSkillMemorySection(rt *ChatRuntime) []string {
 	out := []string{"plugins / skills / memory:"}
 	out = append(out, fmt.Sprintf("  plugin_dirs configured: %d", len(rt.Cfg.PluginDirs)))
 	out = append(out, fmt.Sprintf("  plugin manifests (allowed): %d", countPluginManifests(rt)))
 	roots := skillRootsForDoctor(rt)
 	out = append(out, fmt.Sprintf("  skill search roots: %d", len(roots)))
-	// Only aggregate SKILL.md from the tool path root here — user home skill trees can be large;
+	// Only aggregate SKILL.md from the tool path root here - user home skill trees can be large;
 	// snippet size matches what startup injects from the repo, not the full merged prompt.
 	wsSkillRoots := workspaceSkillRootsOnly(rt)
 	snippet, _ := skills.Collect(wsSkillRoots, skillsMaxRunes)
@@ -173,7 +46,7 @@ func pluginSkillMemorySection(rt *ChatRuntime) []string {
 	if memIndex {
 		out = append(out, checkLine("memory index MEMORY.md present under ~/.goclaw/memory/", true))
 	} else {
-		out = append(out, "  ✗ memory index MEMORY.md missing (optional; create ~/.goclaw/memory/MEMORY.md or add memory entries)")
+		out = append(out, "  x memory index MEMORY.md missing (optional; create ~/.goclaw/memory/MEMORY.md or add memory entries)")
 	}
 	return out
 }
@@ -300,7 +173,7 @@ func mcpConnectionHintLines(cfg config.Config, rt *ChatRuntime) []string {
 			continue
 		}
 		if verr := mcp.ValidateHTTPURL(parsed, false); verr != nil && !cfg.MCPServersAllowRemote {
-			out = append(out, fmt.Sprintf("  MCP %q: %v — or set \"mcp_allow_remote_urls\": true if you trust this host.", srv.ID, verr))
+			out = append(out, fmt.Sprintf("  MCP %q: %v - or set \"mcp_allow_remote_urls\": true if you trust this host.", srv.ID, verr))
 		}
 		host := strings.ToLower(parsed.Hostname())
 		if strings.HasPrefix(strings.ToLower(u), "https://") && (host == "127.0.0.1" || host == "localhost" || host == "::1") {
@@ -330,7 +203,7 @@ func doctorFileToolsLine(p agents.Profile) string {
 	if p.AllowsWorkspaceFileWrites() {
 		return "write_file / edit_file / patch exposed to model"
 	}
-	return "hidden (read-only or narrow tool_allowlist — model cannot call write tools)"
+	return "hidden (read-only or narrow tool_allowlist - model cannot call write tools)"
 }
 
 func profileHintLines(p agents.Profile) []string {
@@ -343,13 +216,13 @@ func profileHintLines(p agents.Profile) []string {
 	if p.AllowsSpawnAgentDelegation() {
 		out = append(out,
 			"  Hub-style profile: delegate coding with spawn_agent (e.g. profile coordinator or a custom hub profile).",
-			"  Put file paths and acceptance criteria in the task field — workers do not see this chat.",
-			"  For direct edits in this same session: /mode build — or set \"agent_profile\": \"build\" in .goclaw/settings.json",
+			"  Put file paths and acceptance criteria in the task field - workers do not see this chat.",
+			"  For direct edits in this same session: /mode build - or set \"agent_profile\": \"build\" in .goclaw/settings.json",
 		)
 	} else {
 		out = append(out,
 			"  For file edits and coding in this session: /mode build",
-			"  — or set \"agent_profile\": \"build\" in .goclaw/settings.json",
+			"  - or set \"agent_profile\": \"build\" in .goclaw/settings.json",
 		)
 	}
 	return out
@@ -363,12 +236,12 @@ func writeToolApprovalHintLines(rt *ChatRuntime) []string {
 	ef := rt.Policy.Evaluate("edit_file")
 	if wf == permissions.DecisionDeny || ef == permissions.DecisionDeny {
 		return []string{
-			"  tool_permissions sets write_file or edit_file to deny — the agent cannot persist those edits until you change settings.",
+			"  tool_permissions sets write_file or edit_file to deny - the agent cannot persist those edits until you change settings.",
 		}
 	}
 	if wf == permissions.DecisionAsk || ef == permissions.DecisionAsk {
 		return []string{
-			"  write_file / edit_file are on ask mode: workspace-relative writes (score 60) are auto-approved via yolo_threshold — only script and absolute-path writes require explicit approval.",
+			"  write_file / edit_file are on ask mode: workspace-relative writes (score 60) are auto-approved via yolo_threshold - only script and absolute-path writes require explicit approval.",
 		}
 	}
 	return nil
@@ -384,14 +257,14 @@ func hintLines(cfg config.Config, ollamaOK, ollamaModelInLibrary, toolsDisabled,
 	}
 	if config.NormalizeTaskModelRouter(cfg.TaskModelRouter) != "off" && len(cfg.TaskModels) == 0 {
 		hints = append(hints,
-			"  task_model_router is not \"off\" but task_models is empty — per-turn model routing is inactive.",
+			"  task_model_router is not \"off\" but task_models is empty - per-turn model routing is inactive.",
 			"  - Add a \"task_models\" map in settings.json or set task_model_router to \"off\".",
 		)
 	}
 	if strings.EqualFold(strings.TrimSpace(cfg.AgentProfile), "coordinator") && config.NormalizeAutoDirectCodingProfile(cfg.AutoDirectCodingProfile) == "off" {
 		hints = append(hints,
 			"  agent_profile is coordinator (hub): the parent session cannot run read_file/bash directly.",
-			"  - For single-window coding: set \"auto_direct_coding_profile\" to \"general-purpose\" or \"builder\", optionally with \"auto_profile_intent\": \"rules\", or use /mode build in-session.",
+			"  - For single-window coding: set \"auto_direct_coding_profile\" to \"build\" or \"builder\", optionally with \"auto_profile_intent\": \"rules\", or use /mode build in-session.",
 		)
 	}
 	if cfg.LLMCompaction {
@@ -430,13 +303,13 @@ func hintLines(cfg config.Config, ollamaOK, ollamaModelInLibrary, toolsDisabled,
 	if ollamaToolsDropped {
 		model := strings.TrimSpace(cfg.OllamaModel)
 		hints = append(hints,
-			"  Ollama rejected tool calling for model "+model+" — goclaw is running text-only (no read_file/bash/etc).",
+			"  Ollama rejected tool calling for model "+model+" - goclaw is running text-only (no read_file/bash/etc).",
 			"  Likely causes:",
-			"  1. Model too old — re-pull it:  ollama pull "+model,
-			"  2. Ollama version too old — update Ollama to v0.3+ (https://ollama.com)",
-			fmt.Sprintf("  3. Context too small for tool schemas — set \"ollama_num_ctx\": %d (or higher) in ~/.goclaw/settings.json", config.DefaultOllamaNumCtx),
+			"  1. Model too old - re-pull it:  ollama pull "+model,
+			"  2. Ollama version too old - update Ollama to v0.3+ (https://ollama.com)",
+			fmt.Sprintf("  3. Context too small for tool schemas - set \"ollama_num_ctx\": %d (or higher) in ~/.goclaw/settings.json", config.DefaultOllamaNumCtx),
 			fmt.Sprintf("  Current ollama_num_ctx: %d", cfg.OllamaNumCtx),
-			"  4. Prefer a tool-trained tag (e.g. qwen2.5-coder:7b) — see docs/goclaw/ollama-stack.md",
+			"  4. Prefer a tool-trained tag (e.g. qwen2.5-coder:7b) - see docs/goclaw/ollama-stack.md",
 		)
 	}
 	if cfg.OllamaRequireWireTools {
@@ -452,7 +325,7 @@ func mcpServerSection(rt *ChatRuntime) []string {
 	out := []string{"mcp servers:"}
 	servers := rt.Cfg.MCPServers
 	if len(servers) == 0 {
-		out = append(out, "  (none in settings.json — add \"mcp_servers\" with \"command\" and/or \"url\")")
+		out = append(out, "  (none in settings.json - add \"mcp_servers\" with \"command\" and/or \"url\")")
 		return out
 	}
 	connected := make(map[string]struct{}, len(rt.McpConnectedIDs))
@@ -471,18 +344,18 @@ func formatMCPServerLine(srv config.MCPServerConfig, toolsDisabled bool, connect
 	url := strings.TrimSpace(srv.URL)
 	prefix := "  "
 	if srv.Disabled {
-		return prefix + "○ disabled  id=" + emptyPlaceholder(id) + "  " + shortCommandSummary(srv)
+		return prefix + "disabled  id=" + emptyPlaceholder(id) + "  " + shortCommandSummary(srv)
 	}
 	if id == "" || (cmd == "" && url == "") {
-		return prefix + "✗ invalid  (need non-empty id and command or url)  id=" + emptyPlaceholder(id)
+		return prefix + "invalid  (need non-empty id and command or url)  id=" + emptyPlaceholder(id)
 	}
 	if toolsDisabled {
-		return prefix + "○ not started  id=" + id + "  (tools disabled)  " + shortCommandSummary(srv)
+		return prefix + "not started  id=" + id + "  (tools disabled)  " + shortCommandSummary(srv)
 	}
 	if _, ok := connected[id]; ok {
-		return prefix + "✓ connected  id=" + id + "  " + shortCommandSummary(srv)
+		return prefix + "connected  id=" + id + "  " + shortCommandSummary(srv)
 	}
-	return prefix + "✗ not connected  id=" + id + "  " + shortCommandSummary(srv)
+	return prefix + "not connected  id=" + id + "  " + shortCommandSummary(srv)
 }
 
 func emptyPlaceholder(s string) string {
@@ -527,7 +400,7 @@ func toolPermissionSection(rt *ChatRuntime) []string {
 		out = append(out, fmt.Sprintf("  %s: %s", sp.Name, label))
 	}
 	if len(rt.Cfg.PermissionModes) == 0 {
-		out = append(out, "  (no tool_permissions in settings — all of the above use the default: ask)")
+		out = append(out, "  (no tool_permissions in settings - all of the above use the default: ask)")
 	} else {
 		out = append(out, "  (entries in settings.json override defaults only for named tools)")
 	}
@@ -554,9 +427,9 @@ func enabledDisabled(ok bool) string {
 
 func checkLine(name string, ok bool) string {
 	if ok {
-		return "  ✓ " + name
+		return "  ok " + name
 	}
-	return "  ✗ " + name
+	return "  x " + name
 }
 
 func effectiveOllamaHost(host string) string {
@@ -591,7 +464,7 @@ func ideBridgeDoctorLines(rt *ChatRuntime) []string {
 			out = append(out, "    "+truncate(notifyRaw, doctorMCPDisplayMaxRunes))
 		} else {
 			out = append(out, checkLine("GOCLAW_IDE_NOTIFY_URL loopback", false))
-			out = append(out, "    (invalid URL, scheme, or non-loopback host — see startup logs)")
+			out = append(out, "    (invalid URL, scheme, or non-loopback host - see startup logs)")
 		}
 	}
 
@@ -601,7 +474,7 @@ func ideBridgeDoctorLines(rt *ChatRuntime) []string {
 		return out
 	}
 	if !cfg.IDEBridgeMCP {
-		out = append(out, "  ide lockfile MCP: off (set \"ide_bridge_mcp\": true — see docs/goclaw/ide-editor-setup.md)")
+		out = append(out, "  ide lockfile MCP: off (set \"ide_bridge_mcp\": true - see docs/goclaw/ide-editor-setup.md)")
 		return out
 	}
 	endpoint, _, err := ide.DiscoverMCPEndpoint(ideDir)
@@ -634,14 +507,14 @@ func telegramDoctorLines(rt *ChatRuntime) []string {
 		out = append(out, fmt.Sprintf("    token length: %d characters", len(tok)))
 	} else {
 		out = append(out, checkLine("telegram bot token configured", false))
-		out = append(out, "    (unset — see docs/goclaw/telegram-bridge.md)")
+		out = append(out, "    (unset - see docs/goclaw/telegram-bridge.md)")
 	}
 	n := len(cfg.TelegramAllowedUserIDs)
 	out = append(out, checkLine("telegram_allowed_user_ids non-empty", n > 0))
 	if n > 0 {
 		out = append(out, fmt.Sprintf("    allowlist count: %d", n))
 	} else if hasToken {
-		out = append(out, "    warning: token set but allowlist empty — goclaw telegram bridge will exit")
+		out = append(out, "    warning: token set but allowlist empty - goclaw telegram bridge will exit")
 		out = append(out, "    hint: goclaw telegram user add <numeric-id-or-@username>")
 	}
 	if sid := strings.TrimSpace(cfg.TelegramSessionID); sid != "" {
@@ -651,7 +524,7 @@ func telegramDoctorLines(rt *ChatRuntime) []string {
 }
 
 // ollamaExtraModelCheckLines verifies that compaction_model and task_models entries are present
-// in the Ollama library and emits ✓/✗ lines for each one that is explicitly configured.
+// in the Ollama library and emits ok/x lines for each one that is explicitly configured.
 func ollamaExtraModelCheckLines(cfg config.Config, listedNames []string) []string {
 	var out []string
 	mainModel := strings.TrimSpace(cfg.Model())
@@ -664,7 +537,6 @@ func ollamaExtraModelCheckLines(cfg config.Config, listedNames []string) []strin
 		}
 	}
 
-	// De-duplicate task_models values — multiple roles can share the same model tag.
 	seen := make(map[string]struct{})
 	for role, modelTag := range cfg.TaskModels {
 		tag := strings.TrimSpace(modelTag)

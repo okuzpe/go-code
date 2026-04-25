@@ -104,7 +104,7 @@ func applyPlanExecute(env SlashEnv, orch *orchestrator.Orchestrator, wd, pathTai
 		} else {
 			gp, ok := env.Profs["general-purpose"]
 			if !ok {
-				return "", "", fmt.Errorf("general-purpose profile missing")
+				return "", "", fmt.Errorf("build profile missing")
 			}
 			orch.SetProfile(gp)
 			notice = fmt.Sprintf("switched to mode build; executing plan steps (%d turns): %s", len(msgs), p)
@@ -130,7 +130,7 @@ func applyPlanExecute(env SlashEnv, orch *orchestrator.Orchestrator, wd, pathTai
 	} else {
 		gp, ok := env.Profs["general-purpose"]
 		if !ok {
-			return "", "", fmt.Errorf("general-purpose profile missing")
+			return "", "", fmt.Errorf("build profile missing")
 		}
 		orch.SetProfile(gp)
 		notice = fmt.Sprintf("switched to mode build; executing plan: %s", p)

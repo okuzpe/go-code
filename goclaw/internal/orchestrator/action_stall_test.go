@@ -45,6 +45,11 @@ func (s staticToolResult) Execute(context.Context, string) (tools.Result, error)
 
 func newActionStallOrch(t *testing.T, client llm.Client, reg *tools.Registry, cfg config.Config) *Orchestrator {
 	t.Helper()
+	return newActionStallOrchWithProfile(t, client, reg, cfg, agents.GeneralPurpose)
+}
+
+func newActionStallOrchWithProfile(t *testing.T, client llm.Client, reg *tools.Registry, cfg config.Config, profile agents.Profile) *Orchestrator {
+	t.Helper()
 	pol := permissions.NewPolicy()
 	for _, spec := range reg.AllSpecs() {
 		pol.Set(spec.Name, permissions.ModeAllow)
@@ -56,7 +61,7 @@ func newActionStallOrch(t *testing.T, client llm.Client, reg *tools.Registry, cf
 		reg,
 		pol,
 		hooks.New(),
-		agents.GeneralPurpose,
+		profile,
 	)
 }
 
@@ -105,7 +110,7 @@ func TestOrchestratorActionStalledAfterRepeatedReadOnlyRounds(t *testing.T) {
 	reg.Register(tools.NewReadFile(dir))
 	reg.Register(staticTool{name: "edit_file", content: "edited"})
 
-	orch := newActionStallOrch(t, testOpenAIClient(srv), reg, cfg)
+	orch := newActionStallOrchWithProfile(t, testOpenAIClient(srv), reg, cfg, agents.Builder)
 	_, err := orch.Run(context.Background(), "improve the repo")
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrActionStalled)

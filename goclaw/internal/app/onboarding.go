@@ -42,7 +42,7 @@ func securityDocURL() string {
 func onboardingCompletionProfileHint(agentProfile string) string {
 	switch strings.ToLower(strings.TrimSpace(agentProfile)) {
 	case "build", "general-purpose":
-		return "Tip: you picked build mode for direct coding. Use /mode plan when you want review first, or /profile coordinator for advanced hub delegation with spawn_agent."
+		return "Tip: you picked build mode for direct coding. Use /mode plan when you want review first, or /profile coordinator for advanced hub delegation."
 	case "plan":
 		return "Tip: you picked plan mode for read-only analysis first. When the plan looks right, use /mode build to implement it in this session."
 	default:

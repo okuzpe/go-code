@@ -141,7 +141,7 @@ func TestVerifyChangedPathsBlock(t *testing.T) {
 			"internal/a.go": true,
 		},
 	}
-	block := verifyChangedPathsBlock(ut, "C:/repo")
+	block := verifyChangedPathsBlock(ut, "C:/repo", false)
 	if !strings.Contains(block, "Verify changed files") {
 		t.Fatalf("expected verify header: %q", block)
 	}
@@ -155,13 +155,13 @@ func TestVerifyChangedPathsBlock(t *testing.T) {
 
 func TestVerifyChangedPathsBlockIncludesRequiredVerifyRerun(t *testing.T) {
 	ut := &userTurnState{
-		verifyPending:        true,
-		changedPaths:         map[string]bool{"internal/a.go": true},
-		requiredVerifyLabel:  "go build ./...",
-		requiredVerifyKind:   "command",
-		requiredVerifySig:    "go build ./...",
+		verifyPending:       true,
+		changedPaths:        map[string]bool{"internal/a.go": true},
+		requiredVerifyLabel: "go build ./...",
+		requiredVerifyKind:  "command",
+		requiredVerifySig:   "go build ./...",
 	}
-	block := verifyChangedPathsBlock(ut, "C:/repo")
+	block := verifyChangedPathsBlock(ut, "C:/repo", false)
 	if !strings.Contains(block, "Re-run the last failed verification before ending: `go build ./...`.") {
 		t.Fatalf("expected required verify rerun in block: %q", block)
 	}

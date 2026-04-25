@@ -66,6 +66,9 @@ func ClassifyProfileIntentRules(userMessage string) ProfileIntentResult {
 	if verifyOnlySignals(lower) {
 		return ProfileIntentResult{Intent: ProfileIntentVerifyOnly, Confidence: ProfileIntentConfidenceMedium}
 	}
+	if repoWideAuditSignals(lower) {
+		return ProfileIntentResult{Intent: ProfileIntentPlanOnly, Confidence: ProfileIntentConfidenceHigh}
+	}
 	if planOnlySignals(lower) {
 		return ProfileIntentResult{Intent: ProfileIntentPlanOnly, Confidence: ProfileIntentConfidenceMedium}
 	}
@@ -121,6 +124,28 @@ func planOnlySignals(lower string) bool {
 		"implementation plan", "write a plan", "plan only", "roadmap only",
 		"step-by-step plan", "design doc", "architecture plan",
 	}) && !userMessageWantsWorkspaceWrites(lower)
+}
+
+func repoWideAuditSignals(lower string) bool {
+	return containsAny(lower, []string{
+		"audit the whole repo",
+		"audit the whole repository",
+		"audit the repo",
+		"find all gaps",
+		"continuous improvement",
+		"continue improving",
+		"keep improving",
+		"align the system with its own design",
+		"align docs",
+		"align the documentation",
+		"documentation as source of truth",
+		"compare docs with code",
+		"compare documentation with code",
+		"repo-wide audit",
+		"whole codebase",
+		"entire repo",
+		"entire repository",
+	})
 }
 
 func readOnlyScanSignals(lower, role string) bool {

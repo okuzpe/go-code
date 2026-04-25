@@ -48,6 +48,9 @@ func (o *Orchestrator) effectiveMaxActionNudges() int {
 	if o == nil {
 		return defaultActionNudgesPerUserTurn
 	}
+	if o.usesBuildLiteRuntime() {
+		return 1
+	}
 	n := o.cfg.AutoContinueActionMaxNudges
 	if n <= 0 {
 		return defaultActionNudgesPerUserTurn
@@ -56,6 +59,14 @@ func (o *Orchestrator) effectiveMaxActionNudges() int {
 		return maxActionNudgesCap
 	}
 	return n
+}
+
+func buildLiteActionContinueNudgeMessage() string {
+	return `[goclaw] The user asked for concrete code improvements. Continue with native tool calls only: inspect with read_file/glob/grep, apply the change with edit_file/write_file/patch, then verify with run_tests or run_command. Do not finish with prose-only before the edit and verification path is complete.` + fakeToolsMarkdownBan
+}
+
+func buildLiteActionFirstTurnNoToolsNudgeMessage() string {
+	return `[goclaw] The user asked for code or repository changes. Your last completion had no native tool calls. Reply with tool calls only on the next turn: inspect with read_file/glob/grep, then edit_file/write_file/patch, then verify with run_tests or run_command.` + fakeToolsMarkdownBan
 }
 
 // workspaceWriteIntentKeywords are lowercase substrings: if any appears in the user
@@ -273,9 +284,15 @@ func (o *Orchestrator) pickActionContinueNudge(
 		return "", false
 	}
 	if hadToolRound && lastBatchReadOnly && toolCalls > 0 {
+		if o.usesBuildLiteRuntime() {
+			return buildLiteActionContinueNudgeMessage(), true
+		}
 		return actionContinueNudgeMessage, true
 	}
 	if !hadToolRound && toolCalls == 0 {
+		if o.usesBuildLiteRuntime() {
+			return buildLiteActionFirstTurnNoToolsNudgeMessage(), true
+		}
 		return actionFirstTurnNoToolsNudgeMessage, true
 	}
 	return "", false

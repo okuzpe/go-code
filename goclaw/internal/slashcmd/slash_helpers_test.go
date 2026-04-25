@@ -25,6 +25,8 @@ func TestPreChatHelpSummary_withWorkdir(t *testing.T) {
 	summary := PreChatHelpSummary("/workspace")
 	require.Contains(t, summary, "Slash commands")
 	require.Contains(t, summary, "/apply-plan")
+	require.Contains(t, summary, "Primary flow")
+	require.Contains(t, summary, "Advanced:")
 	require.Contains(t, summary, "Plan file:")
 }
 
@@ -66,4 +68,13 @@ func TestPreviewRunes_newlinesReplaced(t *testing.T) {
 func TestPreviewRunes_emptyOrZeroMax(t *testing.T) {
 	require.Equal(t, "", previewRunes("", 10))
 	require.Equal(t, "", previewRunes("text", 0))
+}
+
+func TestFormatAgentsList_GroupsPrimaryAndAdvanced(t *testing.T) {
+	out := formatAgentsList(agents.All(), "general-purpose", SlashEnv{})
+	require.Contains(t, out, "### Primary modes")
+	require.Contains(t, out, "### Advanced profiles")
+	require.Contains(t, out, "**build** (active)")
+	require.Contains(t, out, "`plan`")
+	require.Contains(t, out, "`builder`")
 }

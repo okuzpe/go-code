@@ -47,7 +47,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 	// Translate non-English input to English before the LLM sees it (opt-in or default-on).
 	// The language-reply hint uses turnInputLang (the original) so the model answers in the
 	// user's language even though the session now holds the English translation.
-	if o.cfg.NormalizeInputLanguage && origLang != "" && origLang != "en" {
+	if !o.usesBuildLiteRuntime() && o.cfg.NormalizeInputLanguage && origLang != "" && origLang != "en" {
 		translateStart := time.Now()
 		userMessage = normalizeInputToEnglish(ctx, o.llm, o.cfg.ModelForCompaction(), userMessage)
 		metrics.translation = time.Since(translateStart)
@@ -154,7 +154,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			if verifyGateShouldInjectNudge(o.cfg, o.ut, o.profile.ReadOnly) {
 				o.session.AddAssistant(response, nil)
 				verifyGateApplyNudge(o.ut)
-				o.session.Add("user", verifyAfterWriteNudgeMessage)
+				o.session.Add("user", verifyAfterWriteNudge(o.usesBuildLiteRuntime()))
 				slog.Debug("orchestrator: verify-after-write nudge")
 				continue
 			}
@@ -189,7 +189,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			if sink != nil {
 				sink.OnDone(response)
 			}
-			if toolCalls == 0 {
+			if toolCalls == 0 && !o.usesBuildLiteRuntime() {
 				extractModel := o.cfg.Model()
 				if mo := strings.TrimSpace(o.profile.ModelOverride); mo != "" {
 					extractModel = o.cfg.NormalizeModelForProvider(mo)
@@ -224,7 +224,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 			names[i] = tu.Name
 		}
 		parallel := len(pendingTools) > 1 &&
-			len(pendingTools) <= o.cfg.EffectiveParallelToolBatchMax() &&
+			len(pendingTools) <= o.effectiveParallelToolBatchMax() &&
 			o.allToolsAutoApprove(pendingTools) &&
 			!toolpolicy.PendingToolsBlockParallel(names)
 		var results []llm.ToolResultRecord
@@ -306,7 +306,7 @@ func (o *Orchestrator) runUserTurn(ctx context.Context, userMessage string, sink
 		if workspaceWriteOK {
 			readOnlyToolRounds = 0
 		}
-		if !reflectionFired && o.cfg.EnableReflectionNudge &&
+		if !reflectionFired && !o.usesBuildLiteRuntime() && o.cfg.EnableReflectionNudge &&
 			readOnlyToolRounds >= reflectionTriggerRounds &&
 			!workspaceWriteOK && !o.profile.ReadOnly &&
 			toolSpecsAllowWorkspaceWrite(o.effectiveToolSpecs()) &&

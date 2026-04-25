@@ -158,6 +158,22 @@ func WithProjectContext(ctx string) Option {
 	}
 }
 
+// WithProjectContextThin injects a reduced project summary (no CLAUDE.md / standing orders).
+func WithProjectContextThin(ctx string) Option {
+	return func(o *Orchestrator) {
+		o.projectContextThin = strings.TrimSpace(ctx)
+		o.resetEnvSystemCache()
+	}
+}
+
+// WithProjectContextLite injects the minimal build-lite project summary.
+func WithProjectContextLite(ctx string) Option {
+	return func(o *Orchestrator) {
+		o.projectContextLite = strings.TrimSpace(ctx)
+		o.resetEnvSystemCache()
+	}
+}
+
 // Orchestrator wires all subsystems and drives the agent loop.
 type Orchestrator struct {
 	cfg          config.Config
@@ -182,6 +198,10 @@ type Orchestrator struct {
 
 	// projectContext is a brief project summary injected into the system prompt (optional).
 	projectContext string
+	// projectContextThin omits repo conventions; used by plan/explore-style turns.
+	projectContextThin string
+	// projectContextLite is the minimal context used by build-lite.
+	projectContextLite string
 
 	// ut holds per-user-turn state; non-nil only during runUserTurn.
 	ut *userTurnState
@@ -241,6 +261,17 @@ func (o *Orchestrator) resetEnvSystemCache() {
 	o.cachedEnvSystem = ""
 }
 
+func (o *Orchestrator) syncWireToolRequirement() {
+	if o == nil {
+		return
+	}
+	oc, ok := o.llm.(*llm.OllamaClient)
+	if !ok {
+		return
+	}
+	oc.RequireWireTools = o.cfg.OllamaRequireWireTools || o.usesBuildLiteRuntime()
+}
+
 // New creates an Orchestrator with the provided subsystems.
 func New(
 	cfg config.Config,
@@ -264,6 +295,7 @@ func New(
 	for _, opt := range opts {
 		opt(o)
 	}
+	o.syncWireToolRequirement()
 	return o
 }
 
@@ -287,6 +319,13 @@ func (o *Orchestrator) effectiveMaxToolCalls() int {
 		return 512
 	}
 	return n
+}
+
+func (o *Orchestrator) effectiveParallelToolBatchMax() int {
+	if o != nil && o.usesBuildLiteRuntime() {
+		return 1
+	}
+	return o.cfg.EffectiveParallelToolBatchMax()
 }
 
 // TaskRole returns the classified task role for the current turn (e.g. "fix", "code", "explore").
@@ -360,12 +399,14 @@ func (o *Orchestrator) ReplaceSession(s *session.Session) {
 func (o *Orchestrator) SetProfile(p agents.Profile) {
 	o.profile = p
 	o.resetEnvSystemCache()
+	o.syncWireToolRequirement()
 }
 
 // SetConfig replaces the orchestrator config snapshot (e.g. after /model in the REPL).
 func (o *Orchestrator) SetConfig(cfg config.Config) {
 	o.cfg = cfg
 	o.resetEnvSystemCache()
+	o.syncWireToolRequirement()
 }
 
 // SetToolPermission overrides the permission mode for a single tool in the active policy.

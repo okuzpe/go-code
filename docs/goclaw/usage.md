@@ -10,23 +10,23 @@ Prerequisite: Ollama on `http://localhost:11434` with models pulled for your `ol
 cd goclaw
 go run ./cmd/goclaw doctor
 go run ./cmd/goclaw              # fullscreen TUI on TTY (default)
-go run ./cmd/localagent          # same CLI as goclaw (alternate entrypoint for local installs)
 printf 'ping\n' | go run ./cmd/goclaw --mock --no-tools --output-format json   # pipes / CI (no TTY REPL)
 ```
 
-Try: a simple repo question, a tool (e.g. web search), and `/doctor` or `goclaw doctor`.
+Golden path inside the TUI:
+
+1. start in **`build`** for direct coding
+2. switch to **`plan`** when you want a read-only implementation plan first
+3. run `/plan run` or `/apply-plan` when you are ready to execute
+4. use `/continue` to keep the same task moving
 
 ### Local-first agent (sessions, tools, Ollama)
 
-- **Binaries:** `go run ./cmd/goclaw` or `go run ./cmd/localagent` — same Cobra root, fullscreen chat, doctor, and sessions. Build either with `go build -ldflags "-X main.Version=…" ./cmd/goclaw` or `./cmd/localagent`.
+- **Primary binary:** `go run ./cmd/goclaw` — fullscreen chat, doctor, sessions, tools, and plan/apply flow.
 - **Sessions** (roles, tool traces, plain export) persist as JSONL under `~/.goclaw/sessions/<id>.jsonl` on exit or `/save` (see [Sessions and memory](#sessions-and-memory) below).
 - **Ollama:** set `OLLAMA_HOST` / `OLLAMA_MODEL` or `ollama_host` / `ollama_model` in `~/.goclaw/settings.json`. Use a **tools-capable** model (defaults target `qwen2.5-coder`); if the daemon rejects wire tools, the idle footer shows `Ollama text-only (no tool wire · /doctor)` — run **`/doctor`** or `goclaw doctor` for remediation. Raise **`ollama_num_ctx`** if context feels tight (see [Quick start](#quick-start-ollama) and compaction notes below).
 - **Interact mode (Ctrl+M):** cycles **chat · code · agent** in the footer. This now steers the orchestrator for that send (system hint + lower iteration cap in **chat** mode). It is not the same as **`agent_profile`** (`/profile`, `agent_profile` in settings).
 - **Tool output in the TUI:** **Ctrl+T** opens tool history; in **Ctrl+B** transcript browse, **[** / **]** focus a tool card and **e** toggles an expanded raw body in the transcript (large outputs are still capped; use Ctrl+T for the full step log).
-
-### Advanced / optional
-
-Not required for a first session on one machine: [telegram-bridge.md](./telegram-bridge.md) (Bot API bridge), [model-routing.md](./model-routing.md) (`task_models` per-turn routing), local [plugins.md](../reference/plugins.md) and [skills.md](../reference/skills.md) (SKILL.md snippets in the system prompt). [swarm.md](./swarm.md) remains reference-only in this checkout.
 
 ### Large repo analysis and refactors
 
@@ -49,7 +49,7 @@ Each session, goclaw builds a **project context** string from the tool workspace
 - **`CLAUDE.md`** at the workspace root — only the **first N lines** are included (default **60**). Put the highest-priority standing rules at the **top** of the file. Override the cap with **`project_context_claude_md_lines`** in `~/.goclaw/settings.json` or project `.goclaw/settings.json` (values are clamped to **1..200**).
 - **Standing orders file** — If **`.goclaw/STANDING_ORDERS.md`** exists under the workspace root, its contents are appended to the project context (after `README` / manifest snippets and `CLAUDE.md`). Alternatively, set **`project_context_standing_orders_path`** to any **workspace-relative** path (must not escape the workspace; absolute paths are rejected). Limit lines with **`project_context_standing_orders_max_lines`** (default **40**, clamped to **1..120**); the injected block is also capped by bytes so prompts stay bounded.
 
-**Workflow tip:** For coordinated multi-step work, keep **`coordinator`** with **`spawn_agent`** and **`todo_write`**, maintain **`.goclaw/plan.md`** (or another progress file) with real **`write_file` / `edit_file` / `patch`** outcomes, or add a custom agent under **`.goclaw/agents/`** (see the `improver` example in the goclaw tree). Maintainer-oriented detail: **[CLAUDE.md](../../goclaw/CLAUDE.md)** — section *Iterative work and standing orders*.
+**Workflow tip:** For multi-step work, keep the loop simple: draft in **`plan`**, switch to **`build`** to apply changes, and verify with real write tools plus `git diff` or tests. Maintainer-oriented detail: **[CLAUDE.md](../../goclaw/CLAUDE.md)** - section *Iterative work and standing orders*.
 
 ### First-run setup (onboarding)
 
@@ -58,7 +58,7 @@ The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings
 1. Security summary (optional full text is bundled; same content as [security.md](./security.md))
 2. Workspace trust for the current directory (`trusted_workspace` in project `.goclaw/settings.json`)
 3. **TUI appearance** preset (fullscreen mode only; change later with `/theme`)
-4. **Agent profile** — direct coding (**`general-purpose`**) or hub (**`coordinator`**); written to `agent_profile` in `~/.goclaw/settings.json` (defaults to **`general-purpose`** in `config.Default()` if you skip onboarding with `GOCLAW_NO_ONBOARDING=1`). **Esc** on this step goes back to appearance.
+4. **Primary mode** — direct coding (**`build`**) or read-only planning (**`plan`**); written to `agent_profile` in `~/.goclaw/settings.json`. **Esc** on this step goes back to appearance.
 5. **Provider**: Ollama (local); host and model are written under `~/.goclaw/` as described below
 
 **Files written:** `~/.goclaw/settings.json` (and `settings.local.json` if you enter an API key); project `.goclaw/settings.json` when you confirm trust.
@@ -70,7 +70,7 @@ The first time you run **interactive** goclaw on a TTY and **`~/.goclaw/settings
 
 **`goclaw doctor` does not run onboarding** — it loads config and shows a health report: **Bubble Tea** fullscreen pager on a TTY (scroll with arrows / PgUp / PgDn; **q**, **Esc**, or **Ctrl+C** to exit), or plain **`fmt.Println`** when stdin/stdout are not both terminals. Run `doctor` for a quick check; run `goclaw` once to complete first-time setup.
 
-The wizard runs in the **same fullscreen Bubble Tea stack** as the main app (when stdin/stdout are TTY). During setup you pick **`general-purpose`** or **`coordinator`**; afterward use `/profile` or `agent_profile` in settings — see [Agent profiles](#agent-profiles). If you never run the wizard, **`config.Default()`** still starts from **`general-purpose`**.
+The wizard runs in the **same fullscreen Bubble Tea stack** as the main app (when stdin/stdout are TTY). During setup you pick **`build`** or **`plan`**; afterward use `/mode` for the primary flow or `/profile` for advanced profiles — see [Agent profiles](#agent-profiles). If you never run the wizard, **`config.Default()`** still starts in **`build`** mode.
 
 ### Interactive chat (TTY)
 
@@ -93,7 +93,7 @@ Interpreted **after** slash commands and **before** the model (interactive TUI).
 | `!` + command | Run the **`bash`** tool with that command (allowlist and metacharacter rules apply). |
 | `@` + path (standalone) | Run **`read_file`** for a path inside the workspace. Matching paths appear under the input as you type; **Tab** completes anywhere in the line. Drag-and-drop a file/folder onto the terminal to insert `@relpath` automatically. |
 | `@token` inline | When `@path` tokens appear inside a larger message (e.g. `explain @go.mod`), the file is silently pre-loaded before the model call — no separate read step needed. |
-| `&` + task | Run **`spawn_agent`** with worker profile **`general-purpose`** (requires **`spawn_agent`** on the active profile — use **`/profile coordinator`** for hub mode if your current profile does not include it). |
+| `&` + task | Run **`spawn_agent`** with worker profile **`build`** (requires **`spawn_agent`** on the active profile — use **`/profile coordinator`** for hub mode if your current profile does not include it). |
 | `/btw` + text | Slash command: submit **one** user message wrapped as a short “side question” to the model. |
 
 Full grammar and security notes: [prefix-input-modes.md](./prefix-input-modes.md).
@@ -111,7 +111,7 @@ The fullscreen TUI keeps **normal terminal mouse behaviour** by default (wheel s
 
 **Idle footer detail** (message count, token estimate, profile, etc.) uses **`tui_footer_density`** in settings or **`GOCLAW_TUI_FOOTER_DENSITY`**: **`minimal`** (short line; adds token/compact hints only when the context window is nearly full), **`standard`** (default — message count, token estimate, compaction %, profile name), **`debug`** (legacy dense line including `ro:` / `hub:` / tool counts and task-role tags). Omit the key to keep **`standard`**.
 
-**Profile rail + keyboard cycle** in the fullscreen TUI: **`tui_profile_cycle`** in settings is an ordered list of agent profile names (built-in + custom `*.md`). **Ctrl+Shift+←** and **Ctrl+Shift+→** move to the previous/next name in that list (skipped names are not in the cycle). A **single-line rail** above the transcript shows a lane glyph, **‹profile›** (or `<profile>` in ASCII icon mode), an optional short hint (e.g. `hub`), a dotted trace, and a muted **shift+ctrl** chord — all one row so the layout does not break. If **`tui_profile_cycle`** is omitted, the default order is **general-purpose → plan → explore → coordinator** (each entry is still skipped when that profile does not exist).
+**Profile rail + keyboard cycle** in the fullscreen TUI: **`tui_profile_cycle`** in settings is an ordered list of agent profile names (built-in + custom `*.md`). **Ctrl+Shift+←** and **Ctrl+Shift+→** move to the previous/next name in that list (skipped names are not in the cycle). A **single-line rail** above the transcript shows a lane glyph, **‹profile›** (or `<profile>` in ASCII icon mode), an optional short hint (e.g. `hub`), a dotted trace, and a muted **shift+ctrl** chord — all one row so the layout does not break. If **`tui_profile_cycle`** is omitted, the default order is **build → plan → explore → coordinator** (each entry is still skipped when that profile does not exist).
 
 ```bash
 go run ./cmd/goclaw --list-sessions
@@ -187,16 +187,17 @@ To attach a **local editor MCP server** (HTTP on loopback) without hand-editing 
 
 ## Agent profiles
 
-**Default (no settings):** `general-purpose` — direct read/write/bash tools in the main session. Use **`coordinator`** when you want hub mode (`spawn_agent`, `stop_task`, `todo_write` only on the parent), or **`builder`** for shorter action-first direct coding (`/profile` or `agent_profile` in settings).
+**Primary flow:** use **`/mode build`** for direct coding and **`/mode plan`** for read-only planning first.
 
-Set with `--profile <name>`, `agent_profile` in settings, or **`GOCLAW_AGENT_PROFILE`** (applied after settings merge; `--profile` still wins).
+**Advanced flow:** use `--profile <name>`, `agent_profile` in settings, or **`GOCLAW_AGENT_PROFILE`** when you want a non-primary profile (`--profile` still wins after merge).
 
-| Profile | Value | Tools (summary) | Read-only |
-|---------|-------|-----------------|-----------|
-| General-Purpose | `general-purpose` | All built-ins + MCP | No |
+| Surface | Runtime value | Tools (summary) | Read-only |
+|---------|---------------|-----------------|-----------|
+| Build | `build` | direct read/write/test tools in the main session | No |
+| Plan | `plan` | read, glob, grep, web_search, todos | Yes (no writes; use **`/plan run`** or `/apply-plan` to execute) |
+| Builder | `builder` | broader direct-coding surface | No |
 | Explore | `explore` | read, glob, grep, web, todos | Yes |
-| Plan | `plan` | read, glob, grep, web_search, todos | Yes (no writes; use **`/plan run`** or `/plan save` then `/apply-plan`) |
-| Verification | `verification` | read_file, bash, script, todos | No (no write tools; checks only) |
+| Verification | `verification` | read_file, bash, script, todos | No (checks only) |
 | Code review | `code-review` | read, grep, bash, web, todos (no writes) | No (writes not on allowlist) |
 | Guide | `guide` | none | Yes |
 | StatusLine | `statusline` | none | Yes |
@@ -204,9 +205,9 @@ Set with `--profile <name>`, `agent_profile` in settings, or **`GOCLAW_AGENT_PRO
 
 Coordinator delegates work to workers; see [coordinator.md](./coordinator.md).
 
-### Coordinator vs direct coding (`general-purpose`)
+### Coordinator vs direct coding (`build`)
 
-Use **`coordinator`** when you want the hub to delegate sub-tasks to isolated workers via `spawn_agent`. Use **`general-purpose`** when you want a single agent to edit the repository directly without that extra layer — fewer LLM rounds and usually faster for straightforward tasks (for example, a small desktop app or a single feature).
+Use **`coordinator`** when you want the hub to delegate sub-tasks to isolated workers via `spawn_agent`. Use **`build`** when you want a single agent to edit the repository directly without that extra layer — fewer LLM rounds and usually faster for straightforward tasks.
 
 ### `spawn_agent`: time and visibility
 
@@ -218,7 +219,7 @@ Use **`coordinator`** when you want the hub to delegate sub-tasks to isolated wo
 
 If the model requests **multiple tools** in one assistant message and they are auto-approved (allow mode or YOLO), goclaw may run those tools **in parallel**. **`spawn_agent` is never parallelized with other tools in the same batch** — it always runs sequentially to reduce duplicated work and resource contention (for example, two workers competing for the same local GPU).
 
-If you still see two completed spawn lines for the same task, the model may have issued **two `spawn_agent` calls across iterations**; narrow the request or switch to **`general-purpose`** to avoid unnecessary delegation.
+If you still see two completed spawn lines for the same task, the model may have issued **two `spawn_agent` calls across iterations**; narrow the request or switch to **`build`** to avoid unnecessary delegation.
 
 ### Interactive workers (`spawn_agent` + REPL focus)
 
@@ -277,10 +278,16 @@ Persistent flags apply to the default command and `chat`:
 | `prompt <text>...` | One turn from argv |
 | `doctor` | Preflight check — Bubble Tea pager on TTY, plain print otherwise (`task_model_router` / `task_models` when set) |
 | `sessions list` | Same as `--list-sessions` |
-| `telegram start` | Telegram bridge; prompts for missing token/allowlist in a TTY, then long-polls (same as `make telegram`) |
-| `telegram configure` | Interactive wizard only: merge Telegram keys into `~/.goclaw/settings.local.json` |
-| `telegram bridge` | Telegram bridge without prompts; fails if settings incomplete (scripts / CI) |
-| `telegram user add …` | Append allowlisted Telegram user id(s) to `~/.goclaw/settings.local.json` (see [telegram-bridge.md](./telegram-bridge.md)) |
+
+## Optional integrations
+
+These are supported, but intentionally outside the default local-first path:
+
+- **Telegram bridge:** `goclaw telegram start`, `goclaw telegram configure`, `goclaw telegram bridge`, `goclaw telegram user add ...` — see [telegram-bridge.md](./telegram-bridge.md)
+- **Model routing:** [model-routing.md](./model-routing.md)
+- **Plugins and skills:** [plugins.md](../reference/plugins.md), [skills.md](../reference/skills.md)
+- **Coordinator hub mode:** /profile coordinator and [coordinator.md](./coordinator.md)
+- **Swarm notes:** [swarm.md](./swarm.md) is reference-only here
 
 ## Plan file (`.goclaw/plan.md`) and mini plans (`.goclaw/plans/`)
 
@@ -288,7 +295,7 @@ This mirrors the usual **plan → review → execute** loop (similar in spirit t
 
 Use profile **`plan`** to draft text without touching the repo; then save and execute from the REPL.
 
-The **`plan`** profile prioritizes **written analysis and a structured markdown plan** in the transcript. Optional read-only tools (`read_file`, `glob`, `grep`, `web_search`) are for **grounding** claims in the repo or in external facts — they do not replace reasoning. **Execution** (edits, verify loops, applying steps to disk) happens after you save and run **`/plan run`** or **`/apply-plan`**, which switches to **`general-purpose`** or **`coordinator`** — not while you stay on the plan profile.
+The **`plan`** profile prioritizes **written analysis and a structured markdown plan** in the transcript. Optional read-only tools (`read_file`, `glob`, `grep`, `web_search`) are for **grounding** claims in the repo or in external facts — they do not replace reasoning. **Execution** (edits, verify loops, applying steps to disk) happens after you save and run **`/plan run`** or **`/apply-plan`**, which switches to **`build`** or **`coordinator`** — not while you stay on the plan profile.
 
 - `/plan init` — create `.goclaw/plan.md` from template (if missing)
 - **`/plan new my-feature`** — create **`.goclaw/plans/my-feature.md`** from a compact template (name is sanitized to a safe filename stem). Edit the file in your editor, then **`/apply-plan .goclaw/plans/my-feature.md`** (or **`/plan run .goclaw/plans/my-feature.md`** after saving the latest assistant line into that file).
@@ -299,11 +306,11 @@ The **`plan`** profile prioritizes **written analysis and a structured markdown 
 - **`/plan approve`** — write **`.goclaw/plan.meta.json`** with a SHA-256 of the current plan file so **`/apply-plan`** / **`/plan run`** can proceed when **`plan_require_apply_approval`** is true. Re-run after any edit to the plan file.
 - **`/plan revoke`** — delete **`plan.meta.json`** (clear approval).
 - **`/plan steps`** — list parsed steps only (expects a **`## Steps`** section with numbered **`1.`** or **`-` / `*`** lines; used to steer the handoff message).
-- `/apply-plan [--preview] [--hub] [path]` — **`--preview`**: print a bounded excerpt (no model call, no profile switch). **Without `--preview`**: load the plan, switch to **`general-purpose`** (or **`coordinator`** with **`--hub`** or **`plan_apply_use_coordinator`**), and stream **one** execution turn.
+- `/apply-plan [--preview] [--hub] [path]` — **`--preview`**: print a bounded excerpt (no model call, no profile switch). **Without `--preview`**: load the plan, switch to **`build`** (or **`coordinator`** with **`--hub`** or **`plan_apply_use_coordinator`**), and stream **one** execution turn.
 
 **Structured steps:** add a markdown heading **`## Steps`** and numbered lines (`1. …`, `2. …`) so goclaw can inject a short ordered checklist into the handoff. Default execution policy is **sequential** (especially under coordinator); parallel **`spawn_agent`** is left to the model only when steps are clearly independent.
 
-Typical workflow: `/profile plan` → ask for a plan → **`/plan review`** → **`/plan approve`** (if your project sets **`plan_require_apply_approval`**) → **`/plan run`** **or** `/plan save` → `/apply-plan --preview` (optional) → **`/apply-plan`** (add **`--hub`** for multi-worker hub mode). For coding that stalls in prose, switch to **`/profile general-purpose`** or **`/profile builder`**, use **mini plans** under **`.goclaw/plans/`**, and send **follow-up** turns until **`## Steps`** are done. In the **TUI**, **Ctrl+P** opens the agent profile picker. Hide built-in clutter with **`agent_picker_hidden_profiles`**. See [agent-profiles.md](../reference/agent-profiles.md).
+Typical workflow: `/mode plan` → ask for a plan → **`/plan review`** → **`/plan approve`** (if your project sets **`plan_require_apply_approval`**) → **`/plan run`** **or** `/plan save` → `/apply-plan --preview` (optional) → **`/apply-plan`** (add **`--hub`** for multi-worker hub mode). For coding that stalls in prose, switch to **`/mode build`** or **`/profile builder`**, use **mini plans** under **`.goclaw/plans/`**, and send **follow-up** turns until **`## Steps`** are done. In the **TUI**, **Ctrl+P** opens the agent profile picker. Hide built-in clutter with **`agent_picker_hidden_profiles`**. See [agent-profiles.md](../reference/agent-profiles.md).
 
 ## Slash commands (REPL)
 
@@ -321,7 +328,7 @@ Handled locally (not sent to the model). Run **`/help`** for the full list. Key 
 
 - **Hooks:** `PreToolUse`, `PostToolUse`, session start/end; Go API, `external_hooks` in settings, optional `.goclaw/hooks.json` when `trusted_workspace`. [hooks.md](../reference/hooks.md)
 - **MCP:** `mcp_servers` in settings; stdio and streamable HTTP; optional `bearer_token_file` on URL servers. [mcp.md](../reference/mcp.md), [mcp-remote.md](./mcp-remote.md)
-- **Plugins / skills / swarm:** [CLAUDE.md](../../goclaw/CLAUDE.md) D20 and “Skills (runtime)” row; [swarm.md](./swarm.md) is reference-only here
+- **Plugins / skills:** [CLAUDE.md](../../goclaw/CLAUDE.md) D20 and "Skills (runtime)" row
 - **IDE:** `GOCLAW_IDE_NOTIFY_URL` — localhost POST after each tool (best-effort). [ide-bridge.md](../reference/ide-bridge.md)
 
 ## Development
@@ -345,8 +352,8 @@ Mock server: `testutil/mockopenai/`. Windows: transient `*.exe` from tests are n
 
 Work through this list in order (most issues are **profile**, **permissions**, or **model tool-calling**):
 
-1. **Active profile** — In the REPL, note the profile name (footer / welcome) or run **`/profile <name>`** with a name from **`/agents`**. **`plan`**, **`explore`**, **`guide`**, and **`statusline`** cannot run `write_file` / `edit_file` / **`patch`**. **`coordinator`** does not touch the repo on the parent session — it delegates via **`spawn_agent`**. **`code-review`** is review-only (no write tools). For direct edits on the main session, use **`general-purpose`** or **`builder`** (`agent_profile` in `settings.json`, **`GOCLAW_AGENT_PROFILE`**, or **`goclaw --profile …`** — merge order in [Configuration](#configuration)).
-2. **Plan workflow** — If you used **`plan`** to draft steps, that profile is **intentionally** read-only. Use **`/plan review`** / **`/plan approve`** (when **`plan_require_apply_approval`** is true), then **`/plan run`** or **`/plan save`** + **`/apply-plan`**. Add **`--hub`** (or set **`plan_apply_use_coordinator`**) for **coordinator** execution. Each apply runs **one** model turn; large plans may need **follow-up** messages or a smaller plan slice.
+1. **Active profile** — In the REPL, note the profile name (footer / welcome) or run **`/mode build|plan`** / **`/profile <name>`** with a name from **`/agents`**. **`plan`**, **`explore`**, **`guide`**, and **`statusline`** cannot run `write_file` / `edit_file` / **`patch`**. **`coordinator`** does not touch the repo on the parent session — it delegates via **`spawn_agent`**. **`code-review`** is review-only (no write tools). For direct edits on the main session, Use **`build`** or **`builder`**.
+2. **Plan workflow** — If you used **`plan`** to draft steps, that profile is **intentionally** read-only. Use **`/plan review`** / **`/plan approve`** (when **`plan_require_apply_approval`** is true), then **`/plan run`** or **`/plan save`** + **`/apply-plan`**. Add **`--hub`** (or set **`plan_apply_use_coordinator`**) for **coordinator** execution. Each apply runs **one** model turn; large plans may need follow-up messages or a smaller plan slice.
 3. **Tools disabled** — **`--no-tools`**, **`GOCLAW_DISABLE_TOOLS=1`**, or **`goclaw prompt … --no-tools`** registers no tools: the model can only emit text. Remove the flag or unset the variable for edits.
 4. **`tool_permissions`** — Default **`ask`** prompts before risky tools. If you decline or never approve, no run occurs. For scripts / CI, set **`allow`** on the tools you need (see [Permissions](#permissions)) or use **`/allow-writes`** in the REPL for the current session (write tools only).
 5. **Ollama model** — Small local models often emit **prose or fake “JSON tool” blobs** instead of native tool calls; those blobs do **not** execute (see the base system prompt in `goclaw/internal/orchestrator/base_system_prompt.md`). Try a larger or more tool-capable tag (`ollama_model` / **`task_models`** entries) — [ollama-stack.md](./ollama-stack.md).
@@ -363,3 +370,4 @@ Work through this list in order (most issues are **profile**, **permissions**, o
 | Tool limits, SSRF, MCP naming | [tool-contract.md](../reference/tool-contract.md) |
 | Visual tool flows (diagrams) | [tool-flows.md](../reference/tool-flows.md) |
 | English architecture blurb + diagram | [architecture.md](../architecture.md) |
+

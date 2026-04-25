@@ -59,7 +59,7 @@ func TestProfile_AllowsWorkspaceFileWrites(t *testing.T) {
 }
 
 func TestProfile_AllowsSpawnAgentDelegation(t *testing.T) {
-	require.True(t, GeneralPurpose.AllowsSpawnAgentDelegation())
+	require.False(t, GeneralPurpose.AllowsSpawnAgentDelegation())
 	require.True(t, Builder.AllowsSpawnAgentDelegation())
 	require.True(t, Coordinator.AllowsSpawnAgentDelegation())
 	require.False(t, Explore.AllowsSpawnAgentDelegation())

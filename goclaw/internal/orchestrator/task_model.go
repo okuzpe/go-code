@@ -372,6 +372,15 @@ func (o *Orchestrator) prepareTurnModel(ctx context.Context, userMsg string) {
 	}
 	o.ut.turnModel = ""
 	o.ut.taskRole = ""
+	if o.usesBuildLiteRuntime() {
+		role := classifyTaskRoleRules(userMsg, o.profile)
+		if strings.TrimSpace(role) == "" {
+			role = "default"
+		}
+		o.ut.taskRole = role
+		slog.Debug("task model routing", "role", role, "model", o.cfg.Model(), "reason", "build-lite fixed-model")
+		return
+	}
 	if strings.TrimSpace(o.profile.ModelOverride) != "" {
 		return
 	}

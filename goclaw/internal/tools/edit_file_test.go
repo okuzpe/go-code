@@ -105,6 +105,43 @@ func TestEditFileMultilineOldString(t *testing.T) {
 	require.Equal(t, "merged\nline3\n", string(got))
 }
 
+func TestEditFileStripsReadFileLinePrefixesFromOldString(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, dir, "main.go", "package main\n\nfunc main() {}\n")
+	tool := NewEditFile(dir)
+
+	input := mustJSON(t, map[string]any{
+		"path":       "main.go",
+		"old_string": "   1\tpackage main\n   2\t\n   3\tfunc main() {}",
+		"new_string": "package main\n\nfunc main() {\n\tprintln(\"ok\")\n}",
+	})
+	res, err := tool.Execute(context.Background(), input)
+	require.NoError(t, err)
+	require.False(t, res.IsError, "content=%s", res.Content)
+
+	got, _ := os.ReadFile(filepath.Join(dir, "main.go"))
+	require.Contains(t, string(got), "println(\"ok\")")
+}
+
+func TestEditFileStripsContextMarkerPrefixesFromOldString(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, dir, "f.txt", "alpha\nbeta\ngamma\n")
+	tool := NewEditFile(dir)
+
+	input := mustJSON(t, map[string]any{
+		"path":       "f.txt",
+		"old_string": "  1\talpha\n> 2\tbeta\n  3\tgamma",
+		"new_string": "alpha\nBETA\ngamma",
+	})
+	res, err := tool.Execute(context.Background(), input)
+	require.NoError(t, err)
+	require.False(t, res.IsError, "content=%s", res.Content)
+
+	got, _ := os.ReadFile(filepath.Join(dir, "f.txt"))
+	require.Contains(t, string(got), "BETA")
+	require.NotContains(t, string(got), "\talpha")
+}
+
 func TestEditFileAbsoluteOutsideRoot(t *testing.T) {
 	dir := t.TempDir()
 	outside := t.TempDir()

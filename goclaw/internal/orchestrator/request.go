@@ -31,9 +31,9 @@ func qwenFamily(model string) bool {
 // qwenSystemSuffix is appended to the system prompt when running a Qwen-family model.
 // Qwen 2.5 follows explicit numbered steps more reliably than free-form instructions.
 const qwenSystemSuffix = "\n\n[MODEL NOTE: Follow explicit numbered steps. " +
-	"For multi-step tasks: (1) state what you will do, " +
-	"(2) group tool calls logically, " +
-	"(3) confirm result before the next step. " +
+	"For multi-step tasks: (1) group related tool calls logically, " +
+	"(2) after tool results either continue with the next tool step or finish briefly, " +
+	"(3) keep user-visible prose short and only after the relevant tools have run. " +
 	"When the task involves files, code, repo, plans, or shell: do not emit <thinking> blocks or any text before the first native tool call.]"
 
 // planProfileWorkflowOverride is appended last in buildRequest so it wins over the generic
@@ -50,9 +50,43 @@ var planProfileWorkflowOverride = "\n\n## " + planProfileModeMarker + " (overrid
 	"(no mandatory batching of implementation work via todo_write). Omit execution-style todo_write unless the user explicitly wants a visible checklist in session memory.\n" +
 	"- **Review gate:** stop after delivering the plan. Treat implementation as a separate phase that starts only after the user approves the plan or explicitly runs `/apply-plan` or `/plan run`. Prefer the review-first path.\n" +
 	"- **Honesty:** never claim files were written or commands ran unless a tool actually ran and succeeded.\n" +
+	"- **Mandatory close:** after the plan, ask exactly one explicit next-step question that offers these choices in plain language: implement now, adjust the plan, or save/review first.\n" +
 	"- **Critical files (repo-grounded plans only):** when the plan depends on this repository's layout or code, include a subsection **Critical files (3–5)** listing three to five repository-relative paths " +
 	"that an implementer must touch or read first; each line must be a path you have seen via read_file, glob, or grep — never invent paths.\n\n" +
 	"If the request is purely conceptual and needs no repository evidence, answer from reasoning alone without tools."
+
+func buildLitePhaseAllowlist(ut *userTurnState) map[string]struct{} {
+	names := []string{
+		"read_file",
+		"glob",
+		"grep",
+		"edit_file",
+		"write_file",
+		"patch",
+	}
+	if ut != nil && ut.verifyPending {
+		names = []string{
+			"run_tests",
+			"run_command",
+			"read_file",
+			"edit_file",
+			"write_file",
+			"patch",
+		}
+	}
+	out := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		out[n] = struct{}{}
+	}
+	return out
+}
+
+func buildLitePhasePromptBlock(ut *userTurnState) string {
+	if ut != nil && ut.verifyPending {
+		return "\n\n## Build-lite phase\nYou are in verify/repair mode. Use run_tests or run_command to verify. If verification fails, inspect with read_file, repair with edit_file/write_file/patch, then rerun the same verification."
+	}
+	return "\n\n## Build-lite phase\nYou are in inspect/edit mode. First inspect with read_file, glob, or grep. Then make the edit with edit_file, write_file, or patch. Do not verify until after a successful workspace write."
+}
 
 // effectiveToolSpecs returns registry specs after hidden/revealed filtering, profile allowlist,
 // disallowed tools, and read-only stripping.
@@ -127,6 +161,16 @@ func (o *Orchestrator) effectiveToolSpecs() []tools.ToolSpec {
 		specs = stripToolName(specs, "patch")
 		specs = stripMCPNames(specs)
 	}
+	if o.usesBuildLiteRuntime() {
+		phaseAllow := buildLitePhaseAllowlist(o.ut)
+		filtered := make([]tools.ToolSpec, 0, len(specs))
+		for _, s := range specs {
+			if _, ok := phaseAllow[s.Name]; ok {
+				filtered = append(filtered, s)
+			}
+		}
+		specs = filtered
+	}
 	return specs
 }
 
@@ -183,31 +227,35 @@ func (o *Orchestrator) buildRequest() llm.Request {
 		taskRole = o.ut.taskRole
 	}
 
-	if o.mem != nil {
+	if o.mem != nil && !o.usesBuildLiteRuntime() {
 		if block, err := o.mem.RelevantContext(o.cfg.EffectiveMaxMemorySnippetEntries(), turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
 			block = truncateMemoryBlock(block, memoryMaxBytes)
 			sys = sys + "\n\n## Persistent memory (relevant)\n" + block
 		}
 	}
-	if o.projectMem != nil {
+	if o.projectMem != nil && !o.usesBuildLiteRuntime() {
 		if block, err := o.projectMem.RelevantContext(o.cfg.EffectiveMaxMemorySnippetEntries(), turnUserMessage, memoryRelevanceMinScore); err == nil && block != "" {
 			block = truncateMemoryBlock(block, memoryMaxBytes)
 			sys = sys + "\n\n## Project memory (.goclaw/memory)\n" + block
 		}
 	}
-	if o.todoStore != nil {
+	if o.todoStore != nil && !o.usesBuildLiteRuntime() {
 		if block := o.todoStore.FormatForPrompt(); block != "" {
 			sys = sys + "\n\n## Session task list (todo_write)\n" + block
 		}
 	}
 
-	if hint := taskExplorationHint(taskRole); hint != "" {
+	if o.usesBuildLiteRuntime() {
+		sys = sys + buildLitePhasePromptBlock(o.ut)
+	} else if hint := taskExplorationHint(taskRole); hint != "" {
 		sys = sys + hint
 	}
-	if hint := o.hiddenMCPToolsPromptHint(specs); hint != "" {
-		sys = sys + hint
+	if !o.usesBuildLiteRuntime() {
+		if hint := o.hiddenMCPToolsPromptHint(specs); hint != "" {
+			sys = sys + hint
+		}
 	}
-	if block := verifyChangedPathsBlock(o.ut, o.workdir); block != "" {
+	if block := verifyChangedPathsBlock(o.ut, o.workdir, o.usesBuildLiteRuntime()); block != "" {
 		sys = sys + block
 	}
 
@@ -215,8 +263,10 @@ func (o *Orchestrator) buildRequest() llm.Request {
 	// English translation so detecting the language from session text would produce "en" and instruct
 	// the model to reply in English. turnInputLang holds the original language tag detected before
 	// translation; use it directly when available to preserve the user's language.
-	if langHint := langReplyHint(turnInputLang, o.cfg, o.session.Messages); langHint != "" {
-		sys = sys + langHint
+	if !o.usesBuildLiteRuntime() {
+		if langHint := langReplyHint(turnInputLang, o.cfg, o.session.Messages); langHint != "" {
+			sys = sys + langHint
+		}
 	}
 
 	if hint := tuiInteractModePromptBlock(tuiInteractApply, tuiInteractMode); hint != "" {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 
+	"github.com/okuzpe/goclaw/internal/agents"
 	"github.com/okuzpe/goclaw/internal/orchestrator"
 )
 
@@ -54,6 +55,8 @@ func runSessionTurn(
 		return prefixResult.Reply, nil
 	}
 	userText = ExpandInlineAtRefs(ctx, orch, userText)
+	restoreProfile := maybeRouteBuildLiteTurnToPlan(rt, orch, userText)
+	defer restoreProfile()
 	if opts.ToolTrace != nil {
 		return orch.RunStreamingToolTrace(ctx, userText, sink, opts.ToolTrace)
 	}
@@ -71,4 +74,28 @@ func appendLocalPrefixToolTrace(trace *[]orchestrator.JSONToolCall, result *Loca
 		Result:  result.Content,
 		IsError: result.IsError,
 	})
+}
+
+func maybeRouteBuildLiteTurnToPlan(rt *ChatRuntime, orch *orchestrator.Orchestrator, userText string) func() {
+	if rt == nil || orch == nil {
+		return func() {}
+	}
+	if !agents.IsBuildLiteProfileName(orch.ProfileName()) {
+		return func() {}
+	}
+	res := orchestrator.ClassifyProfileIntentRules(userText)
+	if res.Intent != orchestrator.ProfileIntentPlanOnly {
+		return func() {}
+	}
+	plan, ok := rt.Profs[agents.Plan.Name]
+	if !ok {
+		return func() {}
+	}
+	prev := orch.ActiveProfile()
+	orch.SetProfile(plan)
+	rt.Profile = plan
+	return func() {
+		orch.SetProfile(prev)
+		rt.Profile = prev
+	}
 }

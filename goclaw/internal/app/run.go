@@ -27,7 +27,7 @@ func sessionListLongFormat(cmd *cobra.Command) bool {
 }
 
 // FullscreenChatRunner runs the Bubble Tea TUI. Use FullscreenChat in this package, wired from
-// cmd/goclaw and cmd/localagent. Tests of package app do not import internal/ui/chat (Windows
+// cmd/goclaw. Tests of package app do not import internal/ui/chat (Windows
 // non-TTY init can block test binaries).
 type FullscreenChatRunner interface {
 	RunFullscreenChat(ctx context.Context, rt *ChatRuntime) error

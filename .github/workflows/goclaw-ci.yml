@@ -36,11 +36,13 @@ jobs:
         run: go vet ./...
 
       - name: Mock parity harness
-        shell: bash
         run: go test ./internal/orchestrator ./internal/coordinator -count=1 -run '^TestMockParityHarness$'
 
       - name: Smoke (--version)
         run: go run ./cmd/goclaw --version
+
+      - name: Smoke (doctor)
+        run: go run ./cmd/goclaw doctor
 
       - name: Smoke (stdin mock, no Ollama)
         if: matrix.os == 'ubuntu-latest'
@@ -49,14 +51,14 @@ jobs:
           GOCLAW_MOCK_FAST: "1"
         run: printf 'ping\n' | go run ./cmd/goclaw --no-tools --mock --output-format json
 
-      - name: Test (race on Linux only)
+      - name: Test (Linux)
+        if: matrix.os == 'ubuntu-latest'
         shell: bash
-        run: |
-          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-            go test -race -shuffle=on -timeout 10m -coverpkg=./... -coverprofile=coverage.out ./...
-          else
-            go test -timeout 10m ./...
-          fi
+        run: go test -race -shuffle=on -timeout 10m -coverpkg=./... -coverprofile=coverage.out ./...
+
+      - name: Test (Windows)
+        if: matrix.os == 'windows-latest'
+        run: go test -timeout 10m ./...
 
       - name: Check coverage threshold (Linux only)
         if: matrix.os == 'ubuntu-latest'

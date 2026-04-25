@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode"
 )
 
 // EditFileTool replaces an exact string occurrence in a file (str_replace style).
@@ -72,6 +73,33 @@ type editFileInput struct {
 	OldString  string `json:"old_string"`
 	NewString  string `json:"new_string"`
 	ReplaceAll bool   `json:"replace_all"`
+}
+
+func stripReadFileLinePrefixes(s string) string {
+	if s == "" {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	changed := false
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " ")
+		if strings.HasPrefix(trimmed, "> ") {
+			trimmed = strings.TrimLeft(trimmed[2:], " ")
+		}
+		j := 0
+		for j < len(trimmed) && unicode.IsDigit(rune(trimmed[j])) {
+			j++
+		}
+		if j == 0 || j >= len(trimmed) || trimmed[j] != '\t' {
+			continue
+		}
+		lines[i] = trimmed[j+1:]
+		changed = true
+	}
+	if !changed {
+		return s
+	}
+	return strings.Join(lines, "\n")
 }
 
 // editNotFoundError builds an actionable error message when old_string has zero matches.
@@ -159,7 +187,16 @@ func (t *EditFileTool) Execute(_ context.Context, input string) (Result, error) 
 	content := string(raw)
 
 	// strings.Count counts non-overlapping occurrences — consistent with strings.Replace behaviour.
-	count := strings.Count(content, in.OldString)
+	oldString := in.OldString
+	count := strings.Count(content, oldString)
+	if count == 0 {
+		if normalized := stripReadFileLinePrefixes(oldString); normalized != oldString {
+			if normalizedCount := strings.Count(content, normalized); normalizedCount > 0 {
+				oldString = normalized
+				count = normalizedCount
+			}
+		}
+	}
 	if count == 0 {
 		return Result{Content: editNotFoundError(in.Path, in.OldString, content), IsError: true}, nil
 	}
@@ -176,10 +213,10 @@ func (t *EditFileTool) Execute(_ context.Context, input string) (Result, error) 
 	var result string
 	var n int
 	if in.ReplaceAll {
-		result = strings.ReplaceAll(content, in.OldString, in.NewString)
+		result = strings.ReplaceAll(content, oldString, in.NewString)
 		n = count
 	} else {
-		result = strings.Replace(content, in.OldString, in.NewString, 1)
+		result = strings.Replace(content, oldString, in.NewString, 1)
 		n = 1
 	}
 

@@ -98,7 +98,7 @@ func (o *Orchestrator) maybeCompact(ctx context.Context, sink StreamSink) {
 
 	// Phase 2: summarize and remove old messages.
 	before := len(o.session.Messages)
-	if o.cfg.LLMCompaction {
+	if o.cfg.LLMCompaction && !o.usesBuildLiteRuntime() {
 		o.compactToTailWithLLM(ctx, preserve)
 	} else {
 		o.compactToTail(preserve)

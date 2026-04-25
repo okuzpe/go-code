@@ -75,8 +75,9 @@ func (o *Orchestrator) shouldFailActionStalled(
 		return "", false
 	}
 
+	repairStageDisabled := !o.cfg.ActionRepairEscalation || o.usesBuildLiteRuntime()
 	recoveryExhausted := actionNudges >= o.effectiveMaxActionNudges() &&
-		(repairEscalations > 0 || !o.cfg.ActionRepairEscalation)
+		(repairEscalations > 0 || repairStageDisabled)
 	if !recoveryExhausted {
 		return "", false
 	}

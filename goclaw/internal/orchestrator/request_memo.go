@@ -5,6 +5,8 @@ import (
 	"hash/fnv"
 	"path/filepath"
 	"strings"
+
+	"github.com/okuzpe/goclaw/internal/agents"
 )
 
 func (o *Orchestrator) environmentSystemMemoKey(model string) string {
@@ -17,6 +19,8 @@ func (o *Orchestrator) environmentSystemMemoKey(model string) string {
 		strings.TrimSpace(o.launchDir),
 		strings.TrimSpace(o.scratchDir),
 		strings.TrimSpace(o.projectContext),
+		strings.TrimSpace(o.projectContextThin),
+		strings.TrimSpace(o.projectContextLite),
 		hashString32(strings.TrimSpace(o.skillsPrompt)),
 		strings.TrimSpace(model),
 		strings.TrimSpace(o.cfg.Provider),
@@ -62,14 +66,54 @@ func (o *Orchestrator) buildStaticSystemThroughQwen(model string) string {
 			"by passing this absolute path (or paths under it) to write_file, edit_file, patch, or write_files. " +
 			"Do not rely on it for durable project state."
 	}
-	if o.projectContext != "" {
-		sys = sys + "\n\n## Project context\n" + o.projectContext
+	if ctx := o.selectedProjectContext(); ctx != "" {
+		sys = sys + "\n\n## Project context\n" + ctx
 	}
-	if o.skillsPrompt != "" {
+	if o.skillsPrompt != "" && !o.usesBuildLiteRuntime() {
 		sys = sys + "\n\n## Loaded skills (SKILL.md)\n" + o.skillsPrompt
 	}
 	if qwenFamily(model) {
 		sys = sys + qwenSystemSuffix
 	}
 	return sys
+}
+
+func (o *Orchestrator) usesBuildLiteRuntime() bool {
+	if o == nil {
+		return false
+	}
+	return agents.IsBuildLiteProfileName(o.profile.Name)
+}
+
+func (o *Orchestrator) selectedProjectContext() string {
+	if o == nil {
+		return ""
+	}
+	switch {
+	case o.usesBuildLiteRuntime():
+		if s := strings.TrimSpace(o.projectContextLite); s != "" {
+			return s
+		}
+		if s := strings.TrimSpace(o.projectContextThin); s != "" {
+			return s
+		}
+		return strings.TrimSpace(o.projectContext)
+	case strings.EqualFold(strings.TrimSpace(o.profile.Name), agents.Plan.Name),
+		strings.EqualFold(strings.TrimSpace(o.profile.Name), agents.Explore.Name):
+		if s := strings.TrimSpace(o.projectContextThin); s != "" {
+			return s
+		}
+		if s := strings.TrimSpace(o.projectContextLite); s != "" {
+			return s
+		}
+		return strings.TrimSpace(o.projectContext)
+	default:
+		if s := strings.TrimSpace(o.projectContext); s != "" {
+			return s
+		}
+		if s := strings.TrimSpace(o.projectContextThin); s != "" {
+			return s
+		}
+		return strings.TrimSpace(o.projectContextLite)
+	}
 }

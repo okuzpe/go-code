@@ -11,7 +11,7 @@ type SlashCommandSuggest struct {
 
 // slashCommandTable is the canonical list of root REPL / commands. Keep sorted by Name.
 var slashCommandTable = []SlashCommandSuggest{
-	{"/agents", "Compatibility alias for /profile (built-in + custom *.md)", "workers"},
+	{"/agents", "Compatibility alias for /profile (advanced profiles + custom *.md)", "workers"},
 	{"/apply-plan", "Execute saved plan (see --preview); optional path; switches to build", "build"},
 	{"/audit", "Scan project for gaps and auto-fix them (review-and-fix workflow). Optional: /audit <path>", "build"},
 	{"/back", "Return to coordinator session (same as /detach)", "workers"},
@@ -37,7 +37,7 @@ var slashCommandTable = []SlashCommandSuggest{
 	{"/new", "Start a new session (saves current)", "session"},
 	{"/parent", "Return to coordinator (same as /detach)", "workers"},
 	{"/plan", usageList(planSubcommandSpecs) + " (plan.md + .goclaw/plans/)", "build"},
-	{"/profile", "Switch agent profile (primary flow; hot-reloads custom agents)", "workers"},
+	{"/profile", "Switch advanced profile / compatibility alias (hot-reloads custom agents)", "workers"},
 	{"/quit", "Save session and quit", "session"},
 	{"/research", "Web research + plan: /research <query> — searches the web and builds a step-by-step plan saved to .goclaw/plans/", "build"},
 	{"/resume", "Load a saved session from disk (auto-saves current session first)", "session"},

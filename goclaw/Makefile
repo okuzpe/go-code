@@ -59,9 +59,9 @@ lint-fmt:
 run:
 	go run $(CMD)
 
-# Explicit profile pins (defaults match `general-purpose`; use `run-hub` for coordinator).
+# Core local-first flows.
 run-code:
-	go run $(CMD) --profile general-purpose
+	go run $(CMD) --mode build
 
 run-hub:
 	go run $(CMD) --profile coordinator
@@ -79,6 +79,7 @@ run-chat-cmd:
 run-chat:
 	go run $(CMD) --no-tools
 
+# Optional integrations.
 # Telegram Bot API bridge: prompts for missing token/allowlist in a TTY, then long-polls (see docs/goclaw/telegram-bridge.md).
 # Use `make telegram` only — `make telegram start` would also try a non-existent Make target named `start`.
 # Uses a temp binary (not `go run`) so Ctrl+C often maps to a clean exit on Windows/Git Bash.

@@ -87,7 +87,7 @@ func TestBuildRequestHintsAboutHiddenMCPTools(t *testing.T) {
 		tools:   reg,
 		perms:   permissions.NewPolicy(),
 		hooks:   hooks.New(),
-		profile: agents.GeneralPurpose,
+		profile: agents.Builder,
 	}
 	req := o.buildRequest()
 	if toolSpecNamesContain(convertLLMTools(req.Tools), "mcp__demo__echo") {
@@ -108,7 +108,7 @@ func TestBuildRequestRevealedHiddenMCPToolAppearsNextIteration(t *testing.T) {
 		tools:   reg,
 		perms:   permissions.NewPolicy(),
 		hooks:   hooks.New(),
-		profile: agents.GeneralPurpose,
+		profile: agents.Builder,
 		ut: &userTurnState{
 			revealedToolNames: map[string]bool{"mcp__demo__echo": true},
 		},
@@ -186,6 +186,117 @@ func TestBuildRequestDoesNotEncourageThinkingBlocks(t *testing.T) {
 	}
 }
 
+func TestBuildRequestQwenSuffixDoesNotAskForPreToolNarration(t *testing.T) {
+	reg := tools.New()
+	reg.Register(fakeTool{name: "read_file"})
+	cfg := config.Default()
+	cfg.Provider = "ollama"
+	cfg.OllamaModel = "qwen2.5-coder:14b"
+	o := &Orchestrator{
+		cfg:     cfg,
+		session: session.New(),
+		tools:   reg,
+		perms:   permissions.NewPolicy(),
+		hooks:   hooks.New(),
+		profile: agents.GeneralPurpose,
+	}
+	req := o.buildRequest()
+	if !strings.Contains(req.System, "group related tool calls logically") {
+		t.Fatalf("expected qwen-specific suffix in system prompt: %q", req.System)
+	}
+	if strings.Contains(req.System, "state what you will do") {
+		t.Fatalf("qwen suffix should not ask for pre-tool narration: %q", req.System)
+	}
+}
+
+func TestBuildRequestGeneralPurposePromptStaysLean(t *testing.T) {
+	reg := tools.New()
+	reg.Register(fakeTool{name: "read_file"})
+	o := &Orchestrator{
+		cfg:     config.Default(),
+		session: session.New(),
+		tools:   reg,
+		perms:   permissions.NewPolicy(),
+		hooks:   hooks.New(),
+		profile: agents.GeneralPurpose,
+	}
+	req := o.buildRequest()
+	if len(req.System) > 7000 {
+		t.Fatalf("general-purpose system prompt regressed in size: got %d bytes", len(req.System))
+	}
+}
+
+func TestBuildRequestBuildLiteOmitsHiddenMCPHintAndSkills(t *testing.T) {
+	reg := tools.New()
+	reg.Register(fakeTool{name: "read_file"})
+	reg.Register(fakeTool{name: "tool_search"})
+	reg.RegisterHidden(fakeTool{name: "mcp__demo__echo"})
+	o := &Orchestrator{
+		cfg:          config.Default(),
+		session:      session.New(),
+		tools:        reg,
+		perms:        permissions.NewPolicy(),
+		hooks:        hooks.New(),
+		profile:      agents.GeneralPurpose,
+		skillsPrompt: "Use the frobnicate pattern.",
+	}
+	req := o.buildRequest()
+	if strings.Contains(req.System, "Hidden MCP tools") {
+		t.Fatalf("build-lite should omit hidden MCP hint: %q", req.System)
+	}
+	if strings.Contains(req.System, "## Loaded skills (SKILL.md)") {
+		t.Fatalf("build-lite should omit skills block: %q", req.System)
+	}
+}
+
+func TestBuildRequestBuildLitePhaseAllowlist(t *testing.T) {
+	reg := tools.New()
+	for _, name := range []string{"read_file", "glob", "grep", "edit_file", "write_file", "patch", "run_tests", "run_command", "tool_search"} {
+		reg.Register(fakeTool{name: name})
+	}
+	o := &Orchestrator{
+		cfg:     config.Default(),
+		session: session.New(),
+		tools:   reg,
+		perms:   permissions.NewPolicy(),
+		hooks:   hooks.New(),
+		profile: agents.GeneralPurpose,
+	}
+
+	req := o.buildRequest()
+	names := map[string]bool{}
+	for _, tool := range req.Tools {
+		names[tool.Name] = true
+	}
+	for _, want := range []string{"read_file", "glob", "grep", "edit_file", "write_file", "patch"} {
+		if !names[want] {
+			t.Fatalf("inspect/edit phase missing %q: %#v", want, req.Tools)
+		}
+	}
+	for _, banned := range []string{"run_tests", "run_command", "tool_search"} {
+		if names[banned] {
+			t.Fatalf("inspect/edit phase should omit %q: %#v", banned, req.Tools)
+		}
+	}
+
+	o.ut = &userTurnState{verifyPending: true}
+	req = o.buildRequest()
+	names = map[string]bool{}
+	for _, tool := range req.Tools {
+		names[tool.Name] = true
+	}
+	for _, want := range []string{"run_tests", "run_command", "read_file", "edit_file", "write_file", "patch"} {
+		if !names[want] {
+			t.Fatalf("verify/repair phase missing %q: %#v", want, req.Tools)
+		}
+	}
+	for _, banned := range []string{"glob", "grep", "tool_search"} {
+		if names[banned] {
+			t.Fatalf("verify/repair phase should omit %q: %#v", banned, req.Tools)
+		}
+	}
+}
+
 func TestBuildRequestInjectsVerifyChangedFilesBlock(t *testing.T) {
 	reg := tools.New()
 	reg.Register(fakeTool{name: "read_file"})
@@ -211,6 +322,9 @@ func TestBuildRequestInjectsVerifyChangedFilesBlock(t *testing.T) {
 	}
 	if !strings.Contains(req.System, "internal/a.go") || !strings.Contains(req.System, "README.md") {
 		t.Fatalf("missing changed paths in system prompt: %q", req.System)
+	}
+	if strings.Contains(req.System, "git status --short") {
+		t.Fatalf("build-lite verify guidance should avoid git-first shell hints: %q", req.System)
 	}
 }
 

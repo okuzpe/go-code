@@ -130,20 +130,20 @@ func formatAgentsList(profs map[string]agents.Profile, active string, env SlashE
 	var b strings.Builder
 	b.WriteString("## Available agents\n\n")
 	b.WriteString("Built-in + custom `*.md` under agents dirs.\n\n")
-	for _, name := range agents.UserFacingSortedKeys(profs) {
-		p := profs[name]
-		displayName := agents.DisplayProfileName(name)
-		if agents.CanonicalProfileName(name) == active {
-			b.WriteString("- **")
-			b.WriteString(displayName)
-			b.WriteString("** (active) - ")
-		} else {
-			b.WriteString("- `")
-			b.WriteString(displayName)
-			b.WriteString("` - ")
+	keys := agents.UserFacingSortedKeys(profs)
+	b.WriteString("### Primary modes\n\n")
+	for _, name := range keys {
+		if !isPrimaryProfileName(name) {
+			continue
 		}
-		b.WriteString(p.Summary())
-		b.WriteByte('\n')
+		writeAgentListLine(&b, profs[name], name, active)
+	}
+	b.WriteString("\n### Advanced profiles\n\n")
+	for _, name := range keys {
+		if isPrimaryProfileName(name) {
+			continue
+		}
+		writeAgentListLine(&b, profs[name], name, active)
 	}
 	b.WriteString("\nPrimary flow: `/mode build|plan`.\n")
 	b.WriteString("Advanced flow: `/profile <name>`.\n")
@@ -153,6 +153,30 @@ func formatAgentsList(profs map[string]agents.Profile, active string, env SlashE
 		b.WriteString("\nSome profiles are hidden from the picker (`agent_picker_hidden_profiles`); `/profile <name>` still works.\n")
 	}
 	return strings.TrimSpace(b.String())
+}
+
+func writeAgentListLine(b *strings.Builder, p agents.Profile, name, active string) {
+	displayName := agents.DisplayProfileName(name)
+	if agents.CanonicalProfileName(name) == active {
+		b.WriteString("- **")
+		b.WriteString(displayName)
+		b.WriteString("** (active) - ")
+	} else {
+		b.WriteString("- `")
+		b.WriteString(displayName)
+		b.WriteString("` - ")
+	}
+	b.WriteString(p.Summary())
+	b.WriteByte('\n')
+}
+
+func isPrimaryProfileName(name string) bool {
+	switch agents.DisplayProfileName(name) {
+	case agents.PublicBuildProfileName, "plan":
+		return true
+	default:
+		return false
+	}
 }
 
 func tryInteractiveAgentsPick(env SlashEnv, orch *orchestrator.Orchestrator, hintsOut *UIHints) (out string, used bool, err error) {
